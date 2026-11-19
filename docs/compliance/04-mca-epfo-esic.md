@@ -226,6 +226,19 @@ client:**
    it in 2022 is a different joint option exercised with EPFO and is **not
    modelled**; EPS wages are capped for every member, elected or not.
 
+**Update of 19-11-2026** (EPFO's FAQs on the Revamped ECR, questions 17 and 18, and
+EPFO's "Present rates of contribution" sheet, both read): EPFO states that
+contribution on wages above the ceiling needs a **joint request** of employee and
+employer under para 26(6) (the FAQ: "on the joint request in writing", with the
+employer submitting a declaration that it will pay administrative charges on the
+higher contribution), and that **the employer then pays the administrative charge
+on the higher wages**. So point 3 is answered and the product's assumption stands;
+point 1 is partly answered (a joint request in writing is required; its form and
+EPFO's acceptance for a given member are not stated); points 2 and 4 are still
+open. For a voluntary contribution of the employee's share alone (VPF) the FAQ
+says the administrative charge stays on wages up to the ceiling.
+`pf_wage_election.VERIFIED` stays False: the Scheme's own text is not read.
+
 ⚠️ **READ ON 19-11-2026 AND WRONG; the fix is POST-A-517 and is not yet built.**
 `domain/payroll/ecr.py` declares `EPF_CONTRI_REMITTED` as the employee's 12%
 **plus** the employer's EPF half (so ₹2,350 / ₹1,250 / ₹1,100 for a ₹15,000
@@ -331,13 +344,20 @@ What did change:
 | A/c 21 | **EDLI** — employer | 0.50%, capped at ₹15,000 → max ₹75 |
 | A/c 22 | EDLI admin | **Nil since 1 April 2017** |
 
-Minimum for A/c 2: **₹500/month** functional, **₹75/month** non-functional. `[S]`
+Minimum for A/c 2: **₹500/month**, and **₹75/month** where the establishment has no contributory member that month. **`[P]` as of 2018: read on 19-11-2026 in EPFO's own "Present rates of contribution" sheet** (listed on its Employer Documents page as Contribution Rate 12-06-2018).
 
-> **Every one of these matches `domain/payroll/statutory.py` exactly.** `[S]`
+> **Every one of these matches `domain/payroll/statutory.py` exactly, and EPFO's
+> own rates sheet of 2018 states each of them** (0.5% administrative charge from
+> 1 June 2018 with a ₹500 minimum, EDLI 0.5% at ₹75 a head, EDLI administrative
+> charge nil from 1 April 2017, EPS 8.33%). `[P]`
 >
-> ⚠️ One shared open item: the **₹500 minimum was set in the 0.65% era**, and
-> **neither the research nor the code has a primary source confirming it survived
-> the June 2018 cut.** Both assert ₹500. That is agreement, not verification.
+> **The old open item is closed (19-11-2026):** whether the ₹500 minimum survived
+> the June 2018 cut from 0.65%. The sheet's table gives ₹500 for "01.06.2018
+> onwards" at 0.50%, and the 2025 manual's example (account 2 of ₹975 on wages of
+> ₹1,95,000) agrees with 0.5%. The sheet is of 2018, so it says nothing of the Code
+> on Social Security. **One thing it adds is not in the code:** a month with no
+> contributory member carries a ₹75 minimum, where the code says such a month owes
+> nothing (POST-A-523).
 
 **No 2025 admin-charge notification was found.** What actually moved in 2025:
 
