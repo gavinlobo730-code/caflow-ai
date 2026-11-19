@@ -14,7 +14,7 @@ The owner's plan, set on 19 November 2026 at about 17:20 IST: **one question at 
 |---|---|---|---|
 | 1 | Paid always-on API host | **CLOSED 19-11-2026**: option A, the free host, the owner wakes it before the demo | Nothing for the demo. The paid plan waits until a pilot firm is using the product (money row 1). |
 | 2 | Paid mail: price, where to get it | **CLOSED 19-11-2026** (the owner said closed; read from his Resend screenshots) | Resend is on the Free plan: 10 of 3,000 mails this month, 1 of 100 today; the sending subdomain shows Verified; every mail in its 15-day list is Delivered. Nothing to buy for the demo; the paid plan waits until a pilot firm sends client mail (and the card problem is solved first). |
-| 3 | Open the twelve government sites to Claude, read-only | **OPEN: being discussed now** | Yes or no; if yes, the owner's steps in the environment settings, then what I check first. |
+| 3 | Open the twelve government sites to Claude, read-only | **OPEN: access given and tested 19-11-2026** | Result in section 1 below: five of the twelve answer, two refuse and five do not connect, all for reasons on the sites' side. To decide: narrow the environment from Unrestricted to the sites that work, or leave it; and who fetches the documents from the sites that do not answer. |
 | 4 | Names and addresses (legal entity, grievance and security contacts, alert recipients) | **CLOSED as deferred 19-11-2026**: not needed to show a CA who knows him | Needed before a pilot or a public release; the owner will be reminded then. |
 | 5 | What the pricing page promises | **OPEN** | What the owner meant by "don't show anything for now" (leave the page as it is, or hide it?). |
 
@@ -57,6 +57,22 @@ Today, 14 October 2026 at 13:41 IST, I tested ten government sites from this env
 | `www.cert-in.org.in` | CERT-In: the incident-reporting directions |
 
 The first ten were tested and refused; the last two are the ones I would add next. Read-only: nothing is sent to any of them. (Ledger: POST-B-047.)
+
+**Result of the test on 19 November 2026, about 17:50 IST, after the owner switched the environment's network to Unrestricted.** Every site was asked for its front page by a plain client; the eight that failed were asked again by the pre-installed browser. Five answer, two refuse, five do not connect. The refusals are the sites' own protection (the hosting companies' bot and region filters), not this environment, so allowing a host cannot change them.
+
+| Site | Result | What it means |
+|---|---|---|
+| www.incometax.gov.in | **Reads**, front page and the ITR downloads page | The forms and schema downloads can be read. |
+| www.gst.gov.in | Front page reads; another page was cut off mid-request | Partly. Retry by hand when a figure needs it. |
+| www.indiacode.nic.in | Front page reads; an Act's PDF timed out (the address was a guess) | Partly; needs the real address of each Act. |
+| www.meity.gov.in | Front page reads; a guessed PDF address gave "not found" | Partly; needs the real address of the DPDP Act and Rules. |
+| www.cert-in.org.in | Reads in the browser (a script-built page); a plain client timed out; the Directions PDF was cut off | Partly. |
+| www.mca.gov.in | **Refused** ("Access Denied" from the hosting company's filter) | Hand-fetch. |
+| www.epfindia.gov.in | **Refused**, and it now redirects to **www.epfo.gov.in** ("Request blocked" from the hosting company) | Hand-fetch; use the new address. |
+| egazette.gov.in, taxinformation.cbic.gov.in, www.cbic.gov.in | Do not connect: the site's security certificate cannot be checked by this environment (a certificate chain problem on the site's side) | Hand-fetch. Verification is never switched off to get round it. |
+| www.esic.gov.in, einvoice1.gst.gov.in | Do not connect: the connection is reset | Hand-fetch. |
+
+What stays with the owner or a CA: the documents from the sites that refuse or do not connect (the EPFO and ESIC wage ceilings and ECR rules, the MCA forms, the CBIC notifications and the Gazette), saved from a normal browser and handed over. The environment is now Unrestricted for his whole Default setup, which is wider than the twelve addresses I asked for; the five that answer are enough, and narrowing it to them (plus the package-manager default) is his call.
 
 ## 2. Money: yours to decide, with my recommendation
 
