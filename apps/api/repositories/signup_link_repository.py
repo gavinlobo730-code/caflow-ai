@@ -6,6 +6,7 @@ only reader and writer (the signed-in database roles hold nothing on it), and ev
 there is no listing. Rules (who may ask again, how long a link lives) are `domain/firm/signup_link`; this file only stores.
 """
 import os
+import threading
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Mapping, Optional
@@ -14,6 +15,7 @@ from core import db_provider
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _MOCK_ROWS: dict[str, dict] = {}                       # keyed by address
+_MOCK_LOCK = threading.Lock()                          # makes the mock's compare-and-set one step, as the database's statement is
 
 _db = db_provider.service_db
 
@@ -27,6 +29,11 @@ def _iso(value: Any) -> Any:
 
 def _row(values: Mapping[str, Any]) -> dict:
     return {k: _iso(values[k]) for k in COLUMNS if k in values}
+
+
+def _is_unique_violation(exc: Exception) -> bool:
+    """PostgREST's answer to an insert the unique index refuses (23505), read off the code where the client gives one and its words otherwise."""
+    return getattr(exc, "code", None) == "23505" or "duplicate key" in str(exc).lower()
 
 
 class SignupLinkRepository:
@@ -48,32 +55,72 @@ class SignupLinkRepository:
         res = _db().table("signup_links").select("*").eq("token_hash", token_hash).maybe_single().execute()
         return res.data or None
 
-    def save(self, values: Mapping[str, Any]) -> dict:
-        """Write the address's row, replacing the one it had: the earlier link no longer names a row and stops working. Raises if the
-        write fails, so a link is never mailed that was not stored."""
+    def claim(self, email: str, previous: Optional[Mapping[str, Any]], values: Mapping[str, Any]) -> Optional[dict]:
+        """Write the address's next link, IF NOBODY HAS WRITTEN THE ROW SINCE `previous` WAS READ, and say whether it was written (None when it was
+        not). A compare-and-set: the first request for an address inserts (a second insert meets the unique index), a later one updates only the row
+        that still holds the link it read. Reading the row, judging it and writing it are three steps, and two requests that overlap would both
+        pass the judging and both write: the per-address cooldown and the hourly cap would then bind nothing. The earlier link no longer names a
+        row once this one is written, so it stops working. Raises if the write fails, so a link is never mailed that was not stored."""
         row = _row(values)
         if _USE_MOCK:
-            kept = _MOCK_ROWS.get(row["email"], {})
-            _MOCK_ROWS[row["email"]] = {"id": kept.get("id") or f"sl-{uuid.uuid4().hex[:8]}", **kept, **row}
-            return dict(_MOCK_ROWS[row["email"]])
-        res = _db().table("signup_links").upsert(row, on_conflict="email").execute()
-        return (res.data or [row])[0]
+            with _MOCK_LOCK:
+                current = _MOCK_ROWS.get(email)
+                if previous is None:
+                    if current is not None:
+                        return None
+                    _MOCK_ROWS[email] = {"id": f"sl-{uuid.uuid4().hex[:8]}", **row}
+                else:
+                    if current is None or current["token_hash"] != previous["token_hash"]:
+                        return None
+                    _MOCK_ROWS[email] = {**current, **row}
+                return dict(_MOCK_ROWS[email])
+        # The payloads below are written out column by column and not built from `COLUMNS`: the backend's schema guard
+        # (`tests/test_backend_columns_exist_pg.py`) reads a payload only when it is a dict literal at the call, and a column a typo
+        # renamed would otherwise be invisible to it.
+        if previous is None:
+            try:
+                res = _db().table("signup_links").insert({
+                    "email": email, "firm_name": values["firm_name"], "full_name": values["full_name"], "token_hash": values["token_hash"],
+                    "expires_at": _iso(values["expires_at"]), "sent_at": _iso(values["sent_at"]), "send_count": values["send_count"],
+                    "window_started_at": _iso(values["window_started_at"]), "created_at": _iso(values["created_at"]),
+                }).execute()
+            except Exception as exc:                    # noqa: BLE001 — only the unique index's refusal is "somebody was first"
+                if _is_unique_violation(exc):
+                    return None
+                raise
+            return (res.data or [row])[0]
+        res = (_db().table("signup_links")
+               .update({
+                   "firm_name": values["firm_name"], "full_name": values["full_name"], "token_hash": values["token_hash"],
+                   "expires_at": _iso(values["expires_at"]), "sent_at": _iso(values["sent_at"]), "send_count": values["send_count"],
+                   "window_started_at": _iso(values["window_started_at"]), "created_at": _iso(values["created_at"]),
+               })
+               .eq("email", email).eq("token_hash", previous["token_hash"]).execute())
+        return res.data[0] if res.data else None
 
     def put_back(self, email: str, previous: Optional[Mapping[str, Any]], *, replacing: str) -> bool:
         """Undo a `save` whose mail did not go: the row `previous` is restored, or the new row removed when there was none. It acts only
         while the row still holds the link THIS request wrote (`replacing` is its hash), so a newer request that landed while the mail was
         being sent is never undone. True when something was put back or removed."""
         if _USE_MOCK:
-            current = _MOCK_ROWS.get(email)
-            if not current or current["token_hash"] != replacing:
-                return False
-            if previous:
-                _MOCK_ROWS[email] = {**current, **_row(previous)}
-            else:
-                del _MOCK_ROWS[email]
-            return True
+            with _MOCK_LOCK:
+                current = _MOCK_ROWS.get(email)
+                if not current or current["token_hash"] != replacing:
+                    return False
+                if previous:
+                    _MOCK_ROWS[email] = {**current, **_row(previous)}
+                else:
+                    del _MOCK_ROWS[email]
+                return True
         if previous:
-            res = (_db().table("signup_links").update(_row(previous)).eq("email", email).eq("token_hash", replacing).execute())
+            res = (_db().table("signup_links")
+                   .update({
+                       "firm_name": previous["firm_name"], "full_name": previous["full_name"], "token_hash": previous["token_hash"],
+                       "expires_at": _iso(previous["expires_at"]), "sent_at": _iso(previous["sent_at"]),
+                       "send_count": previous["send_count"], "window_started_at": _iso(previous["window_started_at"]),
+                       "created_at": _iso(previous["created_at"]),
+                   })
+                   .eq("email", email).eq("token_hash", replacing).execute())
         else:
             res = _db().table("signup_links").delete().eq("email", email).eq("token_hash", replacing).execute()
         return bool(res.data)

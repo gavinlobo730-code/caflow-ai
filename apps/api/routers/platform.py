@@ -11,12 +11,15 @@ and a PERMANENT delete (`DELETE /firms/{id}/permanent`, irreversible, behind a t
 firm name and a fresh authenticator code). No billing, impersonation, or cross-firm
 data editing. (This docstring said "no hard delete" for as long as the purge existed.)
 
-CLOSING A FIRM SIGNS ITS PEOPLE OUT (POST-A-482). Suspend, soft delete and purge change
+CLOSING A FIRM SIGNS ITS PEOPLE OUT (POST-A-482, POST-A-499). Suspend and soft delete change
 `firms.is_active` / `deleted_at`, which the API reads (`core/auth`: "Firm suspended",
 "Firm unavailable") a few seconds later, and ALSO stamp `users.sessions_revoked_at` for
 every member of the firm, so a token the person already holds is refused 401 even after
 the firm is reopened (`core/auth_time` says why `iat` alone would not hold). Unsuspending
-does not undo it: people sign in again.
+does not undo it: people sign in again. A PERMANENT delete stamps nothing, because it deletes
+the members' `users` rows, which is where that stamp lives: it writes a row in
+`closed_account_markers` (migration 772) for each member BEFORE the purge, and `core/auth`
+answers a session older than the marker from that row.
 """
 import logging
 from datetime import datetime, timezone
@@ -60,16 +63,21 @@ def _mark_closed_accounts(db, firm_id: str) -> list[str]:
     the platform page survives the purge of their own firm by design (`purge_firm`'s docstring). Raises when the markers cannot be
     written: a purge that leaves its people sent to the wizard has not done what the screen says, so the firm is left whole instead."""
     members = db.table("users").select("auth_user_id").eq("firm_id", firm_id).execute().data or []
-    ids = sorted({str(m["auth_user_id"]) for m in members if m.get("auth_user_id")})
-    if not ids:
+    people = {str(m["auth_user_id"]): m for m in members if m.get("auth_user_id")}          # one per sign-in account
+    if not people:
         return []
-    admins = db.table("platform_admins").select("auth_user_id").in_("auth_user_id", ids).execute().data or []
+    admins = db.table("platform_admins").select("auth_user_id").in_("auth_user_id", sorted(people)).execute().data or []
     admin_ids = {str(a["auth_user_id"]) for a in admins}
+    to_mark = [m for i, m in people.items() if i not in admin_ids]
+    if not to_mark:
+        return []
     now = datetime.now(timezone.utc).isoformat()
-    rows = [{"auth_user_id": i, "closed_at": now, "closed_how": "firm_purged"} for i in ids if i not in admin_ids]
-    if rows:
-        db.table("closed_account_markers").upsert(rows, on_conflict="auth_user_id").execute()
-    return [r["auth_user_id"] for r in rows]
+    # The payload is written out at the call, naming the SIGN-IN id each member row carries: the backend's schema guard reads a payload
+    # only when it is a literal at the call, and the person-column guard reads which kind of id the column is given from this value.
+    db.table("closed_account_markers").upsert(
+        [{"auth_user_id": m["auth_user_id"], "closed_at": now, "closed_how": "firm_purged"} for m in to_mark],
+        on_conflict="auth_user_id").execute()
+    return [str(m["auth_user_id"]) for m in to_mark]
 
 
 def _unmark_closed_accounts(db, auth_user_ids: list[str]) -> None:

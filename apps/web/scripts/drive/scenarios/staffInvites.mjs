@@ -165,7 +165,7 @@ export const scenarios = [
   },
   {
     id: "the-join-link-signs-a-signed-out-invitee-in-from-the-bare-token-and-accepts",
-    title: "a signed-out browser opening /join?token= asks the server for the sign-in, redeems it, then accepts once; then the same shape for a SIGN-UP link (POST-A-485, 497): /signup/continue asks what the link is for and signs nobody in until a press, the press carries what the link was asked for into a browser that never held the form, a link that cannot be used offers a new one, a browser signed in as somebody else is asked, and the form asks the server and Supabase mails nothing",
+    title: "a signed-out browser opening /join?token= asks the server for the sign-in, redeems it, then accepts once; then the same shape for a SIGN-UP link (POST-A-485, 497): /signup/continue asks what the link is for and signs nobody in until a press, the press carries what the link was asked for into a browser that never held the form, a link that cannot be used offers a new one, an address with no secret in it says it is incomplete, a browser signed in as somebody else is asked and is signed out (this device only) only after the sign-in is in hand, a browser signed in as the link's own address still gets a fresh sign-in, and the form asks the server and Supabase mails nothing",
     async run(env) {
       const { page, stub, base } = env;
       await signedOut(page);
@@ -214,6 +214,8 @@ export const scenarios = [
       const readyText = await linkReady.innerText();
       assert.match(readyText, /Continue setting up Sharma & Associates/);
       assert.match(readyText, /ravi@sharma-co\.in/);
+      assert.match(readyText, /CA Ravi Sharma/, "the person's name the link was asked for is not shown before the press");
+      assert.match(readyText, /nothing is created until you finish them/);
       assert.match(readyText, /until 21 November 2026, 2:30 pm IST/);
       assert.equal(stub.writesTo(LINK_SESSION, "POST").length, 0, "a sign-in was opened before anybody pressed anything");
       assert.equal(freshSeen.filter((r) => /\/auth\/v1\/verify/.test(r)).length, 0, "the page signed somebody in by itself");
@@ -231,6 +233,16 @@ export const scenarios = [
       // A browser signed in as somebody else is asked before anything is done. (A signed-in member of a practice is not bounced from this page.)
       const other = await env.newPage();
       const otherSeen = recordRequests(other);
+      const otherUrls = [];                                           // whole addresses: `recordRequests` keeps the path and not the query
+      other.on("request", (r) => otherUrls.push(r.url()));
+      let linkSessions = 0;
+      // The first sign-in is refused (the link expired a moment ago), the second is opened: as the server does, nothing was used up between.
+      stub.route({ method: "POST", re: LINK_SESSION,
+        reply: () => (linkSessions += 1) === 1
+          ? { detail: "This sign-up link is no longer active. It may have expired, been replaced by a newer one, or already been used to create the practice." }
+          : ok({ token_hash: "th-link", verification_type: "magiclink", email: link.email, firm_name: link.firm_name, full_name: link.full_name }),
+        status: () => linkSessions === 1 ? 404 : 200 });
+      stub.forgetWrites();
       await other.goto(`${base}/signup/continue/#token=tok-link`, { waitUntil: "networkidle" });
       const otherAsk = other.locator("[data-signup-continue-other-account]");
       await otherAsk.waitFor();
@@ -238,6 +250,41 @@ export const scenarios = [
       assert.match(otherText, new RegExp(`signed in as ${FAKE_USER.email.replace(/[.]/g, "\\.")}`));
       assert.match(otherText, /The link is for ravi@sharma-co\.in/);
       assert.equal(otherSeen.filter((r) => /\/auth\/v1\/(verify|logout)/.test(r)).length, 0, "the browser was signed out before anybody asked");
+      // Asked to sign out and continue, but the link is refused: the person who is signed in here STAYS signed in.
+      await otherAsk.getByRole("button", { name: "Sign out and continue as ravi@sharma-co.in" }).click();
+      await other.locator("p[role=alert]").getByText(/no longer active/).waitFor();
+      assert.equal(otherSeen.filter((r) => /\/auth\/v1\/logout/.test(r)).length, 0, "a link that could not be used signed the other person out for nothing");
+      await other.locator("[data-signup-continue-other-account]").waitFor();
+      // Pressed again, the sign-in is in hand, so THIS device's session is ended (and only this device's) and the new one redeemed, in that order.
+      await other.locator("[data-signup-continue-other-account]").getByRole("button", { name: "Sign out and continue as ravi@sharma-co.in" }).click();
+      await other.locator("[data-existing-practice]").waitFor({ timeout: 10000 });
+      await expectWrites(stub, LINK_SESSION, 2, "the refused sign-in and the opened one", "POST");
+      const at = (re) => otherSeen.findIndex((r) => re.test(r));
+      const lastSession = otherSeen.map((r, i) => (/\/api\/signup\/link\/session$/.test(r) ? i : -1)).filter((i) => i >= 0).pop();
+      const logout = at(/\/auth\/v1\/logout/);
+      const redeemed = at(/^POST .*\/auth\/v1\/verify/);
+      assert.ok(lastSession >= 0 && logout > lastSession, "the other person's session was ended before the sign-in was in hand");
+      assert.ok(redeemed > logout, "the new sign-in was redeemed before the old session was ended");
+      const logoutAddress = otherUrls.find((u) => /\/auth\/v1\/logout/.test(u)) ?? "";
+      assert.match(logoutAddress, /[?&]scope=local\b/, "the sign-out reached every device the person is signed in on, not this one alone");
+
+      // A browser signed in as the link's OWN address still asks for a fresh sign-in: a session kept from before the practice was closed
+      // is refused by the server, and "carrying on" with it would have left the link doing nothing.
+      stub.route({ method: "POST", re: LOOK, reply: () => ok({ ...link, email: FAKE_USER.email }) });
+      stub.route({ method: "POST", re: LINK_SESSION, reply: () => ok({ token_hash: "th-own", verification_type: "magiclink", email: FAKE_USER.email, firm_name: link.firm_name, full_name: link.full_name }) });
+      stub.forgetWrites();
+      const own = await env.newPage();
+      const ownSeen = recordRequests(own);
+      await own.goto(`${base}/signup/continue/#token=tok-link`, { waitUntil: "networkidle" });
+      const ownReady = own.locator("[data-signup-continue-ready]");
+      await ownReady.waitFor();
+      assert.equal(await own.locator("[data-signup-continue-other-account]").count(), 0);
+      await ownReady.getByRole("button", { name: "Continue" }).click();
+      await own.locator("[data-existing-practice]").waitFor({ timeout: 10000 });
+      await expectWrites(stub, LINK_SESSION, 1, "the fresh sign-in the press asked for", "POST");
+      assert.ok(ownSeen.some((r) => /^POST .*\/auth\/v1\/verify/.test(r)), "the press carried on with the session already held and redeemed nothing");
+      assert.equal(ownSeen.filter((r) => /\/auth\/v1\/logout/.test(r)).length, 0, "nobody was signed out: it is the link's own address");
+      stub.route({ method: "POST", re: LOOK, reply: () => ok(link) });
 
       // A link that cannot be used: one sentence, and a new one offered only where this browser kept the address and names.
       stub.route({ method: "POST", re: LOOK, ...refuse("This sign-up link is no longer active. It may have expired, been replaced by a newer one, or already been used to create the practice.", 404) });
@@ -263,6 +310,18 @@ export const scenarios = [
       await bare.locator("[data-signup-continue-gone]").waitFor();
       assert.equal(await bare.getByRole("button", { name: "Email me a new link" }).count(), 0, "a new link was offered with no address to send it to");
       assert.equal(await bare.getByRole("link", { name: "Start the sign-up again" }).count(), 1);
+      // An address that lost the part after the # (a mail program shortened the link) says so, asks the server nothing, and does not say the link expired.
+      stub.forgetWrites();
+      const lost = await env.newPage();
+      await signedOut(lost);
+      await lost.addInitScript(() => { try { localStorage.removeItem("practicesync_signup"); } catch { /* none to remove */ } });
+      await lost.goto(`${base}/signup/continue/`, { waitUntil: "networkidle" });
+      const incomplete = lost.locator("[data-signup-continue-incomplete]");
+      await incomplete.waitFor();
+      const incompleteText = await incomplete.innerText();
+      assert.match(incompleteText, /This sign-up link is incomplete/);
+      assert.doesNotMatch(incompleteText, /no longer active|may have expired/, "a lost fragment was reported as an expired link");
+      assert.equal(stub.writesTo(LOOK, "POST").length, 0, "a link with no secret was put to the server");
 
       // The form asks the SERVER; Supabase mails nothing from the browser.
       stub.forgetWrites();

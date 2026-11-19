@@ -15,11 +15,18 @@
  *      (`api.signup.session`), writes what the link was asked for (the firm's name and the person's) where the wizard reads it, redeems the
  *      sign-in with `verifyOtp`, and goes on to the wizard. The names come from the SERVER's answer, so the intent travels with the link and
  *      not with the browser that sent the form (POST-A-497): an address that already has a practice is told so by the wizard
- *      (POST-A-480), in any browser.
+ *      (POST-A-480), in any browser. The page shows the firm's name and the person's name BEFORE the press, because they are what whoever
+ *      typed the address on the public form chose, and the person is shown what the link will start.
  *   3. Nothing is used up by the press, so a second click, a reload, or the link opened on another device all work, until the link expires or
  *      the practice has been created.
- *   4. A browser signed in as somebody else says so and asks before it signs them out, as the staff invitation's page does; a browser
- *      already signed in as the link's address has nothing to sign in to and carries on.
+ *   4. EVERY press asks for a fresh sign-in, including in a browser that is already signed in as the link's own address: a session kept
+ *      from before the practice was closed is refused by the server, and carrying on with it would land the person on "your firm's account
+ *      is closed" with the link having done nothing.
+ *   5. A browser signed in as somebody else says so and asks before it signs them out, as the staff invitation's page does. The sign-in is
+ *      asked for FIRST and that person's session here is ended only once one is in hand, and for THIS device alone: a link that has just
+ *      expired must not cost anybody their session, and nobody's other devices are theirs to lose to a link somebody else's address got.
+ *   6. An address with no secret in it (a mail program or a message app dropped the part after the `#`) says so, and not that the link
+ *      expired: nothing was asked of the server and nothing is known about the link.
  *
  * The decisions are `lib/auth/signupContinue`, tested apart from the page.
  */
@@ -35,7 +42,7 @@ import { Button } from "@/components/ui/button";
 import { LoadingRegion } from "@/components/ui/skeleton";
 import { requestSignupLink } from "@/lib/auth/requestSignupLink";
 import { readSignupStash, writeSignupStash } from "@/lib/auth/signupStash";
-import { LINK_NOT_ACTIVE, canAskAgain, pressFor, stashFrom, viewFor, type LinkState } from "@/lib/auth/signupContinue";
+import { LINK_NOT_ACTIVE, canAskAgain, stashFrom, viewFor, type LinkState } from "@/lib/auth/signupContinue";
 
 type Seen = { email: string; firm_name: string; full_name: string; valid_until: string };
 type Looked = { state: LinkState; seen?: Seen; message?: string };
@@ -65,7 +72,7 @@ function sentenceOf(e: unknown, fallback: string): string {
 
 /** Ask the server what the link is for. Nothing is signed in or used up. */
 async function lookAtLink(token: string): Promise<Looked> {
-  if (!token) return { state: "gone" };
+  if (!token) return { state: "incomplete" };
   try {
     const res = await api.signup.look(token);
     if (!res.success || !res.data) return { state: "gone" };
@@ -79,7 +86,7 @@ async function lookAtLink(token: string): Promise<Looked> {
 
 export default function ContinueSignupPage() {
   const router = useRouter();
-  const { session, signOut } = useAuth();
+  const { session, endSessionHere } = useAuth();
   const [token] = useState(tokenFromAddress);
   const signedInAs = session?.user?.email ?? null;
 
@@ -95,15 +102,16 @@ export default function ContinueSignupPage() {
 
   const view = viewFor({ link: looked.state, signedInAs, linkAddress: looked.seen?.email });
 
-  /** The press: sign in as the link's own address (unless this browser already is), keep what the link was asked for, carry on. */
-  async function signInAndCarryOn(seen: Seen, alreadyThisAddress: boolean) {
-    if (alreadyThisAddress) {
-      writeSignupStash(browserStorage(), stashFrom(seen));
-      router.replace("/onboarding");
-      return;
-    }
+  /**
+   * The press. The sign-in is asked for FIRST, and only when one is in hand is the session this browser holds for somebody else ended
+   * (`endThisBrowsersSession`), and for THIS device alone: if the link has expired in the meantime, or the server cannot answer, the person
+   * who was signed in here is still signed in, and their other devices are never touched. The sign-in is then redeemed, which replaces any
+   * session kept here for the link's own address, and the names the link was asked for are written first so the wizard finds them.
+   */
+  async function signInAndCarryOn(endThisBrowsersSession: boolean) {
     const res = await api.signup.session(token);
     if (!res.success || !res.data) throw new Error(res.error ?? COULD_NOT_SIGN_IN);
+    if (endThisBrowsersSession) await endSessionHere();
     // The intent first, and from the SERVER's answer: the wizard reads it as soon as the sign-in lands (POST-A-497).
     writeSignupStash(browserStorage(), stashFrom(res.data));
     const { error } = await getSupabaseClient().auth.verifyOtp({
@@ -119,7 +127,7 @@ export default function ContinueSignupPage() {
     setBusy(true);
     setPressError(null);
     try {
-      await signInAndCarryOn(looked.seen, pressFor(signedInAs, looked.seen.email) === "carry_on");
+      await signInAndCarryOn(false);
     } catch (e) {
       setPressError(sentenceOf(e, COULD_NOT_SIGN_IN));
     } finally {
@@ -127,14 +135,13 @@ export default function ContinueSignupPage() {
     }
   }
 
-  // Asked, never done silently: the person signed in here leaves this browser so the link's address can continue.
+  // Asked, never done silently: the person signed in here leaves THIS browser so the link's address can continue.
   async function switchAndPress() {
     if (busy || looked.state !== "live" || !looked.seen) return;
     setBusy(true);
     setPressError(null);
     try {
-      await signOut();
-      await signInAndCarryOn(looked.seen, false);
+      await signInAndCarryOn(true);
     } catch (e) {
       setPressError(sentenceOf(e, COULD_NOT_SIGN_IN));
     } finally {
@@ -186,7 +193,9 @@ export default function ContinueSignupPage() {
           <div data-signup-continue-ready="" className="space-y-4">
             <h2 className="text-lg font-semibold text-ps-ink">Continue setting up {looked.seen.firm_name}</h2>
             <p className="text-sm text-ps-label">
-              This link starts a new practice for <strong>{looked.seen.email}</strong>. Press the button to sign in and carry on.
+              This link starts a new practice, <strong>{looked.seen.firm_name}</strong>, for <strong>{looked.seen.full_name}</strong> at{" "}
+              <strong>{looked.seen.email}</strong>. Those names were typed on the sign-up form for this address; you can change them in the
+              steps that follow, and nothing is created until you finish them. Press the button to sign in and carry on.
               The link works until {looked.seen.valid_until} and until your practice has been created, so you can open it again if you are interrupted.
             </p>
             {pressError && <p role="alert" className="text-sm text-state-problem">{pressError}</p>}
@@ -225,11 +234,15 @@ export default function ContinueSignupPage() {
           </div>
         )}
 
-        {view === "gone" && (
-          <div data-signup-continue-gone="" className="space-y-4">
-            <h2 className="text-lg font-semibold text-ps-ink">This sign-up link is no longer active</h2>
+        {(view === "gone" || view === "incomplete") && (
+          <div {...(view === "gone" ? { "data-signup-continue-gone": "" } : { "data-signup-continue-incomplete": "" })} className="space-y-4">
+            <h2 className="text-lg font-semibold text-ps-ink">
+              {view === "gone" ? "This sign-up link is no longer active" : "This sign-up link is incomplete"}
+            </h2>
             <p className="text-sm text-ps-label">
-              It may have expired (a link works for 24 hours), been replaced by a newer one, or already been used to create the practice.
+              {view === "gone"
+                ? "It may have expired (a link works for 24 hours), been replaced by a newer one, or already been used to create the practice."
+                : "The address is missing the part after the # sign that identifies your link. Some mail programs and message apps shorten or rewrite links. Open the link from the email again, or copy the whole address into your browser's address bar."}
               {canAskAgain(stash)
                 ? " We can email a new one to the address you signed up with, or you can sign in if you already have a password."
                 : " Start the sign-up again for a new link, or sign in if you already have a password."}

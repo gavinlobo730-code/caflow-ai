@@ -70,6 +70,10 @@ NOT_ACTIVE = ("This sign-up link is no longer active. It may have expired, been 
               "create the practice.")
 
 
+#: How many times a request reads the address's row again after losing the race to write it (it is refused after the last).
+CLAIM_ATTEMPTS = 3
+
+
 def _new_token() -> str:
     """A 256-bit URL-safe secret. Its own function so a test can know the token a mail would carry."""
     return secrets.token_urlsafe(32)
@@ -113,24 +117,31 @@ def request_link(email: str, firm_name: str, full_name: str, *, now: Optional[da
     firm = rules.clean_name(firm_name, "your firm's name")
     person = rules.clean_name(full_name, "your name")
 
-    previous = signup_link_repo.find_by_email(address)
-    verdict = rules.allowance(previous, now)
-    if not verdict.ok:
-        raise LinkRefused(rules.refusal_sentence(verdict), verdict.wait_seconds)
-
     sweep_expired(now)                                  # housekeeping never stops a person asking
 
-    token = _new_token()
+    # READ, JUDGE, WRITE IF NOBODY WROTE IN BETWEEN. Two requests that overlap read the same row and would both be judged against it; the
+    # write is a compare-and-set (`claim`), so only one wins, and the other reads again, now sees a link sent a moment ago and is refused.
     expires = rules.expires_at(now)
-    saved = signup_link_repo.save({
-        "email": address, "firm_name": firm, "full_name": person, "token_hash": stored_form(token),
-        "expires_at": expires, "sent_at": now, "send_count": verdict.send_count,
-        "window_started_at": verdict.window_started_at, "created_at": now,
-    })
+    for _ in range(CLAIM_ATTEMPTS):
+        previous = signup_link_repo.find_by_email(address)
+        verdict = rules.allowance(previous, now)
+        if not verdict.ok:
+            raise LinkRefused(rules.refusal_sentence(verdict), verdict.wait_seconds)
+        token = _new_token()
+        saved = signup_link_repo.claim(address, previous, {
+            "email": address, "firm_name": firm, "full_name": person, "token_hash": stored_form(token),
+            "expires_at": expires, "sent_at": now, "send_count": verdict.send_count,
+            "window_started_at": verdict.window_started_at, "created_at": now,
+        })
+        if saved is not None:
+            break
+    else:
+        # The row changed under every read: somebody is asking for this address at this very moment, and their mail is the one that goes.
+        just_sent = rules.Allowance(False, rules.COOLDOWN_SECONDS, "cooldown")
+        raise LinkRefused(rules.refusal_sentence(just_sent), just_sent.wait_seconds)
     valid_until = valid_until_words(str(saved.get("expires_at") or expires.isoformat()))
     try:
-        sent = email_service.send_signup_link(address, firm_name=firm, full_name=person, link=continue_url(token),
-                                              valid_until=valid_until)
+        sent = email_service.send_signup_link(address, firm_name=firm, link=continue_url(token), valid_until=valid_until)
     except Exception:                                   # noqa: BLE001 — logged here, and the page is told it did not go
         _logger.exception("caflow.signup_link: the sign-up mail could not be built or sent")
         sent = False

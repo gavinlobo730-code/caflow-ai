@@ -7,17 +7,22 @@
 --
 -- Now the server keeps the link, the way a staff invitation is kept (`users.invite_token`, migration 153 and POST-A-445):
 --   * one row per address holds the HASH of the link's secret (never the secret), the firm name and the person's name typed on the
---     sign-up form, and the instant the link stops working;
+--     sign-up form, and the instant the link stops working (24 hours after it was mailed);
 --   * the link in the mail points at OUR page, which turns the secret into a sign-in only when the person presses a button, so a
---     scanner that fetches the page spends nothing; the press deletes the row in one statement, which is what makes it single use;
+--     scanner that fetches the page spends nothing. A press uses nothing up either: the link keeps working, on the laptop and then on
+--     the phone, until it expires, until a newer link for the address replaces it, or until the practice is created, which deletes the row;
 --   * the firm name and the person's name travel with the link, so the page the link opens does not depend on a note in the
 --     browser the form was filled in.
 -- Requesting a link again for the same address REPLACES the row (the earlier link stops working), which is also how an address that
--- asks over and over is counted: `send_count` within `window_started_at`.
+-- asks over and over is counted: `send_count` within `window_started_at`. The replacing is a compare-and-set in the API, because
+-- reading the row, judging the cooldown and writing are three steps and two requests that overlap would both pass the judging: the
+-- first request for an address INSERTs (the unique index on the address refuses the second of two), and a later one UPDATEs the row
+-- only while it still holds the link that request read (`WHERE email = ... AND token_hash = <the hash it read>`).
 --
 -- Written and read by the API only: the signed-in database roles hold nothing on the table. A person who has not signed up yet has
--- no practice, so the table carries no firm. Rows are kept only as long as the link is of use: the press deletes the row, and the
--- API deletes rows that have expired whenever a link is requested and at the close of each daily sweep (an engineering rule, no statutory figure).
+-- no practice, so the table carries no firm. Rows are kept only as long as the link is of use: creating the practice deletes the row,
+-- and the API deletes rows that have expired whenever a link is requested and at the close of each daily sweep (an engineering rule,
+-- no statutory figure).
 --
 -- Additive and idempotent; the rollback drops the table.
 
@@ -53,8 +58,9 @@ CREATE INDEX IF NOT EXISTS idx_signup_links_expiry ON public.signup_links (expir
 
 COMMENT ON TABLE public.signup_links IS
   'POST-A-485 and 497, migration 771. A sign-up link kept by the server: the hash of its secret, the address, the firm name and the person''s '
-  'name typed on the sign-up form, and when it stops working. One row per address; the press of the button on the page the link opens deletes '
-  'the row. Written and read by the API only (services/signup_link_service.py); the signed-in database roles hold nothing on it.';
+  'name typed on the sign-up form, and when it stops working. One row per address, replaced when another link is asked for. The press of the '
+  'button on the page the link opens uses nothing up: the row is deleted when the practice is created or once it has expired. Written and '
+  'read by the API only (services/signup_link_service.py); the signed-in database roles hold nothing on it.';
 COMMENT ON COLUMN public.signup_links.token_hash IS
   'sha256:<hex> of the secret in the mailed link. The secret itself is never stored.';
 

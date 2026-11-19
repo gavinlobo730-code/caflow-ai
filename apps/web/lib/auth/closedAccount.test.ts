@@ -68,8 +68,17 @@ test("the page path carries the reason, and the page and the sign-in are not sen
 });
 
 test("the sign-out for 'signed out from another device' ends this device only, because the session that asked stays (POST-A-486)", async () => {
-  assert.deepEqual([...LOCAL_ONLY_REASONS], ["signed-out-elsewhere"]);
+  assert.ok(LOCAL_ONLY_REASONS.includes("signed-out-elsewhere"));
   const { readFileSync } = await import("node:fs");
   const api = readFileSync(new URL("../api/index.ts", import.meta.url), "utf8");
   assert.match(api, /signOut\(LOCAL_ONLY_REASONS\.includes\(reason\) \? \{ scope: "local" \} : undefined\)/);
+});
+
+test("a session refused because its firm was deleted ends this device only, so a stale tab cannot revoke a fresh sign-in made since (POST-A-499)", async () => {
+  // The two that end one device, and no others: a suspension, a removed person and an administrator's sign-out end the account's sessions.
+  assert.deepEqual([...LOCAL_ONLY_REASONS].sort(), ["firm-unavailable", "signed-out-elsewhere"]);
+  for (const everywhere of ["firm-suspended", "person-disabled", "signed-out"] as const) {
+    assert.equal(LOCAL_ONLY_REASONS.includes(everywhere), false, everywhere);
+  }
+  assert.equal(closedAccountReason(403, "Firm unavailable"), "firm-unavailable");
 });

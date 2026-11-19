@@ -117,6 +117,32 @@ def test_a_name_that_is_too_long_is_refused_in_a_sentence():
     assert "Your name is too long" in str(e.value) and str(rules.NAME_MAX) in str(e.value)
 
 
+def test_invisible_characters_are_removed_and_a_name_made_only_of_them_is_blank():
+    assert rules.clean_name("Ravi\u202e Sharma", "your name") == "Ravi Sharma", "a bidirectional override can reorder what is around it"
+    assert rules.clean_name("Sha\u200brma\ufeff", "your name") == "Sharma"
+    for invisible in ("\u200b\u200b", "\u200e\u2060\ufeff", "\u202e", " \u200b \t"):
+        with pytest.raises(ValueError) as e:
+            rules.clean_name(invisible, "your name")
+        assert str(e.value) == "Please enter your name."
+
+
+def test_the_joiners_a_script_needs_inside_a_word_are_kept():
+    word = "\u0d36\u0d4d\u0d30\u0d40\u200d \u0d32\u0d15\u0d4d\u0d37\u0d4d\u0d2e\u0d3f"
+    assert rules.clean_name(word, "your name") == word
+
+
+@pytest.mark.parametrize("typed", ["https://pay.example/verify", "see www.example.com now", "ravi@sharma-co.in", "HTTP: nothing", "ftp://x", "www . example"])
+def test_a_web_or_email_address_is_not_a_name(typed):
+    with pytest.raises(ValueError) as e:
+        rules.clean_name(typed, "your firm's name")
+    assert str(e.value) == "That looks like a web or email address. Please enter your firm's name."
+
+
+@pytest.mark.parametrize("typed", ["A.K. Sharma & Co.", "Sharma & Associates", "M/s Gupta (Delhi)", "CA Ravi Sharma, FCA", "Whitehouse & Co", "Sharma 2.0"])
+def test_ordinary_names_are_not_taken_for_addresses(typed):
+    assert rules.clean_name(typed, "your name") == typed
+
+
 def test_a_first_request_is_allowed_and_starts_the_count():
     a = rules.allowance(None, NOW)
     assert a.ok and a.send_count == 1 and a.window_started_at == NOW
@@ -137,6 +163,20 @@ def test_the_wait_is_never_below_one_second():
     a = rules.allowance(_row_sent_at(rules.COOLDOWN_SECONDS - 0.2), NOW)
     assert not a.ok and a.wait_seconds == 1
     assert "wait 1 second before" in rules.refusal_sentence(a)
+
+
+def test_a_stamp_in_the_future_is_a_request_just_made_and_not_a_first_request():
+    """Another worker that wrote the row a moment ago read its clock a moment after ours: its stamp is ahead of `now`. Treating that as 'no
+    request yet' would let the loser of a race through, which is what the cooldown exists to stop."""
+    row = {"sent_at": _at(0.5).isoformat(), "send_count": 1, "window_started_at": _at(0.5).isoformat()}
+    a = rules.allowance(row, NOW)
+    assert not a.ok and a.reason == "cooldown" and a.wait_seconds == rules.COOLDOWN_SECONDS
+
+
+def test_a_window_that_starts_in_the_future_is_still_the_window():
+    row = {"sent_at": _at(-3600).isoformat(), "send_count": rules.HOURLY_CAP, "window_started_at": _at(5).isoformat()}
+    a = rules.allowance(row, NOW)
+    assert not a.ok and a.reason == "hourly", "a window stamped a moment ahead must not reset the count"
 
 
 def test_a_request_after_the_cooldown_is_allowed_and_counted():
@@ -184,7 +224,8 @@ def test_asking_mails_one_link_to_the_address_typed_and_names_what_was_typed(wor
     assert len(world.mails) == 1
     mail = world.mails[0]
     assert mail["to"] == "ravi@sharma-co.in"
-    assert mail["firm_name"] == "Sharma & Associates" and mail["full_name"] == "CA Ravi Sharma"
+    assert mail["firm_name"] == "Sharma & Associates"
+    assert "full_name" not in mail, "the person's name is typed text too, and the mail does not need it"
     link = urlparse(mail["link"])
     assert mail["link"].startswith(f"{frontend_base()}/signup/continue/#token=")
     assert parse_qs(link.fragment)["token"] == [world.issued[0]], "the link carries the secret and nothing else"
@@ -313,9 +354,10 @@ def test_asking_reads_no_account_so_an_existing_address_cannot_be_told_from_a_ne
 
 
 def _seed(email, expires_in_seconds):
-    signup_link_repo.save({"email": email, "firm_name": "F", "full_name": "N", "token_hash": stored_form(email),
-                           "expires_at": _at(expires_in_seconds), "sent_at": _at(-10 ** 6), "send_count": 1,
-                           "window_started_at": _at(-10 ** 6), "created_at": _at(-10 ** 6)})
+    assert signup_link_repo.claim(email, None, {
+        "email": email, "firm_name": "F", "full_name": "N", "token_hash": stored_form(email),
+        "expires_at": _at(expires_in_seconds), "sent_at": _at(-10 ** 6), "send_count": 1,
+        "window_started_at": _at(-10 ** 6), "created_at": _at(-10 ** 6)}) is not None
 
 
 def test_links_that_have_expired_are_swept_by_the_next_request_and_live_ones_are_not(world):
@@ -354,6 +396,148 @@ def test_a_sweep_that_fails_does_not_stop_a_person_asking(world, monkeypatch):
     monkeypatch.setattr(signup_link_repo, "delete_expired_before", _fails)
     _ask()
     assert len(world.mails) == 1
+
+
+# ═══ TWO REQUESTS AT ONCE ══════════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+def test_overlapping_requests_for_one_address_send_one_mail_and_the_rest_are_refused(world, monkeypatch):
+    """The cooldown and the hourly cap are judged from the row, and reading the row, judging it and writing it are three steps. Eight requests that
+    have all read the row before any has written it were all admitted before the write was a compare-and-set (twenty sent twenty mails)."""
+    import threading
+    real_find = signup_link_repo.find_by_email
+    gate = threading.Barrier(8)
+    seen = threading.local()
+
+    def read_then_wait_for_the_others(email):
+        row = real_find(email)
+        if not getattr(seen, "waited", False):
+            seen.waited = True
+            try:
+                gate.wait(timeout=5)
+            except threading.BrokenBarrierError:
+                pass
+        return row
+
+    monkeypatch.setattr(signup_link_repo, "find_by_email", read_then_wait_for_the_others)
+    outcomes: list = []
+
+    def go():
+        try:
+            _ask()
+            outcomes.append("sent")
+        except svc.LinkRefused:
+            outcomes.append("refused")
+        except Exception as exc:                          # noqa: BLE001 — a test reports what it did not expect
+            outcomes.append(f"unexpected: {exc!r}")
+
+    threads = [threading.Thread(target=go) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=20)
+    assert sorted(outcomes) == ["refused"] * 7 + ["sent"], outcomes
+    assert len(world.mails) == 1, "more than one mail went for one address"
+    row = real_find("ravi@sharma-co.in")
+    sent_token = parse_qs(urlparse(world.mails[0]["link"]).fragment)["token"][0]
+    assert row["token_hash"] == stored_form(sent_token), "the link that works is not the one that was mailed"
+    assert row["send_count"] == 1
+
+
+def test_a_request_that_keeps_losing_the_race_is_refused_as_a_link_just_sent(world, monkeypatch):
+    monkeypatch.setattr(signup_link_repo, "claim", lambda email, previous, values: None)
+    with pytest.raises(svc.LinkRefused) as refused:
+        _ask()
+    assert refused.value.status_code == 429 and refused.value.wait_seconds == rules.COOLDOWN_SECONDS
+    assert world.mails == [], "a request that never wrote its row must not mail a link for it"
+
+
+def test_the_first_claim_inserts_and_a_second_first_claim_loses():
+    row = {"email": "a@x.in", "firm_name": "F", "full_name": "N", "token_hash": stored_form("one"), "expires_at": _at(3600), "sent_at": NOW,
+           "send_count": 1, "window_started_at": NOW, "created_at": NOW}
+    assert signup_link_repo.claim("a@x.in", None, row) is not None
+    assert signup_link_repo.claim("a@x.in", None, {**row, "token_hash": stored_form("two")}) is None
+    assert signup_link_repo.find_by_email("a@x.in")["token_hash"] == stored_form("one")
+
+
+def test_a_claim_wins_only_against_the_row_it_read():
+    row = {"email": "a@x.in", "firm_name": "F", "full_name": "N", "token_hash": stored_form("one"), "expires_at": _at(3600), "sent_at": NOW,
+           "send_count": 1, "window_started_at": NOW, "created_at": NOW}
+    signup_link_repo.claim("a@x.in", None, row)
+    read = signup_link_repo.find_by_email("a@x.in")
+    assert signup_link_repo.claim("a@x.in", read, {**row, "token_hash": stored_form("two"), "send_count": 2}) is not None
+    assert signup_link_repo.claim("a@x.in", read, {**row, "token_hash": stored_form("three"), "send_count": 2}) is None, "a stale read won"
+    assert signup_link_repo.find_by_email("a@x.in")["token_hash"] == stored_form("two")
+    assert signup_link_repo.claim("a@x.in", {"token_hash": stored_form("one")}, row) is None, "a row that no longer exists was claimed"
+
+
+class _FakeRest:
+    """The slice of the PostgREST client the repository's real branch uses, answering what each test says the database did."""
+
+    def __init__(self, insert_error=None, update_rows=None):
+        self.insert_error, self.update_rows, self.calls = insert_error, update_rows or [], []
+
+    def table(self, name):
+        assert name == "signup_links"
+        return self
+
+    def insert(self, row):
+        self.calls.append(("insert", row))
+        return self
+
+    def update(self, row):
+        self.calls.append(("update", row))
+        return self
+
+    def eq(self, column, value):
+        self.calls.append(("eq", column, value))
+        return self
+
+    def execute(self):
+        if self.calls[-1][0] == "insert" and self.insert_error is not None:
+            raise self.insert_error
+        kind = next(c[0] for c in self.calls if c[0] in ("insert", "update"))
+        return SimpleNamespace(data=[self.calls[0][1]] if kind == "insert" else self.update_rows)
+
+
+class _UniqueViolation(Exception):
+    code = "23505"
+
+
+def _the_database_is(monkeypatch, fake):
+    monkeypatch.setattr(repo_module, "_USE_MOCK", False)
+    monkeypatch.setattr(repo_module, "_db", lambda: fake)
+
+
+_ROW = {"email": "a@x.in", "firm_name": "F", "full_name": "N", "token_hash": stored_form("new"), "expires_at": _at(3600), "sent_at": NOW,
+        "send_count": 1, "window_started_at": NOW, "created_at": NOW}
+
+
+def test_in_the_database_a_first_claim_is_an_insert_and_the_unique_index_is_the_loser(monkeypatch):
+    fake = _FakeRest()
+    _the_database_is(monkeypatch, fake)
+    assert signup_link_repo.claim("a@x.in", None, _ROW)["email"] == "a@x.in"
+    assert fake.calls[0][0] == "insert" and not any(c[0] == "update" for c in fake.calls)
+    _the_database_is(monkeypatch, _FakeRest(insert_error=_UniqueViolation("duplicate key value violates unique constraint")))
+    assert signup_link_repo.claim("a@x.in", None, _ROW) is None
+    _the_database_is(monkeypatch, _FakeRest(insert_error=RuntimeError("duplicate key value violates unique constraint \"uq_signup_links_one_per_address\"")))
+    assert signup_link_repo.claim("a@x.in", None, _ROW) is None, "the words of the refusal count when the client gives no code"
+
+
+def test_in_the_database_any_other_failure_of_a_first_claim_is_raised_not_read_as_a_lost_race(monkeypatch):
+    _the_database_is(monkeypatch, _FakeRest(insert_error=RuntimeError("connection reset")))
+    with pytest.raises(RuntimeError):
+        signup_link_repo.claim("a@x.in", None, _ROW)
+
+
+def test_in_the_database_a_later_claim_is_an_update_that_names_the_address_and_the_link_that_was_read(monkeypatch):
+    won = _FakeRest(update_rows=[{"email": "a@x.in"}])
+    _the_database_is(monkeypatch, won)
+    assert signup_link_repo.claim("a@x.in", {"token_hash": stored_form("read")}, _ROW) == {"email": "a@x.in"}
+    assert ("eq", "email", "a@x.in") in won.calls and ("eq", "token_hash", stored_form("read")) in won.calls
+    assert not any(c[0] == "insert" for c in won.calls)
+    lost = _FakeRest(update_rows=[])
+    _the_database_is(monkeypatch, lost)
+    assert signup_link_repo.claim("a@x.in", {"token_hash": stored_form("read")}, _ROW) is None, "an update that changed no row was read as a win"
 
 
 # ═══ LOOKING AT A LINK, AND PRESSING IT ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -558,7 +742,7 @@ def test_the_three_routes_are_public_and_carry_a_per_address_limit():
     for route in signup_router.router.routes:
         calls = [d.call for d in route.dependant.dependencies]
         buckets[route.path] = [getattr(c, "_public_limit_bucket", None) for c in calls]
-    assert buckets == {"/api/signup/link": ["signup"], "/api/signup/link/look": ["invite"], "/api/signup/link/session": ["invite"]}
+    assert buckets == {"/api/signup/link": ["signup_link"], "/api/signup/link/look": ["invite"], "/api/signup/link/session": ["invite"]}
 
 
 # ═══ THE MAIL ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -571,24 +755,31 @@ def sent(monkeypatch):
 
 
 def test_the_mail_says_what_it_is_for_when_it_ends_and_that_it_is_safe_to_ignore(sent):
-    ok = email_service.send_signup_link("ravi@sharma-co.in", firm_name="Sharma & Associates", full_name="CA Ravi Sharma",
-                                        link="https://app.example/signup/continue?token=abc", valid_until="21 November 2026, 2:30 pm IST")
+    ok = email_service.send_signup_link("ravi@sharma-co.in", firm_name="Sharma & Associates",
+                                        link="https://app.example/signup/continue/#token=abc", valid_until="21 November 2026, 2:30 pm IST")
     assert ok is True
     mail = sent[0]
-    assert mail["subject"] == "Finish setting up Sharma & Associates on PracticeSync AI"
     html = mail["html"]
-    assert "Sharma &amp; Associates" in html and "CA Ravi Sharma" in html
-    assert 'href="https://app.example/signup/continue?token=abc"' in html
+    assert "&ldquo;Sharma &amp; Associates&rdquo;" in html, "the firm asked for is named once, in the body, between quotation marks"
+    assert 'href="https://app.example/signup/continue/#token=abc"' in html
     assert "21 November 2026, 2:30 pm IST" in html and "ignore this email" in html and "whichever is first" in html
 
 
+def test_the_subject_is_fixed_and_carries_nothing_a_stranger_typed(sent):
+    """The firm's name is text a stranger typed into a public form, to any address; a subject is the one place a reader trusts without reading."""
+    email_service.send_signup_link("a@x.in", firm_name="URGENT: your payment failed, call +91 98765 43210", link="https://l", valid_until="v")
+    assert sent[0]["subject"] == "Finish setting up your PracticeSync AI account"
+    email_service.send_signup_link("a@x.in", firm_name="Another", link="https://l", valid_until="v")
+    assert sent[1]["subject"] == sent[0]["subject"]
+
+
 def test_the_mail_is_sent_as_the_product_with_nobody_to_reply_to(sent):
-    email_service.send_signup_link("a@x.in", firm_name="F", full_name="N", link="https://l", valid_until="v")
+    email_service.send_signup_link("a@x.in", firm_name="F", link="https://l", valid_until="v")
     assert sent[0].get("sender_name") is None and sent[0].get("reply_to") is None
 
 
 def test_typed_text_cannot_inject_markup_or_a_header(sent):
-    email_service.send_signup_link("a@x.in", firm_name='<img src=x onerror=alert(1)>\r\nBcc: evil@x.in', full_name="<script>x</script>",
+    email_service.send_signup_link("a@x.in", firm_name='<img src=x onerror=alert(1)>\r\nBcc: evil@x.in <script>x</script>',
                                    link="https://l/?a=1&b=2", valid_until="v")
     mail = sent[0]
     assert "<script>" not in mail["html"] and "<img" not in mail["html"]

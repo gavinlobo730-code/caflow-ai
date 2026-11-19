@@ -1,7 +1,7 @@
 """Sign-up links (POST-A-485, 497): asked for on the sign-up form, looked at and pressed on the page the mail opens.
 
 All three routes are PUBLIC: the person has no account yet, which is the point. The sign-up form's link request is limited per network
-address in the `signup` bucket (`middleware/public_rate_limit`) and per mailed ADDRESS by the row's own counters
+address in the `signup_link` bucket (`middleware/public_rate_limit`; not the `signup` bucket that creating the firm spends) and per mailed ADDRESS by the row's own counters
 (`domain/firm/signup_link`); the page's two calls are limited like the other pages that turn a mailed token into a sign-in
 (`invite`). The secret travels in the body of a POST and never in a path, so no access log carries it. Mounted without the
 sign-in guard, like the staff invitation's routes: there is no `users` row for it to find. The rules and their reasons are in
@@ -28,7 +28,7 @@ class TokenBody(BaseModel):
     token: str = Field(max_length=500)
 
 
-@router.post("/link", dependencies=[Depends(public_limit("signup"))])
+@router.post("/link", dependencies=[Depends(public_limit("signup_link"))])
 def request_link(body: LinkRequest):
     """Mail a link that starts a new practice to `email`. Answers the same whether or not the address already has an account."""
     try:

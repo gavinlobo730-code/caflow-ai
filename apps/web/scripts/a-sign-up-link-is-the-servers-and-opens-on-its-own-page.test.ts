@@ -15,9 +15,14 @@
 //        of them sends an auth email of its own;
 //     2. the link opens /signup/continue: it asks what the link is for, signs nobody in by itself, and signs in only at a press;
 //     3. what the link was asked for reaches the wizard from the SERVER's answer, and is written BEFORE the sign-in lands;
-//     4. a browser signed in as somebody else is asked before it is signed out;
-//     5. the guard does not bounce a signed-in member from that page, because the page says what to do;
-//     6. no call puts the secret in a path.
+//     4. a browser signed in as somebody else is asked before it is signed out, the sign-in is asked for BEFORE that session is ended, and
+//        it is ended for this device alone (a link that has just expired costs nobody a session, and nobody's other devices);
+//     5. every press asks for a fresh sign-in, in a browser signed in as the link's own address too (a session kept from before the practice
+//        was closed is refused by the server, and "carrying on" with it did nothing);
+//     6. the page shows the names the link was asked for before the press, and an address with no secret in it says it is incomplete and
+//        not that the link expired;
+//     7. the guard does not bounce a signed-in member from that page, because the page says what to do;
+//     8. no call puts the secret in a path.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -103,19 +108,52 @@ test("what the link was asked for reaches the wizard from the server's answer, b
   assert.match(body, /if \(error\) throw new Error\(COULD_NOT_SIGN_IN\)/);
 });
 
-test("a browser already signed in as the link's address carries on without a second sign-in", () => {
-  const body = bodyOf(code("app/signup/continue/page.tsx"), "signInAndCarryOn");
-  assert.match(body, /if \(alreadyThisAddress\) \{\s*writeSignupStash\(browserStorage\(\), stashFrom\(seen\)\);\s*router\.replace\("\/onboarding"\);\s*return;\s*\}/);
-  assert.match(code("app/signup/continue/page.tsx"), /pressFor\(signedInAs, looked\.seen\.email\) === "carry_on"/);
+test("every press asks for a fresh sign-in, in a browser already signed in as the link's own address too", () => {
+  const src = code("app/signup/continue/page.tsx");
+  assert.doesNotMatch(src, /pressFor|carry_on|alreadyThisAddress/, "a browser signed in as the link's address used to 'carry on' with a session that signed nobody in");
+  assert.match(bodyOf(src, "press"), /signInAndCarryOn\(false\)/);
+  assert.doesNotMatch(bodyOf(src, "press"), /router\./, "a press goes through the sign-in and nothing shorter");
+  assert.doesNotMatch(bodyOf(src, "signInAndCarryOn"), /router\.replace\("\/onboarding"\);\s*return;/, "there is one way on, and it signs in");
+  const signup = code("lib/auth/signupContinue.ts");
+  assert.doesNotMatch(signup, /pressFor/, "the rule that chose 'carry on' is gone with the behaviour");
 });
 
-test("a browser signed in as somebody else is asked before it is signed out, and the sign-in follows the sign-out", () => {
+test("a browser signed in as somebody else is asked first, and its session is ended AFTER the sign-in is in hand and for this device only", () => {
   const src = code("app/signup/continue/page.tsx");
   assert.match(src, /view === "other_account"/);
   assert.match(src, /Sign out and continue as/);
   assert.match(src, /Stay signed in as/);
-  const body = bodyOf(src, "switchAndPress");
-  assert.ok(body.indexOf("await signOut()") >= 0 && body.indexOf("await signOut()") < body.indexOf("signInAndCarryOn("), "a fresh sign-in, after the sign-out");
+  assert.match(bodyOf(src, "switchAndPress"), /signInAndCarryOn\(true\)/);
+  const body = bodyOf(src, "signInAndCarryOn");
+  const asked = body.indexOf("api.signup.session(");
+  const ended = body.indexOf("await endSessionHere()");
+  const redeemed = body.indexOf("verifyOtp(");
+  assert.ok(asked >= 0 && ended >= 0 && redeemed >= 0, "all three are in the function");
+  assert.ok(asked < ended, "the sign-in is asked for before anybody is signed out: a link that has just expired costs nobody their session");
+  assert.ok(ended < redeemed, "and the session is ended before the new one is redeemed");
+  assert.match(body, /if \(endThisBrowsersSession\) await endSessionHere\(\)/);
+  // The context's `signOut` ends the account's sessions on EVERY device; `endSessionHere` ends this one.
+  assert.doesNotMatch(src, /\bsignOut\b/, "the page must not use the sign-out that ends every device");
+  assert.match(src, /const \{ session, endSessionHere \} = useAuth\(\)/);
+});
+
+test("the ready page shows the firm's name and the person's name the link was asked for, before the press", () => {
+  const src = code("app/signup/continue/page.tsx");
+  const ready = src.slice(src.indexOf('view === "ready"'), src.indexOf('view === "other_account"'));
+  assert.match(ready, /looked\.seen\.firm_name/);
+  assert.match(ready, /looked\.seen\.full_name/);
+  assert.match(ready, /looked\.seen\.email/);
+  assert.match(ready, /nothing is created until you finish them/, "what pressing starts is said in words");
+});
+
+test("an address with no secret in it says it is incomplete and does not claim the link expired", () => {
+  const src = code("app/signup/continue/page.tsx");
+  const body = bodyOf(src, "lookAtLink");
+  assert.match(body, /if \(!token\) return \{ state: "incomplete" \}/);
+  assert.doesNotMatch(body, /if \(!token\) return \{ state: "gone" \}/);
+  assert.match(src, /This sign-up link is incomplete/);
+  assert.match(src, /missing the part after the # sign/);
+  assert.match(src, /data-signup-continue-incomplete/);
 });
 
 test("a link that cannot be used says so in one sentence and offers a new one only where this browser kept the address and names", () => {
@@ -130,7 +168,7 @@ test("a link that cannot be used says so in one sentence and offers a new one on
 
 test("every outcome the page can reach is a view, so no state is left blank", () => {
   const src = code("app/signup/continue/page.tsx");
-  for (const view of ["checking", "ready", "other_account", "gone", "problem"]) {
+  for (const view of ["checking", "ready", "other_account", "gone", "incomplete", "problem"]) {
     assert.match(src, new RegExp(`view === "${view}"`), view);
   }
   assert.match(src, /Try again/);

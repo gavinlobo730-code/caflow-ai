@@ -2,13 +2,17 @@
 
 `public.signup_links` keeps, for each address that asked to start a practice, the HASH of the mailed link's secret, the firm name and the
 person's name typed on the sign-up form, and when the link stops working. Proved against real PostgreSQL because the mock suite cannot tell
-whether a CHECK bites, whether the one-row-per-address index supports the "send it again replaces it" upsert, or who may touch the table.
+whether a CHECK bites, whether the unique index makes the second of two first requests lose, whether the statement a later request sends
+(an UPDATE naming the address AND the link it read) changes no row once somebody else has written, or who may touch the table. The
+statements below are the ones `repositories/signup_link_repository` sends, not the ones a first draft assumed: the "press deletes the
+row" and "ON CONFLICT ... send_count + 1" tests that stood here exercised statements the product never issues, and passed vacuously.
 """
 from __future__ import annotations
 
 import os
 import shutil
 import subprocess
+import time
 import uuid
 from pathlib import Path
 
@@ -27,6 +31,7 @@ pytestmark = pytest.mark.skipif(
 
 HASH_A = "sha256:" + "a" * 64
 HASH_B = "sha256:" + "b" * 64
+HASH_C = "sha256:" + "c" * 64
 
 
 def _psql(dsn: str, sql: str, tuples: bool = False) -> subprocess.CompletedProcess:
@@ -98,15 +103,38 @@ def test_one_row_per_address_and_one_row_per_secret(db):
     assert same_secret.returncode != 0 and "uq_signup_links_token_hash" in same_secret.stderr
 
 
-def test_asking_again_replaces_the_row_and_the_earlier_link_stops_working(db):
+def _claim_update(token_read: str, token_written: str, send_count: int) -> str:
+    """The statement `claim` sends for a later request: it names the address AND the link the request read, so it writes only while
+    nobody has written since."""
+    return ("UPDATE public.signup_links SET firm_name = 'Acme & Co (again)', full_name = 'A Partner', "
+            f"token_hash = '{token_written}', expires_at = now() + interval '1 day', sent_at = now(), send_count = {send_count}, "
+            "window_started_at = now(), created_at = now() "
+            f"WHERE email = 'new.owner@example.in' AND token_hash = '{token_read}' RETURNING send_count;")
+
+
+def _hold(dsn: str, sql: str, seconds: int) -> subprocess.Popen:
+    """A session that runs `sql` inside a transaction and keeps it open for `seconds`, holding whatever it locked."""
+    return subprocess.Popen(["psql", dsn, "-v", "ON_ERROR_STOP=1", "-X", "-q", "-tA", "-c", f"BEGIN; {sql} SELECT pg_sleep({seconds}); COMMIT;"],
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+
+def _wait_until_it_holds_its_lock(dsn: str) -> None:
+    for _ in range(150):
+        n = _psql(dsn, "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND state = 'active' "
+                       "AND query LIKE '%pg_sleep%' AND pid <> pg_backend_pid();", tuples=True).stdout.strip()
+        if n == "1":
+            return
+        time.sleep(0.1)
+    raise AssertionError("the first session never reached the point where it holds its lock")
+
+
+def test_a_later_request_replaces_the_row_only_while_it_still_holds_the_link_that_was_read(db):
     assert _psql(db, _link()).returncode == 0
-    replaced = _psql(db, f"""
-        INSERT INTO public.signup_links (email, firm_name, full_name, token_hash, expires_at)
-        VALUES ('new.owner@example.in', 'Acme & Co (again)', 'A Partner', '{HASH_B}', now() + interval '1 day')
-        ON CONFLICT (email) DO UPDATE SET token_hash = EXCLUDED.token_hash, firm_name = EXCLUDED.firm_name,
-                                          expires_at = EXCLUDED.expires_at, sent_at = now(),
-                                          send_count = public.signup_links.send_count + 1;""")
-    assert replaced.returncode == 0, replaced.stderr
+    won = _psql(db, _claim_update(HASH_A, HASH_B, 2), tuples=True)
+    assert won.returncode == 0 and won.stdout.strip() == "2"
+    # A second request that read the row before the first wrote it still names the old link: it changes no row.
+    lost = _psql(db, _claim_update(HASH_A, HASH_C, 2), tuples=True)
+    assert lost.returncode == 0 and lost.stdout.strip() == "", "a request that read an older row won"
     rows = _psql(db, "SELECT count(*) || '|' || max(token_hash) || '|' || max(send_count) || '|' || max(firm_name) FROM public.signup_links;", tuples=True)
     assert rows.stdout.strip() == f"1|{HASH_B}|2|Acme & Co (again)"
     # The first secret no longer names a row: pressing the button with the old link finds nothing.
@@ -114,19 +142,79 @@ def test_asking_again_replaces_the_row_and_the_earlier_link_stops_working(db):
     assert old.stdout.strip() == "0"
 
 
-def test_the_press_deletes_the_row_in_one_statement_and_a_second_press_finds_nothing(db):
+def test_two_requests_that_overlap_cannot_both_be_let_through(db):
+    """The reason the claim is a compare-and-set: while the first request's write is open, the second blocks on the row, and when the
+    first commits the second finds the link it read is gone and writes nothing, so it is refused by the cooldown on its next read."""
     assert _psql(db, _link()).returncode == 0
-    first = _psql(db, f"DELETE FROM public.signup_links WHERE token_hash = '{HASH_A}' AND expires_at > now() RETURNING email;", tuples=True)
-    assert first.stdout.strip() == "new.owner@example.in"
-    second = _psql(db, f"DELETE FROM public.signup_links WHERE token_hash = '{HASH_A}' AND expires_at > now() RETURNING email;", tuples=True)
-    assert second.stdout.strip() == ""
+    first = _hold(db, _claim_update(HASH_A, HASH_B, 2), 3)
+    try:
+        _wait_until_it_holds_its_lock(db)
+        began = time.monotonic()
+        second = _psql(db, _claim_update(HASH_A, HASH_C, 2), tuples=True)
+        waited = time.monotonic() - began
+    finally:
+        _out, err = first.communicate(timeout=60)
+    assert first.returncode == 0, err
+    assert second.returncode == 0 and second.stdout.strip() == "", "both overlapping requests wrote"
+    assert waited > 0.5, f"the second request did not wait for the first's lock ({waited:.2f}s): the test did not overlap them"
+    assert _psql(db, "SELECT token_hash FROM public.signup_links;", tuples=True).stdout.strip() == HASH_B
 
 
-def test_an_expired_link_is_not_spent_by_a_press(db):
+def test_two_first_requests_for_one_address_cannot_both_insert(db):
+    first = _hold(db, _link(token=HASH_A), 3)
+    try:
+        _wait_until_it_holds_its_lock(db)
+        second = _psql(db, _link(token=HASH_B))
+    finally:
+        _out, err = first.communicate(timeout=60)
+    assert first.returncode == 0, err
+    assert second.returncode != 0 and "uq_signup_links_one_per_address" in second.stderr and "duplicate key" in second.stderr, second.stderr
+    assert _psql(db, "SELECT token_hash FROM public.signup_links;", tuples=True).stdout.strip() == HASH_A
+
+
+def _put_back(replacing: str, token: str = HASH_A, send_count: int = 1) -> str:
+    """The statement `put_back` sends for a mail that did not go, when there was an earlier row: it names the link THIS request wrote."""
+    return ("UPDATE public.signup_links SET firm_name = 'Acme & Co', full_name = 'A Partner', "
+            f"token_hash = '{token}', expires_at = now() + interval '1 day', sent_at = now(), send_count = {send_count}, "
+            "window_started_at = now(), created_at = now() "
+            f"WHERE email = 'new.owner@example.in' AND token_hash = '{replacing}' RETURNING send_count;")
+
+
+def test_a_link_whose_mail_did_not_go_is_put_back_only_while_it_is_the_one_this_request_wrote(db):
+    assert _psql(db, _link()).returncode == 0
+    assert _psql(db, _claim_update(HASH_A, HASH_B, 2)).returncode == 0                  # this request wrote HASH_B
+    assert _psql(db, _claim_update(HASH_B, HASH_C, 3)).returncode == 0                  # a newer request has since replaced it
+    undone = _psql(db, _put_back(replacing=HASH_B), tuples=True)
+    assert undone.returncode == 0 and undone.stdout.strip() == "", "a failed mail undid a newer request's link"
+    assert _psql(db, "SELECT token_hash || '|' || send_count FROM public.signup_links;", tuples=True).stdout.strip() == f"{HASH_C}|3"
+    # While the row still holds this request's own link, the earlier one comes back.
+    assert _psql(db, _put_back(replacing=HASH_C), tuples=True).stdout.strip() == "1"
+    assert _psql(db, "SELECT token_hash || '|' || send_count FROM public.signup_links;", tuples=True).stdout.strip() == f"{HASH_A}|1"
+
+
+def test_a_first_link_whose_mail_did_not_go_is_removed_only_while_it_is_the_one_this_request_wrote(db):
+    assert _psql(db, _link(token=HASH_B)).returncode == 0
+    gone = ("DELETE FROM public.signup_links WHERE email = 'new.owner@example.in' AND token_hash = '{h}' RETURNING email;")
+    assert _psql(db, gone.format(h=HASH_A), tuples=True).stdout.strip() == "", "removed a link the request did not write"
+    assert _psql(db, gone.format(h=HASH_B), tuples=True).stdout.strip() == "new.owner@example.in"
+    assert _psql(db, "SELECT count(*) FROM public.signup_links;", tuples=True).stdout.strip() == "0"
+
+
+def test_creating_the_practice_deletes_that_addresss_row_and_no_other(db):
+    assert _psql(db, _link()).returncode == 0
+    assert _psql(db, _link(email="someone.else@example.in", token=HASH_B)).returncode == 0
+    forgotten = _psql(db, "DELETE FROM public.signup_links WHERE email = 'new.owner@example.in' RETURNING email;", tuples=True)
+    assert forgotten.stdout.strip() == "new.owner@example.in"
+    assert _psql(db, "SELECT email FROM public.signup_links;", tuples=True).stdout.strip() == "someone.else@example.in"
+
+
+def test_the_sweep_removes_what_has_expired_and_leaves_what_is_live(db):
+    assert _psql(db, _link(token=HASH_A)).returncode == 0
     assert _psql(db, f"INSERT INTO public.signup_links (email, firm_name, full_name, token_hash, expires_at) "
-                     f"VALUES ('late@example.in', 'F', 'N', '{HASH_A}', now() - interval '1 minute');").returncode == 0
-    pressed = _psql(db, f"DELETE FROM public.signup_links WHERE token_hash = '{HASH_A}' AND expires_at > now() RETURNING email;", tuples=True)
-    assert pressed.stdout.strip() == ""
+                     f"VALUES ('late@example.in', 'F', 'N', '{HASH_B}', now() - interval '1 minute');").returncode == 0
+    swept = _psql(db, "DELETE FROM public.signup_links WHERE expires_at < now() RETURNING email;", tuples=True)
+    assert swept.stdout.strip() == "late@example.in"
+    assert _psql(db, "SELECT email FROM public.signup_links;", tuples=True).stdout.strip() == "new.owner@example.in"
 
 
 @pytest.mark.parametrize("role", ["authenticated", "anon"])
@@ -158,6 +246,8 @@ def test_the_comments_say_the_secret_is_never_stored(db):
                     "col_description('public.signup_links'::regclass, (SELECT attnum FROM pg_attribute WHERE attrelid = 'public.signup_links'::regclass AND attname = 'token_hash'));",
                 tuples=True)
     assert "API only" in out.stdout and "never stored" in out.stdout
+    assert "uses nothing up" in out.stdout, "the comment must not say the press consumes the link: it does not"
+    assert "deletes the row" not in out.stdout.replace("row is deleted", ""), out.stdout
 
 
 def test_the_migration_can_run_twice(db):

@@ -171,6 +171,15 @@ NOT_FOR_THE_API = {
     # the privileged client naming the firm and the member, and `authenticated`, `anon` and PUBLIC hold no privilege (a person's
     # session id and address are not for the browser's own role to read).
     "login_sessions",
+    # Migration 771 (POST-A-485, POST-A-497): a sign-up link as the server holds it (the hash of its secret and the firm and person names
+    # typed on the form), one row per address and no firm, because the person has not signed up yet. `services/signup_link_service`
+    # reads and writes it through the privileged client alone (`repositories/signup_link_repository`); `authenticated`, `anon` and
+    # PUBLIC hold no privilege and no policy exists, and the deny-list test below proves it.
+    "signup_links",
+    # Migration 772 (POST-A-499): who of a purged firm had a sign-in account, written by the platform administrator's purge (behind MFA)
+    # before the firm's rows go and read by `core/auth` for the caller's own verified account alone, both on the privileged client;
+    # `authenticated`, `anon` and PUBLIC hold no privilege and no policy exists, and the deny-list test below proves it.
+    "closed_account_markers",
 }
 # Scaffolding left behind by data migrations. Prefixed, not enumerated, because
 # the next one will have a different number.

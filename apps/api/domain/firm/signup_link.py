@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import math
 import re
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Mapping, Optional
@@ -38,11 +39,16 @@ COOLDOWN_SECONDS = 30
 HOURLY_CAP = 5
 WINDOW = timedelta(hours=1)
 
-#: How long a typed name may be. `firms.name` carries no limit of its own; a mail subject and a screen heading do.
-NAME_MAX = 120
+#: How long a typed name may be. `firms.name` carries no limit of its own; a screen heading does.
+NAME_MAX = 100
 
-_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f  ]")
 _SPACES = re.compile(r"\s+")
+#: The two joiners some scripts need INSIDE a word. Every other format character (a bidirectional override, a zero-width space, a byte-order
+#: mark) is removed, because it shows nothing and can only reorder or hide what is around it.
+_JOINERS = frozenset("\u200c\u200d")
+#: A web or email address typed where a name goes. A name is never one, and this is a public form that mails a stranger: the text it carries is
+#: the one thing in that mail that is not ours.
+_AN_ADDRESS = re.compile(r"(?i)(https?\s*:|://|\bwww\s*\.|@)")
 
 
 def normalise_email(value: Any) -> str:
@@ -52,15 +58,29 @@ def normalise_email(value: Any) -> str:
 
 
 def clean_name(value: Any, what: str) -> str:
-    """A typed firm or person name, cleaned. Raises `ValueError` with a sentence naming `what` when nothing is left or it is too long.
+    """A typed firm or person name, cleaned. Raises `ValueError` with a sentence naming `what` when nothing visible is left, it is too long or it is
+    a web or email address.
 
-    Control characters and line breaks go (they have no place in a name and can reshape a mail), and runs of space become one. Nothing
-    else is removed: a name is typed text and is escaped where it is shown, never stripped of the characters a real name has."""
-    text = _SPACES.sub(" ", _CONTROL.sub(" ", str(value or ""))).strip()
-    if not text:
+    Control characters and line breaks become a space (they have no place in a name and can reshape a mail), invisible format characters go
+    (except the two joiners a script may need), and runs of space become one. Nothing else is removed: a name is typed text and is escaped where
+    it is shown, never stripped of the letters, digits and marks a real name has. A name made only of invisible characters is blank: the
+    database would accept it as text, and the page would then read "Continue setting up " with nothing after it."""
+    kept = []
+    for ch in str(value or ""):
+        category = unicodedata.category(ch)
+        if category in ("Cc", "Zl", "Zp"):
+            kept.append(" ")
+        elif category == "Cf" and ch not in _JOINERS:
+            continue
+        else:
+            kept.append(ch)
+    text = _SPACES.sub(" ", "".join(kept)).strip()
+    if not any(unicodedata.category(ch)[0] in ("L", "N", "P", "S", "M") for ch in text):
         raise ValueError(f"Please enter {what}.")
     if len(text) > NAME_MAX:
         raise ValueError(f"{what[0].upper()}{what[1:]} is too long: please keep it to {NAME_MAX} characters or fewer.")
+    if _AN_ADDRESS.search(text):
+        raise ValueError(f"That looks like a web or email address. Please enter {what}.")
     return text
 
 
@@ -115,10 +135,11 @@ def allowance(existing: Optional[Mapping[str, Any]], now: datetime) -> Allowance
     sent = as_instant(existing.get("sent_at"))
     if sent is not None:
         waited = (now - sent).total_seconds()
-        if 0 <= waited < COOLDOWN_SECONDS:
-            return Allowance(False, max(1, math.ceil(COOLDOWN_SECONDS - waited)), "cooldown")
+        # A stamp in the FUTURE is a request another worker has just made (its clock was read a moment after ours): that is a request just made.
+        if waited < COOLDOWN_SECONDS:
+            return Allowance(False, max(1, math.ceil(COOLDOWN_SECONDS - max(waited, 0))), "cooldown")
     window_start = as_instant(existing.get("window_started_at"))
-    if window_start is None or now - window_start >= WINDOW or now < window_start:
+    if window_start is None or now - window_start >= WINDOW:
         return Allowance(True, send_count=1, window_started_at=now)
     count = int(existing.get("send_count") or 0)
     if count >= HOURLY_CAP:
