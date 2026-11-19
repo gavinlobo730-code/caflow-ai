@@ -767,7 +767,7 @@ export default function TDSReturnsPage() {
       {/* Mark as Filed Modal */}
       {showFiledModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-brand-dark/60" onClick={() => { if (!filing) setShowFiledModal(false); }} />
+          <div className="absolute inset-0 bg-brand-dark/60" onClick={(e) => { e.stopPropagation(); if (!filing) setShowFiledModal(false); }} />
           <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <h3 className="font-semibold text-ps-ink">Mark {returnType} as Filed</h3>
             <p className="text-sm text-ps-label">Enter the details from the e-filing portal acknowledgement after successful upload on incometax.gov.in.</p>

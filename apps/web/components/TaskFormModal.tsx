@@ -102,7 +102,7 @@ export function TaskFormModal({ open, onClose, onSaved, clients, teamMembers = [
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-ps-bg/60" onClick={saving ? undefined : (onClose)} />
+      <div className="absolute inset-0 bg-ps-bg/60" onClick={(e) => { e.stopPropagation(); if (!saving) onClose(); }} />
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-ps-border">

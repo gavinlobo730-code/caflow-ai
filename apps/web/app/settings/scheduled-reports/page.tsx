@@ -353,7 +353,7 @@ export default function ScheduledReportsPage() {
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-ps-ink">New Schedule</h3>
-              <button disabled={actionInFlight} onClick={() => setShowModal(false)} className="text-ps-hint hover:text-ps-label">
+              <button disabled={saving} onClick={() => setShowModal(false)} className="text-ps-hint hover:text-ps-label">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -426,7 +426,7 @@ export default function ScheduledReportsPage() {
             </div>
 
             <div className="flex gap-3 justify-end pt-1">
-              <button disabled={actionInFlight}
+              <button disabled={saving}
                 onClick={() => setShowModal(false)}
                 className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg"
               >

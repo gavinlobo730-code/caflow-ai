@@ -189,7 +189,7 @@ export default function MemberAccessDrawer({ userId, onClose, onSaved }: Props) 
   const isPartner = grid?.role === "Partner";
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/30" onClick={saving ? undefined : (onClose)}>
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/30" onClick={(e) => { e.stopPropagation(); if (!saving) onClose(); }}>
       <div
         className="w-full max-w-2xl h-full bg-white shadow-xl flex flex-col"
         onClick={(e) => e.stopPropagation()}

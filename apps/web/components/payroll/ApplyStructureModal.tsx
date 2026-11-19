@@ -139,7 +139,7 @@ export default function ApplyStructureModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/25 p-4"
-      onClick={busy === "apply" ? undefined : (onClose)}>
+      onClick={(e) => { e.stopPropagation(); if (busy !== "apply") onClose(); }}>
       <div className="w-full max-w-[720px] max-h-[88vh] overflow-y-auto bg-white rounded-xl shadow-xl"
         onClick={(e) => e.stopPropagation()}>
         <div className="sticky top-0 bg-white border-b border-ps-border px-5 py-3 flex items-start justify-between gap-3">

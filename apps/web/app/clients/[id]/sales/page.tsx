@@ -572,7 +572,7 @@ function RecurringInvoices({ clientId }: { clientId: string }) {
       const failures: string[] = [];
       await Promise.all(eligible.map(async (t) => {
         try {
-          const res = await apiCall(`/api/recurring-invoices/${t.id}/${action}`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+          const res = await apiCall(`/api/recurring-invoices/${t.id}/${action}`, "POST", undefined, token);
           if (!res.success) throw new Error(res.error ?? "failed");
           ok++;
         } catch (e) {
@@ -1442,7 +1442,7 @@ function Statements({ clientId }: { clientId: string }) {
       {customerId && <StatementDeliveryLog clientId={clientId} customerId={customerId} refreshKey={deliveryRefresh} />}
 
       {emailModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={actionInFlight ? undefined : (() => setEmailModal(false))}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={(e) => { e.stopPropagation(); if (!emailing) setEmailModal(false); }}>
           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-sm font-semibold text-ps-ink">Email statement to customer</h3>
             <label className="block">
@@ -1452,7 +1452,7 @@ function Statements({ clientId }: { clientId: string }) {
             </label>
             {emailMsg && <Callout tone="problem">{emailMsg}</Callout>}
             <div className="flex justify-end gap-2">
-              <button disabled={actionInFlight} onClick={() => setEmailModal(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg">Cancel</button>
+              <button disabled={emailing} onClick={() => setEmailModal(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg">Cancel</button>
               <Button variant="plain" size="none" onClick={sendEmail} disabled={actionInFlight || !emailTo} className="text-xs px-4 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">{emailing ? "Sending…" : "Send"}</Button>
             </div>
           </div>
@@ -1460,7 +1460,7 @@ function Statements({ clientId }: { clientId: string }) {
       )}
 
       {applyModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={actionInFlight ? undefined : (() => setApplyModal(false))}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={(e) => { e.stopPropagation(); if (!applying) setApplyModal(false); }}>
           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-sm font-semibold text-ps-ink">Apply credit to an invoice</h3>
             <p className="text-xs text-ps-label">
@@ -1486,7 +1486,7 @@ function Statements({ clientId }: { clientId: string }) {
             </label>
             {applyError && <Callout tone="problem">{applyError}</Callout>}
             <div className="flex justify-end gap-2">
-              <button disabled={actionInFlight} onClick={() => setApplyModal(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg">Cancel</button>
+              <button disabled={applying} onClick={() => setApplyModal(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg">Cancel</button>
               <Button variant="plain" size="none" onClick={applyCredit} disabled={actionInFlight || !applyInvoiceId || !applyAmount}
                 className="text-xs px-4 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">
                 {applying ? "Applying…" : "Apply"}
@@ -1811,7 +1811,7 @@ function SalesInvoices({
     await Promise.all(selected.map(async (inv) => {
       try {
         if (inv.status === "draft") {
-          const result = await apiCall(`/api/sales-invoices/${inv.id}`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+          const result = await apiCall(`/api/sales-invoices/${inv.id}`, "DELETE", undefined, token);
           if (!result.success) throw new Error(result.error ?? "delete failed");
           deleted++;
         } else if (inv.status === "cancelled") {
@@ -1819,7 +1819,7 @@ function SalesInvoices({
         } else if (!mayVoid) {
           failures.push(`${inv.invoice_no}: voiding an issued invoice needs permission to approve accounting entries`);
         } else {
-          const result = await apiCall(`/api/sales-invoices/${inv.id}/cancel`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+          const result = await apiCall(`/api/sales-invoices/${inv.id}/cancel`, "POST", undefined, token);
           if (!result.success) throw new Error(result.error ?? "void failed");
           voided++;
         }
@@ -1857,7 +1857,7 @@ function SalesInvoices({
         return false;
       }
       try {
-        const result = await apiCall(`/api/sales-invoices/${inv.id}/send`, "POST", { to_email: cust.email }, token, { timeoutMs: HELD_DIALOG_MS });
+        const result = await apiCall(`/api/sales-invoices/${inv.id}/send`, "POST", { to_email: cust.email }, token);
         if (!result.success) throw new Error(result.error ?? "send failed");
         return true;
       } catch (e) {
@@ -1899,7 +1899,7 @@ function SalesInvoices({
       const cust = customers.find((c) => c.id === inv.customer_id);
       if (!cust?.email) return { ok: false, reason: "no email on file" };
       try {
-        const result = await apiCall(`/api/sales-invoices/${inv.id}/remind`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+        const result = await apiCall(`/api/sales-invoices/${inv.id}/remind`, "POST", undefined, token);
         if (result.success) return { ok: true };
         return { ok: false, reason: result.error ?? "Failed to send reminder" };
       } catch (e) {
@@ -1941,7 +1941,7 @@ function SalesInvoices({
     type IssueResult = { ok: true; data: unknown } | { ok: false; reason: string };
     const results: IssueResult[] = await mapWithConcurrency(draftRows, 8, async (inv): Promise<IssueResult> => {
       try {
-        const result = await apiCall(`/api/sales-invoices/${inv.id}/issue`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+        const result = await apiCall(`/api/sales-invoices/${inv.id}/issue`, "POST", undefined, token);
         if (result.success) return { ok: true, data: result.data };
         return { ok: false, reason: result.error ?? "Failed to issue invoice" };
       } catch (e) {
@@ -2499,15 +2499,18 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
   const canGenerate = gatewayOn && hist?.can_pay_online === true;
 
   async function generate() {
+    // Held while the WRITE is out and let go when it returns; the re-read that follows is not a write (POST-A-395).
     setBusy(true); setMsg(null);
+    let made = false;
     try {
       const token = await getAuthToken();
       const res = await apiCall("/api/payments/links", "POST", { invoice_id: invoice.id }, token, { timeoutMs: HELD_DIALOG_MS });
       if (!res.success) throw new Error(res.error ?? "Could not create link");
       setMsg({ text: "Payment link ready", type: "success" });
-      await load();
+      made = true;
     } catch (e) { setMsg({ text: e instanceof Error ? e.message : "Could not create link", type: "error" }); }
     finally { setBusy(false); }
+    if (made) await load();
   }
 
   async function copy(url: string | null) {
@@ -2529,7 +2532,7 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
   }
 
   return (
-    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4" onClick={busy ? undefined : (onClose)}>
+    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4" onClick={(e) => { e.stopPropagation(); if (!busy) onClose(); }}>
       <div className="bg-white rounded-xl border border-ps-border p-6 w-full max-w-lg shadow-xl max-h-[88vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-1">
           <h3 className="text-sm font-semibold text-ps-ink">Online Payment · {invoice.invoice_no}</h3>
@@ -3052,13 +3055,20 @@ function Customers({
   async function confirmDeactivate() {
     if (!deactivateTarget) return;
     setDeactivating(true);
-    const supabase = getSupabaseClient();
-    const { error } = await supabase
-      .from("customers")
-      .update({ is_active: false })
-      .eq("id", deactivateTarget.id);
+    let error: unknown = null;
+    // Let go of the dialog in a finally, so a write that throws cannot leave it held until the page is reloaded (POST-A-395).
+    try {
+      const { error: refused } = await getSupabaseClient()
+        .from("customers")
+        .update({ is_active: false })
+        .eq("id", deactivateTarget.id);
+      error = refused;
+    } catch (e) {
+      error = e;
+    } finally {
+      setDeactivating(false);
+    }
     forgetCustomerLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
-    setDeactivating(false);
     if (error) {
       // A request that got no answer may have gone through: it is said as that, not as a failure (POST-A-414).
       showToast(failureSentence(error, "Failed to deactivate customer", "write"), "error");
@@ -3214,7 +3224,7 @@ function Customers({
     const failures: string[] = [];
     await Promise.all(targets.map(async (c) => {
       try {
-        const result = await apiCall(`/api/customers/${c.id}`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+        const result = await apiCall(`/api/customers/${c.id}`, "DELETE", undefined, token);
         forgetCustomerLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
         if (!result.success) throw new Error(result.error ?? "failed");
         deactivated++;
@@ -3242,7 +3252,7 @@ function Customers({
     const failures: string[] = [];
     await Promise.all(selected.map(async (c) => {
       try {
-        const result = await apiCall(`/api/customers/${c.id}?permanent=true`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+        const result = await apiCall(`/api/customers/${c.id}?permanent=true`, "DELETE", undefined, token);
         forgetCustomerLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
         if (!result.success) throw new Error(result.error ?? "failed");
         deleted++;
@@ -3719,7 +3729,7 @@ function Receipts({
     const token = await getAuthToken();
     let imported = 0;
     for (const rec of records) {
-      const result = await apiCall("/api/receipts/", "POST", rec, token, { timeoutMs: HELD_DIALOG_MS });
+      const result = await apiCall("/api/receipts/", "POST", rec, token);
       if (result.success) imported++;
       else errors.push(`Receipt for "${rec.customer_id}" on ${rec.receipt_date}: ${result.error ?? "failed to create"}`);
     }
@@ -4558,7 +4568,7 @@ function CreditNotes({
     const token = await getAuthToken();
     let imported = 0;
     for (const note of notes) {
-      const result = await apiCall("/api/credit-notes/", "POST", note, token, { timeoutMs: HELD_DIALOG_MS });
+      const result = await apiCall("/api/credit-notes/", "POST", note, token);
       if (result.success) imported += 1;
       else errors.push(result.error ?? "Bulk import failed");
     }
@@ -4635,7 +4645,7 @@ function CreditNotes({
     const failures: string[] = [];
     await Promise.all(selected.map(async (cn) => {
       try {
-        const result = await apiCall(`/api/credit-notes/${cn.id}`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+        const result = await apiCall(`/api/credit-notes/${cn.id}`, "DELETE", undefined, token);
         if (!result.success) throw new Error(result.error ?? "failed");
         deleted++;
       } catch (e) {
@@ -4662,7 +4672,7 @@ function CreditNotes({
     type IssueResult = { ok: true; data: unknown } | { ok: false; reason: string };
     const results: IssueResult[] = await mapWithConcurrency(draftRows, 8, async (cn): Promise<IssueResult> => {
       try {
-        const result = await apiCall(`/api/credit-notes/${cn.id}/issue`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+        const result = await apiCall(`/api/credit-notes/${cn.id}/issue`, "POST", undefined, token);
         if (result.success) return { ok: true, data: result.data };
         return { ok: false, reason: result.error ?? "Failed to issue credit note" };
       } catch (e) {
@@ -5005,7 +5015,7 @@ function SalesDebitNotes({
     const token = await getAuthToken();
     let imported = 0;
     for (const note of notes) {
-      const result = await apiCall("/api/sales-debit-notes/", "POST", note, token, { timeoutMs: HELD_DIALOG_MS });
+      const result = await apiCall("/api/sales-debit-notes/", "POST", note, token);
       if (result.success) imported += 1;
       else errors.push(result.error ?? "Bulk import failed");
     }
@@ -5071,7 +5081,7 @@ function SalesDebitNotes({
     const failures: string[] = [];
     await Promise.all(selected.map(async (dn) => {
       try {
-        const result = await apiCall(`/api/sales-debit-notes/${dn.id}`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+        const result = await apiCall(`/api/sales-debit-notes/${dn.id}`, "DELETE", undefined, token);
         if (!result.success) throw new Error(result.error ?? "failed");
         deleted++;
       } catch (e) {
@@ -5098,7 +5108,7 @@ function SalesDebitNotes({
     type IssueResult = { ok: true } | { ok: false; reason: string };
     const results: IssueResult[] = await mapWithConcurrency(draftRows, 8, async (dn): Promise<IssueResult> => {
       try {
-        const result = await apiCall(`/api/sales-debit-notes/${dn.id}/issue`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+        const result = await apiCall(`/api/sales-debit-notes/${dn.id}/issue`, "POST", undefined, token);
         if (result.success) return { ok: true };
         return { ok: false, reason: result.error ?? "Failed to issue debit note" };
       } catch (e) {

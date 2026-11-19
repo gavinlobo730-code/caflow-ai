@@ -429,6 +429,7 @@ export default function ClientHealthDetailPage() {
     if (overrideDates.first) { overrideDates.refuseWith(setOverrideSaveError); return; }
     setSavingOverride(true);
     setOverrideSaveError(null);
+    let written = false;
     try {
       const json: ApiResponse<HealthOverride> = await apiFetch(
         `/api/health/scores/${clientId}/override`,
@@ -447,13 +448,20 @@ export default function ClientHealthDetailPage() {
       // stored row and carries no `in_force`, so pushing it in would show a
       // brand-new override with no sign of whether it is actually replacing
       // anything — the one question this screen could not answer before.
-      await loadOverrides();
+      // The override IS saved here. The dialog's hold ends with the WRITE and the dialog closes, and the re-read follows outside it:
+      // a failed re-read told as a failed save would invite a second press, which posts a second override (found by the independent
+      // review of the sweep that held this dialog).
+      written = true;
       setOverrideModalOpen(false);
       setOverrideForm(EMPTY_OVERRIDE_FORM);
     } catch (e) {
       setOverrideSaveError(e instanceof Error ? e.message : "Failed to save");
     } finally {
       setSavingOverride(false);
+    }
+    if (written) {
+      try { await loadOverrides(); }
+      catch { setOverrideSaveError("The override was saved, but the list could not be read again. Reload the page to see it."); }
     }
   }
 
@@ -778,6 +786,8 @@ export default function ClientHealthDetailPage() {
                 </tbody>
               </table>
             )}
+            {/* What the dialog said while it was open is said here once it has closed: a removal's failure, and a re-read that failed after a save. */}
+            {!overrideModalOpen && overrideSaveError && <div className="mt-3"><Callout tone="problem">{overrideSaveError}</Callout></div>}
           </CardContent>
         </Card>
       </div>
@@ -790,7 +800,8 @@ export default function ClientHealthDetailPage() {
               <h2 className="text-sm font-semibold text-brand">Add Score Override</h2>
               <button
                 onClick={() => setOverrideModalOpen(false)}
-                className="text-gray-400 hover:text-gray-700"
+                disabled={savingOverride}
+                className="text-gray-400 hover:text-gray-700 disabled:opacity-50"
               >
                 <X size={16} />
               </button>
@@ -847,7 +858,8 @@ export default function ClientHealthDetailPage() {
             <div className="flex gap-2 mt-5">
               <button
                 onClick={() => setOverrideModalOpen(false)}
-                className="flex-1 text-sm text-gray-600 border border-gray-200 py-2 rounded-md hover:bg-gray-50"
+                disabled={savingOverride}
+                className="flex-1 text-sm text-gray-600 border border-gray-200 py-2 rounded-md hover:bg-gray-50 disabled:opacity-50"
               >
                 Cancel
               </button>

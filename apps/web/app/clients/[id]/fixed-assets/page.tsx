@@ -1036,7 +1036,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
       <div className="flex min-h-full flex-col">
         <div className="px-6 py-4 border-b border-ps-border flex items-center justify-between shrink-0">
           <h2 className="text-sm font-semibold text-ps-ink">Add Fixed Asset</h2>
-          <button onClick={leave} className="text-ps-hint hover:text-ps-ink"><span className="text-lg">×</span></button>
+          <button onClick={leave} disabled={saving} aria-label="Close" className="text-ps-hint hover:text-ps-ink disabled:opacity-50"><span className="text-lg">×</span></button>
         </div>
 
         <div className="flex-1 px-6 py-5 space-y-4 text-xs">

@@ -421,11 +421,11 @@ export default function PlatformAdminPage() {
 
       {/* Permanent delete — MFA step-up + typed confirmation */}
       {purgeTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !purgeBusy && setPurgeTarget(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={(e) => { e.stopPropagation(); if (!purgeBusy) setPurgeTarget(null); }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-6 py-4 border-b border-ps-border">
               <h2 className="text-base font-semibold text-state-problem flex items-center gap-2"><AlertTriangle size={16} /> Permanently delete firm</h2>
-              <button disabled={actionInFlight} onClick={() => !purgeBusy && setPurgeTarget(null)} className="text-ps-hint hover:text-ps-label"><X size={18} /></button>
+              <button disabled={purgeBusy} onClick={() => !purgeBusy && setPurgeTarget(null)} className="text-ps-hint hover:text-ps-label"><X size={18} /></button>
             </div>
             <div className="px-6 py-4 space-y-4">
               <p className="text-sm text-ps-label">
