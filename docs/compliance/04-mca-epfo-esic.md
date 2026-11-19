@@ -292,6 +292,19 @@ site; its API serves each section of the Act as an item). What matters here:
   after commencement. What replaces the three schemes was not found (S47,
   POST-C-217), and every statement in this note and in the product that cites a
   paragraph of those schemes rests on them.
+- **The Employees' Provident Funds Scheme, 1952 as EPFO publishes it** (80 pages printed from epfo.gov.in on 19-11-2026; it
+  names no Code and shows no 2026 amendment) `[P]`: **para 26** limits the contribution to "the amounts payable on a monthly pay
+  of [fifteen thousand rupees]" and, in sub-paragraph (6), lets "an officer not below the rank of an Assistant Provident Fund
+  Commissioner", on the joint request in writing of the employee and the employer, enroll an employee or allow contribution
+  above that figure, on the employer's written undertaking to pay the administrative charges. **para 29** fixes the
+  contribution at ten per cent. of "basic wages, dearness allowance (including the cash value of any food concession) and
+  retaining allowance (if any)" (twelve per cent. for establishments the Central Government specifies), equal for employee and
+  employer, each rounded to the nearest rupee with 50 paise or more counted up. **para 30 and 38:** the employer pays both shares
+  and the administrative charge (a percentage of pay fixed by the Central Government) "within fifteen days of the close of
+  every month", and sends a monthly abstract within twenty-five days, a Nil return if nothing was recovered. **para 32A:**
+  damages of 5, 10, 15 and 25 per cent. a year of the arrears by period of default (under two months, two to four, four to six,
+  six or more). The Scheme's base is "pay" (basic wages, dearness allowance, retaining allowance, food concession), not the
+  Code's wider definition, which the product applies from 21-11-2025 (S47, POST-C-121).
 
 ### ⭐ The revamped ECR — VERIFIED, effective wage month September 2025
 
