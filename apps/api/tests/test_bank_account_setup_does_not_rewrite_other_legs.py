@@ -354,8 +354,8 @@ def test_a_hand_built_ledger_is_never_removed_as_a_side_effect(monkeypatch):
     db = _setup(monkeypatch)
     mine = db.seed("chart_of_accounts", {
         "firm_id": FIRM, "client_id": CLIENT, "account_code": "1190",
-        "account_name": "Cash at bank (my own)", "account_type": "Asset",
-        "account_subtype": "Cash", "is_active": True})
+        "account_name": "Current account (my own)", "account_type": "Asset",
+        "account_subtype": "Current Assets", "is_active": True})   # not "Cash": a bank account is not linked to a cash ledger (POST-A-492)
     acc = _add_bank(db, name="Cosmos Bank", account_no="1234567899",
                     coa=mine["id"])["data"]
     res = banking.delete_bank_account(acc["id"], CALLER)

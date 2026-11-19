@@ -879,3 +879,110 @@ def test_resolving_records_that_somebody_looked_and_the_first_answer_stands():
     assert again["already_resolved"] is True
     assert again["tds_decision_resolved_at"] == first["tds_decision_resolved_at"]
     assert _row(db, "a")["tds_decision_resolved_by"] == "user-1"
+
+
+# ── POST-A-489: a person's bulk pass states the GST of the lines they coded ───────────────────────────────────────────
+#
+# A line the CA coded themselves (an expense ledger picked in "Book under…") can carry GST, and the bulk passes sent no
+# rate, so the whole debit was booked to the expense and the input credit (CGST Act s.16) was lost without a word. The
+# single screen shows the control. A person's bulk pass now states one answer per KIND of line (a rate, or 0 for "carries
+# none"); with no answer such a line is HELD on its row (a standing error), never posted, and named on the last chunk.
+
+NONE = {"rate": None, "interstate": False}
+
+
+def _coded(db, tid, **kw):
+    return _line(db, tid, "NEFT CHARGES", account_id=CHARGES, category="Expense",
+                 transaction_date=kw.pop("transaction_date", "2026-04-15"), **kw)
+
+
+def test_a_bulk_pass_with_no_gst_answer_holds_a_coded_line_that_can_carry_gst_and_names_it(poster):
+    db = _db(); _coded(db, "c1"); _coded(db, "c2", transaction_date="2026-04-16", credit=0)
+    out = svc.pass_ready(db, FIRM, CLIENT, actor_id="u-1", batch_gst=NONE)
+    assert out["passed"] == 0 and out["skipped"] == 2 and out["remaining"] == 0
+    assert sorted(x["id"] for x in out["gst_unanswered"]) == ["c1", "c2"]
+    assert {x["category"] for x in out["gst_unanswered"]} == {"Expense"} and all(x["money_in"] is False for x in out["gst_unanswered"])
+    assert poster.calls == []                                   # nothing was booked without its GST
+    assert all(r["reason"] == bes.GST_ANSWER_NEEDED for r in out["results"])
+    assert _row(db, "c1")["draft_error"] == bes.GST_ANSWER_NEEDED   # held on the row: no later chunk reads it again
+    assert _state(db, "c1") == E.READY                          # still coded
+
+
+def test_a_held_line_is_not_read_again_so_a_second_pass_asks_nothing_new_and_a_chunk_never_repeats(poster):
+    db = _db(); _coded(db, "c1")
+    first = svc.pass_ready(db, FIRM, CLIENT, limit=1, actor_id="u-1", batch_gst=NONE)
+    assert first["skipped"] == 1 and first["remaining"] == 0
+    again = svc.pass_ready(db, FIRM, CLIENT, limit=1, actor_id="u-1", batch_gst=NONE)
+    assert again["skipped"] == 0 and again["passed"] == 0         # held lines are out of the ready query, like any standing error
+    assert [x["id"] for x in again["gst_unanswered"]] == ["c1"]   # and the last chunk still names them, those of an earlier pass included
+
+
+def test_the_answer_posts_the_held_and_the_fresh_lines_with_that_rate_and_clears_the_hold(poster):
+    db = _db(); _coded(db, "c1"); _coded(db, "c2", transaction_date="2026-04-16")
+    svc.pass_ready(db, FIRM, CLIENT, actor_id="u-1", txn_ids=["c1"], batch_gst=NONE)      # c1 is held now, c2 is untouched
+    assert _row(db, "c1")["draft_error"] == bes.GST_ANSWER_NEEDED
+    out = svc.pass_ready(db, FIRM, CLIENT, actor_id="u-1", txn_ids=["c1", "c2"], batch_gst={"rate": 1800, "interstate": True})
+    assert out["passed"] == 2 and out["with_gst"] == 2 and out["remaining"] == 0 and "gst_unanswered" not in out
+    assert [(c["gst_rate_bps"], c["is_interstate"]) for c in poster.calls] == [(1800, True), (1800, True)]
+    assert _row(db, "c1")["draft_error"] is None                  # the hold is gone with the posting
+
+
+def test_no_gst_is_an_answer_and_posts_with_a_recorded_zero(poster):
+    db = _db(); _coded(db, "c1")
+    out = svc.pass_ready(db, FIRM, CLIENT, actor_id="u-1", batch_gst={"rate": 0, "interstate": False})
+    assert out["passed"] == 1 and out["with_gst"] == 0 and "gst_unanswered" not in out
+    assert poster.calls[0]["gst_rate_bps"] == 0                 # a declared nil, not an absent answer
+
+
+def test_a_line_that_cannot_carry_gst_needs_no_answer_and_is_never_given_one(poster):
+    db = _db()
+    _line(db, "v1", "NEFT TO VENDOR", account_id=None, category="Vendor Payment")   # a control-account category
+    out = svc.pass_ready(db, FIRM, CLIENT, actor_id="u-1", batch_gst={"rate": 1800, "interstate": False})
+    assert out["passed"] == 1 and "gst_unanswered" not in out
+    assert poster.calls[0]["gst_rate_bps"] is None              # tax has no business on a control account
+    db2 = _db(); _line(db2, "v2", "NEFT TO VENDOR", account_id=None, category="Vendor Payment")
+    out2 = svc.pass_ready(db2, FIRM, CLIENT, actor_id="u-1", batch_gst=NONE)
+    assert out2["skipped"] == 0 and out2["passed"] == 1           # and with no answer it is not held up either
+
+
+def test_a_split_line_is_not_asked_a_rate(poster):
+    db = _db(); _coded(db, "s1", has_splits=True)
+    out = svc.pass_ready(db, FIRM, CLIENT, actor_id="u-1", batch_gst=NONE)
+    assert "gst_unanswered" not in out and out["skipped"] == 0
+
+
+def test_a_rule_drafted_line_keeps_the_rules_own_treatment_and_is_not_held_up(poster):
+    db = _db(); _rule(db, suggested_gst_rate_bps=1800)
+    _line(db, "d1", "NEFT CHARGES")
+    svc.redraft(db, FIRM, CLIENT)
+    out = svc.pass_ready(db, FIRM, CLIENT, actor_id="u-1", batch_gst=NONE)
+    assert out["passed"] == 1 and poster.calls[0]["gst_rate_bps"] == 1800 and "gst_unanswered" not in out
+
+
+def test_the_lines_held_for_want_of_an_answer_do_not_starve_the_ones_behind_them_and_the_last_chunk_names_them(poster):
+    db = _db(); _rule(db, pattern="DRAFTED")
+    for i in range(2):
+        _coded(db, f"c{i}", transaction_date=f"2026-04-0{i + 1}")
+    for i in range(2):
+        _line(db, f"d{i}", "DRAFTED CHARGES", transaction_date=f"2026-04-2{i}")
+    svc.redraft(db, FIRM, CLIENT)
+    first = svc.pass_ready(db, FIRM, CLIENT, limit=2, actor_id="u-1", batch_gst=NONE)
+    assert first["skipped"] == 2 and first["remaining"] == 2 and "gst_unanswered" not in first     # not the last chunk yet
+    second = svc.pass_ready(db, FIRM, CLIENT, limit=2, actor_id="u-1", batch_gst=NONE)
+    assert second["passed"] == 2 and second["remaining"] == 0                                         # the drafted lines were reached
+    assert sorted(x["id"] for x in second["gst_unanswered"]) == ["c0", "c1"]
+
+
+def test_a_money_in_line_is_named_as_money_in_so_the_screen_can_ask_about_it_apart(poster):
+    db = _db()
+    _line(db, "r1", "NEFT RECEIPT", debit=0, credit=11800, account_id=CHARGES, category="Sales Receipt")
+    out = svc.pass_ready(db, FIRM, CLIENT, actor_id="u-1", batch_gst=NONE)
+    assert out["gst_unanswered"] == [{"id": "r1", "category": "Sales Receipt", "money_in": True}]
+
+
+def test_a_trusted_sweep_ignores_the_batch_answer_rule(poster):
+    db = _db(); _rule(db, is_trusted=True, trusted_by="mgr-1", trusted_at="2026-01-02")
+    _line(db, "d1", "NEFT CHARGES")
+    svc.redraft(db, FIRM, CLIENT)
+    out = svc.pass_ready(db, FIRM, CLIENT, only_trusted=True, actor_id="u-1", batch_gst=NONE)
+    assert out["passed"] == 1 and "gst_unanswered" not in out

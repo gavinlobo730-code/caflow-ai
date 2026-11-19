@@ -5746,6 +5746,12 @@ export const api = {
     // which way up its balance reads, so the form must not hold its own list.
     bankAccountTypes: () =>
       request<ApiResp<{ account_types: BankAccountTypeInfo[] }>>("/api/banking/account-types"),
+    /** POST-A-492. The ledgers a bank account of this client may be linked to (the server's rule: never another bank's, never a
+     *  cash ledger; an edited account keeps its own), and the name a new ledger would be given. */
+    ledgerChoices: (params: { client_id: string; bank_name?: string; account_no?: string; account_id?: string }) =>
+      request<ApiResp<{ ledgers: { id: string; account_code: string; account_name: string; account_type: string; account_subtype?: string | null }[];
+                       new_ledger_name: string | null }>>(
+        `/api/banking/accounts/ledger-choices?${new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined && v !== "")) as Record<string, string>)}`),
     listBankAccounts: (params?: Record<string, string>) => request(`/api/banking/accounts${params ? "?" + new URLSearchParams(params) : ""}`),
     createBankAccount: (data: unknown) => request("/api/banking/accounts", { method: "POST", body: JSON.stringify(data) }),
     updateBankAccount: (id: string, data: unknown) => request(`/api/banking/accounts/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
@@ -5859,7 +5865,11 @@ export const api = {
         request("/api/banking/entries/redraft", { method: "POST", body: JSON.stringify(data) }),
       /** One chunk of "Pass N ready". Every line comes back with its outcome. */
       passReady: (data: { client_id: string; limit?: number; only_trusted?: boolean;
-                          bank_account_id?: string; transaction_ids?: string[] }) =>
+                          bank_account_id?: string; transaction_ids?: string[];
+                          /** POST-A-489. The person's GST answer for the lines in this pass that they coded and that can
+                           *  carry GST: a rate in basis points, or 0 for "carries none". Absent, those lines are HELD on their
+                           *  rows, not posted, and the pass's last chunk names them in `gst_unanswered` ({id, category, money_in}). */
+                          gst_rate_bps?: number; is_interstate?: boolean }) =>
         request("/api/banking/entries/pass-ready", { method: "POST", body: JSON.stringify(data) }),
       /** Pass ONE line — the click is the CA accepting its draft. A refusal is a 422. */
       pass: (txnId: string, data?: { gst_rate_bps?: number | null; is_interstate?: boolean }) =>
