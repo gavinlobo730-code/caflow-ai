@@ -235,7 +235,7 @@ export default function ClientsPage() {
           const rows = (res as { data?: { clients?: PayrollState[] } })?.data?.clients ?? [];
           setPayrollStates(Object.fromEntries(rows.map((r) => [r.client_id, r])));
         })
-        .catch(() => {});
+        .catch(() => { /* the badges simply do not appear, as the note above says; the list itself is unaffected */ });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load clients");
       // A list painted from the last read stays up and says it is not current; one that was never read stays empty.

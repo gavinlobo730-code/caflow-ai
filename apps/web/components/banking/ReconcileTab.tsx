@@ -207,6 +207,9 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
   const [adj, setAdj] = useState("");
   const [adjReason, setAdjReason] = useState("");
   const [brs, setBrs] = useState<Brs | null>(null);
+  // The statement that did not answer is not one that was never built: the server says "no ledger account is linked" inside a successful
+  // answer, so a request that failed is told apart and the panel says so instead of vanishing (POST-A-515 (d)).
+  const [brsFailed, setBrsFailed] = useState(false);
   const [showBrs, setShowBrs] = useState(false);
 
   const loadSessions = useCallback(async () => {
@@ -259,6 +262,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
       setAdj(((shaped.reconciliation.adjustments_paise || 0) / 100).toFixed(2));
       setAdjReason(shaped.reconciliation.adjustments_reason || "");
       setBrs(b.success ? b.data : null);
+      setBrsFailed(!b.success);
     } catch (e) {
       setReport(null);
       setError(e instanceof Error ? e.message : "Couldn't load the reconciliation report.");
@@ -536,6 +540,11 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
                 issued and entered but not yet presented finally has a row.
                 Collapsed by default because the tie-out is what the CA works
                 against day to day. */}
+            {brsFailed && (
+              <p role="status" className="text-2xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded px-3 py-2">
+                The Bank Reconciliation Statement could not be read, so it is not shown. It is not blank; open this reconciliation again to read it.
+              </p>
+            )}
             {brs && (
               <div className="border border-ps-border rounded-lg">
                 <button

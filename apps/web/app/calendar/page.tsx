@@ -122,6 +122,9 @@ export default function CalendarPage() {
   const [loading, setLoading] = useState(true);
   const [mca, setMca] = useState<McaDeadline[]>([]);
   const [agmGaps, setAgmGaps] = useState<{ company_name: string }[]>([]);
+  // The MCA dates that did not come are not a calendar with no MCA forms due (POST-A-515 (d)): the obligations above still stand, and the
+  // page says the forms are missing from it rather than letting their absence read as "none this month".
+  const [mcaUnread, setMcaUnread] = useState(false);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
 
   const [marking, setMarking] = useState<{ entry: ComplianceEntry; label: string } | null>(null);
@@ -151,13 +154,15 @@ export default function CalendarPage() {
           success: boolean;
           data?: { deadlines?: unknown; without_agm_date?: unknown };
         };
-        if (!live || !res?.success) return;
+        if (!live) return;
+        if (!res?.success) { setMcaUnread(true); return; }
         const d = objectOrNull<{ deadlines?: unknown; without_agm_date?: unknown }>(res.data);
         setMca(arrayOrEmpty<McaDeadline>(d?.deadlines));
         setAgmGaps(arrayOrEmpty<{ company_name: string }>(d?.without_agm_date));
       } catch {
-        // The obligations still stand; the MCA forms are simply absent, which is the
-        // honest degradation — better than dates nobody computed.
+        // The obligations still stand, and the MCA forms are left out rather than shown with dates nobody computed, which is the honest
+        // degradation, and the page says they are missing.
+        if (live) setMcaUnread(true);
       }
     })();
     return () => { live = false; };
@@ -297,6 +302,16 @@ export default function CalendarPage() {
       {/* A company with no AGM date recorded has no AOC-4 or MGT-7 here, and
           silence looks exactly like "nothing due". Named, for the same reason a
           payroll run names its statutory gaps. */}
+      {mcaUnread && (
+        <div role="status" className="bg-state-attention-surface border border-state-attention-border rounded-xl px-4 py-3">
+          <p className="text-xs font-medium text-amber-800">
+            The MCA filing dates could not be read, so none are shown
+          </p>
+          <p className="text-xs text-state-attention mt-0.5">
+            This is not a calendar with no MCA forms due. Reload this page to read them again.
+          </p>
+        </div>
+      )}
       {agmGaps.length > 0 && (
         <div className="bg-state-attention-surface border border-state-attention-border rounded-xl px-4 py-3">
           <p className="text-xs font-medium text-amber-800">

@@ -40,6 +40,7 @@ import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 import { PageHeader } from "@/components/ui/page-header";
 import { formatPaise } from "@/lib/money/format";
 import { istToday } from "@/lib/dateMath";
+import { CLIENT_LIST_UNREAD } from "@/lib/clients/clientListUnread";
 import { LoadingRegion } from "@/components/ui/skeleton";
 
 type Client = { id: string; client_name: string };
@@ -53,6 +54,8 @@ const MONTHS = [
 export default function StatutoryPage() {
   const now = istToday();
   const [clients, setClients] = useState<Client[]>([]);
+  // A client list that could not be read is not a firm with no clients (POST-A-515 (d)): the picker says so.
+  const [clientsFailed, setClientsFailed] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState("");
   const [selMonth, setSelMonth] = useState(now.getMonth() + 1);
   const [selYear, setSelYear] = useState(now.getFullYear());
@@ -70,12 +73,15 @@ export default function StatutoryPage() {
         // Paged: the client picker on a statutory screen must not silently
         // stop at 1000, and the name ordering is applied to the rows that come
         // back because selectAll orders by its own key inside the query.
-        const { data } = await selectAll(() => sb.from("clients")
+        const { data, error } = await selectAll(() => sb.from("clients")
           .select("id, client_name").eq("firm_id", fid).eq("is_internal", false).order("id"));
+        // The pager hands a failure back as `error` and does not throw: a read that stopped partway is not the firm's clients.
+        if (error) throw error;
         setClients([...(data ?? [])].sort((a, b) =>
           String(a.client_name).localeCompare(String(b.client_name))));
       } catch (e) {
         console.error("load clients:", e);
+        setClientsFailed(true);
       } finally {
         setLoading(false);
       }
@@ -163,6 +169,7 @@ export default function StatutoryPage() {
                   <ClientLookup clients={clients} value={selectedClientId}
                     onChange={setSelectedClientId} ariaLabel="Client"
                     placeholder="Select client…" />
+                  {clientsFailed && <p role="alert" className="mt-1 max-w-[260px] text-2xs text-state-problem">{CLIENT_LIST_UNREAD}</p>}
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-ps-body mb-1">Month</label>

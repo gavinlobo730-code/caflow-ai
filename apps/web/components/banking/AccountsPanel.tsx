@@ -52,6 +52,9 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
   // panel used to compose its own from blocked_by, which meant two wordings of
   // one refusal and neither of them naming a law.
   const [deletability, setDeletability] = useState<Record<string, { deletable: boolean; blocked_by: string[]; reason?: string | null }>>({});
+  // Whether an account can be deleted is the server's answer. One that did not come is not "cannot be deleted" and not "can", so the
+  // row says it could not be read instead of leaving a column with no button and no reason (POST-A-515 (d)).
+  const [deletabilityUnread, setDeletabilityUnread] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showImport, setShowImport] = useState(false);
   // null = closed, "new" = create form, BankAccount = edit that account.
@@ -83,6 +86,7 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
       setStatements(stmts);
       setAccounts(accRes.success ? (accRes.data ?? []) : []);
       setDeletability(delRes.success ? (delRes.data ?? {}) : {});
+      setDeletabilityUnread(!delRes.success);
     } catch (e) {
       // Was a bare empty-comment placeholder, which read as "an empty statement list" — the
       // same screen a client with nothing imported yet gets. Say which it is.
@@ -257,6 +261,9 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
                       <span className="ml-3 text-ps-disabled cursor-not-allowed"
                             title={deletability[a.id].reason
                               || `Cannot be deleted because ${deletability[a.id].blocked_by.join("; ")}. Deactivate it instead — that keeps its history.`}>Delete</span>
+                    ) : deletabilityUnread ? (
+                      <span className="ml-3 text-ps-disabled cursor-not-allowed"
+                            title="Whether this account can be deleted could not be read. Reload this page to try again.">Delete</span>
                     ) : null}
                   </td>
                 </tr>
