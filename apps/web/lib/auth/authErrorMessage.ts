@@ -58,6 +58,22 @@ export const AUTH_ERROR_SENTENCES: Readonly<Record<string, string>> = {
   hook_timeout_after_retry: "The sign-in service took too long to respond. Please try again.",
 };
 
+/**
+ * Codes the sign-in SERVICE sends that the installed auth-js does not list in its ErrorCode union (the union lags the service).
+ * They are kept apart from AUTH_ERROR_SENTENCES because that map's test insists every key is a real library code, so that a typo
+ * cannot silently never match; these are named from the service's own behaviour instead, and a test asserts they are STILL absent
+ * from the library's union, so the day the library lists one it moves into the main map.
+ *
+ * The project's "Require current password when updating" switch (POST-A-512): `current_password_required` was seen live on
+ * 19-11-2026 (HTTP 400), the change refused because none of the password screens sent the current password. The refusal for a wrong
+ * one is expected to be `current_password_mismatch` and is NOT confirmed against the live service, so any other refusal keeps the
+ * service's own words instead of being guessed into one of these sentences.
+ */
+export const SERVICE_ONLY_ERROR_SENTENCES: Readonly<Record<string, string>> = {
+  current_password_required: "Your current password is needed to change it. Enter it and try again.",
+  current_password_mismatch: "Current password is incorrect.",
+};
+
 const DEFAULT_FALLBACK = "Something went wrong. Please try again.";
 const SERVICE_UNREACHABLE =
   "The sign-in service could not be reached. Please check your connection and try again.";
@@ -129,6 +145,9 @@ export function knownAuthErrorMessage(err: unknown): string | null {
   }
   if (code && Object.prototype.hasOwnProperty.call(AUTH_ERROR_SENTENCES, code)) {
     return AUTH_ERROR_SENTENCES[code];
+  }
+  if (code && Object.prototype.hasOwnProperty.call(SERVICE_ONLY_ERROR_SENTENCES, code)) {
+    return SERVICE_ONLY_ERROR_SENTENCES[code];
   }
   // AuthSessionMissingError carries no code, only its class name.
   if (e.name === "AuthSessionMissingError") return AUTH_ERROR_SENTENCES.session_expired;
