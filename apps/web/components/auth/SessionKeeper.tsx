@@ -8,6 +8,8 @@ import {
   ACTIVITY_KEY, idleStatus, parseActivity, shouldWriteActivity,
 } from "@/lib/auth/idleTimeout";
 import { HEARTBEAT_EVERY_MS, beat } from "@/lib/auth/browserSessionGlue";
+import { shouldReportSeen } from "@/lib/auth/deviceSeen";
+import { reportSeen } from "@/lib/auth/reportSeen";
 
 /**
  * Keeps a signed-in tab honest about two things (POST-A-483): that its browser is still open (a heartbeat the next
@@ -35,8 +37,12 @@ function newestActivity(): number | null {
 }
 
 export function SessionKeeper() {
-  const { session, endSessionHere } = useAuth();
+  const { session, endSessionHere, mfaPending, hasFirm } = useAuth();
   const signedIn = !!session;
+  // A report from a session that has not yet passed its second step is refused by the server (the same reason the sign-in is recorded
+  // late, see AuthContext), so a tab reports only once the sign-in is complete.
+  // And only a member of a practice: a person still signing up, or a portal user, has no staff record to report a session against.
+  const complete = signedIn && mfaPending === false && hasFirm === true;
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   const ending = useRef(false);
 
@@ -64,6 +70,23 @@ export function SessionKeeper() {
     EVENTS.forEach((e) => window.addEventListener(e, onActivity, { passive: true, capture: true }));
     return () => { EVENTS.forEach((e) => window.removeEventListener(e, onActivity, { capture: true })); };
   }, [signedIn]);
+
+  // Tell the server this session is in use (POST-A-486): at once when the sign-in is complete, then every few minutes while somebody
+  // is at it (deviceSeen.shouldReportSeen). It is what lets a login's devices be listed, and a second one be told to the Partners.
+  // Best-effort and silent: a missed report only makes the session look quieter than it is.
+  useEffect(() => {
+    if (!complete) return;
+    let last: number | null = null;
+    const tick = () => {
+      const now = Date.now();
+      if (!shouldReportSeen(now, last, newestActivity())) return;
+      last = now;
+      reportSeen();
+    };
+    tick();
+    const timer = setInterval(tick, 60_000);
+    return () => clearInterval(timer);
+  }, [complete]);
 
   // Once a second: where does the shared clock stand?
   useEffect(() => {

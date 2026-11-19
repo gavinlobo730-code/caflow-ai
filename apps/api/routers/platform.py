@@ -41,6 +41,12 @@ def _end_sessions(db, firm_id: str) -> int:
     what it says."""
     now = datetime.now(timezone.utc).isoformat()
     res = db.table("users").update({"sessions_revoked_at": now}).eq("firm_id", firm_id).execute()
+    # The list of who is signed in where (POST-A-486) is told too, so a closed firm's people are not listed as signed in for forty
+    # minutes. Best-effort: the stamp above is what ends the sessions, and before migration 765 is applied there is no such table.
+    try:
+        db.table("login_sessions").update({"ended_at": now, "ended_how": "forced"}).eq("firm_id", firm_id).is_("ended_at", "null").execute()
+    except Exception:                                    # noqa: BLE001
+        logging.getLogger("caflow.platform").warning("could not close the session rows of firm %s", firm_id, exc_info=True)
     return len(res.data or [])
 
 
