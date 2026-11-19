@@ -6,9 +6,17 @@ gated by the platform_admins allowlist (require_platform_admin), uses the
 service-role DB client (intentionally bypassing firm RLS), and audits every
 mutation. This router is intentionally NOT part of firm RBAC.
 
-Scope (v1, deliberately minimal): list firms + stats, view a firm + its users,
-suspend / unsuspend, and SOFT delete. No billing, impersonation, hard delete,
-or cross-firm data editing.
+Scope: list firms + stats, view a firm + its users, suspend / unsuspend, SOFT delete,
+and a PERMANENT delete (`DELETE /firms/{id}/permanent`, irreversible, behind a typed
+firm name and a fresh authenticator code). No billing, impersonation, or cross-firm
+data editing. (This docstring said "no hard delete" for as long as the purge existed.)
+
+CLOSING A FIRM SIGNS ITS PEOPLE OUT (POST-A-482). Suspend, soft delete and purge change
+`firms.is_active` / `deleted_at`, which the API reads (`core/auth`: "Firm suspended",
+"Firm unavailable") a few seconds later, and ALSO stamp `users.sessions_revoked_at` for
+every member of the firm, so a token the person already holds is refused 401 even after
+the firm is reopened (`core/auth_time` says why `iat` alone would not hold). Unsuspending
+does not undo it: people sign in again.
 """
 import logging
 from datetime import datetime, timezone
@@ -25,6 +33,15 @@ _logger = logging.getLogger("caflow.platform")
 
 class SuspendBody(BaseModel):
     reason: str
+
+
+def _end_sessions(db, firm_id: str) -> int:
+    """Stamp `sessions_revoked_at` on every member of the firm, through the service client and naming the firm, and
+    return how many were stamped. Raises on a failed write: a closure that leaves the people signed in has not done
+    what it says."""
+    now = datetime.now(timezone.utc).isoformat()
+    res = db.table("users").update({"sessions_revoked_at": now}).eq("firm_id", firm_id).execute()
+    return len(res.data or [])
 
 
 def _count(db, table: str, **eq) -> int:
@@ -121,11 +138,14 @@ def suspend_firm(firm_id: str, body: SuspendBody, admin: dict = Depends(require_
     firm = db.table("firms").select("id, is_active").eq("id", firm_id).maybe_single().execute().data
     if not firm:
         raise HTTPException(status_code=404, detail="Firm not found")
+    # The sessions are ended FIRST: a stamp that fails then leaves the firm open and the request refused, to be tried again,
+    # and not a closed firm with people still signed in and no audit row (found by the independent review of this change).
+    signed_out = _end_sessions(db, firm_id)
     db.table("firms").update({"is_active": False}).eq("id", firm_id).execute()
     log_event(firm_id, "firm", firm_id, "platform_suspend",
               actor_id=admin.get("auth_user_id"), actor_email=admin.get("email"),
-              metadata={"reason": body.reason.strip()})
-    return api_response(True, {"firm_id": firm_id, "status": "suspended"})
+              metadata={"reason": body.reason.strip(), "sessions_ended": signed_out})
+    return api_response(True, {"firm_id": firm_id, "status": "suspended", "sessions_ended": signed_out})
 
 
 @router.post("/firms/{firm_id}/unsuspend")
@@ -148,14 +168,16 @@ def soft_delete_firm(firm_id: str, admin: dict = Depends(require_platform_admin_
     firm = db.table("firms").select("id").eq("id", firm_id).maybe_single().execute().data
     if not firm:
         raise HTTPException(status_code=404, detail="Firm not found")
-    # SOFT delete only — records are preserved.
+    # SOFT delete only — records are preserved. Sessions first, for the reason in suspend_firm.
+    signed_out = _end_sessions(db, firm_id)
     db.table("firms").update({
         "deleted_at": datetime.now(timezone.utc).isoformat(),
         "is_active": False,
     }).eq("id", firm_id).execute()
     log_event(firm_id, "firm", firm_id, "platform_delete",
-              actor_id=admin.get("auth_user_id"), actor_email=admin.get("email"))
-    return api_response(True, {"firm_id": firm_id, "status": "deleted"})
+              actor_id=admin.get("auth_user_id"), actor_email=admin.get("email"),
+              metadata={"sessions_ended": signed_out})
+    return api_response(True, {"firm_id": firm_id, "status": "deleted", "sessions_ended": signed_out})
 
 
 @router.delete("/firms/{firm_id}/permanent")
@@ -165,7 +187,12 @@ def purge_firm(firm_id: str, admin: dict = Depends(require_platform_admin_mfa)):
     which disables FK enforcement for its own transaction to handle the mixed
     CASCADE / NO ACTION constraints. Auth login accounts are intentionally left
     intact (so the platform admin's own access survives purging their firm).
-    Gated by aal2 (require_platform_admin_mfa)."""
+    Gated by aal2 (require_platform_admin_mfa).
+
+    A PURGE DOES NOT SIGN ANYBODY OUT, and says so rather than claiming it. The sessions of a closed firm end by a stamp on
+    the member's `users` row, and this deletes those rows; the sign-in accounts stay, so a person who held a session now
+    reaches "User not found in firm" and the sign-up wizard. That is the state before this change too, and it is recorded
+    as POST-A-499 (found by the independent review of POST-A-482's fix); suspend and soft delete do end the sessions."""
     db = get_service_supabase()
     firm = db.table("firms").select("id, name").eq("id", firm_id).maybe_single().execute().data
     if not firm:
@@ -179,6 +206,6 @@ def purge_firm(firm_id: str, admin: dict = Depends(require_platform_admin_mfa)):
         "firm_name": firm.get("name"),
         "actor_auth_user_id": admin.get("auth_user_id"),
         "actor_email": admin.get("email"),
-        "metadata": removed or {},
+        "metadata": {**(removed or {})},
     }).execute()
     return api_response(True, {"firm_id": firm_id, "status": "purged", "removed": removed})

@@ -15,6 +15,8 @@ import { supabase, getSupabaseClient } from "@/lib/supabase/client";
 import { authErrorMessage } from "@/lib/auth/authErrorMessage";
 import { browserSessionStorage, clearAllDrafts } from "@/lib/drafts/unsentDraft";
 import { browserKeepAwake, type KeepAwake } from "@/lib/api/keepAwake";
+import { enforceBrowserSession, forgetKeepSignedIn, markBrowserSession, rememberKeepSignedIn } from "@/lib/auth/browserSessionGlue";
+import { LOGOUT_RECORD_WAIT_MS } from "@/lib/auth/browserSession";
 import {
   can as canDo,
   normalizeRole,
@@ -173,8 +175,11 @@ interface AuthContextValue {
   /** Fetch the policy and the factor list afresh and answer the same question,
    *  for a caller that must decide NOW (onboarding's last step). */
   resolveEnrolmentRequired: () => Promise<boolean>;
-  signIn: (email: string, password: string) => Promise<{ error: string | null }>;
+  /** `keepSignedIn` is the sign-in page's tickbox (POST-A-483): off, the session ends when the browser closes. */
+  signIn: (email: string, password: string, keepSignedIn?: boolean) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
+  /** End the session on THIS device only (idle sign-out, POST-A-483): the person's other devices are left alone. */
+  endSessionHere: () => Promise<void>;
 }
 
 import { resolveAssurance, resolveVerifiedFactor, toMfaPending } from "./mfaAssurance";
@@ -362,7 +367,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // gates AuthGuard / first paint. Until it resolves, userRole is null, which
     // the permission helpers treat as least-privilege (fail-closed), so nothing
     // is over-exposed during the brief window.
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    // A browser closed since the person signed in, with "keep me signed in" off, ends the stored session HERE, before it
+    // is used (lib/auth/browserSession says what can and cannot be known). Never allowed to stop the app starting.
+    enforceBrowserSession(getSupabaseClient()).catch(() => "kept").then(() => supabase.auth.getSession()).then(({ data: { session } }) => {
       clearTimeout(timeout);
       setSession(session);
       setUser(session?.user ?? null);
@@ -380,6 +387,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
+        // Whoever signs in AFTER the page's start decision, by any route (password, a code, an invitation), belongs to this browser
+        // session. The announcement of a session recovered from storage arrives BEFORE the decision and marks nothing: the marker
+        // is a no-op until the decision is made (lib/auth/browserSessionGlue), which is what lets the decision see the truth.
+        if (_event === "SIGNED_IN") markBrowserSession();
         setSession(session);
         setUser(session?.user ?? null);
         // A different person (or nobody) at this tab is not painted from the last one's lists (POST-A-124).
@@ -475,8 +486,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .catch(() => {});
   }, [session, mfaPending]);
 
-  const signIn = useCallback(async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+  const signIn = useCallback(async (email: string, password: string, keepSignedIn?: boolean) => {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    // The tickbox decides how long this sign-in lasts: off (the default), until the browser closes (POST-A-483). The flag names
+    // the person who ticked it, so nobody who signs in here later by another door inherits it.
+    if (!error) { rememberKeepSignedIn(keepSignedIn === true, data?.user?.id ?? null); markBrowserSession(); }
     // M6: login history (best-effort; never blocks sign-in) — recorded by the
     // effect above once any MFA challenge has been passed.
     if (!error) loginToRecord.current = true;
@@ -493,7 +507,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // to the person signing out; the next person at this tab is offered none.
     clearAllDrafts(browserSessionStorage());
     forgetReads();
+    forgetKeepSignedIn();
     await supabase.auth.signOut();
+  }, []);
+
+  const endSessionHere = useCallback(async () => {
+    // Another tab that reached the same moment may already have ended this session: then there is nothing to end and nothing to record.
+    try {
+      const { data } = await getSupabaseClient().auth.getSession();
+      if (!data.session) return;
+    } catch { /* go on and end it */ }
+    // The record of the logout is best-effort and must not hold the sign-out: a cold API would otherwise leave the session live for the
+    // whole of its time limit (found by the independent review).
+    try {
+      const { api } = await import("@/lib/api");
+      await Promise.race([
+        api.identity.recordLoginEvent("logout").catch(() => {}),
+        new Promise<void>((resolve) => setTimeout(resolve, LOGOUT_RECORD_WAIT_MS)),
+      ]);
+    } catch { /* best-effort */ }
+    clearAllDrafts(browserSessionStorage());
+    forgetReads();
+    forgetKeepSignedIn();
+    await getSupabaseClient().auth.signOut({ scope: "local" });
   }, []);
 
   const can = useCallback(
@@ -502,7 +538,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   return (
-    <AuthContext.Provider value={{ session, user, userRole, loading, roleLoading, mfaPending, hasFirm, fullName, permissions, can, refreshUserContext, mustEnrolMfa, mfaLockedSentence: mfaPolicy?.lockedSentence ?? null, resolveEnrolmentRequired, signIn, signOut }}>
+    <AuthContext.Provider value={{ session, user, userRole, loading, roleLoading, mfaPending, hasFirm, fullName, permissions, can, refreshUserContext, mustEnrolMfa, mfaLockedSentence: mfaPolicy?.lockedSentence ?? null, resolveEnrolmentRequired, signIn, signOut, endSessionHere }}>
       {children}
     </AuthContext.Provider>
   );

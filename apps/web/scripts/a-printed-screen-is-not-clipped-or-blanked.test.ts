@@ -243,6 +243,8 @@ const CHROME: Record<string, { file: string; anchor: string }> = {
   // Toaster renders only a viewport; the class list that places it is in the primitive.
   Toaster: { file: "components/ui/toast.tsx", anchor: "fixed top-0 z-[100]" },
   ConfirmDialogHost: { file: "components/ui/confirm-dialog.tsx", anchor: "fixed inset-0 z-[80]" },
+  // The idle warning draws nothing until the last minute before a sign-out, and then a small banner that must not print.
+  SessionKeeper: { file: "components/auth/SessionKeeper.tsx", anchor: "fixed bottom-4 left-1/2" },
 };
 
 test("every component the frame draws is classified: chrome that does not print, or not chrome", () => {
