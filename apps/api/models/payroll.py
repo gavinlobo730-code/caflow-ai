@@ -84,10 +84,10 @@ class EmployeeIn(BaseModel):
     #: of the employer's contribution to EPS ON THE ECR, which is a statutory
     #: return, and nothing in the product could correct it.
     eps_eligible: bool = True
-    #: Whether the Payment of Gratuity Act 1972 reaches this employee's
-    #: establishment — §1(3), and §1(3A), which keeps it applying once it has.
-    #: Not derived from headcount: today's count is not the count on the
-    #: qualifying date.
+    #: Whether gratuity (section 53 of the Code on Social Security, 2020; until 21-11-2025 the Payment of Gratuity Act, 1972, which
+    #: reached an establishment by headcount: §1(3), and §1(3A), which kept it applying once it had) reaches this employee's
+    #: establishment. How the Code decides which establishments it reaches has not been read for this. Not derived from headcount:
+    #: today's count is not the count on the qualifying date.
     #:
     #: Same hole, same shape (migration 298). It decides WHICH limb of IT Act
     #: §10(10) computes the exemption — clause (ii) for a covered employee,
@@ -108,6 +108,13 @@ class EmployeeIn(BaseModel):
     pf_on_actual_wages: Optional[bool] = None
     pf_on_actual_wages_from: Optional[str] = None
     pf_on_actual_wages_reference: Optional[str] = None
+    #: FIXED-TERM EMPLOYMENT (POST-A-526, migration 770): an employee engaged on a fixed-term contract is eligible for gratuity on at
+    #: least ONE year of service under the contract, not five (the second proviso to section 53(1) of the Code on Social Security,
+    #: 2020; rule 33(1)(a) of the Social Security (Central) Rules, 2026). NULL (the default, and every employee that exists today) is
+    #: "not recorded" and is the ordinary five-year rule, exactly as before; TRUE records it; FALSE withdraws it. Never inferred from
+    #: an end date or a short service. The end date is the contract's, optional, and belongs only to a fixed-term employee.
+    fixed_term_employment: Optional[bool] = None
+    fixed_term_end_date: OptionalIsoDate = None
 
     @field_validator("name")
     @classmethod
@@ -115,6 +122,12 @@ class EmployeeIn(BaseModel):
         if not v.strip():
             raise ValueError("Employee name cannot be blank.")
         return v.strip()
+
+    @model_validator(mode="after")
+    def a_contract_end_date_belongs_to_a_fixed_term_employee(self):
+        if self.fixed_term_end_date and self.fixed_term_employment is not True:
+            raise ValueError("A contract end date belongs to a fixed-term employee: tick fixed-term employment, or leave the date out.")
+        return self
 
     @field_validator("pf_on_actual_wages_from")
     @classmethod
@@ -306,10 +319,10 @@ class EmployeeUpdateIn(BaseModel):
     #: of the employer's contribution to EPS ON THE ECR, which is a statutory
     #: return, and nothing in the product could correct it.
     eps_eligible: Optional[bool] = None
-    #: Whether the Payment of Gratuity Act 1972 reaches this employee's
-    #: establishment — §1(3), and §1(3A), which keeps it applying once it has.
-    #: Not derived from headcount: today's count is not the count on the
-    #: qualifying date.
+    #: Whether gratuity (section 53 of the Code on Social Security, 2020; until 21-11-2025 the Payment of Gratuity Act, 1972, which
+    #: reached an establishment by headcount: §1(3), and §1(3A), which kept it applying once it had) reaches this employee's
+    #: establishment. How the Code decides which establishments it reaches has not been read for this. Not derived from headcount:
+    #: today's count is not the count on the qualifying date.
     #:
     #: Same hole, same shape (migration 298). It decides WHICH limb of IT Act
     #: §10(10) computes the exemption — clause (ii) for a covered employee,
@@ -327,6 +340,11 @@ class EmployeeUpdateIn(BaseModel):
     pf_on_actual_wages: Optional[bool] = None
     pf_on_actual_wages_from: Optional[str] = None
     pf_on_actual_wages_reference: Optional[str] = None
+    #: Fixed-term employment, on the update door as on the create door (POST-A-526, migration 770; see EmployeeIn). Sending
+    #: `fixed_term_employment: false` withdraws it and clears the end date with it; whether an end date sent alone lands on an employee
+    #: who is on a fixed term is asked in the router, which reads the row.
+    fixed_term_employment: Optional[bool] = None
+    fixed_term_end_date: PatchIsoDate = None
     # THE DATE OF JOINING, which this model did not carry (PAY-12).
     #
     # components/payroll/AddEmployeeModal.tsx has always sent joining_date on
@@ -339,7 +357,7 @@ class EmployeeUpdateIn(BaseModel):
     # The router then wrote whatever survived and reported success. A wrong
     # joining date could therefore never be corrected — and it is not cosmetic:
     # it decides gratuity's five years of continuous service (Payment of
-    # Gratuity Act s.4(1)), the EPS eligibility test on first joining, and the
+    # section 53(1) of the Code, §4(1) of the repealed Gratuity Act), the EPS eligibility test on first joining, and the
     # proportion of the year a leaver is paid for.
     #
     # apps/web/scripts/employee-form-captures-what-filing-needs.test.ts asserts

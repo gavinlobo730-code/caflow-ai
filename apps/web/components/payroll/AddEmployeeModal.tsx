@@ -81,6 +81,10 @@ export function AddEmployeeModal({
     // ordinary case.
     eps_eligible: employee?.eps_eligible ?? true,
     gratuity_act_covered: employee?.gratuity_act_covered ?? true,
+    // FIXED-TERM EMPLOYMENT (POST-A-526, migration 770). Unticked is "never recorded" or "withdrawn": `save()` sends nothing for the first
+    // and `false` for the second, as the PF election does, so an ordinary save never names the new columns.
+    fixed_term_employment: employee?.fixed_term_employment === true,
+    fixed_term_end_date: employee?.fixed_term_end_date ?? "",
     // THE EMPLOYER'S PF ELECTION (payroll-22, migration 477). Unticked is
     // "never recorded" or "withdrawn" — the server tells them apart and so does
     // `save()` below: it sends nothing for the first and `false` for the second.
@@ -202,11 +206,20 @@ export function AddEmployeeModal({
           ? { pf_on_actual_wages: false }
           : {};
 
+    // Fixed-term employment is sent only when it is recorded or being withdrawn (see the form state).
+    const priorFixedTerm = employee?.fixed_term_employment === true;
+    const fixedTermFields = form.fixed_term_employment
+      ? { fixed_term_employment: true, fixed_term_end_date: form.fixed_term_end_date || undefined }
+      : priorFixedTerm
+        ? { fixed_term_employment: false }
+        : {};
+
     setSaving(true);
     setErr("");
     try {
       const payload = {
         ...electionFields,
+        ...fixedTermFields,
         name: form.name,
         pan: form.pan.toUpperCase() || null,
         gender: form.gender || null,
@@ -371,7 +384,7 @@ export function AddEmployeeModal({
           {/* The two statutory exceptions. Worded as the EXCEPTION (unticking
               is the unusual case) because both columns default true and both
               tests turn on a fact the master cannot hold: EPS on pay AT
-              JOINING, the Gratuity Act on the headcount when it first
+              JOINING, gratuity coverage on the headcount when it first
               applied. */}
           <div className="col-span-2 flex items-start gap-2">
             <input type="checkbox" id="eps" className="mt-0.5"
@@ -444,15 +457,46 @@ export function AddEmployeeModal({
               checked={form.gratuity_act_covered}
               onChange={e => setForm(f => ({ ...f, gratuity_act_covered: e.target.checked }))} />
             <label htmlFor="gratuity" className="text-sm text-ps-body">
-              Payment of Gratuity Act 1972 applies
+              Gratuity applies (Code on Social Security, 2020, section 53)
               <span className="block text-2xs text-ps-hint">
-                §1(3), and §1(3A) which keeps it applying once it has. It
-                decides which limb of IT Act §10(10) exempts a leaver&apos;s
+                The repealed Payment of Gratuity Act, 1972 reached an
+                establishment by headcount (§1(3), and §1(3A) which kept it
+                applying once it had); how the Code decides is not read here.
+                It decides which limb of IT Act §10(10) exempts a leaver&apos;s
                 gratuity — clause (ii) when covered, clause (iii) when not,
                 and they are different formulae.
               </span>
             </label>
           </div>
+          {/* FIXED-TERM EMPLOYMENT (POST-A-526). Recorded by the employer, never inferred from a short service. The server judges the date. */}
+          <div className="col-span-2 flex items-start gap-2">
+            <input type="checkbox" id="fixed-term" className="mt-0.5"
+              checked={form.fixed_term_employment}
+              onChange={e => setForm(f => ({ ...f, fixed_term_employment: e.target.checked }))} />
+            <label htmlFor="fixed-term" className="text-sm text-ps-body">
+              Fixed-term employment
+              <span className="block text-2xs text-ps-hint">
+                Where a fixed term expires, the employee is eligible for gratuity
+                on at least one year of service under the contract, not five (the
+                second proviso to section 53(1) of the Code on Social Security,
+                2020, and rule 33(1)(a) of the Social Security (Central) Rules,
+                2026), paid pro rata to the service rendered. The settlement asks
+                whether the term has expired, and a contract end date that has
+                been reached counts. An employee who leaves before the term ends
+                is not shown as eligible on one year: the text does not settle it.
+                Tick it only for an employee engaged
+                on a fixed-term contract.
+              </span>
+            </label>
+          </div>
+          {form.fixed_term_employment && (
+            <div className="col-span-2">
+              <label htmlFor="fixed-term-end" className="block text-xs font-medium text-ps-body mb-1">Contract ends on (optional)</label>
+              <DateInput id="fixed-term-end" className="w-full border rounded-lg px-3 py-2 text-sm"
+                value={form.fixed_term_end_date}
+                onChange={v => setForm(f => ({ ...f, fixed_term_end_date: v }))} />
+            </div>
+          )}
 
           {/* Statutory identifiers. Each hint says what is NOT POSSIBLE without
               the field, rather than "optional" — the ECR, the ESIC return and

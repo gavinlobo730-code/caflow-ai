@@ -70,51 +70,14 @@ _NUMERIC_RE = re.compile(r"^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$")
 # Keep this SHORT. A long list means the snapshot needs refreshing, not that the
 # list needs another entry.
 ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
-    # EMPTY since the schema fixture was refreshed to production's mark of 557 on 28 October 2026 (POST-A-351). Everything for
-    # migrations 474-557 that added a column was here until then: the ten `gstr3b_returns` columns of 474, the payroll columns of
-    # 477, 504 and 508, `billing_schedules.anchor_date` (511), `fixed_assets.accumulated_account_id` (553) and
-    # `users.first_run_dismissed_at` (557). The schema fixture now matches production row for row (md5
-    # b164e362b13a15648f57a55b872dd5b1 over 5,197 columns in 337 tables, both sides ordered by C collation), so an entry belongs here
-    # only for a migration this branch has not merged yet. Migration 558 adds no column.
-    ("tds_challans", "journal_entry_id"): "migration 568 (POST-A-272): the ledger entry that paid the challan; a link, never a posting",
-    ("compliance_records", "closing_tds_challan_ids"): "migration 569 (POST-A-362): the challans that closed a monthly TDS deposit obligation",
-    ("credit_notes", "goods_returned"): "migration 581 (POST-A-371): whether the goods on a credit or debit note physically came back; NULL = not stated",
-    ("debit_notes", "goods_returned"): "migration 581 (POST-A-371): whether the goods on a credit or debit note physically came back; NULL = not stated",
-    ("delivery_challans", "issued_at"): "migration 585 (POST-A-419): the moment a challan was issued, written once with the status; NULL = not recorded",
-    ("fixed_assets", "depreciation_reversal_month"): "migration 587 (POST-A-349): a depreciation reversal's marker, the month it claimed and when; NULL = none in flight",
-    ("fixed_assets", "custodian"): "migration 591 (POST-A-112): who the asset is in the keeping of; NULL = nobody named",
-    ("client_sales_invoice_lines", "sales_order_line_id"): "migration 589 (POST-A-104): the sales-order line an invoice line bills; NULL = none",
-    ("tds_deductions", "vendor_id"): "migration 594 (POST-A-078): the supplier a deduction typed on the TDS screen was paid to; NULL = none named",
-    ("fixed_assets", "depreciation_reversal_claimed_at"): "migration 587 (POST-A-349): a depreciation reversal's marker, the month it claimed and when; NULL = none in flight",
-    ("credit_notes", "cess_paise"): "migration 615 (POST-A-058): a s.34 note's GST compensation cess, on its header and its lines; 0 = none",
-    ("sales_debit_notes", "cess_paise"): "migration 615 (POST-A-058): a s.34 note's GST compensation cess, on its header and its lines; 0 = none",
-    ("debit_notes", "cess_paise"): "migration 615 (POST-A-058): a s.34 note's GST compensation cess, on its header and its lines; 0 = none",
-    ("purchase_credit_notes", "cess_paise"): "migration 615 (POST-A-058): a s.34 note's GST compensation cess, on its header and its lines; 0 = none",
-    ("credit_note_lines", "cess_rate_bps"): "migration 615 (POST-A-058): a s.34 note's GST compensation cess, on its header and its lines; 0 = none",
-    ("credit_note_lines", "cess_specific_paise_per_unit"): "migration 615 (POST-A-058): a s.34 note's GST compensation cess, on its header and its lines; 0 = none",
-    ("credit_note_lines", "cess_paise"): "migration 615 (POST-A-058): a s.34 note's GST compensation cess, on its header and its lines; 0 = none",
-    ("sales_debit_note_lines", "cess_rate_bps"): "migration 615 (POST-A-058): a s.34 note's GST compensation cess, on its header and its lines; 0 = none",
-    ("sales_debit_note_lines", "cess_specific_paise_per_unit"): "migration 615 (POST-A-058): a s.34 note's GST compensation cess, on its header and its lines; 0 = none",
-    ("sales_debit_note_lines", "cess_paise"): "migration 615 (POST-A-058): a s.34 note's GST compensation cess, on its header and its lines; 0 = none",
-    ("debit_note_lines", "cess_rate_bps"): "migration 615 (POST-A-058): a s.34 note's GST compensation cess, on its header and its lines; 0 = none",
-    ("debit_note_lines", "cess_specific_paise_per_unit"): "migration 615 (POST-A-058): a s.34 note's GST compensation cess, on its header and its lines; 0 = none",
-    ("debit_note_lines", "cess_paise"): "migration 615 (POST-A-058): a s.34 note's GST compensation cess, on its header and its lines; 0 = none",
-    ("purchase_credit_note_lines", "cess_rate_bps"): "migration 615 (POST-A-058): a s.34 note's GST compensation cess, on its header and its lines; 0 = none",
-    ("purchase_credit_note_lines", "cess_specific_paise_per_unit"): "migration 615 (POST-A-058): a s.34 note's GST compensation cess, on its header and its lines; 0 = none",
-    ("purchase_credit_note_lines", "cess_paise"): "migration 615 (POST-A-058): a s.34 note's GST compensation cess, on its header and its lines; 0 = none",
-    ("debit_notes", "ineligible_itc_cgst_paise"): "migration 685 (POST-A-459): a purchase note line's s.17(5) blocked mark and the header's blocked tax per head; default eligible / 0",
-    ("debit_notes", "ineligible_itc_sgst_paise"): "migration 685 (POST-A-459): a purchase note line's s.17(5) blocked mark and the header's blocked tax per head; default eligible / 0",
-    ("debit_notes", "ineligible_itc_igst_paise"): "migration 685 (POST-A-459): a purchase note line's s.17(5) blocked mark and the header's blocked tax per head; default eligible / 0",
-    ("debit_notes", "ineligible_itc_cess_paise"): "migration 685 (POST-A-459): a purchase note line's s.17(5) blocked mark and the header's blocked tax per head; default eligible / 0",
-    ("purchase_credit_notes", "ineligible_itc_cgst_paise"): "migration 685 (POST-A-459): a purchase note line's s.17(5) blocked mark and the header's blocked tax per head; default eligible / 0",
-    ("purchase_credit_notes", "ineligible_itc_sgst_paise"): "migration 685 (POST-A-459): a purchase note line's s.17(5) blocked mark and the header's blocked tax per head; default eligible / 0",
-    ("purchase_credit_notes", "ineligible_itc_igst_paise"): "migration 685 (POST-A-459): a purchase note line's s.17(5) blocked mark and the header's blocked tax per head; default eligible / 0",
-    ("purchase_credit_notes", "ineligible_itc_cess_paise"): "migration 685 (POST-A-459): a purchase note line's s.17(5) blocked mark and the header's blocked tax per head; default eligible / 0",
-    ("debit_note_lines", "itc_eligible"): "migration 685 (POST-A-459): a purchase note line's s.17(5) blocked mark and the header's blocked tax per head; default eligible / 0",
-    ("debit_note_lines", "blocked_credit_reason"): "migration 685 (POST-A-459): a purchase note line's s.17(5) blocked mark and the header's blocked tax per head; default eligible / 0",
-    ("purchase_credit_note_lines", "itc_eligible"): "migration 685 (POST-A-459): a purchase note line's s.17(5) blocked mark and the header's blocked tax per head; default eligible / 0",
-    ("purchase_credit_note_lines", "blocked_credit_reason"): "migration 685 (POST-A-459): a purchase note line's s.17(5) blocked mark and the header's blocked tax per head; default eligible / 0",
-    ("tds_challans", "deduction_month"): "migration 695 (POST-A-267): the wage month a salary challan deposits, as typed; NULL = none stated",
+    # EMPTY of everything at or below production's mark since the schema fixture was refreshed to 766 on 19 November 2026 (POST-A-526's
+    # migration 770 was the one that forced it: the list had reached the cap its own guard sets). Thirty-nine entries for migrations
+    # 568-695 were here until then. The fixture now matches production row for row (md5 4bea0b9b98513994a4b8f1f818a1545c over 5,376
+    # columns in 348 tables, both sides ordered by C collation), so an entry belongs here only for a migration this branch has not
+    # merged yet: migration 770 below, and 769's `epfo_ecr_filings.return_file_id` once the provident fund pull request lands. Migrations 766,
+    # 767 and 768 add no column.
+    ("payroll_employees", "fixed_term_employment"): "migration 770 (POST-A-526): an employee recorded as on fixed-term employment, and the contract's end date; NULL = not recorded",
+    ("payroll_employees", "fixed_term_end_date"): "migration 770 (POST-A-526): an employee recorded as on fixed-term employment, and the contract's end date; NULL = not recorded",
 }
 
 
