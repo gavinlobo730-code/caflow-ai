@@ -6,6 +6,18 @@ Everything that is yours to decide, do or supply, and every statutory or legal p
 
 **How many ledger items wait on you:** the ledger README's "Who must act" line counts them and is generated from the ledger itself. It is every item lettered B (you decide first) or C (only you or someone outside can do), plus the items lettered A that carry the `waits on owner` marker. Those marked items are the ones whose question is in section 4 below: S14 (POST-A-343), S15 (POST-A-348), S16 (POST-A-055), S17 (POST-A-059 and POST-A-064), S18 (POST-A-067), S19 (POST-A-114) and S20 (POST-A-063). Answering a question removes the marker and Claude builds the item.
 
+## 0. What you answered on 19 November 2026 (about 15:30 IST), and where each stands
+
+Recorded here so none is lost between chats. Prices below are from third-party sites on the day and were not read from the providers' own pages; check them there before paying anything.
+
+| # | Your answer | What I did with it | Still open |
+|---|---|---|---|
+| 1 | Paid always-on API host: **not now.** Your two RuPay cards keep declining for foreign subscriptions and the host offers no UPI. | Money row 1 stays undecided and is parked. For the demo the free host is used: open the product a few minutes before showing it so it is already awake (waking takes about 56 seconds). | Whether any host takes RuPay or UPI was not checked. |
+| 2 | Paid mail: you asked for the price and where to take it. | Two options looked up. Resend: free for 3,000 mails a month with a cap of 100 a day; paid about $20 a month for 50,000 mails. Brevo: free for 300 mails a day; paid from about $9 a month for 5,000 mails; one Indian review says Brevo does not take UPI or RuPay (unconfirmed). Nothing is decided and nothing is bought. | I check which mail providers the product can send through before you spend anything; then the prices on the providers' own pages and whether either takes RuPay. |
+| 3 | Government sites: you asked which. | The twelve sites are listed in section 1 below (the first ten were refused when tested; the last two are the ones I would add next). All are read-only. | You have not yet changed the cloud environment's network settings; I build nothing on them until you do. |
+| 4 | Names and addresses (the legal entity, grievance and security contacts, the two alert recipients): **not needed now**, because you are showing it to a CA who already knows you. | Section 3 row 2 stays unanswered by design; the footer links and the security page stay unbuilt. | Answer before any public release or a pilot. |
+| 5 | What each plan promises on the pricing page: **"No, don't show anything for now."** | Recorded as no change to the page. | I read "don't show anything" as "leave it as it is"; you may have meant to hide the pricing page. I have asked you which. |
+
 ## 1. The single most useful thing: let me read the primary texts
 
 Today, 14 October 2026 at 13:41 IST, I tested ten government sites from this environment and every one was refused. That is why so many statutory figures in the product are graded `[S]` (read from a summary, not from the page) and why those questions are on your list below. If you allow these sites, I read the Acts, Rules and notifications myself and only then mark a figure verified. Legal *readings* (privacy law, consent, erasure, contracts) stay with counsel or a practising CA even then; what changes is that rates, thresholds, due dates, forms and portal rules stop waiting on a person.
