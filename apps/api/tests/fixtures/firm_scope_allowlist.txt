@@ -76,6 +76,7 @@ routers/engagement_sign_public.py | _load_by_token | engagements | read | 1 | be
 routers/engagement_sign_public.py | reject_letter | engagements | update | 1 | bearer-token | token=sign_token
 routers/engagement_sign_public.py | sign_letter | engagements | update | 1 | bearer-token | token=sign_token
 routers/engagement_sign_public.py | view_letter | engagements | update | 1 | bearer-token | token=sign_token
+routers/identity.py | _already_joined | repo:user_repo.find_linked_member | read | 1 | principal-lookup
 routers/identity.py | _live_invitation | repo:user_repo.find_by_invite_token | read | 1 | bearer-token | token=invite_token
 routers/identity.py | accept_invite | repo:user_repo.find_linked_member | read | 1 | principal-lookup
 routers/invoices.py | generate_from_engagement | repo:invoice_repo.find_by_id | read | 1 | own-insert-id | gate=_assert_engagement_scope
