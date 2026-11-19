@@ -7123,6 +7123,8 @@ def run_handoff(
             return_type_reason=decision.reason,
             interest_note=ecr_sequence.INTEREST_AND_DAMAGES_NOTE,
             recorded=epf_recorded,
+            # The rate the payslips (and so the file) were built at, for the upload form's rate box (POST-A-520).
+            employee_rate_bps=pf_rates_for_month(_fy_for_month(month), int(month[5:7])).employee_rate_bps,
         ),
         handoff_domain.esic_obligation(
             wage_month=month,

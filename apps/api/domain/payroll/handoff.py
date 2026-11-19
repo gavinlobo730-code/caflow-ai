@@ -110,6 +110,31 @@ ESIC_THEIR_TEMPLATE = (
 )
 
 
+# THE THREE THINGS A CA DOES AT THE PORTAL BEFORE AN ECR UPLOAD THAT THE PRODUCT CANNOT DO FOR THEM (POST-A-520). They are advice and carry no claim of what the
+# portal will accept: the product does not see EPFO's record of the members, so a file that is right by the books can still disagree with it. Their source is
+# EPFO's own FAQs (question 23 on exits; question 9 on what a return is checked against) and the Unified Portal User Manual v3.0 (page 6, the "Download Active
+# Member List" Excel; page 8, the upload form's contribution rate), read on 19-11-2026. Nothing in them is a figure or a date.
+EPF_MARK_EXITS_FIRST = (
+    "Before you upload, mark on the portal the exit of everyone who has left. EPFO's own FAQs say that exits not marked in "
+    "time leave members treated as active, and that this may block future filings.")
+EPF_COMPARE_WITH_THE_PORTALS_LIST = (
+    "The portal checks a return against its own record of each member, which PracticeSync cannot see, so a file that is right "
+    "by your books can still disagree with it. Download the portal's Active Member List (an Excel file with each member's UAN, "
+    "date of joining, date of exit, Aadhaar status and pension flags) and compare it with this file before you upload.")
+
+
+def _percent(bps: int) -> str:
+    """1200 -> "12", 833 -> "8.33", in integer arithmetic."""
+    return f"{bps // 100}.{bps % 100:02d}".rstrip("0").rstrip(".")
+
+
+def epf_rate_sentence(employee_rate_bps: int) -> str:
+    """What the upload form's contribution-rate box should be set to, said from the rate the payslips deducted at."""
+    return (f"The portal's upload form asks for the contribution rate (12% or 10%). This file was built at "
+            f"{_percent(int(employee_rate_bps))}%, the employee rate the payslips deducted at: choose the same on the portal so the "
+            f"box and the file agree.")
+
+
 @dataclass(frozen=True)
 class IdentityField:
     """One identifier the portal asks for, and where it came from."""
@@ -261,6 +286,7 @@ def epf_obligation(
     return_type_reason: Optional[str],
     interest_note: Optional[str],
     recorded: Optional[dict] = None,
+    employee_rate_bps: Optional[int] = None,
 ) -> Obligation:
     """The EPFO ECR panel.
 
@@ -350,6 +376,11 @@ def epf_obligation(
             + (f" — {return_type_reason}" if return_type_reason else "."))
     if on_actual:
         warnings.append(pf_election.ECR_WARNING.format(n=on_actual))
+    # What the product cannot see at the portal (POST-A-520): the exits, the portal's own record of the members, and the rate box.
+    warnings.append(EPF_MARK_EXITS_FIRST)
+    warnings.append(EPF_COMPARE_WITH_THE_PORTALS_LIST)
+    if employee_rate_bps:
+        warnings.append(epf_rate_sentence(employee_rate_bps))
     # THE RETURN AND THE PAYMENT ARE TWO ACTS WITH TWO REFERENCES (POST-A-518). On EPFO's revamped system the return gets a Return
     # File ID when the file passes, the employer approves the return statement, and only then does the portal prepare the challan,
     # which gets its TRRN when it is finalised and is paid through a bank. The Employees' Provident Funds Scheme, 2026 puts them
