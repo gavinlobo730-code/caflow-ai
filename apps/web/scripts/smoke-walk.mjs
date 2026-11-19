@@ -381,6 +381,9 @@ function sessionScript() {
   return `(() => { try {
     for (const ref of ${JSON.stringify(refs)})
       localStorage.setItem("sb-" + ref + "-auth-token", ${JSON.stringify(JSON.stringify(FAKE_SESSION))});
+    // The browser-session rule (POST-A-483) signs a stored session out at page start unless this browser session is the one the person
+    // signed in during; a tab says so with this marker. Without it every route of the walk is the sign-in screen.
+    sessionStorage.setItem("practicesync_session_marker", "1");
   } catch {} })();`;
 }
 
