@@ -6,6 +6,20 @@ Everything that is yours to decide, do or supply, and every statutory or legal p
 
 **How many ledger items wait on you:** the ledger README's "Who must act" line counts them and is generated from the ledger itself. It is every item lettered B (you decide first) or C (only you or someone outside can do), plus the items lettered A that carry the `waits on owner` marker. Those marked items are the ones whose question is in section 4 below: S14 (POST-A-343), S15 (POST-A-348), S16 (POST-A-055), S17 (POST-A-059 and POST-A-064), S18 (POST-A-067), S19 (POST-A-114) and S20 (POST-A-063). Answering a question removes the marker and Claude builds the item.
 
+## 0a. THE WALKTHROUGH OF THE FIVE QUESTIONS: where we are (kept current; read this first)
+
+The owner's plan, set on 19 November 2026 at about 17:20 IST: **one question at a time; we discuss it until both sides are satisfied; then he says it is closed and the next starts. A finding on the owner's side is told to him and he fixes it right then. A finding on Claude's side is written on the Claude-only list and done when he is off.** Claude does not leave a question open to chase a finding, and does not move on until the owner says "closed".
+
+| Q | The question | Status | What is left |
+|---|---|---|---|
+| 1 | Paid always-on API host | **CLOSED 19-11-2026**: option A, the free host, the owner wakes it before the demo | Nothing for the demo. The paid plan waits until a pilot firm is using the product (money row 1). |
+| 2 | Paid mail: price, where to get it | **OPEN** | The owner confirms "nothing to buy for the demo" and reads which Resend plan the account is on. |
+| 3 | Open the twelve government sites to Claude, read-only | **NOT DISCUSSED IN DETAIL** | Yes or no; if yes, the owner's steps in the environment settings, then what I check first. |
+| 4 | Names and addresses (legal entity, grievance and security contacts, alert recipients) | **CLOSED as deferred 19-11-2026**: not needed to show a CA who knows him | Needed before a pilot or a public release; the owner will be reminded then. |
+| 5 | What the pricing page promises | **OPEN** | What the owner meant by "don't show anything for now" (leave the page as it is, or hide it?). |
+
+Findings made while walking the questions are not part of the walkthrough: those on Claude's side are in the Claude-only list (POST-A-511 to 515); those on the owner's side are told to him on the spot (so far: the Render screenshot for POST-A-514, still unsent).
+
 ## 0. What you answered on 19 November 2026 (about 15:30 IST), and where each stands
 
 Recorded here so none is lost between chats. Prices below are from third-party sites on the day and were not read from the providers' own pages; check them there before paying anything.
