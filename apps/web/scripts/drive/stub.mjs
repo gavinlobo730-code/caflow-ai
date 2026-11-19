@@ -82,6 +82,9 @@ export function createStub({ root, port, headerRules, resolveBuilt }) {
   let routes = [];
   /** table -> ms a PostgREST READ of it is held before it is answered (a slow server, for the cache's first-paint check). Cleared by `reset()`. */
   let readDelays = {};
+  let authUserDelayMs = 0;
+  // The access token a password grant answers with: a real sign-in service issues a NEW token (a new session) each time.
+  let grantedToken = null;
   /** Every write, in arrival order. */
   let writes = [];
   /** How long a write is held before it is answered. Long enough that a second click lands first. */
@@ -125,9 +128,14 @@ export function createStub({ root, port, headerRules, resolveBuilt }) {
     const siteHeaders = headersFor(headerRules, pathname);
 
     if (pathname.startsWith("/__supabase/auth/v1/")) {
-      if (pathname.endsWith("/user")) return sendJson(res, authUser ?? FAKE_USER);
+      // The sign-in service answers the account lookup after `authUserDelayMs`: what the assurance check waits for in production.
+      if (pathname.endsWith("/user")) {
+        return authUserDelayMs
+          ? void setTimeout(() => { if (!res.destroyed) sendJson(res, authUser ?? FAKE_USER); }, authUserDelayMs)
+          : sendJson(res, authUser ?? FAKE_USER);
+      }
       if (pathname.endsWith("/logout")) return sendJson(res, {});
-      return sendJson(res, { ...FAKE_SESSION, user: authUser ?? FAKE_SESSION.user });
+      return sendJson(res, { ...FAKE_SESSION, access_token: grantedToken ?? FAKE_SESSION.access_token, user: authUser ?? FAKE_SESSION.user });
     }
 
     if (pathname.startsWith("/__supabase/rest/v1/")) {
@@ -217,6 +225,8 @@ export function createStub({ root, port, headerRules, resolveBuilt }) {
       tables = Object.fromEntries(Object.entries(baseline).map(([k, v]) => [k, structuredClone(v)]));
       routes = [];
       readDelays = {};
+      authUserDelayMs = 0;
+      grantedToken = null;
       insertAnswers = {};
       writes = [];
       writeDelayMs = 700;
@@ -232,6 +242,8 @@ export function createStub({ root, port, headerRules, resolveBuilt }) {
     answerInserts(name, makeRow) { insertAnswers[name] = makeRow; },
     /** Sign in as this auth user from now on (call BEFORE the first navigation of a scenario). */
     setAuthUser(user) { authUser = user; },
+    setAuthUserDelay(ms) { authUserDelayMs = ms; },
+    setGrantedToken(token) { grantedToken = token; },
     /** Register an API route ahead of the defaults. */
     route(spec) { routes.unshift({ method: undefined, delay: undefined, status: undefined, ...spec }); },
     setWriteDelay(ms) { writeDelayMs = ms; },

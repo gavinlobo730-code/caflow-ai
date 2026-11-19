@@ -37,8 +37,9 @@ async function unnamedControls(page, { placeholderNames = true } = {}) {
 
 export const scenarios = [
   {
-    id: "the-advance-tax-screen-has-no-unnamed-control",
-    title: "the advance-tax screen, with a client chosen and an estimate typed, has no form control a screen reader would call 'edit text'",
+    id: "the-advance-tax-and-capital-gains-screens-have-no-unnamed-control",
+    title:
+      "the advance-tax screen (with a client chosen and an estimate typed, and as the nightly walk sees it) and the capital-gains calculator have no form control a screen reader would call 'edit text'",
     async run(env) {
       const { page } = env;
       await page.goto(`${env.base}/income-tax/advance-tax/?client_id=${CLIENT_ID}`, { waitUntil: "networkidle" });
@@ -49,17 +50,9 @@ export const scenarios = [
       // `label` baseline line for this route), and it is named now.
       await page.goto(`${env.base}/income-tax/advance-tax/`, { waitUntil: "networkidle" });
       assert.deepEqual(await unnamedControls(page), [], "an unnamed control is on the advance-tax screen as the walk sees it");
-    },
-  },
-  {
-    id: "the-capital-gains-screen-has-no-unnamed-control",
-    title: "the capital-gains calculator has no form control a screen reader would call 'edit text'",
-    async run(env) {
-      const { page } = env;
       await page.goto(`${env.base}/income-tax/capital-gains/`, { waitUntil: "networkidle" });
       // The calculator's two date boxes were this route's `label` line and its one select its `select-name` line; both are named now.
-      const unnamed = await unnamedControls(page);
-      assert.deepEqual(unnamed, [], "an unnamed input is on the capital-gains screen");
+      assert.deepEqual(await unnamedControls(page), [], "an unnamed input is on the capital-gains screen");
     },
   },
 ];
