@@ -20,6 +20,7 @@ import { CheckCircle2, Circle, Save } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
+import ReportExportButtons from "@/components/accounting/ReportExportButtons";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { Callout } from "@/components/ui/callout";
 import { YearPicker } from "@/components/ui/year-picker";
@@ -97,15 +98,20 @@ export default function Form3cdPage() {
     }).catch(() => setClients([]));
   }, []);
 
+  // The two optional answers the register is built with; the working paper is asked for with the same two, so the file is the screen.
+  const registerOptions = useCallback(() => {
+    const rate = bankRateBps.trim() ? Number(bankRateBps) : undefined;
+    return {
+      nature: nature || undefined,
+      bankRateBps: Number.isFinite(rate) ? rate : undefined,
+    };
+  }, [nature, bankRateBps]);
+
   const load = useCallback(async () => {
     if (!clientId) { setRegister(null); return; }
     setLoading(true); setError(null);
     try {
-      const rate = bankRateBps.trim() ? Number(bankRateBps) : undefined;
-      const j = await api.incomeTax.form3cd(clientId, fy, {
-        nature: nature || undefined,
-        bankRateBps: Number.isFinite(rate) ? rate : undefined,
-      });
+      const j = await api.incomeTax.form3cd(clientId, fy, registerOptions());
       if (!j.success || !j.data) throw new Error(j.error ?? "Could not build the Form 3CD register.");
       setRegister(j.data);
       // Prefill the draft boxes from whatever the CA has already recorded, so
@@ -122,7 +128,7 @@ export default function Form3cdPage() {
     } finally {
       setLoading(false);
     }
-  }, [clientId, fy, nature, bankRateBps]);
+  }, [clientId, fy, registerOptions]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -207,10 +213,23 @@ export default function Form3cdPage() {
           ) : (
             <>
               {register && (
-                <p className="text-sm text-ps-label mb-3">
-                  {register.derived_count} of {clauses.length} clauses derived from the books;
-                  {" "}{register.manual_count} are the CA&apos;s own to record.
-                </p>
+                <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+                  <p className="text-sm text-ps-label">
+                    {register.derived_count} of {clauses.length} clauses derived from the books;
+                    {" "}{register.manual_count} are the CA&apos;s own to record.
+                  </p>
+                  <div className="flex flex-col items-end gap-1">
+                    <ReportExportButtons
+                      clientId={clientId}
+                      formats={["pdf", "xlsx"]}
+                      noun="working paper"
+                      download={(format) => api.incomeTax.form3cdWorkingPaper(clientId, fy, format, registerOptions())}
+                    />
+                    <span className="text-3xs text-ps-hint max-w-xs text-right">
+                      A working paper for your review, not the portal&apos;s Form 3CD; nothing is filed. It shows what is saved on the register.
+                    </span>
+                  </div>
+                </div>
               )}
               <div className="overflow-x-auto">
                 <table className="w-full">

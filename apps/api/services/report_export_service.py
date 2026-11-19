@@ -36,6 +36,7 @@ from typing import Optional
 
 from domain.reporting import export_builders as B
 from domain.reporting.export_document import ExportRefused, ReportDocument
+from domain.reporting.form_3cd_document import form_3cd_document
 from services.report_pdf_service import build_report_pdf
 from services.report_xlsx_service import XLSX_MEDIA_TYPE, build_report_xlsx, filename_for
 
@@ -248,6 +249,23 @@ def export_report(report: str, fmt: str, *, svc, db, firm_id: str, client_id: st
     _refuse_unknown(report, fmt)
     doc = _document(report, fmt, svc=svc, db=db, firm_id=firm_id,
                     client_id=client_id, p=params or {})
+    return _render(doc, fmt, db=db, firm_id=firm_id, client_id=client_id, generated_on=generated_on)
+
+
+def export_form_3cd(register: dict, fmt: str, *, db, firm_id: str, client_id: str,
+                    generated_on: Optional[str] = None) -> ExportedFile:
+    """The Form 3CD register (`services.form_3cd_service.build`'s answer) as a working paper, or an `ExportRefused` saying why not.
+
+    The register is built by the caller from the very function the screen's endpoint calls, so this module fetches nothing of its
+    own for it; it only draws it, headed by the practice and naming the client like every other report file. It is a document of
+    the CA's checklist and not a live report, so it is not one of `REPORTS` and has no route under `/api/report-exports`."""
+    if fmt not in (PDF, XLSX):
+        raise ExportRefused(f"The Form 3CD working paper is offered as {PDF} or {XLSX} only.")
+    return _render(form_3cd_document(register), fmt, db=db, firm_id=firm_id, client_id=client_id, generated_on=generated_on)
+
+
+def _render(doc: ReportDocument, fmt: str, *, db, firm_id: str, client_id: str,
+            generated_on: Optional[str]) -> ExportedFile:
     holder = load_holder(db, firm_id, client_id)
     firm = load_firm(db, firm_id)
     if fmt == XLSX:

@@ -29,12 +29,20 @@ export default function ReportExportButtons({
   params,
   formats = ["pdf"],
   disabled = false,
+  download,
+  noun = "report",
 }: {
-  report: ExportReport;
+  /** A live report under `/api/report-exports`. Leave it out and pass `download` for a file the server makes elsewhere. */
+  report?: ExportReport;
   clientId: string;
   params?: ExportParams;
   formats?: ExportFormat[];
   disabled?: boolean;
+  /** How to ask for the file in a given format, for a document that is not one of the live reports (the Form 3CD working paper).
+   *  It gets the same waiting, the same refusal sentence and the same disabled button. */
+  download?: (format: ExportFormat) => Promise<unknown>;
+  /** What the title of a button calls the file ("report", "working paper"). */
+  noun?: string;
 }) {
   const [busy, setBusy] = useState<ExportFormat | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -43,7 +51,9 @@ export default function ReportExportButtons({
     setBusy(format);
     setError(null);
     try {
-      await api.reportExports.download(report, format, clientId, params ?? {});
+      if (download) await download(format);
+      else if (report) await api.reportExports.download(report, format, clientId, params ?? {});
+      else throw new Error("The export could not be made.");
     } catch (e) {
       setError(exportErrorMessage(e));
     } finally {
@@ -60,7 +70,7 @@ export default function ReportExportButtons({
             type="button"
             onClick={() => run(format)}
             disabled={disabled || busy !== null || !clientId}
-            title={format === "pdf" ? "Download a PDF of this report" : "Download this report as an Excel file"}
+            title={format === "pdf" ? `Download a PDF of this ${noun}` : `Download this ${noun} as an Excel file`}
             className="inline-flex items-center gap-1 text-2xs px-2 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-label disabled:opacity-50"
           >
             {busy === format ? (

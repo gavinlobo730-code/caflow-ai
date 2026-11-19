@@ -5067,6 +5067,19 @@ export const api = {
       if (opts?.bankRateBps !== undefined) p.set("bank_rate_bps", String(opts.bankRateBps));
       return request<ApiResp<Form3cdRegister>>(`/api/income-tax/form-3cd?${p.toString()}`);
     },
+    /** The register above as a printable working paper (PDF) or a spreadsheet, built by the server from the same function the
+     *  register's own read calls, so the file is what the screen shows. It carries what is SAVED on the register. A working paper,
+     *  not the portal's Form 3CD, and nothing is filed. A refusal is a thrown `API error 422: {"detail": …}`; read it with
+     *  `exportErrorMessage`. */
+    form3cdWorkingPaper: (client_id: string, fy: string, format: "pdf" | "xlsx", opts?: {
+      nature?: "business" | "profession";
+      bankRateBps?: number;
+    }) => {
+      const p = new URLSearchParams({ client_id, fy, format });
+      if (opts?.nature) p.set("nature", opts.nature);
+      if (opts?.bankRateBps !== undefined) p.set("bank_rate_bps", String(opts.bankRateBps));
+      return downloadFile(`/api/income-tax/form-3cd/export?${p.toString()}`, `form-3cd-working-paper-${fy}.${format}`);
+    },
     /** Record the CA's own answer for a clause this product does not derive.
      *  A code that IS derivable is stored but never rendered in its place —
      *  the GET only reads a manual entry for a code it could not resolve. */
