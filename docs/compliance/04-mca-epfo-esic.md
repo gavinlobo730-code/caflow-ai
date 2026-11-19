@@ -248,7 +248,9 @@ sample line `…#~#15000#~#15000#~#15000#~#15000#~#1800#~#1250#~#550#~#0#~#0` fo
 a ₹15,000 wage and names the columns Employee PF Contribution (7), Employer EPS
 Contribution (8) and Employer PF Contribution (9); its sample return statement
 (page 10) adds up the same way and its account 1 (page 22) is the employee share
-plus the employer share. So the file this module builds carries wrong figures in
+plus the employer share; EPFO's rates sheet says the employer share is the difference of the employee share and the
+pension contribution, and the ECR 2.0 Introduction (December 2016) names the columns EE Share Remitted, EPS
+Contribution Remitted and ER Share Remitted. So the file this module builds carries wrong figures in
 columns 7 and 9 until it is fixed, and an elected member's line, which follows
 the same convention, is wrong in the same way. Do not upload an ECR built by
 this product before then.
