@@ -343,8 +343,8 @@ site; its API serves each section of the Act as an item). What matters here:
   below it on that day (pension para 7(1)(i) to (iii)); the administrative-charge percentage and the insurance rate are fixed
   by notification and stated in no Scheme (S49). Time-limited reliefs in the Annexure: the Employees' Enrolment Campaign, 2026
   (to 31-10-2026), VISHWAS, 2026 and AMNESTY, 2026 (six months from 29-06-2026, extendable by up to six months). Still open:
-  the wage month of September 2026, the portal's file against Form VII, and the official copy of the ceiling notification
-  (S43, S48, POST-A-516).
+  the wage month of September 2026 and the portal's file against Form VII (S43, S48, POST-A-516); the ceiling
+  notification's own e-Gazette copy was compared on 19-11-2026 (night) and matches its figure and date.
 
 ### ⭐ The revamped ECR — VERIFIED, effective wage month September 2025
 
@@ -550,7 +550,7 @@ rest of this file, **it changes a number the product computes today**.
 | **8 May 2026** | Final **Rules under the Code on Social Security** notified |
 | **29 May 2026** | Ministry of Labour notification declaring **₹15,000 the wage ceiling for Chapter III (EPF)** under the new Code (S.O. 2702(E)) |
 | **29 June 2026** | The Employees' Provident Funds Scheme, 2026, the Employees' Pension Scheme, 2026 and the Employees' Deposit-Linked Insurance Scheme, 2026 (G.S.R. 525(E), 527(E), 526(E)) replace the three old schemes |
-| **17 September 2026** | Ministry of Labour S.O. 5109(E): **₹25,000** the wage ceiling for Chapter III, from publication, superseding S.O. 2702(E) (read from a news-site copy, `[S]` until compared with the e-Gazette copy; owner list S43) |
+| **17 September 2026** | Ministry of Labour S.O. 5109(E): **₹25,000** the wage ceiling for Chapter III, from publication, superseding S.O. 2702(E) (read from the e-Gazette's own copy on 19-11-2026, `[P]`: No. 4918, F. No. R-12025/01/2026-SS-II; owner list D1, S43) |
 
 So the framework is not "commenced but awaiting rules" any more. The rules are
 notified and the ceiling has been formally re-notified under the new Code.
