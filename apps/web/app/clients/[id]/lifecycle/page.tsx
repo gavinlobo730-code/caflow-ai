@@ -229,7 +229,11 @@ export default function ClientLifecyclePage() {
         `/api/lifecycle/onboarding/${workflowId}/tasks/${taskId}`,
         { method: "PATCH", body: JSON.stringify({ status }) }
       );
-      if (!json.success) return;
+      if (!json.success) {
+        // Said, not dropped (POST-A-515): the checklist kept showing the old status and nothing told the person the change was refused.
+        setError(json.error ?? "Couldn't update the task.");
+        return;
+      }
       setWorkflows((prev) =>
         prev.map((wf) =>
           wf.id === workflowId

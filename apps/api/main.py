@@ -21,7 +21,7 @@ configure_logging(logging.INFO)
 # Error reporting. What is sent, and why tracing is off, is decided in
 # core.observability.init_error_reporting — it moved out of this file so a test can start
 # it with a capturing transport and read what would have left the process (ops-10).
-from core.observability import boot_notice, error_reporting_enabled, init_error_reporting
+from core.observability import boot_notice, error_reporting_enabled, init_error_reporting, running_build
 
 _SENTRY_DSN = os.environ.get("SENTRY_DSN")
 init_error_reporting(
@@ -797,6 +797,10 @@ def healthcheck():
     # for weeks. "Not yet checked" is not evidence of drift. See _lifespan.
     return api_response(True, {
         "status": "ok",
+        # The commit this process was built from, or `unknown` (POST-A-514): the owner's Where-you-are-signed-in card failed on production
+        # while the website, which redeploys on merge, was already newer, and nothing outside could say which build the API ran. A fact
+        # about this process, read from the environment: this route still touches no network.
+        "build": running_build(),
         "schema": "ok" if _SCHEMA_DRIFT.get("checked") else "checking",
         # What the code calls that the database lacks. REPORTED, not (yet) a 503:
         # read it on production, and flip schema_guard.OBJECT_DRIFT_FAILS_HEALTH

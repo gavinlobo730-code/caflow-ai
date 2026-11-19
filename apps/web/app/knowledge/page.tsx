@@ -115,13 +115,21 @@ function KnowledgeInner() {
 
   async function restore(id: string, version: number) {
     setRowBusy(true);
+    setError("");
     try {
-    try {
-      await api.knowledge.restoreVersion(id, version); await open(id); await open(id);
+      // A refused restore (the backend enforces who may) is said, not swallowed: the page used to look as if the version had come back
+      // (POST-A-515). `open` is asked once; it was asked twice.
+      const res = (await api.knowledge.restoreVersion(id, version)) as { success?: boolean; error?: string | null } | null;
+      if (res && res.success === false) {
+        setError(res.error ?? "Couldn't restore that version.");
+        return;
+      }
+      await open(id);
       // A restore writes a new current version, so the row's version and what a search finds in its text have moved.
       void load(query);
-    } catch { /* backend enforces */ }
-  } finally { setRowBusy(false); }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't restore that version.");
+    } finally { setRowBusy(false); }
   }
 
   return (

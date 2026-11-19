@@ -16,8 +16,13 @@
  *
  * The "already-established session" fallback is trusted only when the URL
  * this page was loaded with actually carried a recovery marker — the
- * implicit flow's `#...&type=recovery` hash, or the PKCE flow's `?code=`
- * (captured once at first render, before Supabase's own URL cleanup can run).
+ * implicit flow's `#...&type=recovery` hash, or the PKCE flow's `?code=`.
+ * That address is read in lib/supabase/client.ts before the library is made
+ * and remembered (lib/auth/recoveryLink.ts), NOT read here: the sign-in guard
+ * holds this page back until the library has started, and the library clears
+ * the marker from the address when it starts, so a read at this page's first
+ * render finds nothing and a valid link could land on "invalid or expired"
+ * depending on a timer (POST-A-510).
  * Without that check, ANY existing session — someone simply signed in,
  * revisiting this bookmarked URL — would reach the form, letting them set a
  * new password with no old password and no recovery link, which is not what
@@ -44,7 +49,7 @@ import {
 import { authErrorMessage, knownAuthErrorMessage } from "@/lib/auth/authErrorMessage";
 import { passwordProblem } from "@/lib/auth/passwordRules";
 import { PasswordRules } from "@/components/auth/PasswordRules";
-import { hasRecoveryMarkerInUrl } from "@/lib/auth/recoveryLink";
+import { forgetRecoveryLink, hasRecoveryMarkerInUrl, recoveryLinkWasOpened } from "@/lib/auth/recoveryLink";
 import { ArrowRight, Eye, EyeOff, ShieldCheck, AlertCircle } from "lucide-react";
 import { FrontDoor } from "@/components/FrontDoor";
 
@@ -72,9 +77,10 @@ async function resolveRedirectPath(): Promise<string> {
 export default function ResetPasswordPage() {
   const supabase = getSupabaseClient();
   const router = useRouter();
-  // Captured once, at first render, before Supabase can clean the address bar.
+  // Whether this page load was opened by a recovery link: remembered from the address as it was BEFORE the library cleaned it (the
+  // address itself is read too, for the case where nothing cleaned it).
   const [hadRecoveryMarker] = useState(() =>
-    typeof window !== "undefined" ? hasRecoveryMarkerInUrl(window.location) : false);
+    typeof window !== "undefined" ? recoveryLinkWasOpened(Date.now()) || hasRecoveryMarkerInUrl(window.location) : false);
   const [stage, setStage] = useState<Stage>("verifying");
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
@@ -90,6 +96,7 @@ export default function ResetPasswordPage() {
     const { data: sub } = supabase.auth.onAuthStateChange((event) => {
       if (event === "PASSWORD_RECOVERY" && !settled) {
         settled = true;
+        forgetRecoveryLink();
         setStage("form");
       }
     });
@@ -100,11 +107,11 @@ export default function ResetPasswordPage() {
     // all) would reach the form too.
     if (hadRecoveryMarker) {
       supabase.auth.getSession().then(({ data }) => {
-        if (!settled && data.session) { settled = true; setStage("form"); }
+        if (!settled && data.session) { settled = true; forgetRecoveryLink(); setStage("form"); }
       });
     }
     const timeout = setTimeout(() => {
-      if (!settled) { settled = true; setStage("invalid"); }
+      if (!settled) { settled = true; forgetRecoveryLink(); setStage("invalid"); }
     }, LINK_WAIT_MS);
     return () => { sub.subscription.unsubscribe(); clearTimeout(timeout); };
   }, [supabase, hadRecoveryMarker]);
