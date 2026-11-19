@@ -19,6 +19,7 @@ import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
+import { CLIENT_LIST_UNREAD } from "@/lib/clients/clientListUnread";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { api } from "@/lib/api";
 import { currentFinancialYearLabel } from "@/lib/dateMath";
@@ -320,6 +321,7 @@ function LoadingSpinner({ allClients }: { allClients: boolean }) {
 export default function ScheduleIIIPage() {
   const [fyIndex, setFyIndex] = useState(0);
   const [clients, setClients] = useState<Client[]>([]);
+  const [clientsFailed, setClientsFailed] = useState(false);
   const [clientId, setClientId] = useState<string>("all");
   const [data, setData] = useState<ScheduleData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -338,17 +340,20 @@ export default function ScheduleIIIPage() {
         // and the mapping for that client is unreachable. The name ordering is
         // applied to the rows that come back, because selectAll orders by its
         // own key inside the paged query.
-        const { data: cls } = await selectAll(() => sb
+        const { data: cls, error } = await selectAll(() => sb
           .from("clients")
           .select("id, client_name, pan, gstin")
           .eq("firm_id", fid)
           .eq("is_internal", false)
           .order("id"));
+        // The pager hands a failure back as `error` and does not throw: a read that stopped partway is not the firm's clients.
+        if (error) throw error;
         setClients(((cls ?? []) as { id: string; client_name: string; pan: string | null; gstin: string | null }[])
           .map((c) => ({ id: c.id, name: c.client_name, pan: c.pan, gstin: c.gstin }))
           .sort((a, b) => a.name.localeCompare(b.name)));
       })
-      .catch(() => {});
+      // Said beside the picker, whose only choice is otherwise "All Clients": a list that could not be read is not a firm with one view.
+      .catch(() => setClientsFailed(true));
   }, []);
 
   const loadData = useCallback(() => {
@@ -429,6 +434,7 @@ export default function ScheduleIIIPage() {
               placeholder="All Clients"
               ariaLabel="Client"
             />
+            {clientsFailed && <p role="alert" className="mt-1 text-2xs text-state-problem">{CLIENT_LIST_UNREAD}</p>}
           </div>
         </div>
         <button

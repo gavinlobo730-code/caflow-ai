@@ -61,7 +61,7 @@ function ARDashboard() {
     // is the page, and a failed lookup of where its invoices live must never
     // blank it. It is awaited before the page is shown so that "could not look
     // up" is never displayed for a lookup still in flight.
-    const lookup = api.practice.get().catch(() => undefined);
+    const lookup = api.practice.get().catch(() => /* readPracticeBooks(undefined) is the "could not look up" state, said below */ undefined);
     try {
       const r = await api.billing.arAging() as ApiResp<Aging>;
       setAging(r.data);

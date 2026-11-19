@@ -77,7 +77,7 @@ export function ProductServiceFormModal({
     let live = true;
     api.inventory.itemGroups({ client_id: clientId })
       .then((r) => { if (live && r.success) setItemGroups(arrayOrEmpty<{ group: string }>(objectOrNull<{ groups?: unknown }>(r.data)?.groups).map((g) => g.group)); })
-      .catch(() => {});
+      .catch(() => { /* suggestions only: the box stays a plain text input, as the note above says */ });
     return () => { live = false; };
   }, [clientId]);
   const v = validateServiceForm(form);

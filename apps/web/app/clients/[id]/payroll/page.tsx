@@ -42,7 +42,7 @@ import { explainMfaRefusal } from "@/lib/auth/mfaRefusal";
 import { Button } from "@/components/ui/button";
 import { promptDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/ui/page-header";
-import { EmptyState } from "@/components/ui/states";
+import { EmptyState, ErrorState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { doingOf, errorPageSentence, failureSentence, fetchBounded, looksLikeMarkup, notOursSentence, plainFailure, PlainFailure, type UntypedJson } from "@/lib/api/failureSentence";
 import { istToday } from "@/lib/dateMath";
@@ -812,7 +812,7 @@ function RunsTab({ clientId, firmId, openDoc }:
   async function fetchSlips(runId: string) {
     setLoadingSlips(true);
     setSlipsFailed(false);
-    const res = await apiFetch<Slip[]>(`/api/payroll/runs/${runId}/slips`).catch(() => null);
+    const res = await apiFetch<Slip[]>(`/api/payroll/runs/${runId}/slips`).catch(() => /* no answer: the check just below sets slipsFailed */ null);
     if (!res || (res as { success?: boolean }).success === false) { setSlipsFailed(true); setSlips([]); setLoadingSlips(false); return; }
     setSlips(res.data || []);
     setLoadingSlips(false);
@@ -1530,25 +1530,38 @@ function OutputsTab({ clientId }: { clientId: string }) {
   // only the server knows — a run being finalised says the books closed, not
   // that anybody uploaded anything.
   const [ecrSeq, setEcrSeq] = useState<ECRSequence | null>(null);
+  // A read that did not answer is not an empty list, and a queue that could not be read is not an empty queue (POST-A-515 (d)): the
+  // first used to draw "No payroll runs yet" and the second drew nothing, so a CA looking for the EPFO order saw no order and no reason.
+  const [runsFailed, setRunsFailed] = useState<string | null>(null);
+  const [sequenceFailed, setSequenceFailed] = useState(false);
 
   const loadSequence = useCallback(async () => {
+    setSequenceFailed(false);
     try {
       const res = (await api.payroll.ecrSequence(clientId)) as { data?: ECRSequence };
       setEcrSeq(objectWithLists<ECRSequence>(res?.data, "filings", "outstanding"));
-    } catch { /* the panel simply does not render */ }
+    } catch { setSequenceFailed(true); }
+  }, [clientId]);
+
+  // No `setLoading(true)` here: the screen blocks with "Loading…" for its first read only, and a retry is a read the failure sentence stays up
+  // through (clearing it first would draw "No payroll runs yet" while the retry is in flight, which is the false nothing this replaces).
+  const loadRuns = useCallback(async () => {
+    try {
+      const res = await apiFetch<PayrollRun[]>(`/api/payroll/runs?client_id=${clientId}`);
+      const list = res?.data ?? [];
+      setRuns(list);
+      setRunId(list[0]?.id ?? "");
+      setRunsFailed(null);
+    } catch (e) {
+      setRuns([]);
+      setRunsFailed(failureSentence(e, "The payroll runs could not be read.", "read"));
+    } finally { setLoading(false); }
   }, [clientId]);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await apiFetch<PayrollRun[]>(`/api/payroll/runs?client_id=${clientId}`);
-        const list = res?.data ?? [];
-        setRuns(list);
-        setRunId(list[0]?.id ?? "");
-      } catch { /* the empty state below says it */ } finally { setLoading(false); }
-    })();
+    loadRuns();
     loadSequence();
-  }, [clientId, loadSequence]);
+  }, [loadRuns, loadSequence]);
 
   const run = runs.find((r) => r.id === runId);
 
@@ -1560,6 +1573,9 @@ function OutputsTab({ clientId }: { clientId: string }) {
   }
 
   if (loading) return <div className="p-5"><TransactionListSkeleton rows={3} /></div>;
+  if (runsFailed) {
+    return <ErrorState className="m-5" title="The payroll runs could not be read" message={`${runsFailed} This is not a client with no runs; try again.`} onRetry={() => { loadRuns(); loadSequence(); }} />;
+  }
   if (runs.length === 0) {
     return (
       <EmptyState
@@ -1620,7 +1636,15 @@ function OutputsTab({ clientId }: { clientId: string }) {
           The sentence is composed on the server — it carries the limit that
           makes the list safe to read, and rebuilding it here would be the
           business logic this codebase keeps out of the browser. */}
-      {ecrSeq?.note && (
+      {sequenceFailed && (
+        <div role="status" className="rounded-xl border border-state-attention-border bg-state-attention-surface p-3">
+          <p className="text-2xs font-semibold text-ps-ink">EPFO filing order</p>
+          <p className="text-2xs text-ps-label mt-1">
+            The filing order could not be read, so it is not shown here. It is not empty; reopen this tab to read it again.
+          </p>
+        </div>
+      )}
+      {!sequenceFailed && ecrSeq?.note && (
         <div className={`rounded-xl border p-3 ${(ecrSeq.outstanding?.length ?? 0)
           ? "border-state-attention-border bg-state-attention-surface" : "border-ps-border bg-white"}`}>
           <p className="text-2xs font-semibold text-ps-ink">EPFO filing order</p>
