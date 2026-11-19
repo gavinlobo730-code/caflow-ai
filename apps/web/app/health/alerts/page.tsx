@@ -11,7 +11,7 @@ import { formatDate } from "@/lib/dates/format";
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
 import { selectAll } from "@/lib/supabase/selectAll";
-import { doingOf, fetchBounded, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, failureSentence, fetchBounded, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -74,7 +74,10 @@ export default function HealthAlertsPage() {
     try {
       const json = await apiFetch(`/api/health/alerts/${alertId}/resolve`, { method: "POST", body: JSON.stringify({}) });
       if (json.success) setAlerts((prev) => prev.filter((a) => a.id !== alertId));
-    } catch { /* non-fatal */ }
+    } catch (e) {
+      // Said, not swallowed: a resolve that did not answer may have landed, and the alert would sit on the list as if nothing had been asked.
+      setError(failureSentence(e, "Couldn't resolve the alert.", "write"));
+    }
     finally { setResolving(null); }
   }
 

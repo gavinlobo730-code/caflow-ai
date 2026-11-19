@@ -19,7 +19,7 @@ import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state
 import { objectOrNull } from "@/lib/api/shape";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
-import { doingOf, fetchBounded, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, failureSentence, fetchBounded, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -237,7 +237,10 @@ export default function ClientLifecyclePage() {
             : wf
         )
       );
-    } catch { /* non-fatal */ }
+    } catch (e) {
+      // Said, not swallowed: the change to the task may have gone through, and the screen would show the old status as if it had not.
+      setError(failureSentence(e, "Couldn't update the task.", "write"));
+    }
   }
 
   async function handleSaveRenewal() {
