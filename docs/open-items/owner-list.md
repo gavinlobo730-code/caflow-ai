@@ -461,6 +461,14 @@ Each row: the exact question, the document or section needed, who can supply it,
 - **Stays unbuilt meanwhile:** printing a prior-period position in Annexure II, the 24Q source and Form 16; any use of earlier exemptions in the settlement; the wage-base history; a release that refuses a run for want of a position (it names the gap).
 - **Ledger:** POST-A-082
 
+### S43. The EPF wage ceiling: was it raised from Rs 15,000 to Rs 25,000 on 17 September 2026, and what does it reach?
+
+- **Question:** Search results of 19 November 2026 (secondary commentary only, none opened by me) say the Ministry of Labour and Employment fixed Rs 25,000 a month as the wage ceiling for Chapter III of the Code on Social Security, 2020, under section 2(89), by notification S.O. 5109(E), effective on its Gazette publication on 17 September 2026, replacing the one of 29 May 2026 that set Rs 15,000 (numbered S.O. 2702(E) by one source and S.O. 2701(E) in the ledger's earlier note). The product holds Rs 15,000 for the provident fund, the pension and the insurance wages. (1) Is the notification real, and are its number and date right? (2) From which wage month does it apply? (3) Does it raise the pension and insurance ceilings too, or only the contribution wages? (4) Is there a transition rule for employees already above Rs 15,000?
+- **Needed:** The notification itself (Gazette of India, Ministry of Labour and Employment), and any EPFO circular after it, read from the page. A copy of the notification is reported to sit at a news site's address; the official copy is the one that counts.
+- **Who can supply it:** you or a CA, saved from a normal browser (the Gazette and EPFO sites are blocked from this environment) and attached in the chat; Claude reads it from there.
+- **Stays unbuilt meanwhile:** any change to the Rs 15,000 ceilings; until it is read, a payroll run for a wage month from September 2026 may compute on the old ceiling, so say so if a CA asks.
+- **Ledger:** POST-A-516, POST-C-121
+
 ## 5. Wait-until-asked items the goal probably needs
 
 Because the goal is to replace every platform, some items I decided to leave until a client asks will probably be needed. They stay parked, and you do not have to answer; this is the list to pull from. Say the word and I move any of them to the front. My default: build them in the order a pilot firm or the demo audience asks, after the base is solid.
