@@ -415,7 +415,6 @@ services/audit_query_service.py :: B904 :: ist_day_bounds._parse :: 1
 services/bank_batch_service.py :: B904 :: BankBatchService.add_attachment :: 1
 services/bank_batch_service.py :: B904 :: BankBatchService.remove_attachment :: 1
 services/bank_column_mapping_service.py :: F401 :: <module> :: 1
-services/bank_entry_service.py :: F401 :: <module> :: 1
 services/bank_exception_service.py :: C901 :: _matched_documents :: 18
 services/bank_payee_service.py :: F401 :: <module> :: 1
 services/bank_posting_service.py :: B904 :: BankPostingService._charge_lines :: 2

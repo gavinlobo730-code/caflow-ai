@@ -61,7 +61,7 @@ from models.banking import (
     ReconcileItemsIn,
     ReconciliationReopenIn, EntriesRedraftIn, EntriesPassReadyIn, PassEntryIn,
 )
-from core.permissions import rbac
+from core.permissions import can_user, rbac
 from services.banking_service import banking_service
 from services.bank_matching_service import bank_matching_service
 from services.bank_posting_service import bank_posting_service
@@ -233,6 +233,22 @@ def _bank_ledger_conflict(db, firm_id: str, client_id: str, coa_account_id: str,
     return None
 
 
+def _ledger_problem(db, firm_id: str, client_id: Optional[str], coa_account_id: str) -> Optional[str]:
+    """Why this chart row cannot be the linked ledger of a bank account of this client, or None (POST-A-492).
+
+    It must exist, be this client's own or a firm-level one (never another client's), and be a ledger a bank can sit on
+    (`account_kind.ledger_problem_for_a_bank`: an asset or a liability, and not a cash ledger). Read with the privileged
+    client after the caller's right to the client has been asserted by the route."""
+    rows = (privileged_for(db).table("chart_of_accounts").select("id, client_id, account_type, account_subtype, is_active")
+            .eq("firm_id", firm_id).eq("id", coa_account_id).limit(1).execute().data or [])
+    row = rows[0] if rows else None
+    if not row or (row.get("client_id") and str(row["client_id"]) != str(client_id)):
+        return "That ledger account was not found for this client. Choose another, or let a new one be created."
+    if row.get("is_active") is False:
+        return "That ledger account is not active. Choose another, or let a new one be created."
+    return account_kind.ledger_problem_for_a_bank(row.get("account_type"), row.get("account_subtype"))
+
+
 def _next_bank_account_code(db, firm_id: str) -> str:
     """The next free 4-digit code in the bank block (1101 upwards).
 
@@ -311,8 +327,7 @@ def _ensure_bank_ledger(db, firm_id: str, client_id: str, bank_name: str,
     same "HDFC Bank — 7890", and so does one client re-adding an account after
     deactivating it. Each attempt re-reads the codes and disambiguates the name."""
     _typ, _sub = ledger_shape_for_bank(account_type)
-    last4 = str(account_no or "")[-4:]
-    base = f"{bank_name.strip()} — {last4}" if last4 else bank_name.strip()
+    base = account_kind.new_ledger_name(bank_name, account_no)
     for attempt in range(1, 6):
         name = base if attempt == 1 else f"{base} ({attempt})"
         try:
@@ -551,6 +566,45 @@ def list_bank_accounts(
     return api_response(True, _annotate_accounts(db, current_user["firm_id"], rows))
 
 
+@router.get("/accounts/ledger-choices")
+def bank_ledger_choices(
+    client_id: str = Query(...),
+    account_id: Optional[str] = Query(None, description="The account being edited: its own ledger stays on the list"),
+    bank_name: str = Query("", description="With account_no, names the ledger a new account would get"),
+    account_no: str = Query(""),
+    current_user: dict = Depends(rbac("banking", "read")),
+):
+    """The ledgers a bank account of this client may be linked to, and the name a new one would be given (POST-A-492).
+
+    The form used to read the whole chart and offer every asset and liability ledger, "Cash in Hand" among them, and said
+    nothing of the ledger it would create if none was picked. The rule for what a bank can sit on is
+    `account_kind.ledger_problem_for_a_bank`, applied HERE and not in the browser: this client's own and firm-level ledgers,
+    never another bank account's (one ledger per bank), never a cash ledger. The account being edited keeps its own current
+    ledger on the list whatever it is, so the form can show what is on file."""
+    assert_client_access(current_user, client_id)
+    db = _db()
+    new_name = account_kind.new_ledger_name(bank_name, account_no) or None
+    if not db:
+        return api_response(True, {"ledgers": [], "new_ledger_name": new_name})
+    firm_id = current_user["firm_id"]
+    taken = {str(a["coa_account_id"]): str(a["id"]) for a in
+             (privileged_for(db).table("bank_accounts").select("id, coa_account_id")
+              .eq("firm_id", firm_id).eq("client_id", client_id).execute().data or [])
+             if a.get("coa_account_id")}
+    rows = fetch_all(lambda: (privileged_for(db).table("chart_of_accounts")
+                              .select("id, account_code, account_name, account_type, account_subtype")
+                              .eq("firm_id", firm_id).eq("is_active", True)
+                              .or_(f"client_id.eq.{client_id},client_id.is.null")),
+                     key="id", label="the ledgers a bank account may use")
+    ledgers = []
+    for c in sorted(rows, key=lambda x: (str(x.get("account_code") or ""), str(x.get("id")))):
+        owner = taken.get(str(c["id"]))
+        own_current = bool(account_id) and owner == str(account_id)
+        if own_current or (owner is None and not account_kind.ledger_problem_for_a_bank(c.get("account_type"), c.get("account_subtype"))):
+            ledgers.append({k: c.get(k) for k in ("id", "account_code", "account_name", "account_type", "account_subtype")})
+    return api_response(True, {"ledgers": ledgers, "new_ledger_name": new_name})
+
+
 @router.post("/accounts")
 def create_bank_account(
     data: BankAccountIn,
@@ -591,10 +645,29 @@ def create_bank_account(
                 detail=f"That ledger account is already linked to {taken}. Each bank "
                        f"account needs its own ledger, or their balances merge into one "
                        f"line and neither can be reconciled.")
+        unsuitable = _ledger_problem(db, firm_id, payload["client_id"], chosen_coa)
+        if unsuitable:
+            raise HTTPException(status_code=422, detail=unsuitable)
     else:
+        # The new ledger is inserted as the CALLER, so the chart's own role gate (a Manager or a Partner, `accounting:write`)
+        # applies to it: an Executive may add a bank account but not create a chart row, and used to be saved unlinked without a word;
+        # said now, before anything is tried (found by the independent review of the change that stopped saving unlinked).
+        if not can_user(current_user, "accounting", "write"):
+            raise HTTPException(
+                status_code=422,
+                detail="Adding a bank account also creates its ledger, which needs a Manager or a Partner. Ask one to add it, "
+                       "or choose an existing bank ledger for it.")
         payload["coa_account_id"] = _ensure_bank_ledger(
             db, firm_id, payload["client_id"], payload["bank_name"],
             payload["account_no"], payload.get("account_type"))
+        # POST-A-492. An account that was meant to get a ledger of its own and did not is NOT saved unlinked and said nothing
+        # about: its postings would fall back and its balance would sit nowhere. The form stays open with its fields, so
+        # nothing typed is lost, and the sentence says what to do.
+        if not payload["coa_account_id"]:
+            raise HTTPException(
+                status_code=422,
+                detail="A ledger for this bank account could not be created, so the account was not saved. Try again, "
+                       "or pick an existing bank ledger for it.")
 
     row = privileged_for(db).table("bank_accounts").insert(payload).execute()
     account = (row.data or [{}])[0]
@@ -660,6 +733,11 @@ def update_bank_account(
                 detail=f"That ledger account is already linked to {taken}. Each bank "
                        f"account needs its own ledger, or their balances merge into one "
                        f"line and neither can be reconciled.")
+        # Only when the link CHANGES: an account already on a ledger this rule would refuse can still be edited otherwise.
+        if update["coa_account_id"] != prior.get("coa_account_id"):
+            unsuitable = _ledger_problem(db, firm_id, prior.get("client_id"), update["coa_account_id"])
+            if unsuitable:
+                raise HTTPException(status_code=422, detail=unsuitable)
     # BANK-27, on the MERGED state. BankAccountUpdateIn cannot see it: a PATCH
     # carries only what changed, so "set a non-zero opening balance" on an
     # account whose stored date is null looks valid field by field and lands
@@ -2267,6 +2345,7 @@ def pass_ready_entries(
         db, current_user["firm_id"], data.client_id, limit=data.limit,
         only_trusted=data.only_trusted, bank_account_id=data.bank_account_id,
         txn_ids=data.transaction_ids,
+        batch_gst=None if data.only_trusted else {"rate": data.gst_rate_bps, "interstate": bool(data.is_interstate)},
         actor_id=current_user.get("id"), actor_auth_id=current_user.get("auth_user_id"))
     if passed.get("rules_not_posting"):       # the reason names a colleague's status; the run summary keeps it, a caller gets this
         passed["rules_not_posting"] = [{"rule_id": x["rule_id"], "reason": WAITING_SENTENCE} for x in passed["rules_not_posting"]]

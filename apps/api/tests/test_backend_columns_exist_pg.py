@@ -426,7 +426,10 @@ UNFIXED: dict[str, str] = {}
 # inserts the rows `_row` builds, whose keys are literal there and are migration 660's columns; and the received-against-output-tax
 # check's chart read filters `or_(f"client_id.eq.{client_id},client_id.is.null")`, the interpolated client_id the other chart reads
 # use, with the select list beside it naming the columns.
-MAX_UNREADABLE = 475
+# 476 (19-11-2026, POST-A-489): one more, unreadable by construction. The bulk pass's chart read for a client's ledgers filters
+# `or_(f"client_id.eq.{client_id},client_id.is.null")`, the interpolated client_id the other chart reads already use, with the select
+# list beside it naming the columns.
+MAX_UNREADABLE = 476
 
 
 def _psql(dsn: str, sql: str) -> subprocess.CompletedProcess:
