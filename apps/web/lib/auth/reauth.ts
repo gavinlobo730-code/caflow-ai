@@ -21,7 +21,7 @@ import type { AuthError, UserResponse } from "@supabase/supabase-js";
 
 /** The minimal slice of supabase.auth this helper needs — keeps it mockable. */
 export interface ReauthCapableAuth {
-  updateUser(attributes: { password?: string; nonce?: string }): Promise<UserResponse>;
+  updateUser(attributes: { password?: string; nonce?: string; current_password?: string }): Promise<UserResponse>;
 }
 
 /** True when an updateUser() error indicates a bad/expired reauthentication nonce. */
@@ -70,11 +70,20 @@ export const RESET_LINK_ENDED_MESSAGE =
  * supabase.auth.reauthenticate(). The nonce is sent VERBATIM (only trimmed) —
  * never truncated, sliced, or parsed — so the exact code the user typed is the
  * exact value Supabase receives.
+ *
+ * `currentPassword` is for the screen where the person KNOWS it (Settings > Security): with the project's "Require current password
+ * when updating" switch on, the change is refused without it, nonce or no nonce (POST-A-512). A screen reached by an emailed link
+ * has no current password to send and passes none.
  */
 export async function setPasswordWithReauthNonce(
   auth: ReauthCapableAuth,
   password: string,
   nonce: string,
+  currentPassword?: string,
 ): Promise<UserResponse> {
-  return auth.updateUser({ password, nonce: nonce.trim() });
+  return auth.updateUser(
+    currentPassword === undefined
+      ? { password, nonce: nonce.trim() }
+      : { password, nonce: nonce.trim(), current_password: currentPassword },
+  );
 }

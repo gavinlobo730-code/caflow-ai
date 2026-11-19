@@ -101,3 +101,14 @@ test("a same-password refusal, by code or by message, is recognised and nothing 
   assert.equal(isSamePasswordError(undefined), false);
   assert.equal(isSamePasswordError({}), false);
 });
+
+// POST-A-512: Settings > Security knows the current password and must send it with the change; an emailed-link screen has none.
+test("setPasswordWithReauthNonce sends the current password when the screen has one, and nothing extra when it has not", async () => {
+  const withCurrent = makeMockAuth();
+  await setPasswordWithReauthNonce(withCurrent.auth as unknown as ReauthCapableAuth, "New#Pass1", " 123456 ", "Old#Pass1");
+  assert.deepEqual(withCurrent.calls[0].args[0], { password: "New#Pass1", nonce: "123456", current_password: "Old#Pass1" });
+
+  const without = makeMockAuth();
+  await setPasswordWithReauthNonce(without.auth as unknown as ReauthCapableAuth, "New#Pass1", "123456");
+  assert.deepEqual(without.calls[0].args[0], { password: "New#Pass1", nonce: "123456" }, "no current_password key for a screen that has none");
+});
