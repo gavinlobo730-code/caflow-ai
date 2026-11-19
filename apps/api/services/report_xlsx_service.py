@@ -59,6 +59,7 @@ import re
 from decimal import Decimal
 
 from openpyxl import Workbook
+from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
@@ -119,6 +120,16 @@ def _keep_text_as_text(wb: Workbook) -> None:
                     cell.quotePrefix = True
 
 
+def _xml_safe(value):
+    """A string without the characters a spreadsheet file cannot hold (the C0 controls but tab, line feed and carriage return).
+
+    openpyxl RAISES on one at the moment a cell is written, so a ledger narration, a client's name or a CA's typed answer carrying a
+    vertical tab (what a Word soft line break pastes as) or a bell made the whole download a 500. The character is dropped and
+    nothing else about the text is touched; it is done where a string is written because the refusal is at the write, and a
+    string any reader typed can carry one. A number, a Decimal and None are returned as they are."""
+    return ILLEGAL_CHARACTERS_RE.sub("", value) if isinstance(value, str) else value
+
+
 def _unique_sheet(wb: Workbook, wanted: str) -> str:
     """A sheet name Excel accepts that is not already in the workbook."""
     base = _safe_sheet_name(wanted)
@@ -137,8 +148,8 @@ def build_report_xlsx(doc: ReportDocument, *, holder: dict, firm: dict,
                    or holder.get("client_name") or "")
     wb = Workbook()
     wb.remove(wb.active)
-    wb.properties.title = f"{doc.title} - {client_name}".strip(" -")
-    wb.properties.creator = firm.get("name") or ""
+    wb.properties.title = _xml_safe(f"{doc.title} - {client_name}".strip(" -"))
+    wb.properties.creator = _xml_safe(firm.get("name") or "")
 
     head_fill = PatternFill("solid", fgColor=_hex(pdf_style.INK))
     head_font = Font(bold=True, color="FFFFFF")
@@ -167,7 +178,7 @@ def build_report_xlsx(doc: ReportDocument, *, holder: dict, firm: dict,
                 elif col.kind == INT:
                     values.append(int(value))
                 else:
-                    values.append(value)
+                    values.append(_xml_safe(value))
                 if r - 2 < _WIDTH_SAMPLE:
                     widths[i] = max(widths[i], len(cell_text(col.kind, value)))
             ws.append(values)
@@ -206,10 +217,10 @@ def build_report_xlsx(doc: ReportDocument, *, holder: dict, firm: dict,
     lines.extend(doc.meta)
     for key, value in lines:
         if value:
-            info.append([key, value])
+            info.append([key, _xml_safe(value)])
     info.append([])
     for note in doc.notes:
-        info.append(["Note", note])
+        info.append(["Note", _xml_safe(note)])
     info.column_dimensions["A"].width = 18
     info.column_dimensions["B"].width = 100
     for row in info.iter_rows(min_col=1, max_col=1):

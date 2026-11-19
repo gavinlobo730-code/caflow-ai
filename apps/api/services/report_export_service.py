@@ -37,6 +37,7 @@ from typing import Optional
 from domain.reporting import export_builders as B
 from domain.reporting.export_document import ExportRefused, ReportDocument
 from domain.reporting.form_3cd_document import form_3cd_document
+from reportlab.platypus.doctemplate import LayoutError
 from services.report_pdf_service import build_report_pdf
 from services.report_xlsx_service import XLSX_MEDIA_TYPE, build_report_xlsx, filename_for
 
@@ -272,7 +273,14 @@ def _render(doc: ReportDocument, fmt: str, *, db, firm_id: str, client_id: str,
         content = build_report_xlsx(doc, holder=holder, firm=firm, generated_on=generated_on)
         media = XLSX_MEDIA_TYPE
     else:
-        content = build_report_pdf(doc, holder=holder, firm=firm, generated_on=generated_on)
+        try:
+            content = build_report_pdf(doc, holder=holder, firm=firm, generated_on=generated_on)
+        except LayoutError:
+            # A table row cannot be split across pages, so one row taller than a page cannot be laid out at all. It is said in words
+            # (a 422 the screen shows) and not left to be a 500; the spreadsheet of the same report has no such limit.
+            raise ExportRefused(
+                "This document has a row taller than one page, so it could not be laid out and was not printed. Shorten the longest "
+                "entry, or download the spreadsheet instead.") from None
         media = PDF_MEDIA_TYPE
     return ExportedFile(content=content, filename=filename_for(doc.file_stem, fmt),
                         media_type=media)

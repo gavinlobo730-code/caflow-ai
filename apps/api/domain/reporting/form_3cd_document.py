@@ -49,6 +49,11 @@ FORM_3CD = "form-3cd"
 #: Printed lines (rows of the first table) past which the document is refused. A real register is a few hundred at most.
 MAX_LINES = 5_000
 
+#: A printed row holds at most this many characters. A table row cannot be split across pages, so one long answer (a CA's narrative of a
+#: few thousand characters, or an unbroken string) made the page layout raise and the download a 500; a long line is cut into rows of
+#: this size, at a space where there is one, and every row counts toward `MAX_LINES`.
+ROW_CHARS = 400
+
 #: A level of nesting is shown by this many no-break spaces; ordinary spaces at the start of a PDF cell are collapsed by the
 #: layout, and a spreadsheet keeps them as typed.
 _INDENT = "    "
@@ -61,6 +66,10 @@ _STATUS_WORDS = {"draft": "Draft", "review": "In review", "finalised": "Recorded
 
 #: Words in a key that are abbreviations, so a label reads "TAN" and not "Tan". A word not listed is written as it is.
 _ABBREVIATIONS = frozenset({"tan", "tds", "tcs", "pan", "gst", "gstin", "cgst", "sgst", "igst", "itc", "msme", "msmed", "wdv", "fy", "ay", "hsn"})
+
+#: The control characters that are neither a line boundary (`str.splitlines` takes \x0b, \x0c, \x1c-\x1e, \x85 and the Unicode separators
+#: as one, so a Word soft break becomes a new line) nor whitespace a page can use. They are dropped; a tab becomes a space.
+_CONTROLS = re.compile(r"[\x00-\x08\x0e-\x1b\x1f\x7f]")
 
 _MONEY_KEY = re.compile(r"_paise$")
 _RATE_KEY = re.compile(r"_bps$")
@@ -125,8 +134,52 @@ def _record_line(record: dict) -> str:
     return "; ".join(parts)
 
 
+def _chunks(text: str, size: int = ROW_CHARS) -> list[str]:
+    """`text` cut into pieces of at most `size` characters, at the last space where there is one in the second half of a piece."""
+    out: list[str] = []
+    while len(text) > size:
+        cut = text.rfind(" ", 0, size + 1)
+        if cut < size // 2:
+            out.append(text[:size])
+            text = text[size:]
+        else:
+            out.append(text[:cut].rstrip())
+            text = text[cut:].lstrip(" ")
+    out.append(text)
+    return out
+
+
+def printable(lines: list[str]) -> list[str]:
+    """Each line as rows a page and a spreadsheet can hold: broken at every line boundary the text carries (an answer typed over several
+    lines is several rows, with the line's own indent kept), controls dropped, and no row longer than `ROW_CHARS`."""
+    out: list[str] = []
+    for line in lines:
+        stripped = line.lstrip("\u00a0")
+        pad = line[: len(line) - len(stripped)]
+        text = _CONTROLS.sub("", stripped.replace("\t", " "))
+        pieces = text.splitlines() or [""]
+        for piece in pieces:
+            for chunk in _chunks(piece):
+                out.append(pad + chunk)
+    return out
+
+
+def one_line(text: Any) -> str:
+    """A sentence on one line: line boundaries and runs of white space are single spaces and controls are gone."""
+    return " ".join(_CONTROLS.sub("", str(text or "")).split())
+
+
+def is_blank(value: Any) -> bool:
+    """No answer: nothing, or a string with nothing in it but white space (a CA who cleared a box and saved stored one)."""
+    return value is None or (isinstance(value, str) and not value.strip())
+
+
 def describe(value: Any, key: Optional[str] = None, depth: int = 0) -> list[str]:
     """Any answer, as the lines a person would write it on a page. See the module note for the rules."""
+    return printable(_describe(value, key, depth))
+
+
+def _describe(value: Any, key: Optional[str] = None, depth: int = 0) -> list[str]:
     pad = _INDENT * depth
     if _is_scalar(value):
         text, _ = _scalar(value, key)
@@ -143,7 +196,7 @@ def describe(value: Any, key: Optional[str] = None, depth: int = 0) -> list[str]
                 lines.append(f"{pad}{_label(k, unit_stripped=False)}: No entries.")
             else:
                 lines.append(f"{pad}{_label(k, unit_stripped=False)}:")
-                lines.extend(describe(v, k, depth + 1))
+                lines.extend(_describe(v, k, depth + 1))
         return lines
     items = list(value)
     if not items:
@@ -157,16 +210,16 @@ def describe(value: Any, key: Optional[str] = None, depth: int = 0) -> list[str]
             lines.append(f"{pad}- {_record_line(item)}")
         else:
             lines.append(f"{pad}-")
-            lines.extend(describe(item, key, depth + 1))
+            lines.extend(_describe(item, key, depth + 1))
     return lines
 
 
 def _status_of(clause: dict) -> str:
+    if is_blank(clause.get("value")):
+        return NOT_ANSWERED
     if clause.get("derived"):
         return FROM_THE_BOOKS
-    if clause.get("value") is not None:
-        return RECORDED_BY_THE_CA
-    return NOT_ANSWERED
+    return RECORDED_BY_THE_CA
 
 
 def form_3cd_document(register: dict) -> ReportDocument:
@@ -181,13 +234,14 @@ def form_3cd_document(register: dict) -> ReportDocument:
     for clause in clauses:
         status = _status_of(clause)
         counts[status] += 1
-        code = str(clause.get("code") or "")
-        heading = str(clause.get("heading") or "")
-        lines = describe(clause["value"]) if clause.get("value") is not None else ["Not answered here."]
+        code = one_line(clause.get("code"))
+        heading = one_line(clause.get("heading"))
+        lines = ["Not answered here."] if status == NOT_ANSWERED else describe(clause["value"])
         for i, line in enumerate(lines):
             answer_rows.append(Row(
                 (code, heading, line, status) if i == 0 else ("", "", line, ""), BODY))
-        basis_rows.append(Row((code, str(clause.get("note") or "")), BODY))
+        for i, chunk in enumerate(_chunks(one_line(clause.get("note")))):
+            basis_rows.append(Row((code if i == 0 else "", chunk), BODY))
         if len(answer_rows) > MAX_LINES:
             raise ExportRefused(
                 f"This Form 3CD register runs to more than {MAX_LINES:,} printed lines, which is more than a working paper takes, "
@@ -224,9 +278,12 @@ def form_3cd_document(register: dict) -> ReportDocument:
             "This is a working paper for the CA's review, built from the books as they stand and from the answers the CA has "
             "recorded on the register. It is not Form 3CD as the Income Tax portal takes it: PracticeSync does not produce that "
             "file, and nothing here has been filed or submitted.",
-            "\"From the books\" means a figure PracticeSync computed from this client's records by the module named in its basis; "
-            "\"Recorded by the CA\" means the CA typed it on the register and PracticeSync has not checked it; \"Not answered here\" "
-            "means PracticeSync neither holds nor derives that fact, and the CA answers it in the report.",
+            "\"From the books\" means PracticeSync answered the clause from this client's records, by the module its basis names. Where the "
+            "basis says a default was applied, or that nothing is recorded, that is what the answer is; \"No entries\" means none were found, "
+            "not that anyone confirmed there are none. \"Recorded by the CA\" means the CA typed it on the register and PracticeSync has not "
+            "checked it. \"Not answered here\" means PracticeSync gave no answer for the clause in this register, either because it does "
+            "not hold or derive that fact or because it could not resolve it this time; the basis says which, and the CA answers it in the "
+            "report.",
             "Where a clause is answered from only part of what the form asks, its basis says which part and what is left to the CA, "
             "and a gap the module behind a figure named is printed with that figure.",
         ),

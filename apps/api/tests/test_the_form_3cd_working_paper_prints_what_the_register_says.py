@@ -113,6 +113,15 @@ def register():
     return db, out
 
 
+def _basis(doc) -> dict:
+    """code -> the whole basis sentence (a long one is several rows; the continuation rows carry no code)."""
+    out, code = {}, None
+    for r in doc.tables[1].rows:
+        code = r.cells[0] or code
+        out[code] = (out.get(code, "") + " " + r.cells[1]).strip()
+    return out
+
+
 def _first_rows(doc):
     return [r.cells for r in doc.tables[0].rows if r.cells[0]]
 
@@ -122,7 +131,7 @@ def test_every_clause_is_named_once_in_the_forms_own_order(register):
     doc = form_3cd_document(out)
     assert [c[0] for c in _first_rows(doc)] == [c.code for c in f3cd.CLAUSES]
     assert [c[1] for c in _first_rows(doc)] == [c.heading for c in f3cd.CLAUSES]
-    assert [r.cells[0] for r in doc.tables[1].rows] == [c.code for c in f3cd.CLAUSES]
+    assert [r.cells[0] for r in doc.tables[1].rows if r.cells[0]] == [c.code for c in f3cd.CLAUSES]
 
 
 def test_each_clause_says_who_answered_it(register):
@@ -137,7 +146,7 @@ def test_each_clause_says_who_answered_it(register):
 def test_the_basis_of_an_unanswered_clause_is_the_reason_the_register_gives(register):
     _, out = register
     doc = form_3cd_document(out)
-    basis = {r.cells[0]: r.cells[1] for r in doc.tables[1].rows}
+    basis = _basis(doc)
     assert basis["2"] == next(c for c in out["clauses"] if c["code"] == "2")["note"]
     assert "registered address" in basis["2"]
     assert "Recorded by the CA" in basis["31"]
@@ -316,3 +325,124 @@ def test_a_refusal_is_a_422_in_words(route, monkeypatch):
     with pytest.raises(HTTPException) as err:
         route()
     assert err.value.status_code == 422 and "not cut short" in err.value.detail
+
+
+# ── what the independent review of the first version found (20-11-2026) ──────────────────────────────────────────────────────────
+
+def _register_with(manual: dict, derived: dict | None = None) -> dict:
+    return f3cd.build_register(client_id=CLIENT, financial_year=FY, derived=derived or {}, manual=manual).to_dict()
+
+
+def _answer_rows(doc, code: str) -> list:
+    rows = doc.tables[0].rows
+    start = next(i for i, r in enumerate(rows) if r.cells[0] == code)
+    out = [rows[start].cells]
+    for r in rows[start + 1:]:
+        if r.cells[0]:
+            break
+        out.append(r.cells)
+    return out
+
+
+def test_an_answer_typed_over_several_lines_is_several_rows_and_not_one_run_together():
+    doc = form_3cd_document(_register_with({"31": "Line one\nLine two\r\nLine three"}))
+    rows = _answer_rows(doc, "31")
+    assert [r[2] for r in rows] == ["Line one", "Line two", "Line three"]
+    assert rows[0][3] == "Recorded by the CA" and all(r[0] == "" and r[3] == "" for r in rows[1:])
+
+
+def test_a_word_soft_break_is_a_line_boundary_and_other_controls_are_dropped():
+    doc = form_3cd_document(_register_with({"31": "before\x0bafter\x07 bell\tTabbed"}))
+    assert [r[2] for r in _answer_rows(doc, "31")] == ["before", "after bell Tabbed"]
+
+
+def test_a_line_break_inside_a_record_keeps_the_records_indent():
+    lines = describe({"gaps": ["first\nsecond"]})
+    assert lines[0] == "Gaps:" and lines[1].endswith("- first") and lines[2].lstrip("\u00a0") == "second"
+    assert lines[2].startswith("\u00a0")
+
+
+@pytest.mark.parametrize("answer", [
+    pytest.param(("word " * 1100).strip(), id="prose"),
+    pytest.param("x" * 3500, id="one unbroken string"),
+    pytest.param("\n".join(["a line of an auditor's narrative"] * 200), id="many lines"),
+])
+def test_a_long_answer_is_cut_into_rows_and_the_pdf_is_made(answer, register):
+    db, out = register
+    from services.report_export_service import export_form_3cd
+    from services.form_3cd_service import save_manual_clauses
+    save_manual_clauses(db, FIRM, CLIENT, FY, {"31": answer}, status="review")
+    from services.form_3cd_service import build
+    long_register = build(db, FIRM, CLIENT, FY, nature="business")
+    doc = form_3cd_document(long_register)
+    assert all(len(r.cells[2]) <= doc_mod.ROW_CHARS for r in doc.tables[0].rows), "no row is longer than the limit"
+    assert len(_answer_rows(doc, "31")) > 1
+    pdf = export_form_3cd(long_register, "pdf", db=db, firm_id=FIRM, client_id=CLIENT).content
+    assert pdf.startswith(b"%PDF")
+    # A cut falls where the page wraps, so the text is compared with its white space removed.
+    assert "".join(answer.split())[:200] in "".join(_pdf_text(pdf).split())
+
+
+def test_the_pieces_of_a_cut_answer_say_the_same_thing_as_the_whole():
+    answer = ("alpha beta gamma delta " * 80).strip()
+    doc = form_3cd_document(_register_with({"31": answer}))
+    pieces = [r[2] for r in _answer_rows(doc, "31")]
+    assert " ".join(" ".join(pieces).split()) == answer
+    assert all(len(p) <= doc_mod.ROW_CHARS for p in pieces)
+
+
+@pytest.mark.parametrize("blank", ["", "   ", "\n\t "])
+def test_a_cleared_box_is_not_an_answer(blank):
+    out = _register_with({"31": blank})
+    doc = form_3cd_document(out)
+    row = next(r for r in _first_rows(doc) if r[0] == "31")
+    assert row[3] == "Not answered here" and row[2] == "Not answered here."
+    assert dict(doc.meta)["Clauses"].startswith("0 from the books, 0 recorded by the CA, 50 not answered")
+
+
+def test_a_register_with_only_a_blank_in_a_derivable_clause_prints_it_as_unanswered():
+    out = _register_with({}, derived={"14": ("", "no policy")})
+    row = next(r for r in _first_rows(form_3cd_document(out)) if r[0] == "14")
+    assert row[3] == "Not answered here"
+
+
+def test_a_control_character_in_a_recorded_answer_still_makes_the_spreadsheet(register):
+    db, _ = register
+    from openpyxl import load_workbook
+    from services.report_export_service import export_form_3cd
+    out = _register_with({"1": "ok\x0b", "31": "bell\x07 and \x00 nul"})
+    wb = load_workbook(io.BytesIO(export_form_3cd(out, "xlsx", db=db, firm_id=FIRM, client_id=CLIENT).content))
+    answers = [row[2].value for row in wb["Statement of particulars"].iter_rows(min_row=2)]
+    assert "ok" in answers and "bell and  nul" in answers
+
+
+def test_the_spreadsheet_writer_drops_an_illegal_character_from_any_report_text(register):
+    """The same defect was in every report: a ledger narration with a vertical tab made the whole download a 500."""
+    db, _ = register
+    from domain.reporting.export_document import Column, ReportDocument, Row, Table, TEXT
+    from services.report_xlsx_service import build_report_xlsx
+    doc = ReportDocument(report_id="x", title="T\x0b", subject="", period="p", notes=("note\x07",),
+                         tables=(Table(columns=(Column("a", "A", TEXT),), rows=(Row(("nar\x0brative",)),)),))
+    content = build_report_xlsx(doc, holder={"legal_name": "Mehta\x0cTraders"}, firm={"name": "Firm\x01"})
+    from openpyxl import load_workbook
+    wb = load_workbook(io.BytesIO(content))
+    assert wb.active["A2"].value == "narrative" or wb.worksheets[0]["A2"].value == "narrative"
+
+
+def test_a_row_the_page_cannot_hold_is_refused_in_words_and_not_a_500(register, monkeypatch):
+    db, out = register
+    from reportlab.platypus.doctemplate import LayoutError
+    import services.report_export_service as svc
+    monkeypatch.setattr(svc, "build_report_pdf", lambda *a, **k: (_ for _ in ()).throw(LayoutError("too large")))
+    with pytest.raises(ExportRefused, match="taller than one page"):
+        svc.export_form_3cd(out, "pdf", db=db, firm_id=FIRM, client_id=CLIENT)
+
+
+def test_the_notes_define_the_labels_the_way_the_code_uses_them(register):
+    _, out = register
+    notes = " ".join(form_3cd_document(out).notes)
+    # A derivable clause that could not be resolved this time prints "Not answered here", so the note says so.
+    assert "could not resolve it this time" in notes
+    # A default the module applied, and "No entries", are said to be what the books held and not a confirmation.
+    assert "a default was applied" in notes and "not that anyone confirmed" in notes
+    assert "neither holds nor derives" not in notes
