@@ -255,6 +255,44 @@ columns 7 and 9 until it is fixed, and an elected member's line, which follows
 the same convention, is wrong in the same way. Do not upload an ECR built by
 this product before then.
 
+### The Code on Social Security, 2020: what was read from its own text on 19-11-2026 `[P]`
+
+Read section by section from India Code (indiacode.gov.in, the Government's own
+site; its API serves each section of the Act as an item). What matters here:
+
+- **s.2(88) wages** and its one-half proviso are as `domain/payroll/wage_base.py`
+  has them (see POST-C-121 for what is still open: a notified percentage other
+  than one-half, and one-time payments).
+- **s.2(89) "wage ceiling"** is the amount notified "for the purposes of becoming a
+  member under Chapter III and Chapter IV". **s.16** states the contribution on
+  "the wages for the time being payable" and has no cap in its text; where the
+  contribution cap sits is for the Scheme (owner list S43).
+- **s.16(1)(a):** the employer's contribution is **ten per cent.** of wages, the
+  employee's equal (the employee may pay more, the employer not being bound to),
+  and **twelve per cent. applies to establishments or classes the Central
+  Government notifies**. So ten per cent. is the statutory base and the 2018
+  list of ten-per-cent classes is the classes not so notified (S46).
+  **s.16(1)(b):** the pension share is not more than eight and one-third per cent.
+  of wages or as notified; **s.16(1)(c):** insurance not more than one per cent.
+  or as notified, plus up to one-fourth of it for administration.
+- **First Schedule:** Chapter III applies to every establishment of twenty or more
+  employees; s.1(5) lets a smaller one be covered by agreement, and s.1(8) keeps
+  an establishment covered if its headcount later falls below the threshold.
+- **s.143** lets the appropriate Government exempt an establishment or class from
+  the provident fund, pension and insurance schemes (three years at first, on the
+  schemes' conditions; the employer files returns electronically and pays
+  inspection charges as the Central Government directs, s.143(6)).
+- **s.164: the EPF Act 1952 is repealed.** Notifications and schemes made under it
+  are deemed made under the Code and stay in force until repealed (s.164(2)(a)),
+  but **the Employees' Provident Funds Scheme 1952, the Employees' Deposit Linked
+  Insurance Scheme 1976 and the Employees' Pension Scheme 1995 remain in force for
+  one year from the date of commencement only (s.164(2)(b))**: counted from
+  21-11-2025, to **20-11-2026**. s.15 lets the Central Government frame the
+  schemes, and s.163 lets it make orders to remove difficulties until two years
+  after commencement. What replaces the three schemes was not found (S47,
+  POST-C-217), and every statement in this note and in the product that cites a
+  paragraph of those schemes rests on them.
+
 ### ⭐ The revamped ECR — VERIFIED, effective wage month September 2025
 
 **VERIFIED 2026-09-04**, including a search for a deferral or relaxation. The
