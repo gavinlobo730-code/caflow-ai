@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
+import { SignedInNow } from "@/components/team/SignedInNow";
 import { readWindow } from "@/lib/lists/readWindow";
 import { windowDescription } from "@/lib/lists/window";
 
@@ -94,7 +95,7 @@ export default function LoginHistoryPage() {
         }
         subtitle={
           <>
-            Login, logout, and forced-logout events for your firm (audited).
+            Login, logout, and forced-logout events for your firm (audited), with the address and browser where they were recorded.
           </>
         }
         actions={
@@ -113,6 +114,7 @@ export default function LoginHistoryPage() {
           <ShieldAlert size={14} /> Login history is visible to Managers and Partners only.
         </div>
       )}
+      {canViewHistory && <SignedInNow canEnd={canForceLogout} />}
       {error && <div className="text-xs text-red-600 mb-2">{error}</div>}
       {win && !loading && (
         <ListWindowNotice
@@ -136,6 +138,7 @@ export default function LoginHistoryPage() {
               <div className="min-w-0">
                 <span className="text-brand font-medium">{e.email || e.user_id || "—"}</span>
                 {e.ip ? <span className="text-ps-hint"> · {e.ip}</span> : null}
+                {e.browser ? <span className="text-ps-hint"> · {e.browser}</span> : null}
               </div>
               <div className="flex items-center gap-3 shrink-0">
                 <span className={`px-2 py-0.5 rounded-full font-medium ${EVENT_STYLE[e.event] ?? "bg-gray-100 text-gray-500"}`}>

@@ -227,6 +227,9 @@ def execute(firm_id: str, payload: dict) -> dict:
     if not stamped:
         raise HTTPException(409, "The authenticators were removed, but the person's record could not be marked, so their "
                                  "current sign-ins were not ended. Approve again, or reject if they have left the firm.")
+    # Their sessions are ended, so the list of who is signed in where (POST-A-486) stops showing them. Never raises.
+    from services import login_devices_service
+    login_devices_service.end_all(firm_id, target["id"], "forced")
     # The sign-in check reads the member through a short cache; without this the stamp is not seen for thirty seconds.
     from core.auth import _user_lookup_cache
     _user_lookup_cache.pop(target["auth_user_id"], None)

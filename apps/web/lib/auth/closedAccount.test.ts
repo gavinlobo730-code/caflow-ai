@@ -4,13 +4,15 @@
 // person out on exactly these and on nothing else.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { closedAccountPath, closedAccountReason, closedAccountWords, isAlreadyOutside } from "./closedAccount.ts";
+import { LOCAL_ONLY_REASONS, closedAccountPath, closedAccountReason, closedAccountWords, isAlreadyOutside } from "./closedAccount.ts";
 
 test("each refusal the API writes for a closed account is recognised", () => {
   assert.equal(closedAccountReason(403, "Firm suspended"), "firm-suspended");
   assert.equal(closedAccountReason(403, "Firm unavailable"), "firm-unavailable");
   assert.equal(closedAccountReason(403, "Account disabled. Contact your firm administrator."), "person-disabled");
   assert.equal(closedAccountReason(401, "Session revoked. Please sign in again."), "signed-out");
+  assert.equal(closedAccountReason(401, "This session was signed out from another device. Please sign in again."), "signed-out-elsewhere");
+  assert.equal(closedAccountReason(403, "This session was signed out from another device."), null);
 });
 
 test("no other refusal signs anybody out", () => {
@@ -29,13 +31,13 @@ test("no other refusal signs anybody out", () => {
 
 test("every reason has its own words, which blame nobody and name no address", () => {
   const seen = new Set<string>();
-  for (const r of ["firm-suspended", "firm-unavailable", "person-disabled", "signed-out"]) {
+  for (const r of ["firm-suspended", "firm-unavailable", "person-disabled", "signed-out", "signed-out-elsewhere"]) {
     const w = closedAccountWords(r);
     assert.ok(w.heading.length > 0 && w.body.length > 0);
     assert.doesNotMatch(w.heading + " " + w.body, /@|https?:|\.com/i);
     seen.add(w.heading);
   }
-  assert.equal(seen.size, 4);
+  assert.equal(seen.size, 5);
   assert.match(closedAccountWords("person-disabled").body, /administrator/);
   assert.match(closedAccountWords("firm-suspended").body, /signed out/);
 });
@@ -63,4 +65,11 @@ test("the page path carries the reason, and the page and the sign-in are not sen
   assert.equal(isAlreadyOutside("/login/forgot-password"), true);
   assert.equal(isAlreadyOutside("/clients/abc/overview/"), false);
   assert.equal(isAlreadyOutside("/auth/reset-password"), false);
+});
+
+test("the sign-out for 'signed out from another device' ends this device only, because the session that asked stays (POST-A-486)", async () => {
+  assert.deepEqual([...LOCAL_ONLY_REASONS], ["signed-out-elsewhere"]);
+  const { readFileSync } = await import("node:fs");
+  const api = readFileSync(new URL("../api/index.ts", import.meta.url), "utf8");
+  assert.match(api, /signOut\(LOCAL_ONLY_REASONS\.includes\(reason\) \? \{ scope: "local" \} : undefined\)/);
 });

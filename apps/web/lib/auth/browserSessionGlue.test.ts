@@ -30,7 +30,7 @@ let n = 0;
 type Glue = { markBrowserSession(): void; beat(): void };
 type LooseGlobal = Record<string, unknown>;
 
-async function run(w: World, during?: (g: Glue) => void) {
+async function run(w: World, during?: (g: Glue) => void, extra?: { recordEnd?: () => Promise<unknown>; waitMs?: number }) {
   const local = new Store(), session = new Store();
   Object.entries(w.local ?? {}).forEach(([k, v]) => local.setItem(k, v));
   Object.entries(w.session ?? {}).forEach(([k, v]) => session.setItem(k, v));
@@ -56,7 +56,7 @@ async function run(w: World, during?: (g: Glue) => void) {
     },
   };
   const glue = await import(`./browserSessionGlue.ts?case=${++n}`);
-  const pending = glue.enforceBrowserSession(client);
+  const pending = glue.enforceBrowserSession(client, undefined, extra?.recordEnd, extra?.waitMs);
   during?.(glue);                       // what the page does while the decision is still out: the library's SIGNED_IN, the heartbeat
   const outcome = await pending;
   return { outcome, signedOut, local, session, glue };
@@ -67,6 +67,32 @@ test("a stored session with nothing to say the browser stayed open is ended, her
   assert.equal(r.outcome, "ended");
   assert.deepEqual(r.signedOut, [{ scope: "local" }]);
   assert.equal(r.session.getItem(MARKER_KEY), null);
+});
+
+test("an ended session is told to the server FIRST, so the session it leaves behind is closed (POST-A-486)", async () => {
+  const order: string[] = [];
+  const r = await run({ local: { [ALIVE_KEY]: String(NOW - DAY) } }, undefined, { recordEnd: async () => { order.push("record"); } });
+  assert.equal(r.outcome, "ended");
+  assert.deepEqual(order, ["record"]);
+  assert.deepEqual(r.signedOut, [{ scope: "local" }]);
+});
+
+test("a recording that fails, or never answers, does not keep the person signed in or hold the sign-out for long", async () => {
+  const failed = await run({ local: { [ALIVE_KEY]: String(NOW - DAY) } }, undefined, { recordEnd: async () => { throw new Error("offline"); } });
+  assert.equal(failed.outcome, "ended");
+  assert.deepEqual(failed.signedOut, [{ scope: "local" }]);
+  const started = Date.now();
+  const hung = await run({ local: { [ALIVE_KEY]: String(NOW - DAY) } }, undefined, { recordEnd: () => new Promise(() => undefined), waitMs: 30 });
+  assert.equal(hung.outcome, "ended");
+  assert.deepEqual(hung.signedOut, [{ scope: "local" }]);
+  assert.ok(Date.now() - started < 1500, "a request that never answers must not hold the sign-out");
+});
+
+test("a session that is kept is not recorded as ended", async () => {
+  let called = 0;
+  const r = await run({ session: { [MARKER_KEY]: "1" } }, undefined, { recordEnd: async () => { called += 1; } });
+  assert.equal(r.outcome, "kept");
+  assert.equal(called, 0);
 });
 
 test("the library's announcement of a recovered session and the first heartbeat, both before the decision, change nothing about it", async () => {
