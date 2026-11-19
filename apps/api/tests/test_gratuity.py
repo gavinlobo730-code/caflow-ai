@@ -1,5 +1,6 @@
 """
-Gratuity — Payment of Gratuity Act 1972 §4, and its tax under IT Act §10(10).
+Gratuity — the repealed Payment of Gratuity Act 1972's §4, which section 53 of the Code on Social Security, 2020 repeats (the ceiling and the
+wages excepted: POST-A-526), and its tax under IT Act §10(10).
 
 Every figure here is worked from the statute by hand, not read back off the
 implementation.
@@ -78,7 +79,7 @@ def test_under_five_years_no_gratuity():
     r = _c(joining=date(2022, 4, 1))
     assert not r.eligible
     assert r.payable_paise == 0
-    assert any("§4(1)" in x for x in r.reasons)
+    assert any("53(1) of the Code on Social Security, 2020" in x for x in r.reasons)
 
 
 def test_death_or_disablement_waives_the_five_years():
@@ -168,4 +169,4 @@ def test_a_missing_joining_date_is_a_reason_not_a_zero():
 def test_no_wages_is_a_reason_not_a_zero():
     r = _c(basic_plus_da_paise=0)
     assert not r.eligible
-    assert any("§2(s)" in x for x in r.reasons)
+    assert any("basic and dearness allowance" in x and "section 2(88)" in x for x in r.reasons)
