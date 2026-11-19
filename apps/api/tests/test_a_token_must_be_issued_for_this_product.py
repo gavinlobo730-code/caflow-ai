@@ -168,8 +168,9 @@ def test_a_real_user_token_is_accepted(world):
 
 
 def test_the_lightweight_door_accepts_one_too(world):
+    # `last_authenticator_code_at` is when a code was last entered in this session (POST-A-484); this token carries none.
     assert _lightweight(_token(aal="aal2")) == {
-        "auth_user_id": "auth-user-1", "email": "partner@firm.in", "aal": "aal2"}
+        "auth_user_id": "auth-user-1", "email": "partner@firm.in", "aal": "aal2", "last_authenticator_code_at": None}
 
 
 def test_a_trailing_slash_on_the_project_url_does_not_break_the_issuer(world, monkeypatch):
