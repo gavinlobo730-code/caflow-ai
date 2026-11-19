@@ -104,10 +104,44 @@ function weakPassword(message: string, reasons: string[]) {
   return e;
 }
 
-test("a password missing a required character group is told which groups, in Supabase's words", () => {
+test("a password missing a required character group is told which groups, from the groups the server names", () => {
   const server =
     "Password should contain at least one character of each: abcdefghijklmnopqrstuvwxyz, ABCDEFGHIJKLMNOPQRSTUVWXYZ, 0123456789.";
-  assert.equal(authErrorMessage(weakPassword(server, ["characters"])), server);
+  assert.equal(
+    authErrorMessage(weakPassword(server, ["characters"])),
+    "Your password needs a lowercase letter, a capital letter and a digit.",
+  );
+});
+
+// The refusal as the live sign-in log recorded it on 18-11-2026 (PUT /user, 422): NO error code.
+const LIVE_CHARACTERS_REFUSAL =
+  "Password should contain at least one character of each: abcdefghijklmnopqrstuvwxyz, ABCDEFGHIJKLMNOPQRSTUVWXYZ, 0123456789, !@#$%^&*()_+-=[]{};'\\:\"|<>?,./`~.";
+
+test("the character-group refusal that arrives with no code is worded in plain English too (POST-A-477)", () => {
+  const raw = authApiError(LIVE_CHARACTERS_REFUSAL, 422);
+  const shown = authErrorMessage(raw);
+  assert.equal(shown, "Your password needs a lowercase letter, a capital letter, a digit and a symbol (for example ! @ # $ %).");
+  assert.doesNotMatch(shown, /abcdefghij|ABCDEFGH|0123456789/);
+});
+
+test("the same refusal with the code the SDK adds for a weak password is worded the same way", () => {
+  const shown = authErrorMessage(weakPassword(LIVE_CHARACTERS_REFUSAL, ["characters"]));
+  assert.equal(shown, "Your password needs a lowercase letter, a capital letter, a digit and a symbol (for example ! @ # $ %).");
+});
+
+test("a character-group refusal that names groups in words is worded from those words", () => {
+  const raw = authApiError("Password should contain at least one character of each: lowercase, uppercase, digit, symbol", 422);
+  assert.equal(authErrorMessage(raw), "Your password needs a lowercase letter, a capital letter, a digit and a symbol (for example ! @ # $ %).");
+});
+
+test("a character-group refusal that names nothing it recognises still says what kind of problem it is", () => {
+  const raw = authApiError("Password should contain at least one character of each: group one, group two", 422);
+  assert.match(authErrorMessage(raw), /at least one character from each group/i);
+});
+
+test("a same-password refusal, as the live log recorded it, is the plain sentence", () => {
+  const raw = authApiError("New password should be different from the old password.", 422, "same_password");
+  assert.equal(authErrorMessage(raw), AUTH_ERROR_SENTENCES.same_password);
 });
 
 test("a password that is too short is told the minimum length the server asked for", () => {
@@ -185,4 +219,12 @@ test("the Team screen's sentence says the row exists and the email did not go", 
   assert.match(s, /^The invite for Priya Sharma was created, but the email to priya@firm\.test could not be sent\./);
   assert.match(s, /last hour/);
   assert.doesNotMatch(s, /\bsent!/);
+});
+
+test("the groups are told apart by their own alphabet, and the words are read in any case", () => {
+  // only the capital alphabet is named: it must not be read as asking for lowercase too
+  assert.equal(authErrorMessage(authApiError("Password should contain at least one character of each: ABCDEFGHIJKLMNOPQRSTUVWXYZ, 0123456789", 422)),
+    "Your password needs a capital letter and a digit.");
+  assert.equal(authErrorMessage(authApiError("Password should contain at least one character of each: Lowercase, Uppercase, Digit, Symbol", 422)),
+    "Your password needs a lowercase letter, a capital letter, a digit and a symbol (for example ! @ # $ %).");
 });

@@ -43,6 +43,20 @@ export function isSessionMissingError(err: Pick<AuthError, "message"> | null | u
   return /auth session missing/i.test(err.message);
 }
 
+/**
+ * True when updateUser() refused because the password sent IS the one already on
+ * the account. Live on 18-11-2026 the sign-in service answered 422 with the code
+ * `same_password` ("New password should be different from the old password.");
+ * the message is checked too for a server that sends no code. On the sign-up
+ * wizard that means the password is already set, not that something failed
+ * (POST-A-478).
+ */
+export function isSamePasswordError(err: { code?: unknown; message?: unknown } | null | undefined): boolean {
+  if (!err) return false;
+  if (err.code === "same_password") return true;
+  return typeof err.message === "string" && /different from the old password/i.test(err.message);
+}
+
 /** The one message shown wherever a step 1 auth call finds no session. */
 export const SESSION_EXPIRED_MESSAGE =
   "This sign-up link has expired or you are not signed in. Please request a new sign-up link or sign in.";

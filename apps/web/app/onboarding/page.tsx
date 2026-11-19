@@ -1,7 +1,7 @@
 "use client";
 import { LogoIcon } from "@/components/LogoIcon";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Building2, CheckCircle, ChevronRight, ChevronLeft, KeyRound, Eye, EyeOff, Hash, Plus, Upload, ExternalLink } from "lucide-react";
@@ -11,11 +11,16 @@ import {
   setPasswordWithReauthNonce,
   isInvalidNonceError,
   isSessionMissingError,
+  isSamePasswordError,
   SESSION_EXPIRED_MESSAGE,
 } from "@/lib/auth/reauth";
 import { mayRenderOnboardingWizard } from "@/lib/auth/guardDecision";
 import { onboardingCompletionTarget } from "@/lib/auth/mfaEnrolment";
 import { authErrorMessage, knownAuthErrorMessage } from "@/lib/auth/authErrorMessage";
+import { passwordProblem } from "@/lib/auth/passwordRules";
+import { passwordStepButtonEnabled, passwordStepMode } from "@/lib/auth/passwordStep";
+import { onboardingProgress, progressFor, restoredStep } from "@/lib/auth/onboardingProgress";
+import { PasswordRules } from "@/components/auth/PasswordRules";
 import { api, type ApiResp } from "@/lib/api";
 import CsvImportModal from "@/components/LazyCsvImportModal";
 import type { ImportRow, ImportResult } from "@/components/CsvImportModal";
@@ -289,7 +294,10 @@ export default function OnboardingPage() {
   const router = useRouter();
   const supabase = getSupabaseClient();
 
-  const [step, setStep] = useState(1);
+  // Seeded from what the wizard remembers, so a remount paints the restored step at once and not step 1 for a frame.
+  const [step, setStep] = useState<number>(() => restoredStep({
+    progress: onboardingProgress.get(), userId: user?.id, ownerName: readSignupStash().fullName ?? "",
+  }));
   const [ownerName, setOwnerName] = useState(() => readSignupStash().fullName?.trim() ?? "");
   const [firmId, setFirmId] = useState<string | null>(null);
   const [firmForm, setFirmForm] = useState<FirmForm>(EMPTY_FIRM);
@@ -311,6 +319,40 @@ export default function OnboardingPage() {
   const [showPw, setShowPw] = useState(false);
   const [pwError, setPwError] = useState<string | null>(null);
   const [pwSet, setPwSet] = useState(false);
+  // THE PASSWORD STEP'S MEMORY LIVES OUTSIDE THIS COMPONENT (POST-A-478). Saving
+  // a password makes AuthGuard unmount this page for a round trip (the sign-in
+  // assurance is re-read, and unresolved is not permission), so it mounted again
+  // at step 1 with "password set" forgotten and the boxes empty — and typing the
+  // same password again is refused as the same password. lib/auth/onboardingProgress
+  // holds the fact in a module and in session storage, keyed on the person.
+  const progress = useSyncExternalStore(onboardingProgress.subscribe, onboardingProgress.get, () => null);
+  const mine = progressFor(progress, user?.id);
+  // True once THIS mount has moved the wizard on itself, so the restore below
+  // does not move it a second time.
+  const advancedHere = useRef(false);
+  // The name typed on step 1, readable by the restore without making it re-run on every keystroke.
+  const ownerNameNow = useRef(ownerName);
+  ownerNameNow.current = ownerName;
+  useEffect(() => {
+    if (!mine || advancedHere.current) return;
+    advancedHere.current = true;
+    if (mine.passwordSet) setPwSet(true);
+    // A verification code was emailed and the person went to read it: bring its box back (the password itself is
+    // never kept, so it is typed again above).
+    if (mine.reauthPending) setNeedsReauth(true);
+    // A mount that finds the step done is the one that lost its place. Step 2 only when the name is known; step 3
+    // once the firm exists (restoredStep).
+    const target = restoredStep({ progress: mine, userId: user?.id, ownerName: ownerNameNow.current });
+    setStep((s) => (s === 1 ? target : s));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mine]);
+  function rememberPasswordSet() {
+    advancedHere.current = true;
+    if (user?.id) onboardingProgress.markPasswordSet(user.id);
+    setPwSet(true);
+    setNeedsReauth(false);
+    setPw(""); setPw2("");
+  }
 
   // UNSAVED TYPING (frontend_ux-23). A reload in the middle of the wizard drops
   // the owner back at step 1 with everything typed gone, and this is the one
@@ -355,6 +397,10 @@ export default function OnboardingPage() {
       const newId = resp?.data?.firm?.id ?? null;
       if (!newId) throw new Error(resp?.error ?? "Firm creation did not return a firm ID.");
       if (typeof window !== "undefined") localStorage.removeItem("practicesync_signup");
+      // Remembered: a remount after this goes on to step 3, never back to a blank step 2 whose save would overwrite
+      // the profile just entered.
+      advancedHere.current = true;
+      if (user?.id) onboardingProgress.markFirmCreated(user.id);
       setFirmId(newId);
       await refreshUserContext();
       return newId;
@@ -421,6 +467,8 @@ export default function OnboardingPage() {
       return;
     }
     await refreshUserContext();
+    // The wizard is done: its memory of this person's password step goes with it.
+    onboardingProgress.clear();
     // A new owner the MFA policy covers is refused by every administration
     // screen until they enrol, and nothing at sign-in asks them to — so the
     // wizard's last step is the enrol screen for them, and Home for everyone
@@ -449,7 +497,9 @@ export default function OnboardingPage() {
     setError(null);
     setPwError(null);
     if (!ownerName.trim()) { setPwError("Please enter your full name."); return; }
-    if (pw.length < 10) { setPwError("Use at least 10 characters."); return; }
+    // Every rule the sign-in service enforces, before anything is sent (POST-A-477).
+    const rulesProblem = passwordProblem(pw);
+    if (rulesProblem) { setPwError(rulesProblem); return; }
     if (pw !== pw2) { setPwError("Passwords do not match."); return; }
     setSaving(true);
     try {
@@ -460,6 +510,14 @@ export default function OnboardingPage() {
         otpTrace("step 1 response: updateUser returned error", {
           code: upErr.code, status: upErr.status, message: upErr.message,
         });
+        // The password typed IS the one already on the account (a second visit to this
+        // step, or the page that came back after a save): it is set, so carry on.
+        if (isSamePasswordError(upErr)) {
+          otpTrace("step 1 response: same password — already set, carrying on");
+          rememberPasswordSet();
+          goNext();
+          return;
+        }
         // "Secure password change" is enabled, so a magic-link session that isn't
         // "recently signed in" must reauthenticate first. reauthenticate() emails a
         // nonce that is later consumed by updateUser({ password, nonce }).
@@ -474,6 +532,10 @@ export default function OnboardingPage() {
             throw new Error(knownAuthErrorMessage(raErr) ?? "Could not send verification code. Please try again.");
           }
           otpTrace("step 2 response: reauthenticate OK — verification code emailed");
+          // Remembered: reading the emailed code means leaving this tab, and coming back signs the person in again and
+          // remounts this page; the code box has to come back with it (the password is typed again, never kept).
+          advancedHere.current = true;
+          if (user?.id) onboardingProgress.markReauthPending(user.id, true);
           setNeedsReauth(true);
           return;
         }
@@ -485,15 +547,24 @@ export default function OnboardingPage() {
         throw new Error(authErrorMessage(upErr));
       }
       otpTrace("step 1 response: password set without reauthentication");
-      setPwSet(true);
-      // Clear the in-memory password values once set.
-      setPw(""); setPw2("");
+      // Remembered BEFORE the page moves on: this component may already have been
+      // unmounted by the guard, and the next mount reads it from the store.
+      rememberPasswordSet();
       goNext();
     } catch (err) {
       setPwError(authErrorMessage(err, "Could not set your password. Please try again."));
     } finally {
       setSaving(false);
     }
+  }
+
+  // The password is already set (the person came back to this step): go on without
+  // asking for one again. Their name is still needed for the firm.
+  function continueWithSetPassword() {
+    setError(null);
+    setPwError(null);
+    if (!ownerName.trim()) { setPwError("Please enter your full name."); return; }
+    goNext();
   }
 
   async function verifyAndSetPassword() {
@@ -503,6 +574,8 @@ export default function OnboardingPage() {
     // The reauthentication code is sent verbatim — no truncation/parseInt/slice.
     const nonce = reauthOtp.trim();
     try {
+      // Back from reading the emailed code the boxes are empty (the password is never kept): ask for it again.
+      if (!pw) throw new Error("Type your password in the boxes above again, then enter the code.");
       // ── ROOT-CAUSE FIX ─────────────────────────────────────────────────────
       // The code emailed by reauthenticate() is a REAUTHENTICATION NONCE, not an
       // email OTP. The Supabase SDK is explicit: "After receiving the OTP, include
@@ -517,6 +590,13 @@ export default function OnboardingPage() {
         method: "auth.updateUser", email: user.email, tokenLength: nonce.length, token: nonce,
       });
       const { error: upErr } = await setPasswordWithReauthNonce(supabase.auth, pw, nonce);
+      if (upErr && isSamePasswordError(upErr)) {
+        // The password typed IS the one already on the account: it is set, carry on.
+        setReauthOtp("");
+        rememberPasswordSet();
+        goNext();
+        return;
+      }
       if (upErr) {
         otpTrace("verify response: updateUser returned error", {
           code: upErr.code, status: upErr.status, message: upErr.message,
@@ -536,8 +616,7 @@ export default function OnboardingPage() {
       otpTrace("verify response: password updated — reauthentication accepted");
       setNeedsReauth(false);
       setReauthOtp("");
-      setPwSet(true);
-      setPw(""); setPw2("");
+      rememberPasswordSet();
       goNext();
     } catch (err) {
       setReauthError(authErrorMessage(err, "Verification failed. Please try again."));
@@ -730,14 +809,16 @@ export default function OnboardingPage() {
                   className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg"
                 />
               </div>
+              {(!pwSet || pw !== "" || pw2 !== "") && <PasswordRules password={pw} id="onboarding-password-rules" />}
               <div>
-                <label className="text-xs font-medium text-ps-label block mb-1">Password<span className="text-state-problem ml-0.5">*</span></label>
+                <label className="text-xs font-medium text-ps-label block mb-1">{pwSet ? "New password (only if you want to change it)" : "Password"}{!pwSet && <span className="text-state-problem ml-0.5">*</span>}</label>
                 <div className="relative">
                   <input aria-label="Password"
+                    aria-describedby={!pwSet || pw !== "" || pw2 !== "" ? "onboarding-password-rules" : undefined}
                     type={showPw ? "text" : "password"}
                     value={pw}
                     onChange={(e) => setPw(e.target.value)}
-                    placeholder="At least 10 characters"
+                    placeholder="Create a password"
                     autoComplete="new-password"
                     className={`w-full text-sm text-ps-ink border rounded-lg px-3 py-2 pr-10 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg ${pwError ? "border-red-400 bg-state-problem-surface" : "border-ps-border"}`}
                   />
@@ -747,7 +828,7 @@ export default function OnboardingPage() {
                 </div>
               </div>
               <div>
-                <label className="text-xs font-medium text-ps-label block mb-1">Confirm password<span className="text-state-problem ml-0.5">*</span></label>
+                <label className="text-xs font-medium text-ps-label block mb-1">Confirm password{!pwSet && <span className="text-state-problem ml-0.5">*</span>}</label>
                 <input aria-label="Confirm password"
                   type={showPw ? "text" : "password"}
                   value={pw2}
@@ -802,14 +883,21 @@ export default function OnboardingPage() {
             </div>
 
             <div className="flex items-center justify-end mt-8 pt-5 border-t border-ps-border">
-              <button
-                onClick={savePassword}
-                disabled={saving || !pw || !pw2 || needsReauth}
-                className="flex items-center gap-2 px-5 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors disabled:opacity-50"
-              >
-                {saving ? "Saving…" : "Set Password & Continue"}
-                {!saving && <ChevronRight size={16} />}
-              </button>
+              {(() => {
+                // Once the password is set the step asks for nothing more; typing a new one makes it a change again
+                // (lib/auth/passwordStep).
+                const carryOn = passwordStepMode({ passwordSet: pwSet, pw, pw2 }) === "continue";
+                return (
+                  <button
+                    onClick={carryOn ? continueWithSetPassword : savePassword}
+                    disabled={!passwordStepButtonEnabled({ passwordSet: pwSet, pw, pw2, saving, needsReauth })}
+                    className="flex items-center gap-2 px-5 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors disabled:opacity-50"
+                  >
+                    {saving ? "Saving…" : carryOn ? "Continue" : "Set Password & Continue"}
+                    {!saving && <ChevronRight size={16} />}
+                  </button>
+                );
+              })()}
             </div>
           </div>
         )}

@@ -9,6 +9,7 @@ import {
   setPasswordWithReauthNonce,
   isInvalidNonceError,
   isSessionMissingError,
+  isSamePasswordError,
   SESSION_EXPIRED_MESSAGE,
   type ReauthCapableAuth,
 } from "./reauth.ts";
@@ -87,4 +88,16 @@ test("isSessionMissingError detects the SDK's no-session error", () => {
 test("SESSION_EXPIRED_MESSAGE names the reason and both ways forward", () => {
   assert.match(SESSION_EXPIRED_MESSAGE, /expired|not signed in/i);
   assert.doesNotMatch(SESSION_EXPIRED_MESSAGE, /auth session missing/i);
+});
+
+test("a same-password refusal, by code or by message, is recognised and nothing else is (POST-A-478)", () => {
+  // As the live sign-in log recorded it on 18-11-2026: 422, code same_password.
+  assert.equal(isSamePasswordError({ code: "same_password", message: "New password should be different from the old password." }), true);
+  // A server that sends no code.
+  assert.equal(isSamePasswordError({ message: "New password should be different from the old password." }), true);
+  assert.equal(isSamePasswordError({ code: "weak_password", message: "Password should be at least 10 characters." }), false);
+  assert.equal(isSamePasswordError({ message: "Auth session missing!" }), false);
+  assert.equal(isSamePasswordError(null), false);
+  assert.equal(isSamePasswordError(undefined), false);
+  assert.equal(isSamePasswordError({}), false);
 });

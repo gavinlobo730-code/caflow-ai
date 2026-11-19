@@ -52,8 +52,10 @@ import { setPasswordWithReauthNonce, isInvalidNonceError } from "@/lib/auth/reau
 import { hasEmployeePortalAccess } from "@/lib/portal/employeeAccess";
 import { Eye, EyeOff, ShieldCheck, AlertCircle, Loader2 } from "lucide-react";
 import { FrontDoor } from "@/components/FrontDoor";
+import { passwordProblem } from "@/lib/auth/passwordRules";
+import { PasswordRules } from "@/components/auth/PasswordRules";
+import { authErrorMessage } from "@/lib/auth/authErrorMessage";
 
-const MIN_LENGTH = 10;
 const SESSION_WAIT_ATTEMPTS = 10;
 const SESSION_WAIT_INTERVAL_MS = 500;
 
@@ -149,8 +151,10 @@ export default function EmployeeActivatePage() {
   async function handleSetPassword(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    if (pw.length < MIN_LENGTH) {
-      setError(`Use at least ${MIN_LENGTH} characters.`);
+    // Every rule the sign-in service enforces, before anything is sent (POST-A-477).
+    const rulesProblem = passwordProblem(pw);
+    if (rulesProblem) {
+      setError(rulesProblem);
       return;
     }
     if (pw !== pw2) {
@@ -168,11 +172,11 @@ export default function EmployeeActivatePage() {
           setStage("reauth");
           return;
         }
-        throw new Error(err.message);
+        throw new Error(authErrorMessage(err));
       }
       setStage("done");
     } catch (ex) {
-      setError(ex instanceof Error ? ex.message : "Could not set your password.");
+      setError(authErrorMessage(ex, "Could not set your password."));
     } finally {
       setSaving(false);
     }
@@ -185,10 +189,10 @@ export default function EmployeeActivatePage() {
     try {
       const { error: err } = await setPasswordWithReauthNonce(
         supabase.auth, pwRef.current, reauthOtp);
-      if (err) throw new Error(err.message);
+      if (err) throw new Error(authErrorMessage(err));
       setStage("done");
     } catch (ex) {
-      setReauthError(ex instanceof Error ? ex.message : "That code did not work.");
+      setReauthError(authErrorMessage(ex, "That code did not work."));
     } finally {
       setSaving(false);
     }
@@ -290,13 +294,14 @@ export default function EmployeeActivatePage() {
         like, without waiting for another email.
       </p>
 
+      <div className="mb-3"><PasswordRules password={pw} id="employee-activate-password-rules" /></div>
       <div className="relative mb-3">
         <input
-          id="employee-activate-password" name="new-password" aria-label="New password"
+          id="employee-activate-password" name="new-password" aria-label="New password" aria-describedby="employee-activate-password-rules"
           type={showPw ? "text" : "password"}
           value={pw}
           onChange={(e) => setPw(e.target.value)}
-          placeholder={`At least ${MIN_LENGTH} characters`}
+          placeholder="Create a password"
           className="w-full border border-ps-border rounded-lg px-3 py-2 pr-10 text-sm"
           autoComplete="new-password"
         />
