@@ -115,10 +115,12 @@ export default function ReceivablesAgingPage() {
       setFirmId(fid);
       // clients has no is_active column; its lifecycle field is `status`
       // (CHECK: active | inactive | archived).
-      const { data } = await selectAll(() => sb.from("clients")
+      const { data, error: readError } = await selectAll(() => sb.from("clients")
         .select("id, client_name, pan, gstin").eq("firm_id", fid).eq("status", "active")
         .eq("is_internal", false)
         .order("client_name").order("id"));
+      // The pager hands a failure back as `error` and does not throw: without this the catch below never ran for a refused read.
+      if (readError) throw readError;
       setClients((data ?? []) as Client[]);
     }).catch(() => setError("Failed to load clients"));
   }, []);

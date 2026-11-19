@@ -44,7 +44,7 @@ export function MyDevicesCard() {
   // nothing, which is why the sighting is its own call. A failure of the sighting only leaves the device unlisted, which the card says.
   useEffect(() => {
     let live = true;
-    void Promise.all([api.identity.sessionSeen().catch(() => undefined), load()]).then(([, first]) => {
+    void Promise.all([api.identity.sessionSeen().catch(() => /* the card says a device that is not listed, as the note above says */ undefined), load()]).then(([, first]) => {
       if (live && first && first.can_keep_this_session !== false && first.this_device_listed === false) void load();
     });
     return () => { live = false; };

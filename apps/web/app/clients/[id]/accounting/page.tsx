@@ -31,6 +31,9 @@ import { cachedReport, reportKey } from "@/lib/accounting/reportCache";
 import {
   bankCountDecision, readingFromAnswer, unmatchedBankTile, type UnmatchedBankReading,
 } from "@/lib/accounting/unmatchedBankTile";
+import {
+  figureText, netReading, reportReading, unreadReportsSentence, type FigureReading,
+} from "@/lib/accounting/dashboardFigures";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import {
   plBucket, bsBucket, PL_REV_ORDER, PL_EXP_ORDER, BS_ASSET_ORDER, BS_LIAB_ORDER, BS_EQ_ORDER,
@@ -63,7 +66,7 @@ import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
 import { Field, Input, Select } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
-import { EmptyState } from "@/components/ui/states";
+import { EmptyState, ErrorState } from "@/components/ui/states";
 import { DateInput } from "@/components/ui/date-input";
 import { NO_FILTER, accountCounts, filterNotice, filterRows, filterStatementRows, isFiltering, typeChoices, type TrialBalanceFilter } from "@/lib/accounting/trialBalanceFilter";
 import { StatementFilterBar } from "@/components/accounting/StatementFilterBar";
@@ -465,6 +468,11 @@ function AccountingDashboard({
     revenue_paise: 0, expenses_paise: 0, cash_paise: 0,
     journal_count: 0,
   });
+  // What each of the two report calls actually said (lib/accounting/dashboardFigures). `stats` keeps the figures; THIS says whether a
+  // figure is one the report gave or the nothing a failed request leaves behind, which a tile prints as a dash and never as ₹0.
+  const [readings, setReadings] = useState<{ revenue: FigureReading; expenses: FigureReading; cash: FigureReading }>({
+    revenue: { kind: "unknown" }, expenses: { kind: "unknown" }, cash: { kind: "unknown" },
+  });
   // The unmatched-bank count is its own reading with four states (see
   // lib/accounting/unmatchedBankTile). It comes from the server, behind
   // banking:read, because the bank tables answer a person whose Banking access is
@@ -500,16 +508,18 @@ function AccountingDashboard({
       //
       // The two report calls keep a .catch each, which is what the try/catch
       // that used to wrap only them gave them: a reporting engine that is
-      // briefly unavailable leaves its own tiles at zero and lets the rest of
-      // the dashboard load. Merging them into the shared Promise.all without
-      // that would have made an unrelated P&L timeout blank the journal list
-      // too. The Supabase calls report failure through `error` instead of
-      // rejecting, so they need no equivalent — hence the explicit check below.
+      // briefly unavailable lets the rest of the dashboard load. Merging them
+      // into the shared Promise.all without that would have made an unrelated
+      // P&L timeout blank the journal list too. The Supabase calls report
+      // failure through `error` instead of rejecting, so they need no
+      // equivalent — hence the explicit check below. What the catch gives back
+      // is NOT a zero: it is "no answer", and the tiles for that report print a
+      // dash and say so (POST-A-515 (d); the catch used to leave them at ₹0).
       let revenue = 0, expenses = 0, cash = 0;
       try {
         const [plRes, cfRes, recentRes, journalCount] = await Promise.all([
-          (api.accounting.profitLoss({ client_id: clientId, start_date: start, end_date: end }) as Promise<{ success: boolean; data: { revenue: { total_paise: number }; cost_of_sales: { total_paise: number }; operating_expenses: { total_paise: number } } }>).catch(() => null),
-          (api.accounting.cashFlow({ client_id: clientId, start_date: start, end_date: end }) as Promise<{ success: boolean; data: { closing_cash_paise: number } }>).catch(() => null),
+          (api.accounting.profitLoss({ client_id: clientId, start_date: start, end_date: end }) as Promise<{ success: boolean; data: { revenue: { total_paise: number }; cost_of_sales: { total_paise: number }; operating_expenses: { total_paise: number } } }>).catch(() => /* no answer: read as unknown by reportReading below, a dash and never a zero */ null),
+          (api.accounting.cashFlow({ client_id: clientId, start_date: start, end_date: end }) as Promise<{ success: boolean; data: { closing_cash_paise: number } }>).catch(() => /* no answer: read as unknown by reportReading below, a dash and never a zero */ null),
           // Recent journal entries
           supabase
             .from("journal_entries")
@@ -529,15 +539,20 @@ function AccountingDashboard({
             .lte("entry_date", end),
         ]);
 
-        if (plRes?.success) {
-          revenue = plRes.data.revenue?.total_paise ?? 0;
-          // Cost of Goods Sold lives in its own section, separate from
-          // operating_expenses (see PLApiData above) — must be added in or the
-          // dashboard's headline "Expenses" stat undercounts the same way the
-          // P&L tab did.
-          expenses = (plRes.data.cost_of_sales?.total_paise ?? 0) + (plRes.data.operating_expenses?.total_paise ?? 0);
-        }
-        if (cfRes?.success) cash = cfRes.data.closing_cash_paise ?? 0;
+        // Cost of Goods Sold lives in its own section, separate from
+        // operating_expenses (see PLApiData above) — must be added in or the
+        // dashboard's headline "Expenses" stat undercounts the same way the
+        // P&L tab did. Both totals must be present for the figure to be one.
+        const revenueReading = reportReading(plRes, (d) => d.revenue?.total_paise);
+        const expensesReading = reportReading(plRes, (d) => {
+          const cogs = d.cost_of_sales?.total_paise;
+          const opex = d.operating_expenses?.total_paise;
+          return typeof cogs === "number" && typeof opex === "number" ? cogs + opex : null;
+        });
+        const cashReading = reportReading(cfRes, (d) => d.closing_cash_paise);
+        if (revenueReading.kind === "known") revenue = revenueReading.paise;
+        if (expensesReading.kind === "known") expenses = expensesReading.paise;
+        if (cashReading.kind === "known") cash = cashReading.paise;
 
         if (recentRes.error || journalCount.error) throw new Error("dashboard query failed");
 
@@ -545,9 +560,11 @@ function AccountingDashboard({
           revenue_paise: revenue, expenses_paise: expenses, cash_paise: cash,
           journal_count: journalCount.count ?? 0,
         });
+        setReadings({ revenue: revenueReading, expenses: expensesReading, cash: cashReading });
         setRecentEntries((recentRes.data as JournalEntry[]) ?? []);
       } catch {
         setStats({ revenue_paise: 0, expenses_paise: 0, cash_paise: 0, journal_count: 0 });
+        setReadings({ revenue: { kind: "unknown" }, expenses: { kind: "unknown" }, cash: { kind: "unknown" } });
         setRecentEntries([]);
         setLoadFailed(true);
       } finally {
@@ -577,9 +594,12 @@ function AccountingDashboard({
   }, [clientId, bankDecision]);
 
   const bankTile = unmatchedBankTile(bankReading);
-  const netPL = stats.revenue_paise - stats.expenses_paise;
+  const netReadingPL = netReading(readings.revenue, readings.expenses);
+  const netPL = netReadingPL.kind === "known" ? netReadingPL.paise : 0;
   /** A figure, or "—" when the load failed. Never a zero we cannot stand behind. */
   const unknownIfFailed = (value: string) => (loadFailed ? "—" : value);
+  // The whole load did not fail, but one report may not have answered: its tiles are a dash and this says why.
+  const unreadReports = loadFailed ? null : unreadReportsSentence(readings.revenue, readings.cash);
 
   if (loading) return (
     <LoadingRegion label="Loading the accounting dashboard" className="space-y-3 max-w-ps-data mx-auto">
@@ -609,18 +629,23 @@ function AccountingDashboard({
           connection and reopen this tab.
         </div>
       )}
+      {unreadReports && (
+        <div role="status" className="rounded-lg border border-state-attention-border bg-state-attention-surface px-4 py-3 text-xs text-amber-900">
+          {unreadReports}
+        </div>
+      )}
 
       {/* Stat strip */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <DashCard label="Revenue" value={unknownIfFailed(fmt(stats.revenue_paise))} accent="green" action={() => onNavigate("pl")} />
-        <DashCard label="Expenses" value={unknownIfFailed(fmt(stats.expenses_paise))} accent="red" action={() => onNavigate("pl")} />
+        <DashCard label="Revenue" value={unknownIfFailed(figureText(readings.revenue, fmt))} accent="green" action={() => onNavigate("pl")} />
+        <DashCard label="Expenses" value={unknownIfFailed(figureText(readings.expenses, fmt))} accent="red" action={() => onNavigate("pl")} />
         <DashCard
           label={netPL >= 0 ? "Net Profit" : "Net Loss"}
-          value={unknownIfFailed(fmt(Math.abs(netPL)))}
+          value={unknownIfFailed(figureText(netReadingPL, (paise) => fmt(Math.abs(paise))))}
           accent={netPL >= 0 ? "emerald" : "orange"}
           action={() => onNavigate("pl")}
         />
-        <DashCard label="Cash & Bank" value={unknownIfFailed(fmt(stats.cash_paise))} accent="blue" action={() => onNavigate("balance-sheet")} />
+        <DashCard label="Cash & Bank" value={unknownIfFailed(figureText(readings.cash, fmt))} accent="blue" action={() => onNavigate("balance-sheet")} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
@@ -4128,6 +4153,8 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
     id: string; report_type: string; report_label: string; financial_year: string; file_name: string; created_at: string; storage_path: string;
   }[]>([]);
   const [loadingShared, setLoadingShared] = useState(true);
+  // A list that could not be read is not a client with nothing shared (POST-A-515 (d)): the empty state below would say it was.
+  const [sharedFailed, setSharedFailed] = useState(false);
   const [exporting, setExporting] = useState<string | null>(null);
   const [sharing, setSharing] = useState<string | null>(null);
   const [sent, setSent] = useState<BytesSent | null>(null);
@@ -4137,13 +4164,18 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
 
   const loadShared = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
+    setSharedFailed(false);
     try {
       const supabase = getSupabaseClient();
-      const { data } = await supabase.from("shared_reports")
+      const { data, error } = await supabase.from("shared_reports")
         .select("id, report_type, report_label, financial_year, file_name, created_at, storage_path")
         .eq("client_id", clientId).order("created_at", { ascending: false }).limit(20);
+      if (error) throw error;
       setSharedReports(data ?? []);
-    } catch { /* skip */ } finally {
+    } catch {
+      setSharedReports([]);
+      setSharedFailed(true);
+    } finally {
       setLoadingShared(false);
     }
   }, [clientId]);
@@ -4466,6 +4498,13 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
         </div>
         {loadingShared ? (
           <TableSkeleton cols={5} rows={2} bare />
+        ) : sharedFailed ? (
+          <ErrorState
+            className="m-4 py-6"
+            title="The shared reports could not be read"
+            message="This is not a client with nothing shared; try again."
+            onRetry={() => { setLoadingShared(true); loadShared(); }}
+          />
         ) : sharedReports.length === 0 ? (
           <EmptyState
             className="py-8"
