@@ -27,11 +27,14 @@ interface World {
 }
 
 let n = 0;
-async function run(w: World, during?: (g: any) => void) {
+type Glue = { markBrowserSession(): void; beat(): void };
+type LooseGlobal = Record<string, unknown>;
+
+async function run(w: World, during?: (g: Glue) => void) {
   const local = new Store(), session = new Store();
   Object.entries(w.local ?? {}).forEach(([k, v]) => local.setItem(k, v));
   Object.entries(w.session ?? {}).forEach(([k, v]) => session.setItem(k, v));
-  const g = globalThis as any;
+  const g = globalThis as unknown as LooseGlobal;
   g.window = { localStorage: local, sessionStorage: session, location: { hash: w.hash ?? "", search: w.search ?? "" } };
   Object.defineProperty(g, "navigator", {
     configurable: true,
@@ -131,7 +134,7 @@ test("no stored session means nothing to end, and the tab is marked", async () =
 });
 
 test("a failure to read the session releases the writers and leaves the person signed in", async () => {
-  const g = globalThis as any;
+  const g = globalThis as unknown as LooseGlobal;
   g.window = { localStorage: new Store(), sessionStorage: new Store(), location: { hash: "", search: "" } };
   g.BroadcastChannel = class { postMessage() {} close() {} };
   const glue = await import(`./browserSessionGlue.ts?case=${++n}`);
