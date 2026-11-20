@@ -76,9 +76,11 @@ test("the committed list is sorted, has no line twice, and names only screens th
 });
 
 test("the list only shrinks: it is no longer than it was when it was written", () => {
-  // 20-11-2026, after the Practice menu's nine screens were converted. Lower these when a pull request shortens the list.
-  assert.ok(baseline.hugs_left.length <= 6, `${baseline.hugs_left.length} screens hug the left; the list was 6`);
-  assert.ok(baseline.no_placeholder.length <= 55, `${baseline.no_placeholder.length} screens wait without a shape; the list was 55`);
+  // 20-11-2026: 6 and 55 after the Practice menu; 0 and 50 after Approvals, E-Invoice, Knowledge, Data Migration and the Team
+  // menu. No screen hugs the left any more, so that list stays EMPTY. Lower the second when a pull request shortens the list.
+  assert.deepEqual(baseline.hugs_left, [], "a screen hugs the left again: put it in the page frame");
+  // 29 after the one-line word loaders (the hub worklists, Payroll, Settings, Insights and others) took a shape.
+  assert.ok(baseline.no_placeholder.length <= 29, `${baseline.no_placeholder.length} screens wait without a shape; the list was 29`);
 });
 
 test("the Practice menu's screens use the one frame and are on neither list", () => {

@@ -14,6 +14,7 @@ import { api, request } from "@/lib/api";
 import { arrayOrEmpty, objectOrNull, objectWithLists } from "@/lib/api/shape";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { pageFrameClass } from "@/components/ui/page-frame";
 import {
   ALL_IMPORT_TYPES, importTypeNote, migrationSubtitle, noClientOptionLabel,
 } from "@/lib/migration/writtenTypes";
@@ -539,7 +540,7 @@ export default function MigrationPage() {
   const notImportedCategories = notSelectedForImport(parseResult?.parsed_counts, selectedTypes);
 
   return (
-    <div className="p-6 max-w-4xl space-y-4">
+    <div className={pageFrameClass("data", "space-y-4")}>
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold text-ps-ink">Migration Center</h2>

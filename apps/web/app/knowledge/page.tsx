@@ -5,11 +5,11 @@ import { useSearchParams } from "next/navigation";
 import { Library, Search, Plus, History, RotateCcw, RefreshCw } from "lucide-react";
 import { api, type ApiResp } from "@/lib/api";
 import { usePermissions } from "@/lib/auth/AuthContext";
-import { PageLoader } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { formatDate } from "@/lib/dates/format";
+import { PagePlaceholder, SectionPlaceholder, pageFrameClass } from "@/components/ui/page-frame";
 
 interface Article {
   id: string; scope: string; department?: string | null; client_id?: string | null;
@@ -133,7 +133,7 @@ function KnowledgeInner() {
   }
 
   return (
-    <div className="p-6 max-w-4xl">
+    <div className={pageFrameClass("data")}>
       <PageHeader
         icon={<Library size={18} className="text-brand" />}
         title={`Knowledge Base${scope ? ` — ${scope}` : ""}`}
@@ -173,7 +173,7 @@ function KnowledgeInner() {
         </form>
       )}
 
-      {loading ? <PageLoader onRetry={() => { void load(query); }} /> : (
+      {loading ? <SectionPlaceholder label="Loading articles" shape="list" onRetry={() => { void load(query); }} /> : (
         <div className="space-y-2">
           {articles.length === 0 && !answered && (
             <EmptyState
@@ -236,7 +236,7 @@ function KnowledgeInner() {
 
 export default function KnowledgePage() {
   return (
-    <Suspense fallback={<PageLoader />}>
+    <Suspense fallback={<PagePlaceholder label="Loading the knowledge base" shape="list" />}>
       <KnowledgeInner />
     </Suspense>
   );

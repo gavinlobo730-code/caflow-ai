@@ -7,7 +7,7 @@ import { RoleGuard } from "@/components/RoleGuard";
 import { api, type ApiResp } from "@/lib/api/index";
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { SectionPlaceholder } from "@/components/ui/page-frame";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type TemplateType = "invoice" | "engagement" | "document_request" | "reminder";
@@ -388,7 +388,7 @@ export default function EmailTemplatesPage() {
               </p>
             )}
             {loading ? (
-              <LoadingRegion label="Loading the template" className="py-8 text-center text-sm text-ps-hint" noticeClassName="justify-center text-center">Loading…</LoadingRegion>
+              <SectionPlaceholder label="Loading the template" shape="table" rows={4} />
             ) : (
               <TemplateEditor
                 key={activeTab}

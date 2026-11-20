@@ -7,7 +7,7 @@ import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { SectionPlaceholder } from "@/components/ui/page-frame";
 
 export interface Instruction {
   id: string; client_id: string; title: string; body: string;
@@ -104,7 +104,7 @@ export function ClientInstructions({
   }
 
   const visible = pinnedOnly ? items.filter((i) => i.is_pinned) : items;
-  if (loading) return <LoadingRegion label="Loading instructions" className="text-xs text-gray-400">Loading instructions…</LoadingRegion>;
+  if (loading) return <SectionPlaceholder label="Loading instructions" shape="list" rows={3} />;
   // A pinned-only card with nothing to show renders nothing — but a FAILED
   // read is not "nothing pinned", so the error still shows.
   if (pinnedOnly && visible.length === 0 && !error) return null;

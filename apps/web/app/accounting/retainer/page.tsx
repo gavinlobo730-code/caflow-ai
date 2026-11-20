@@ -20,7 +20,7 @@ import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state
 import { formatDate, todayIstISO } from "@/lib/dates/format";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { SectionPlaceholder } from "@/components/ui/page-frame";
 
 // ─── What changed here, and why (ACC-06) ────────────────────────────────────
 //
@@ -426,7 +426,7 @@ export default function RetainerPage() {
         </div>
 
         {loading ? (
-          <LoadingRegion label="Loading the retainer clients" className="px-5 py-8 text-center text-sm text-ps-hint" noticeClassName="justify-center text-center">Loading…</LoadingRegion>
+          <SectionPlaceholder label="Loading the retainer clients" shape="table" rows={4} />
         ) : clients.length === 0 ? (
           <EmptyState
             className="py-10"

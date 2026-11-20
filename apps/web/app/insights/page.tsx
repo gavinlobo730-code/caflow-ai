@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 import { recommendationHref, recommendationLabel } from "@/lib/insights/recommendationActions";
 import { DigestPanel } from "@/components/insights/DigestPanel";
 import { PageHeader } from "@/components/ui/page-header";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { SectionPlaceholder } from "@/components/ui/page-frame";
 
 /**
  * Insights — Phase 3a-5, and the destination D1's `insights` tile has been
@@ -169,7 +169,7 @@ export default function InsightsPage() {
           load must not blank the three tables below, and the reverse. */}
       <DigestPanel />
 
-      {loading && <LoadingRegion label="Loading insights" className="text-xs text-ps-hint">Loading…</LoadingRegion>}
+      {loading && <SectionPlaceholder label="Loading insights" shape="table" rows={4} />}
 
       {!loading && unread.length === 3 && (
         <div className="bg-white rounded-xl border border-ps-border p-6">

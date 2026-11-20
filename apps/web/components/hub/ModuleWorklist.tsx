@@ -9,7 +9,7 @@ import type { HubWorklistPayload } from "@/lib/api";
 import { objectWithLists } from "@/lib/api/shape";
 import { formatPaise } from "@/lib/money/format";
 import { PageHeader } from "@/components/ui/page-header";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { SectionPlaceholder } from "@/components/ui/page-frame";
 
 /**
  * A firm-level module worklist — which clients need work here (D22, G3).
@@ -103,7 +103,7 @@ export function ModuleWorklist({ tile, heading }: { tile: string; heading: strin
       />
 
       {loading && (
-        <LoadingRegion label="Loading the worklist" className="text-xs text-ps-hint">Loading…</LoadingRegion>
+        <SectionPlaceholder label="Loading the worklist" shape="table" rows={4} />
       )}
 
       {!loading && (error || !data) && (

@@ -30,7 +30,7 @@ import {
   apiErr, fmtRs,
   type Client, type PayrollRun,
 } from "@/components/payroll/shared";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { SectionPlaceholder, PagePlaceholder } from "@/components/ui/page-frame";
 
 // ── Statutory Returns helpers ─────────────────────────────────────────────
 
@@ -343,7 +343,7 @@ function MonthQueueTab({ month, onMonthChange, clients }: {
         </CardHeader>
         <CardContent className="p-0">
           {loading ? (
-            <LoadingRegion label="Loading the month" className="text-center text-ps-hint py-12 text-sm" noticeClassName="justify-center text-center">Loading the month…</LoadingRegion>
+            <SectionPlaceholder label="Loading the month" shape="table" rows={4} />
           ) : error ? (
             <div className="p-8 text-center">
               <p className="text-sm text-red-600 font-medium mb-2">{error}</p>
@@ -798,9 +798,7 @@ function StatutoryReturnsTab({ clients }: { clients: Client[] }) {
           )}
 
           {clientRuns.length === 0 && summariesLoading ? (
-            <LoadingRegion label="Loading this client's runs" className="text-sm text-ps-hint py-6 text-center" noticeClassName="justify-center text-center">
-              Loading this client&apos;s runs…
-            </LoadingRegion>
+            <SectionPlaceholder label="Loading this client's runs" shape="table" rows={4} />
           ) : clientRuns.length === 0 ? (
             <p className="text-sm text-ps-hint py-6 text-center">
               {summaryError
@@ -978,7 +976,7 @@ export default function PayrollPage() {
   useEffect(() => { load(); }, [load]);
 
   if (loading) {
-    return <div className="min-h-screen bg-ps-bg flex items-center justify-center"><LoadingRegion label="Loading payroll" className="text-center" noticeClassName="justify-center"><p className="text-ps-label">Loading payroll...</p></LoadingRegion></div>;
+    return <PagePlaceholder label="Loading payroll" shape="table" />;
   }
 
   if (loadError) {

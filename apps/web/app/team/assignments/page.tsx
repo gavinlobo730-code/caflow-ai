@@ -6,8 +6,8 @@ import { api, type ApiResp } from "@/lib/api";
 import type { ClientSummary } from "@/lib/api";
 import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 import { usePermissions } from "@/lib/auth/AuthContext";
-import { PageLoader } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/ui/page-header";
+import { SectionPlaceholder, pageFrameClass } from "@/components/ui/page-frame";
 
 interface Member { id: string; full_name?: string; email?: string; role?: string }
 // The row shape is `ClientSummary` from lib/api — the endpoint's own type.
@@ -91,7 +91,7 @@ export default function AssignmentsPage() {
     !filter || (c.client_name ?? "").toLowerCase().includes(filter.toLowerCase()));
 
   return (
-    <div className="p-6 max-w-5xl">
+    <div className={pageFrameClass("data")}>
       <PageHeader
         icon={<Link2 size={18} className="text-brand" />}
         title="Client Assignments"
@@ -107,7 +107,7 @@ export default function AssignmentsPage() {
       {error && <div className="text-xs text-red-600 mb-3">{error}</div>}
 
       {loading ? (
-        <PageLoader />
+        <SectionPlaceholder label="Loading assignments" shape="table" cols={3} />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-4">
           {/* Staff list */}
