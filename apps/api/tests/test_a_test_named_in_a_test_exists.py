@@ -53,6 +53,14 @@ EXEMPT: dict[str, str] = {
     "test_grant": "data: a test-only approval request type registered for the length of a test",
     "test_grant_refused": "data: a test-only approval request type, as above",
     "test_mock_secret": "data: a placeholder secret value",
+    "test_a": "data: a synthetic test module name in a directory the docs-lane finder's own tests write to tmp_path",
+    "test_b": "data: a synthetic test module name in a directory the docs-lane finder's own tests write to tmp_path",
+    "test_c": "data: a synthetic test module name in a directory the docs-lane finder's own tests write to tmp_path",
+    "test_broken": "data: a synthetic test module name in a directory the docs-lane finder's own tests write to tmp_path",
+    "test_other": "data: a synthetic test module name in a directory the docs-lane finder's own tests write to tmp_path",
+    "test_reader": "data: a synthetic test module name in a directory the docs-lane finder's own tests write to tmp_path",
+    "test_unrelated": "data: a synthetic test module name in a directory the docs-lane finder's own tests write to tmp_path",
+    "test_user": "data: a synthetic test module name in a directory the docs-lane finder's own tests write to tmp_path",
 }
 
 
