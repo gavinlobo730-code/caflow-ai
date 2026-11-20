@@ -210,6 +210,10 @@ export default function AttendancePage() {
    *  client's payroll tab has to land on that client's roster and not on the
    *  whole firm's. */
   const [attClient, setAttClient] = useState<string>("");
+  // The client the screen was OPENED for (the link from a client's Payroll page), read once. The firm-wide sheet leaves the
+  // firm's own practice out; handing this to the server is how a Partner sees the practice's own roster here (POST-A-532).
+  const [openedFor] = useState<string>(() =>
+    typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("client") ?? "");
   const [editingLeave, setEditingLeave] = useState<string | null>(null);
   const [editLeaveForm, setEditLeaveForm] = useState<Partial<LeaveBalance>>({});
 
@@ -276,7 +280,7 @@ export default function AttendancePage() {
       // clients the caller is assigned to. An unreadable answer is a failed load, never an empty roster.
       const monthKey = `${attYear}-${String(attMonth).padStart(2, "0")}`;
       const [boardRes, cliRes] = await Promise.all([
-        api.payroll.attendanceBoard(monthKey),
+        api.payroll.attendanceBoard(monthKey, openedFor || undefined),
         // Names for the clients this firm actually runs payroll for. Firm-scoped like every other read on this page.
         selectAll(() => sb.from("clients").select("id, client_name").eq("firm_id", fid).eq("is_internal", false).order("id")),
       ]);
@@ -285,9 +289,13 @@ export default function AttendancePage() {
       if (!board) throw new Error("The attendance sheet came back in a shape this screen cannot read.");
       const emps: Employee[] = board.employees;
       setEmployees(emps);
-      setClientNames(Object.fromEntries(
-        (cliRes.data ?? []).map((c: { id: string; client_name: string }) =>
-          [c.id, c.client_name])));
+      setClientNames({
+        ...Object.fromEntries(
+          (cliRes.data ?? []).map((c: { id: string; client_name: string }) =>
+            [c.id, c.client_name])),
+        // The practice is in no client list (it is not one of the firm's clients), so its roster is named here.
+        ...(board.practice_client_id ? { [board.practice_client_id]: "My practice" } : {}),
+      });
       const attRes = { data: board.attendance };
 
       const attMap: Record<string, AttendanceRow> = {};
@@ -326,7 +334,7 @@ export default function AttendancePage() {
     } finally {
       setLoading(false);
     }
-  }, [attMonth, attYear]);
+  }, [attMonth, attYear, openedFor]);
 
   const loadLeaveBalances = useCallback(async () => {
     setLeaveLoadFailed(false);
@@ -337,7 +345,7 @@ export default function AttendancePage() {
     // A failed read must NOT fall through to a table of default allocations as if they were real records, and an
     // entitlement nobody recorded arrives as null: nothing in this product accrues leave, so there is no figure to derive.
     try {
-      const res = await api.payroll.leaveLedger(leaveYear);
+      const res = await api.payroll.leaveLedger(leaveYear, openedFor || undefined);
       const ledger = res?.success ? objectWithLists<PayrollLeaveLedger>(res.data, "rows") : null;
       if (!ledger) { setLeaveLoadFailed(true); setLeaveBalances([]); return; }
       setLeaveBalances(ledger.rows.map((r) => ({
@@ -355,7 +363,7 @@ export default function AttendancePage() {
       setLeaveLoadFailed(true);
       setLeaveBalances([]);
     }
-  }, [leaveYear]);
+  }, [leaveYear, openedFor]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { if (employees.length > 0) loadLeaveBalances(); }, [loadLeaveBalances, employees]);

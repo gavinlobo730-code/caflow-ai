@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ClientModuleGrid } from "@/components/client/ClientModuleGrid";
+import { PracticeModuleGrid } from "@/components/client/PracticeModuleGrid";
+import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { StuckLoadingNotice } from "@/components/ui/stuck-loading-notice";
 
 /**
@@ -32,6 +34,7 @@ import { StuckLoadingNotice } from "@/components/ui/stuck-loading-notice";
  */
 export default function ClientRootPage() {
   const router = useRouter();
+  const { client } = useClientNav();
   const [clientId, setClientId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -57,5 +60,9 @@ export default function ClientRootPage() {
     );
   }
 
+  // The firm's own practice opens on its own grid: its books, and the screens about running it (POST-A-532).
+  if (client?.is_internal === true && client.id === clientId) {
+    return <PracticeModuleGrid practice={{ state: "ready", practiceId: clientId }} />;
+  }
   return <ClientModuleGrid clientId={clientId} />;
 }

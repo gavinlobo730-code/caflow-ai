@@ -222,14 +222,14 @@ export default function ReceivablesAgingPage() {
     <div className="p-6 max-w-ps-data mx-auto space-y-6">
       {/* Header */}
       <PageHeader
-        back={{ href: "/accounting", label: "Accounting" }}
-        title="Fee Receivables"
+        back={{ href: "/billing", label: "Earlier fee bills" }}
+        title="Earlier fee receivables"
         subtitle={
           <>
-            What your clients owe the practice — your own unpaid fee invoices, by age.
-            For what a client&apos;s own customers owe it, open the{" "}
-            <Link href="/accounting/invoices" className="text-brand underline underline-offset-2">
-              Sales worklist
+            What is still owed on the fee bills raised before billing moved to My practice, by age. What clients owe on
+            bills raised since is on{" "}
+            <Link href="/practice/ar/" className="text-brand underline underline-offset-2">
+              AR Aging
             </Link>
             .
           </>

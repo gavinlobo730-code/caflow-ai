@@ -39,9 +39,9 @@ SCAN_DIRS = ("routers", "services", "domain", "repositories", "jobs", "core")
 #: (module, function) -> why the practice is in this read's answer. Each was read on 16-11-2026.
 PRACTICE_IN_ON_PURPOSE: dict[tuple[str, str], str] = {
     ("routers/payroll.py", "payroll_client_states"):
-        "names for the clients payroll settings and runs already chose; the practice has no payroll (G4), so it is never shown",
+        "names for the clients payroll settings and runs already chose; the answer goes through `_the_firms_clients_only`, which leaves the practice out unless a Partner names it (POST-A-532)",
     ("routers/payroll.py", "payroll_employee_exceptions"):
-        "names for the clients whose employees are listed; the practice has no payroll (G4), so it is never shown",
+        "names for the clients whose employees are listed; the list goes through `_the_firms_clients_only`, which leaves the practice's own staff out (POST-A-532)",
     ("services/balance_cache_service.py", "audit_and_heal_firm"):
         "the nightly balance heal covers every set of books, and the practice keeps books",
     ("services/reconciliation_service.py", "run_reconciliation_for_firm"):

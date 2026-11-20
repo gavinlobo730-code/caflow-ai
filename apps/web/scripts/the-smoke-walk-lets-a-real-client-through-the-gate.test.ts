@@ -19,9 +19,9 @@ const read = (rel: string) => fs.readFileSync(path.join(here, rel), "utf8");
 const REST = "/__supabase/rest/v1/clients";
 
 test("the gate's own lookup answers the client, as one object for maybeSingle", () => {
-  const select = "id, client_name, entity_type, gstin, status";
+  const select = "id, client_name, entity_type, gstin, status, is_internal";
   const row = knownRead(REST, `select=${encodeURIComponent(select)}&id=eq.${CLIENT_UUID}`, true);
-  assert.deepEqual(Object.keys(row).sort(), ["client_name", "entity_type", "gstin", "id", "status"]);
+  assert.deepEqual(Object.keys(row).sort(), ["client_name", "entity_type", "gstin", "id", "is_internal", "status"]);
   assert.equal(row.id, CLIENT_UUID);
   assert.ok(row.client_name && row.status);
 });

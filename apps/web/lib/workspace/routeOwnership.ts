@@ -82,9 +82,12 @@ export function getActiveWorkspaceForPathname(pathname: string): WorkspaceId | n
   // or it is unreachable.
   if (pathname.startsWith("/payroll")) return "payroll";
 
+  // Asked BEFORE the `/accounting` prefix below, which would otherwise take it: the ageing of the practice's earlier fee
+  // bills is a My practice screen at an address it has had since it was on the Accounting menu (POST-B-193).
+  if (pathname.startsWith("/accounting/receivables")) return "practice";
+
   if (
     pathname.startsWith("/accounting") ||
-    pathname.startsWith("/billing") ||
     pathname.startsWith("/migration")
   )
     return "accounting";
@@ -95,7 +98,8 @@ export function getActiveWorkspaceForPathname(pathname: string): WorkspaceId | n
   if (pathname.startsWith("/health"))
     return "health";
 
-  if (pathname.startsWith("/practice") || pathname.startsWith("/executive-dashboard"))
+  // `/billing` is the earlier fee bills, a read-only record in My practice since 21-11-2026 (POST-B-193).
+  if (pathname.startsWith("/practice") || pathname.startsWith("/billing") || pathname.startsWith("/executive-dashboard"))
     return "practice";
 
   if (pathname.startsWith("/knowledge"))

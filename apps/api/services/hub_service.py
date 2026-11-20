@@ -353,9 +353,11 @@ def _signals(firm_id: str, scope: Optional[list[str]],
         # tile's caveat (a firm that keeps its deposits elsewhere has no challan here, and calling its tax undeposited was an
         # unknown shown as a value). One read gives both: the figure is returned and the caveat's amount is left in `beside`.
         "tds": _tds_figure,
+        # Without the practice's own runs (POST-A-532): the tile opens the firm's payroll lists, which leave the practice
+        # out (G2), so a count that included them would not add up to the list it leads to.
         "payroll": lambda: _count(
             "payroll_runs", firm_id, scope,
-            in_=("status", _outstanding("payroll_runs", _PAYROLL_DONE))),
+            in_=("status", _outstanding("payroll_runs", _PAYROLL_DONE)), not_clients=_not_practice()),
         "income_tax": lambda: _count(
             "itr_filings", firm_id, scope,
             in_=("status", _outstanding("itr_filings", _ITR_DONE))),

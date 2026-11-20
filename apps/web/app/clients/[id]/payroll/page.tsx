@@ -2216,7 +2216,7 @@ function PayrollEnablementLine({ clientId }: { clientId: string }) {
     setReadError(null);
     setMsg(null);
     try {
-      const res = await api.payroll.payrollClientStates() as {
+      const res = await api.payroll.payrollClientStates(undefined, clientId) as {
         success?: boolean; error?: string | null; data?: unknown;
       };
       if (asked.current !== clientId) return;

@@ -65,7 +65,7 @@ _RBAC = re.compile(r'rbac\("(\w+)",\s*"(\w+)"\)')
 #: Functions the record must keep naming, so deleting the sentence cannot be how a rename escapes this file.
 MUST_NAME = (
     "internal_client_service.assert_can_view_client", "internal_client_service.assert_partner_for_internal_id",
-    "internal_client_service.assert_not_internal_for_payroll", "internal_client_service.require_client_access",
+    "internal_client_service.assert_practice_payroll_is_the_partners", "internal_client_service.require_client_access",
     "internal_client_service.provision", "billing_service.ensure_customer_link",
     "billing_service.generate_for_schedule", "collections_service.assess_invoice",
     "collections_service.sweep_overdue", "collections_service.flag_overdue_for_internal_followup",

@@ -47,14 +47,14 @@ export interface Tip {
  * The order of the screens a person is walked through. A tip's "Next" link goes to the next screen in this list that still
  * has a tip this person has not closed, so the tour is one path however many tips a screen carries.
  */
-export const TOUR: readonly string[] = ["/", "/clients", "/deadlines", "/accounting", "/practice/billing"];
+export const TOUR: readonly string[] = ["/", "/clients", "/deadlines", "/practice", "/practice/billing"];
 
 /** What each stop of the tour is called on the "Next" link that leads to it. */
 export const TOUR_LABELS: Readonly<Record<string, string>> = {
   "/": "the dashboard",
   "/clients": "your clients",
   "/deadlines": "deadlines",
-  "/accounting": "your own firm's books",
+  "/practice": "your own firm's books",
   "/practice/billing": "billing your clients",
 };
 
@@ -65,13 +65,13 @@ export const TIPS: readonly Tip[] = [
     anchor: "workspace-menu",
     source: "components/shell/WorkspaceTopBar.tsx",
     title: "Everything opens from this menu",
-    body: "This button opens the whole product: “Clients”, “Deadlines”, “Accounting”, “Payroll” and the rest. “Practice” is your own firm: its billing, its collections and its revenue.",
+    body: "This button opens the whole product: “Clients”, “Deadlines”, “Accounting”, “Payroll” and the rest. “My practice” is your own firm: its books, its billing and its revenue.",
     holds: [
       { text: "Clients", file: "lib/workspace/workspaceConfig.ts" },
       { text: "Deadlines", file: "lib/workspace/workspaceConfig.ts" },
       { text: "Accounting", file: "lib/workspace/workspaceConfig.ts" },
       { text: "Payroll", file: "lib/workspace/workspaceConfig.ts" },
-      { text: "Practice", file: "lib/workspace/workspaceConfig.ts" },
+      { text: "My practice", file: "lib/workspace/workspaceConfig.ts" },
     ],
   },
   {
@@ -103,13 +103,15 @@ export const TIPS: readonly Tip[] = [
     holds: [],
   },
   {
+    // The id is kept from when this tip sat on the Accounting overview's "Practice books" button: a person who closed it
+    // there has been told where the firm's own books are, and is not told again.
     id: "own-books",
-    path: "/accounting",
-    anchor: "practice-books",
-    source: "app/accounting/page.tsx",
-    title: "Your own firm's books are here",
-    body: "Your firm is kept as a client of itself. “Practice books” opens its ledger, journals and statements, the same screens a client has. Only a Partner sees them.",
-    holds: [{ text: "Practice books", file: "app/accounting/page.tsx" }],
+    path: "/practice",
+    anchor: "practice-menu",
+    source: "components/shell/ClientTopBar.tsx",
+    title: "Everything about your own firm is here",
+    body: "This is “My practice”. Your firm is kept as a client of itself, so it has the same books a client has, with its fee billing, its own payroll and what it earns. The button this tip points at opens every part of it. Only a Partner sees it.",
+    holds: [{ text: "My practice", file: "components/shell/ClientTopBar.tsx" }],
     roles: ["Partner"],
   },
   {

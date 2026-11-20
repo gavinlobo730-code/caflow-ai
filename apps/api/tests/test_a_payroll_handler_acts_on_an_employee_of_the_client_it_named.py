@@ -60,7 +60,7 @@ def world(monkeypatch):
     wire_e2e(monkeypatch, db, [pr])
     monkeypatch.setattr(pr, "_db", lambda: db)
     monkeypatch.setattr(pr, "assert_payroll_enabled", lambda *a, **k: None)
-    monkeypatch.setattr(pr, "assert_not_internal_for_payroll", lambda *a, **k: None)
+    monkeypatch.setattr(pr, "assert_practice_payroll_is_the_partners", lambda *a, **k: None)
     import services.audit_service as audit
     monkeypatch.setattr(audit, "log_event", lambda *a, **k: None)
     return db

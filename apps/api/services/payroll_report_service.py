@@ -43,7 +43,7 @@ WHY THE PF AND ESI COUNTS ARE READ AND NOT DERIVED
 from __future__ import annotations
 
 import re
-from typing import Optional
+from typing import Callable, Optional
 from core.db_provider import privileged_for
 from core.observability import capture_soft_failure
 
@@ -133,7 +133,8 @@ def run_summaries(db, firm_id: str, run_ids: list[str]) -> dict[str, dict]:
 
 
 def employee_year_totals(db, firm_id: str, financial_year: str,
-                        client_id: Optional[str] = None) -> list[dict]:
+                        client_id: Optional[str] = None, *,
+                        narrow: Callable[[list[dict]], list[dict]]) -> list[dict]:
     """One row per EMPLOYEE for a financial year — the year-end summary.
 
     This one has to be an aggregate rather than a narrowed slip read, and the
@@ -153,7 +154,10 @@ def employee_year_totals(db, firm_id: str, financial_year: str,
             .eq("firm_id", firm_id).in_("month", months))
     if client_id:
         runs = runs.eq("client_id", client_id)
-    run_rows = runs.execute().data or []
+    # `narrow` is REQUIRED and has no default: the read above is the privileged client's, so it holds every client's
+    # runs, and the caller (the route, which knows who is asking) says which of them may be answered for. Each run
+    # carries its `client_id`, which is what the narrowing reads.
+    run_rows = narrow(runs.execute().data or [])
     if not run_rows:
         return []
 
@@ -180,15 +184,15 @@ def employee_year_totals(db, firm_id: str, financial_year: str,
                   key=lambda b: ((b["employee"] or {}).get("name") or "").lower())
 
 
-def financial_years(db, firm_id: str) -> list[str]:
+def financial_years(db, firm_id: str, *, narrow: Callable[[list[dict]], list[dict]]) -> list[str]:
     """Which years this firm has payroll for, newest first.
 
     Read off the RUNS, which are one per client-month, rather than off the
     payslips — the year picker used to derive its options from every payslip
     the firm had ever produced.
     """
-    rows = (privileged_for(db).table("payroll_runs").select("month")
-            .eq("firm_id", firm_id).execute().data) or []
+    rows = narrow((privileged_for(db).table("payroll_runs").select("month, client_id")
+                   .eq("firm_id", firm_id).execute().data) or [])
     years = {fy for fy in (fy_of_month(str(r.get("month") or "")) for r in rows) if fy}
     return sorted(years, reverse=True)
 

@@ -52,8 +52,12 @@ test("Schedule III Mapping asks what the statements route asks, and the page rea
   assert.match(read(WEB, "app", "accounting", "schedule-iii-mapping", "page.tsx"), /api\.accounting\.scheduleIii\(/);
 });
 
-test("Fee Receivables asks billing read, which is who the fee table's policy lets read it", () => {
-  assert.equal(panelPair("AccountingPanel", "/accounting/receivables"), "billing:read");
+test("the earlier fee receivables are on the Partner's own menu, and billing read is who the fee table's policy lets read it", () => {
+  // The entry left the Accounting menu (where it asked billing:read) for My practice on 21-11-2026 (POST-B-193). That panel
+  // carries no pair per entry because the whole workspace is the Partner's, and billing read is Partner-only.
+  assert.equal(panelPair("PracticePanel", "/accounting/receivables"), null);
+  assert.doesNotMatch(read(WEB, "components", "panels", "AccountingPanel.tsx"), /href: "\/accounting\/receivables"/);
+  assert.match(read(API, "core", "permissions.py"), /"billing": \{\s*"read":\s*_PARTNER_ONLY/);
   assert.match(read(WEB, "app", "accounting", "receivables", "page.tsx"), /\.from\("fee_invoices"\)/);
   const policy = read(API, "migrations", "495_the_practices_fee_tables_are_read_only_by_someone_with_billing_access.sql");
   assert.match(policy, /fee_invoices/);

@@ -11,6 +11,9 @@ import { HealthBadge } from "@/components/HealthBadge";
 import { ClientSwitcher } from "@/components/ClientSwitcher";
 import { UtilityCluster } from "@/components/shell/UtilityCluster";
 import { ClientModuleGrid } from "@/components/client/ClientModuleGrid";
+import { PracticeModuleGrid } from "@/components/client/PracticeModuleGrid";
+import { practiceSectionAt } from "@/lib/workspace/practiceWorkspace";
+import { usePracticeClient, type PracticeLookup } from "@/lib/workspace/usePracticeClient";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import { restoreClient } from "@/lib/data/clients";
 
@@ -47,7 +50,17 @@ import { Button } from "@/components/ui/button";
  * it is something a person just asked for, so it may arrive. The grid itself
  * does not animate in — the front door must be readable in its first frame.
  */
-export function ClientTopBar({ onOpenSearch }: { onOpenSearch: () => void }) {
+/**
+ * MY PRACTICE WEARS THIS BAR TOO (POST-A-532). The firm's own practice is a client of itself, so its workspace is this shell;
+ * what changes is what the bar says and offers. `practicePath` is true on a fixed `/practice/…` address, where nothing in the
+ * address names a client, and the open client's own row says so (`is_internal`) inside `/clients/<id>/…`. Either way the bar
+ * reads "My practice", leads out to the dashboard and not to the client list (the practice is not one of the firm's clients),
+ * offers no switcher and no health badge (it is left out of both, guardrail G2), and its grid is `PracticeModuleGrid`: the
+ * firm's own books and the screens about running the practice, in one place. It is one bar with two faces and not a second
+ * component because the grid's backdrop is a hand-built full-window layer, and a second copy of one is what
+ * `scripts/an-overlay-is-the-shared-dialog-or-on-the-frozen-list.test.ts` exists to refuse.
+ */
+export function ClientTopBar({ onOpenSearch, practicePath = false }: { onOpenSearch: () => void; practicePath?: boolean }) {
   // THE LOOKUP MOVED UP, and the bar reads the answer rather than its own.
   //
   // It used to run this query itself, keeping `client` and `clientLoadFailed`
@@ -56,6 +69,10 @@ export function ClientTopBar({ onOpenSearch }: { onOpenSearch: () => void }) {
   // link. `ClientNavProvider` resolves it once; `ClientResolutionGate` and this
   // bar read the same answer. Two lookups would be two answers.
   const { clientId, client, resolution, reloadClient } = useClientNav();
+  const inPractice = practicePath || client?.is_internal === true;
+  // On a fixed address the practice's client id is the server's to give; inside its workspace the address already has it.
+  const lookedUp = usePracticeClient(practicePath);
+  const practice: PracticeLookup = client?.is_internal === true ? { state: "ready", practiceId: clientId } : lookedUp;
   const { can } = usePermissions();
   const pathname = usePathname();
   // Three states, three sentences. The bar used to say "Couldn't load client"
@@ -103,7 +120,10 @@ export function ClientTopBar({ onOpenSearch }: { onOpenSearch: () => void }) {
   // a card the CA is not standing on.
   const seg = pathname.split("/")[3] ?? "";
   const activeSection = CLIENT_SECTIONS.find((s) => s.id === seg)?.id ?? null;
-  const activeLabel = CLIENT_SECTIONS.find((s) => s.id === activeSection)?.label ?? "All modules";
+  const practiceScreen = practicePath ? practiceSectionAt(pathname) : null;
+  const activeLabel = practiceScreen?.label
+    ?? CLIENT_SECTIONS.find((s) => s.id === activeSection)?.label
+    ?? (inPractice ? "All of My practice" : "All modules");
 
   useEffect(() => { setGridOpen(false); }, [pathname]);
 
@@ -123,11 +143,14 @@ export function ClientTopBar({ onOpenSearch }: { onOpenSearch: () => void }) {
     // PostgREST produces `id=eq.` against a uuid column — SQLSTATE 22P02, which
     // was logged in production on every client page load before this guard.
     setHealth(null);
-    if (!clientId || clientId === "_placeholder") return;
+    // Asked once the client's own row has been read, and never for the practice: it is left out of client health scoring
+    // (guardrail G2), and until the row is read the bar cannot know which this is. The first drive in a browser found the
+    // score being asked for the practice in the moment before its row arrived.
+    if (!clientId || clientId === "_placeholder" || !client || client.id !== clientId || inPractice) return;
     getLatestHealthScore(clientId)
       .then((h) => { if (h) setHealth({ overall_score: h.overall_score, grade: h.grade ?? null, trend: h.trend }); })
       .catch((e) => console.error("ClientTopBar: failed to load health score", e));
-  }, [clientId]);
+  }, [clientId, client, inPractice]);
 
   return (
     // `print:hidden` on the WRAPPER, for the reason WorkspaceTopBar gives: the
@@ -146,14 +169,25 @@ export function ClientTopBar({ onOpenSearch }: { onOpenSearch: () => void }) {
             is the only one, and a CA must never have to hunt for it.
             Bordered as its own pill (not just text) so it reads as clearly
             clickable at a glance, matching the module-switcher pill's weight. */}
-        <Link
-          href="/clients"
-          title="Exit client workspace"
-          className="flex items-center gap-1.5 h-8 px-2.5 rounded-lg border border-ps-border text-xs font-medium text-ps-label hover:text-ps-ink hover:border-brand hover:bg-ps-bg transition-colors shrink-0"
-        >
-          <ArrowLeft size={14} />
-          <span className="hidden sm:inline">All clients</span>
-        </Link>
+        {inPractice ? (
+          <Link
+            href="/"
+            title="Leave My practice"
+            className="flex items-center gap-1.5 h-8 px-2.5 rounded-lg border border-ps-border text-xs font-medium text-ps-label hover:text-ps-ink hover:border-brand hover:bg-ps-bg transition-colors shrink-0"
+          >
+            <ArrowLeft size={14} />
+            <span className="hidden sm:inline">Dashboard</span>
+          </Link>
+        ) : (
+          <Link
+            href="/clients"
+            title="Exit client workspace"
+            className="flex items-center gap-1.5 h-8 px-2.5 rounded-lg border border-ps-border text-xs font-medium text-ps-label hover:text-ps-ink hover:border-brand hover:bg-ps-bg transition-colors shrink-0"
+          >
+            <ArrowLeft size={14} />
+            <span className="hidden sm:inline">All clients</span>
+          </Link>
+        )}
 
         <span className="h-5 w-px bg-ps-border shrink-0" aria-hidden />
 
@@ -171,7 +205,13 @@ export function ClientTopBar({ onOpenSearch }: { onOpenSearch: () => void }) {
           {/* The client's name IS the switcher — but only once we know the
               name. Offering a picker over "Couldn't load client" invites a CA
               to navigate from a header that does not know where it is. */}
-          {client ? (
+          {inPractice ? (
+            // Not a switcher: the practice is not one of the firm's clients, and there is only one of it.
+            <span className="text-sm font-semibold text-ps-ink truncate" data-my-practice>
+              My practice
+              {client?.client_name ? <span className="ml-2 font-normal text-ps-label">{client.client_name}</span> : null}
+            </span>
+          ) : client ? (
             <ClientSwitcher
               clientId={clientId}
               clientName={client.client_name}
@@ -228,6 +268,7 @@ export function ClientTopBar({ onOpenSearch }: { onOpenSearch: () => void }) {
           onClick={() => setGridOpen((v) => !v)}
           aria-expanded={gridOpen}
           aria-controls="client-module-menu"
+          data-tip="practice-menu"
           className={cn(
             "flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-xs font-semibold transition-colors shrink-0",
             gridOpen ? "bg-brand text-white" : "text-ps-ink hover:bg-ps-bg"
@@ -265,12 +306,21 @@ export function ClientTopBar({ onOpenSearch }: { onOpenSearch: () => void }) {
             aria-label="Modules"
             className="module-grid-overlay absolute inset-x-0 top-full z-40 max-h-[calc(100vh-3rem)] overflow-y-auto border-b border-ps-border bg-white shadow-xl"
           >
-            <ClientModuleGrid
-              clientId={clientId}
-              variant="overlay"
-              activeSection={activeSection}
-              onNavigate={() => setGridOpen(false)}
-            />
+            {inPractice ? (
+              <PracticeModuleGrid
+                practice={practice}
+                variant="overlay"
+                activeId={practiceScreen ? `practice:${practiceScreen.id}` : activeSection}
+                onNavigate={() => setGridOpen(false)}
+              />
+            ) : (
+              <ClientModuleGrid
+                clientId={clientId}
+                variant="overlay"
+                activeSection={activeSection}
+                onNavigate={() => setGridOpen(false)}
+              />
+            )}
           </div>
         </>
       )}

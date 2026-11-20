@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { RefreshCw, Target, FileText, ClipboardCheck, IndianRupee, Scale, Lock, Landmark, Users, Clock, Building2, ArrowRight } from "lucide-react";
+import { RefreshCw, Target, FileText, ClipboardCheck, IndianRupee, Scale, Lock, Landmark, Users, Building2, ArrowRight } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { api } from "@/lib/api";
 import { NAV_GROUPS } from "@/components/panels/AccountingPanel";
@@ -20,10 +20,8 @@ const ADMIN_CARDS: {
   icon: typeof Users; notShared?: boolean;
 }[] = [
   { label: "Supplier Master", description: "Manage supplier TDS sections, credit limits and payment terms", href: "/accounting/suppliers", icon: Users },
-  // The PRACTICE's fee invoices, not a client's customers — the Sales hub tile
-  // once linked here for those (accounting-hub-2-05); they are the Sales
-  // worklist at /accounting/invoices.
-  { label: "Fee Receivables", description: "What clients owe the practice — your own unpaid fee invoices, by age", href: "/accounting/receivables", icon: Clock },
+  // "Fee Receivables" (the practice's EARLIER fee bills, by age) left this screen on 21-11-2026 with Fee Billing
+  // (POST-B-193): what clients owe the practice is in My practice.
   { label: "Loans & FD", description: "Loans, EMI schedules and FD investments with maturity & TDS flags", href: "/accounting/loans", icon: Landmark },
   // ACC-06 is closed. All three of these kept the CA's work in this browser's
   // localStorage; all three are on the database now — recurring journals on
@@ -116,7 +114,7 @@ export default function AccountingHubPage() {
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {practiceId && (
-              <Link href={`/clients/${practiceId}/accounting`} data-tip="practice-books" className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-2 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-label">
+              <Link href={`/clients/${practiceId}/accounting`} className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-2 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-label">
                 Practice books
               </Link>
             )}
