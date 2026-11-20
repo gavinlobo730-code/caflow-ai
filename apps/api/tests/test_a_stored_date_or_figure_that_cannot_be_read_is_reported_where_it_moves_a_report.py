@@ -120,6 +120,29 @@ def test_a_stored_bonus_percentage_that_cannot_be_read_keeps_zero_and_is_reporte
     assert "bonus_register.percent_of_unreadable" in reports()
 
 
+def test_the_report_of_an_unreadable_percentage_does_not_carry_an_employees_pay(reports):
+    from services.bonus_register_service import _percent_of
+
+    assert _percent_of(2_345_678, "eight") == 0
+    assert "2345678" not in reports(), "the basic pay is an employee's, and an error tracker has no business with it"
+
+
+@pytest.mark.parametrize("percent, base, expected", [
+    ("4.35", 1_000_000, 43_500),      # float read this as 434 basis points and gave 43,400
+    (2.3, 1_000_000, 23_000),         # 2.3 * 100 is 229.99999999999997
+    (0.29, 1_000_000, 2_900),         # 0.29 * 100 is 28.999999999999996
+    (8.33, 2_400_000, 199_920),
+    ("8.33", 2_400_000, 199_920),
+    (20, 100_000, 20_000),
+    (0, 100_000, 0),
+])
+def test_a_percentage_is_taken_in_whole_number_arithmetic(percent, base, expected, reports):
+    from services.bonus_register_service import _percent_of
+
+    assert _percent_of(base, percent) == expected
+    assert reports() == ""
+
+
 def test_a_joining_date_that_cannot_be_read_keeps_twelve_months_and_is_reported(reports):
     from routers.payroll import _months_employed_in_fy
 
@@ -127,3 +150,37 @@ def test_a_joining_date_that_cannot_be_read_keeps_twelve_months_and_is_reported(
     assert reports() == ""
     assert _months_employed_in_fy("someday in October", "2026-27") == 12
     assert "payroll.months_employed_unreadable" in reports()
+
+
+# ── the handlers the widened ratchet newly saw (an independent read of this branch, 20-11-2026) ──────────────────────────────────────────
+
+def test_a_wage_month_that_cannot_be_read_names_no_ceiling_gap_and_says_so(reports):
+    from routers.payroll import _wage_ceiling_gap
+
+    assert _wage_ceiling_gap("garbled") == []
+    assert "payroll.wage_ceiling_gap_month_unreadable" in reports()
+
+
+def test_a_financial_year_that_cannot_be_read_has_no_months_and_says_so(reports):
+    from services.payroll_report_service import months_of_fy
+
+    assert months_of_fy("2025-26")[0] == "2025-04" and months_of_fy("2025-26")[-1] == "2026-03"
+    assert reports() == ""
+    assert months_of_fy("garbled") == []
+    assert "payroll_report.months_of_fy_unreadable" in reports()
+
+
+def test_a_paid_remittance_whose_wage_month_cannot_be_read_says_nothing_and_says_so(reports):
+    from services.esi_deposit_closes_obligation import close_for_recorded_remittance
+
+    out = close_for_recorded_remittance(db=None, firm_id="F", client_id="C", actor=None, may_write_compliance=False,
+                                        remittance={"scheme": "esic", "status": "paid", "wage_month": "garbled"})
+    assert out == []
+    assert "esi_deposit_closes_obligation.wage_month_unreadable" in reports()
+
+
+def test_a_payment_date_that_cannot_be_read_offers_no_entry_and_says_so(reports):
+    from services.statutory_remittance_service import entries_clearing_account
+
+    assert entries_clearing_account(None, firm_id="F", client_id="C", account_id="A", amount_paise=100, paid_on="garbled") == []
+    assert "statutory_remittance.paid_on_unreadable" in reports()

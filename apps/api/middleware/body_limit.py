@@ -59,6 +59,8 @@ class BodySizeLimitMiddleware:
                 try:
                     declared = int(value)
                 except ValueError:
+                    # The header is the caller's own and optional by design: an unreadable length declares nothing, and the byte counter
+                    # below is what stops a body that lies about its size.
                     declared = None
                 break
         if declared is not None and declared > self.max_bytes:

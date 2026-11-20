@@ -34,7 +34,7 @@ import pytest
 
 API_ROOT = Path(__file__).resolve().parents[1]
 BASELINE_FILE = Path(__file__).resolve().parent / "fixtures" / "narrow_handler_baseline.json"
-TREE = ("core", "domain", "jobs", "repositories", "routers", "services")
+TREE = ("core", "domain", "jobs", "middleware", "models", "repositories", "routers", "services")
 
 NARROW = {"ValueError", "TypeError", "KeyError", "IndexError", "AttributeError", "OverflowError", "ZeroDivisionError",
           "InvalidOperation", "DecimalException", "UnicodeDecodeError", "JSONDecodeError"}
@@ -52,14 +52,26 @@ def _names(t: ast.expr | None) -> set[str]:
     return {"?"}
 
 
+def _constant_value(v: ast.expr | None) -> bool:
+    """A value that is written out, not computed: a literal, a negative number, or an empty list, dict or tuple (or a tuple of such)."""
+    if v is None or isinstance(v, ast.Constant):
+        return True
+    if isinstance(v, ast.UnaryOp) and isinstance(v.op, (ast.USub, ast.UAdd)):
+        return isinstance(v.operand, ast.Constant)
+    if isinstance(v, (ast.List, ast.Tuple, ast.Set)):
+        return all(_constant_value(e) for e in v.elts)
+    if isinstance(v, ast.Dict):
+        return not v.keys
+    return False
+
+
 def _constant_statement(b: ast.stmt) -> bool:
     if isinstance(b, (ast.Pass, ast.Continue)):
         return True
     if isinstance(b, ast.Return):
-        v = b.value
-        return v is None or isinstance(v, ast.Constant) or (isinstance(v, ast.Tuple) and all(isinstance(e, ast.Constant) for e in v.elts))
+        return _constant_value(b.value)
     if isinstance(b, ast.Assign):
-        return isinstance(b.value, ast.Constant)
+        return _constant_value(b.value)
     return False
 
 
@@ -123,6 +135,18 @@ def test_the_baseline_only_shrinks():
         f"tests/fixtures/narrow_handler_baseline.json lists handlers that are fixed or commented now: {stale}. Lower or delete them.")
 
 
+def test_the_tree_the_scan_reads_includes_the_middleware_and_the_models():
+    # `middleware/body_limit.py` had the exact shape and was unscanned; an independent read found it, and the folders are named so a
+    # handler there is judged like any other.
+    assert {"middleware", "models"} <= set(TREE)
+    assert all((API_ROOT / top).is_dir() for top in TREE)
+
+
+def test_a_computed_return_is_still_not_this_shape():
+    computed = "def f(x):\n    try:\n        return int(x)\n    except ValueError:\n        return [x]\n"
+    assert silent_substitutions("x.py", computed) == []
+
+
 def test_the_scan_sees_the_tree_it_claims_to():
     now = _counts(_tree_findings())
     assert sum(now.values()) >= 100, "the scan stopped recognising the shape: the baseline is no longer a count of anything"
@@ -135,6 +159,11 @@ CASES = {
     "return 0": "def f(x):\n    try:\n        return int(x)\n    except (TypeError, ValueError):\n        return 0\n",
     "assign": "def f(x):\n    v = 1\n    try:\n        v = int(x)\n    except KeyError:\n        v = None\n    return v\n",
     "pass": "def f(x):\n    try:\n        int(x)\n    except ValueError:\n        pass\n",
+    "return a negative number": "def f(x):\n    try:\n        return int(x)\n    except ValueError:\n        return -1\n",
+    "return an empty list": "def f(x):\n    try:\n        return [int(x)]\n    except ValueError:\n        return []\n",
+    "return an empty dict": "def f(x):\n    try:\n        return {int(x): 1}\n    except TypeError:\n        return {}\n",
+    "return an empty tuple": "def f(x):\n    try:\n        return (int(x),)\n    except ValueError:\n        return ()\n",
+    "assign a negative number": "def f(x):\n    v = 1\n    try:\n        v = int(x)\n    except KeyError:\n        v = -1\n    return v\n",
     "continue": "def f(xs):\n    for x in xs:\n        try:\n            int(x)\n        except ValueError:\n            continue\n",
 }
 

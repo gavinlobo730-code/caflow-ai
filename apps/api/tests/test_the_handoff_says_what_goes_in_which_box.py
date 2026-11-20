@@ -141,6 +141,18 @@ def test_the_panel_tells_the_ca_what_the_portal_checks_that_the_product_cannot_s
         assert "guarantee" not in low
 
 
+def test_a_run_with_no_file_says_nothing_about_uploading_one():
+    """A run in which nobody carries a PF contribution has no ECR; the three sentences about uploading a file are not said beside
+    "there is no ECR to build" (found by an independent read, 20-11-2026)."""
+    for problems in ([], ["R. Kumar has no UAN"]):
+        panel = _epf(filable=False, problems=problems, employee_rate_bps=1200)
+        warnings = " ".join(panel.warnings)
+        assert h.EPF_MARK_EXITS_FIRST not in panel.warnings
+        assert h.EPF_COMPARE_WITH_THE_PORTALS_LIST not in panel.warnings
+        assert "built at" not in warnings and "Active Member List" not in warnings
+        assert not panel.artefact.available
+
+
 def test_the_panel_says_which_rate_the_file_was_built_at_when_it_is_told():
     panel = _epf(employee_rate_bps=1200)
     rate = [w for w in panel.warnings if w.startswith("The portal's upload form asks for the contribution rate")]

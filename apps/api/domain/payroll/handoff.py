@@ -377,10 +377,13 @@ def epf_obligation(
     if on_actual:
         warnings.append(pf_election.ECR_WARNING.format(n=on_actual))
     # What the product cannot see at the portal (POST-A-520): the exits, the portal's own record of the members, and the rate box.
-    warnings.append(EPF_MARK_EXITS_FIRST)
-    warnings.append(EPF_COMPARE_WITH_THE_PORTALS_LIST)
-    if employee_rate_bps:
-        warnings.append(epf_rate_sentence(employee_rate_bps))
+    # THREE SENTENCES ABOUT UPLOADING A FILE, so they are said only when there is a file: a run in which nobody carries a PF
+    # contribution has none, and "this file was built at 12%" beside "there is no ECR to build" is a panel that contradicts itself.
+    if filable:
+        warnings.append(EPF_MARK_EXITS_FIRST)
+        warnings.append(EPF_COMPARE_WITH_THE_PORTALS_LIST)
+        if employee_rate_bps:
+            warnings.append(epf_rate_sentence(employee_rate_bps))
     # THE RETURN AND THE PAYMENT ARE TWO ACTS WITH TWO REFERENCES (POST-A-518). On EPFO's revamped system the return gets a Return
     # File ID when the file passes, the employer approves the return statement, and only then does the portal prepare the challan,
     # which gets its TRRN when it is finalised and is paid through a bank. The Employees' Provident Funds Scheme, 2026 puts them
