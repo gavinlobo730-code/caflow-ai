@@ -238,6 +238,20 @@ test("jsonPlain reads JSON, and says that a page is not the product's answer", a
   await assert.rejects(jsonPlain(new Response("", { status: 200 }), "write"), { message: NOT_OURS_WRITE });
 });
 
+test("a body the bound cut off midway is told as a timeout, not as a page that is not the product's (POST-A-501)", async () => {
+  // A response whose body stream fails while it is being read, as `AbortSignal.timeout` does to a body still arriving.
+  const cutOff = (name: string) => new Response(new ReadableStream({
+    start(controller) { controller.enqueue(new TextEncoder().encode('{"success": tr')); },
+    pull(controller) { controller.error(Object.assign(new Error("The operation timed out."), { name })); },
+  }), { status: 200 });
+  await assert.rejects(jsonPlain(cutOff("TimeoutError"), "read"), (e: unknown) => e instanceof PlainFailure && e.message === timedOutSentence("read"));
+  await assert.rejects(jsonPlain(cutOff("TimeoutError"), "write"), (e: unknown) => e instanceof PlainFailure && e.message === timedOutSentence("write"));
+  // A body that arrived whole and is not JSON is still the other sentence.
+  await assert.rejects(jsonPlain(new Response("<html>Bad gateway</html>"), "read"), (e: unknown) => e instanceof PlainFailure && e.message === NOT_OURS_READ);
+  // The write sentence keeps saying it is not known whether the change went through.
+  assert.match(timedOutSentence("write"), /not known/i);
+});
+
 test("a body that opens as a document is a page and nothing else is", () => {
   for (const body of ["<!DOCTYPE html><html>", "  <html><body>Bad gateway</body></html>", "<?xml version='1.0'?><error/>", "<HTML>", "\n<head><title>502</title></head>"]) {
     assert.equal(looksLikeMarkup(body), true, body);

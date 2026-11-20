@@ -640,7 +640,11 @@ def _months_employed_in_fy(joining_date, fy: Optional[str]) -> int:
     try:
         joined = date.fromisoformat(str(joining_date)[:10])
         fy_start_year = int(str(fy)[:4])
-    except (ValueError, TypeError):
+    except (ValueError, TypeError) as unreadable:
+        # A joining date or year that cannot be read keeps the twelve-month projection (the direction §192(1) leaves the employer safe in), and
+        # says so: the employee keeps their money only when the date is readable (POST-A-505).
+        from core.observability import capture_soft_failure
+        capture_soft_failure(unreadable, operation="payroll.months_employed_unreadable", joining_date=str(joining_date)[:40], fy=str(fy)[:12])
         return 12
     fy_start = date(fy_start_year, 4, 1)
     if joined <= fy_start:
@@ -3490,7 +3494,10 @@ def _wage_ceiling_gap(month: str) -> list[str]:
     """
     try:
         m = int(month[5:7])
-    except (ValueError, TypeError, IndexError):
+    except (ValueError, TypeError, IndexError) as unreadable:
+        # The run's month cannot be read, so a ceiling change that falls inside it cannot be named in the run's gaps: said (POST-A-505).
+        from core.observability import capture_soft_failure
+        capture_soft_failure(unreadable, operation="payroll.wage_ceiling_gap_month_unreadable", month=str(month)[:20])
         return []
     note = wage_ceiling_gap(_fy_for_month(month), m)
     return [f"Provident fund, pension and insurance wages for {month}: {note}"] if note else []
@@ -7123,6 +7130,8 @@ def run_handoff(
             return_type_reason=decision.reason,
             interest_note=ecr_sequence.INTEREST_AND_DAMAGES_NOTE,
             recorded=epf_recorded,
+            # The rate the payslips (and so the file) were built at, for the upload form's rate box (POST-A-520).
+            employee_rate_bps=pf_rates_for_month(_fy_for_month(month), int(month[5:7])).employee_rate_bps,
         ),
         handoff_domain.esic_obligation(
             wage_month=month,

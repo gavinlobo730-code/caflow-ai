@@ -264,6 +264,7 @@ def _stage_rank(stage: Optional[str]) -> int:
     try:
         return _PIPELINE_STAGE_ORDER.index(stage)  # type: ignore[arg-type]
     except (ValueError, TypeError):
+        # By design, and in the docstring: a stage this pipeline does not list ranks below every listed one.
         return -1
 
 

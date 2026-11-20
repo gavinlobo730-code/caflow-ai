@@ -246,18 +246,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [mfaPending, setMfaPending] = useState<boolean | null>(null);
   // What the assurance in state was read for. An announcement of the sign-in service that cannot have changed which session this
   // is (the hourly token refresh, a password saved, the library announcing the stored session again when a tab regains focus) keeps
-  // it while a fresh read is made, so the guard does not draw nothing and unmount the page under the person (POST-A-493;
-  // lib/auth/assuranceCarry says exactly which announcements, and why everything else is read afresh).
+  // it while a fresh read is made, so the guard does not draw nothing and unmount the page under the person (POST-A-493), and so
+  // does a verified code on a session that was already admitted, which raises its level and never changes which session it is
+  // (POST-A-515 (c); lib/auth/assuranceCarry says exactly which announcements, and why everything else is read afresh).
   const assuranceKnown = useRef<KnownAssurance>({ userId: null, accessToken: null, pending: null });
+  // Only the most recently STARTED read of the assurance may settle it (the independent review of POST-A-515 (c), 20-11-2026): reads are
+  // started by every announcement and by the stored session, and an older one that answered after a newer one wrote its answer, and the
+  // user and token it was read for, over the newer. A late "nothing is owed" over a newer "a challenge is owed" admitted the person for
+  // the seconds until the newer read answered; the other way round only held them at the challenge. Order of arrival is the network's;
+  // order of asking is ours (lib/auth/latestWins).
+  const assuranceGate = useRef(latestWins());
 
   /** Read the assurance for `forSession` and settle it, remembering what it was read for. A failed read is "a challenge is owed". */
   function readAssurance(forSession: Session | null) {
     const userId = forSession?.user?.id ?? null;
     const accessToken = forSession?.access_token ?? null;
-    const settle = (pending: boolean | null) => {
+    const settle = assuranceGate.current.begin<boolean | null>((pending) => {
       assuranceKnown.current = { userId, accessToken, pending };
       setMfaPending(pending);
-    };
+    });
     resolveMfaPending(forSession).then(settle).catch(() => settle(true));
   }
   const [hasFirm, setHasFirm] = useState<boolean | null>(null);
@@ -422,8 +429,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Recompute MFA assurance on every auth transition (login, refresh, verify).
         // Set null first so the guard never treats an unresolved aal1 session as
         // "fully authenticated" and skips the challenge, EXCEPT for an announcement that cannot have changed which session this
-        // is: that keeps the value already read while the fresh read is made, so the page is not unmounted (POST-A-493). A kept
-        // value is replaced by the fresh read when it answers, so a level that did change takes the page away on the next render.
+        // is, or that only raises the level of one already admitted (a verified code): that keeps the value already read while the
+        // fresh read is made, so the page is not unmounted (POST-A-493, POST-A-515 (c)). A kept value is replaced by the fresh read
+        // when it answers (the most recently started read always settles), so a level that did change takes the page away on the
+        // next render.
         const nextUserId = session?.user?.id ?? null;
         const nextAccessToken = session?.access_token ?? null;
         if (mayKeepAssurance({ event: _event, known: assuranceKnown.current, nextUserId, nextAccessToken })) {

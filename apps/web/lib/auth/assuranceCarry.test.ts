@@ -25,10 +25,27 @@ test("another person is never the same session, whatever the event", () => {
   for (const e of ["TOKEN_REFRESHED", "USER_UPDATED", "SIGNED_IN"]) assert.equal(keep(e, known(), "u-2", "tok-A"), false, e);
 });
 
-test("the announcements that change the level or the session are read afresh", () => {
-  for (const e of ["SIGNED_OUT", "PASSWORD_RECOVERY", "MFA_CHALLENGE_VERIFIED", "INITIAL_SESSION", "SOMETHING_NEW", ""]) {
+test("the announcements that change the session are read afresh", () => {
+  for (const e of ["SIGNED_OUT", "PASSWORD_RECOVERY", "INITIAL_SESSION", "SOMETHING_NEW", ""]) {
     assert.equal(keep(e, known()), false, e);
   }
+});
+
+// POST-A-515 (c): a verified code raised the level of a session that already owed nothing, and rebuilt the page under the person
+// (Settings > Security proving a password or checking a code; the platform page stepping up). It keeps what let the person in, and only that.
+test("a verified code keeps the value of a session that is already admitted, whatever its new token is", () => {
+  assert.equal(keep("MFA_CHALLENGE_VERIFIED", known({ pending: false }), "u-1", "tok-B"), true, "the level is in the new token");
+  assert.equal(keep("MFA_CHALLENGE_VERIFIED", known({ pending: false }), "u-1", "tok-A"), true);
+});
+
+test("a verified code never keeps a challenge that was owed, a value not yet read, or another person's", () => {
+  assert.equal(keep("MFA_CHALLENGE_VERIFIED", known({ pending: true }), "u-1", "tok-B"), false, "the code is what ends the challenge: read afresh");
+  assert.equal(keep("MFA_CHALLENGE_VERIFIED", known({ pending: true }), "u-1", "tok-A"), false, "and the answer does not depend on the token being a new one");
+  assert.equal(keep("MFA_CHALLENGE_VERIFIED", known({ pending: null }), "u-1", "tok-B"), false, "nothing read yet: nothing to keep");
+  assert.equal(keep("MFA_CHALLENGE_VERIFIED", known({ pending: false }), "u-2", "tok-B"), false, "another person");
+  assert.equal(keep("MFA_CHALLENGE_VERIFIED", known({ pending: false, userId: null }), "u-1", "tok-B"), false);
+  assert.equal(keep("MFA_CHALLENGE_VERIFIED", known({ pending: false }), "u-1", null), false, "no session in the announcement");
+  assert.equal(keep("MFA_CHALLENGE_VERIFIED", known({ pending: false }), null, "tok-B"), false);
 });
 
 test("nothing is kept while nothing is yet known, with no person, or with no session in the announcement", () => {
