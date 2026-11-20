@@ -144,7 +144,6 @@ Item numbers are `POST-A-nnn` (`pre015` is `PRE-A-015`). The solo items, one pul
 | POST-A-162 | frontend-ux | months | Work down the 218 mounted endpoints that reach no screen |
 | POST-A-068 | income-tax-itr | weeks | Build the filing-season workflow for hundreds of ITR returns |
 | POST-A-069 | income-tax-itr | weeks | Derive Form 3CD clauses 33 and 40 from existing engines |
-| POST-A-076 | income-tax-itr | weeks | Build a printable Form 3CD report (PDF or CSV export) |
 | POST-A-070 | income-tax-itr | months | Fill ITR-3/5/6 balance sheet, P&L and depreciation schedules… |
 | POST-A-199 | other | weeks | Add task checklists, comments with mentions, attachments and… |
 | POST-A-200 | other | weeks | Build a workflow builder screen and seed the CA starter templ… |

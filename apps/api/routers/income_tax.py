@@ -7,8 +7,9 @@ IT Act 1961 — Section 80C, 80D, 80G, 87A, 111A, 112A, 234B/C etc.
 from __future__ import annotations
 from datetime import date, datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from pydantic import BaseModel, Field, field_validator, model_validator
-from typing import Annotated, Optional
+from typing import Annotated, Literal, Optional
 from uuid import UUID
 from models.common import api_response
 from core.authz import assert_client_access, can_access_client
@@ -2798,6 +2799,43 @@ def form_3cd_register(
     return api_response(True, build(
         db, current_user["firm_id"], client_id, fy,
         nature=nature, bank_rate_bps=bank_rate_bps, current_user=current_user))
+
+
+@router.get("/form-3cd/export")
+def form_3cd_working_paper(
+    client_id: str,
+    fy: Annotated[FYLabel, Query(description="YYYY-YY, e.g. 2025-26")],
+    format: Literal["pdf", "xlsx"] = Query("pdf"),
+    nature: Optional[str] = Query(None, description="business | profession, as on the register"),
+    bank_rate_bps: Optional[int] = Query(None, description="RBI Bank Rate, as on the register"),
+    current_user: dict = Depends(rbac("income_tax", "read")),
+):
+    """The register above as a printable working paper (PDF) or a spreadsheet: every clause with its number and heading, the answer
+    and where it came from, and the basis of each. It is built by `services.form_3cd_service.build`, the function the register's own
+    endpoint calls, so the file shows exactly what the screen shows; it carries what the CA has SAVED on the register, not what is typed
+    and unsaved. A working paper, not Form 3CD as the portal takes it: nothing is filed or submitted, and no portal file is produced.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal
+    """
+    assert_client_access(current_user, client_id)
+    db = _db()
+    if db is None:
+        raise HTTPException(
+            status_code=503,
+            detail="The working paper is built from the live books and is unavailable without the database.")
+    from domain.reporting.export_document import ExportRefused
+    from services.form_3cd_service import build
+    from services.report_export_service import export_form_3cd
+    register = build(db, current_user["firm_id"], client_id, fy,
+                     nature=nature, bank_rate_bps=bank_rate_bps, current_user=current_user)
+    try:
+        out = export_form_3cd(register, format, db=db, firm_id=current_user["firm_id"], client_id=client_id)
+    except ExportRefused as e:
+        # A refusal is the answer, in words, as on every other report file.
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    return Response(
+        content=out.content, media_type=out.media_type,
+        headers={"Content-Disposition": f'attachment; filename="{out.filename}"'})
 
 
 class Form3cdManualClauses(BaseModel):
