@@ -169,8 +169,10 @@ export function SerifHeading({
   const titleColor = dark ? "text-white" : "text-brand-dark";
   const subColor = dark ? "text-slate-300" : "text-slate-600";
   // The eyebrow is never an accent colour, just the section's own text colour
-  // at ~50%. The gold is reserved for the index rule, so it means one thing.
-  const eyebrowColor = dark ? "text-white/50" : "text-brand-dark/50";
+  // at ~60-65%: 50% was 3.4:1 on white, below WCAG 1.4.3's 4.5:1 for 12px text
+  // (the marketing quality pass, POST-A-507), and these two are 7.0:1 on the
+  // dark navy and 5.5:1 on white. The gold is reserved for the index rule.
+  const eyebrowColor = dark ? "text-white/60" : "text-brand-dark/65";
   // A split heading owns the full content width; a stacked one is capped so a
   // headline never runs to an unreadable measure.
   const split = layout === "split" && align !== "center";
@@ -186,9 +188,11 @@ export function SerifHeading({
           {index ? (
             <>
               <span
-                // Gold on both themes deliberately: the index is the one
-                // place the accent appears, so it means one thing.
-                className="font-display text-[13px] leading-none tabular-nums text-gold"
+                // Gold on the dark theme (6.2:1 on the navy). On white the same
+                // gold is 2.9:1, below WCAG 1.4.3 for 13px text, so the numeral
+                // takes the eyebrow's colour there and the gold stays on the
+                // rule beside it (POST-A-507).
+                className={`font-display text-[13px] leading-none tabular-nums ${dark ? "text-gold" : "text-brand-dark/65"}`}
               >
                 {index}
               </span>

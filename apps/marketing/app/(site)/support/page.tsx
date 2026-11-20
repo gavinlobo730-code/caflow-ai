@@ -94,7 +94,7 @@ export default function SupportPage() {
               <div className="flex flex-col border-t border-slate-900/10 pt-6">
                 <h3 className="font-display text-[22px] italic text-brand-dark">{c.title}</h3>
                 <p className="mt-2 text-[15px] leading-relaxed text-slate-600">{c.desc}</p>
-                <p className="mt-3 text-[12px] font-semibold uppercase tracking-[0.12em] text-slate-400">{c.meta}</p>
+                <p className="mt-3 text-[12px] font-semibold uppercase tracking-[0.12em] text-slate-500">{c.meta}</p>
                 {c.link ? (
                   <Link href={c.link.href} className={linkCls}>
                     {c.link.label} <ArrowRight size={15} />
