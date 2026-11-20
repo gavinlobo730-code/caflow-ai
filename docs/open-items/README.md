@@ -45,7 +45,7 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] [�
 | [post-demo-A-mine.md](post-demo-A-mine.md) | 79 | after the demo: Claude can do alone |
 | [post-demo-B-ours.md](post-demo-B-ours.md) | 277 | after the demo: owner decides first, then Claude builds |
 | [post-demo-C-yours.md](post-demo-C-yours.md) | 210 | after the demo: only the owner or outsiders can do |
-| [new-findings.md](new-findings.md) | 44 | everything found from 6 November 2026 on, kept apart from the backlog above; worked after the backlog's Claude-alone items (the rule is at its head); NOT counted in the backlog's total |
+| [new-findings.md](new-findings.md) | 43 | everything found from 6 November 2026 on, kept apart from the backlog above; worked after the backlog's Claude-alone items (the rule is at its head); NOT counted in the backlog's total |
 | [post-demo-parked.md](post-demo-parked.md) | 0 | retired on 18 November 2026: every item that was parked is now an ordinary item in its own letter file |
 | [decisions-and-strategy.md](decisions-and-strategy.md) | — | the 15 owner decisions with the items each gates, what was parked until after the demo (now ordinary items), the 30 Sep strategy and staged roadmap |
 | [checked-closed.md](checked-closed.md) | — | what the sweep tested and found already done, answered or moot, with evidence, so nobody reopens it |
@@ -57,9 +57,9 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] [�
 
 **Who must act (backlog).** 81 items are Claude's by their letter. Of those, **42 need no help and can be built now**; 24 wait on the owner for a document, a statutory reading or a decision of theirs (written in [owner-list.md](owner-list.md)), 11 need the owner's hands (a real browser or phone, a step on the live database, a working session with the owner, or something this container is refused) and 4 are held by the owner's own rule. 287 need the owner to decide first and 213 only the owner or someone outside this container can do. In all **539 of the 581 need the owner.**
 
-**NEW FINDINGS: 44 open** (15 before the demo, 29 after; 11 `high` priority; 6 UNSURE), counted apart from the backlog. 33 are Claude's by their letter (**14 need no help and can be built now**, 13 wait on a document or reading, 6 need the owner's hands, 0 are held), 7 need the owner to decide first and 4 only the owner or someone outside this container can do. The day by day numbers are in [progress.md](progress.md).
+**NEW FINDINGS: 43 open** (14 before the demo, 29 after; 10 `high` priority; 6 UNSURE), counted apart from the backlog. 32 are Claude's by their letter (**13 need no help and can be built now**, 13 wait on a document or reading, 6 need the owner's hands, 0 are held), 7 need the owner to decide first and 4 only the owner or someone outside this container can do. The day by day numbers are in [progress.md](progress.md).
 
-**BEFORE THE DEMO (the list to start from).** 56 open items are before the demo (41 of the backlog, 15 of the new findings; the 15 triaged on 2 October 2026 carry a `PRE-` id and every item moved before the demo since carries the header token `before demo`, because ids are never renumbered). Of these, **7 Claude can do alone**, 1 are Claude's but wait on the owner for a document or reading, 5 need the owner's hands, 0 are held, 24 need the owner to decide first and 19 only the owner or someone outside this container can do. To list them: every line of the three `pre-demo-` files, and `grep -n "· before demo" docs/open-items/post-demo-*.md docs/open-items/new-findings.md`.
+**BEFORE THE DEMO (the list to start from).** 55 open items are before the demo (41 of the backlog, 14 of the new findings; the 15 triaged on 2 October 2026 carry a `PRE-` id and every item moved before the demo since carries the header token `before demo`, because ids are never renumbered). Of these, **6 Claude can do alone**, 1 are Claude's but wait on the owner for a document or reading, 5 need the owner's hands, 0 are held, 24 need the owner to decide first and 19 only the owner or someone outside this container can do. To list them: every line of the three `pre-demo-` files, and `grep -n "· before demo" docs/open-items/post-demo-*.md docs/open-items/new-findings.md`.
 
 <!-- counts:end -->
 
@@ -68,7 +68,6 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] [�
 Pre-demo items by suggested order. The first is the date; Render and Supabase dashboard checks and the fixes Claude can make come next, then the seeded-firm work, then the rehearsals, then the day-of wake-up.
 
 1. **PRE-C-001** (you) — Tell Claude the demo date once you set one, and who attends (the demo was moved later on 9 Oct, and by one more week on 19 Nov; build everything first)
-2. **POST-A-530** (Claude) — Audit every screen's loading state and layout; one page frame outside the client workspace
 3. **POST-A-531** (Claude) — Guided tips: a per-person switch and pop-ups that explain a screen
 4. **POST-A-532** (Claude) — A My practice workspace, with the firm's own payroll and fee billing
 5. **POST-A-533** (Claude) — First-day steps for the firm's own practice; PAN and legal form at sign-up

@@ -104,3 +104,23 @@ test("the frame centres whatever it caps, and the placeholder is a loading regio
   assert.match(src, /data: "max-w-ps-data"/);
   assert.match(src, /<LoadingRegion label=\{label\} className=\{pageFrameClass\(width,/);
 });
+
+test("the measurement runs by itself every week and on demand, over the firm's screens and a client's, and nothing waits on it", () => {
+  const workflow = fs.readFileSync(path.join(web, "..", "..", ".github", "workflows", "frame-walk.yml"), "utf8");
+  const body = workflow.split("\n").filter((l) => !l.trimStart().startsWith("#")).join("\n");
+  assert.match(body, /schedule:\s*\n\s*- cron: "\d+ \d+ \* \* \d"/, "it no longer runs on a weekly schedule");
+  assert.match(body, /workflow_dispatch:/, "it can no longer be run by hand");
+  // Not a check a pull request waits on, and no path filter to hide a screen that changed.
+  assert.doesNotMatch(body, /pull_request/);
+  assert.doesNotMatch(body, /^\s*paths(-ignore)?:/m);
+  const runs = [...body.matchAll(/run: (node scripts\/smoke-walk\.mjs[^\n]*)/g)].map((m) => m[1]);
+  assert.equal(runs.length, 2, "the firm's screens and a client's are two runs");
+  for (const run of runs) {
+    assert.match(run, /--frame\b/, `${run}: it does not measure`);
+    // `--frame-shrink` and `--frame-init` REWRITE the list from what a run found; a scheduled run must judge against the committed one.
+    assert.doesNotMatch(run, /--frame-(shrink|init)/, `${run}: a scheduled run must not rewrite the list it judges against`);
+  }
+  assert.ok(runs.some((r) => /--real-client/.test(r) && /--only \/clients\//.test(r)), "no run measures a client's screens");
+  assert.ok(runs.some((r) => !/--real-client/.test(r)), "no run measures the firm's screens");
+  assert.match(body, /timeout-minutes: \d+/, "the job has no allowance of its own");
+});
