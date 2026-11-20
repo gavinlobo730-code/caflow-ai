@@ -822,6 +822,8 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
   const [bankAccounts, setBankAccounts] = useState<{ id: string; bank_name: string; account_no: string }[]>([]);
   const [bankAccountsUnreadable, setBankAccountsUnreadable] = useState(false);
   const [vendorBills, setVendorBills] = useState<{ id: string; bill_no: string | null; our_reference: string | null; bill_date: string | null }[]>([]);
+  // A read of the vendor's bills that did not come is not a vendor with none (POST-A-527): the picker says so.
+  const [vendorBillsUnread, setVendorBillsUnread] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   // `disabled={saving}` alone is not a submission guard: it only takes effect
@@ -915,17 +917,18 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
   // somebody else's bill would reclassify cost out of a purchase the client
   // never made, and a flat list of every bill is how that happens.
   useEffect(() => {
-    if (form.acquisition_mode !== "from_bill" || !form.vendor_id) { setVendorBills([]); return; }
+    if (form.acquisition_mode !== "from_bill" || !form.vendor_id) { setVendorBills([]); setVendorBillsUnread(false); return; }
     let cancelled = false;
     (async () => {
       const supabaseForBills = getSupabaseClient();
-      const { data } = await selectAll(() => supabaseForBills
+      const { data, error } = await selectAll(() => supabaseForBills
         .from("purchase_bills")
         .select("id, bill_no, our_reference, bill_date")
         .eq("client_id", clientId).eq("vendor_id", form.vendor_id)
         .in("status", ["received", "partially_paid", "paid"])
         .order("bill_date", { ascending: false }).order("id"));
-      if (!cancelled) setVendorBills((data as typeof vendorBills) ?? []);
+      // The pager hands a failure back as `error` and does not throw.
+      if (!cancelled) { setVendorBillsUnread(!!error); setVendorBills(error ? [] : (data as typeof vendorBills) ?? []); }
     })();
     return () => { cancelled = true; };
   }, [clientId, form.acquisition_mode, form.vendor_id]);
@@ -1216,6 +1219,11 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
                     </option>
                   ))}
                 </select>
+                {vendorBillsUnread && (
+                  <p role="alert" className="text-3xs text-state-problem mt-1">
+                    This vendor&apos;s bills could not be read, so none are listed. That is not a vendor with none: pick the vendor again.
+                  </p>
+                )}
                 <p className="text-3xs text-ps-hint mt-1">
                   A bill can be capitalised once. Its cost moves out of purchases
                   into this asset; the payable is untouched.

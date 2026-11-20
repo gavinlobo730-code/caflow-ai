@@ -17,8 +17,8 @@
 // they are what a caller draws as "nothing".
 //
 // What it does not see, said here so it is not mistaken for more: a read that never throws because the client hands its failure back in the
-// answer (the shared pager's `{ error }`), a catch whose server call is behind a name declared elsewhere, and what a screen does with the
-// stand-in value a handler hands back. Those are other rules or open items, not claims this one makes.
+// answer (the shared pager's `{ error }`, which scripts/pagerReads.ts holds), a catch whose server call is behind a name declared elsewhere,
+// and what a screen does with the stand-in value a handler hands back. Those are other rules or open items, not claims this one makes.
 import fs from "node:fs";
 import path from "node:path";
 import ts from "typescript";
