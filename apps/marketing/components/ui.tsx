@@ -49,10 +49,10 @@ export function Button({
     secondary: "bg-white text-brand border border-ps-border hover:bg-ps-muted",
     light: "btn-shine bg-white text-brand hover:bg-ps-muted shadow-sm",
     "ghost-light": "text-white border border-white/25 hover:bg-white/10",
-    // The one accent colour on the site — the same #5876c7 the header's "Book a
+    // The one accent colour on the site — the same #5272c2 (4.62:1 under white text; its predecessor #5876c7 was 4.34:1, below WCAG 1.4.3, POST-A-507) the header's "Book a
     // demo" and the hero's primary CTA use, so a filled accent button is the
     // same button wherever it appears.
-    accent: "btn-shine bg-[#5876c7] text-white hover:bg-[#4d68af] shadow-sm",
+    accent: "btn-shine bg-[#5272c2] text-white hover:bg-[#4d68af] shadow-sm",
   };
   const cls = `inline-flex items-center justify-center gap-2 rounded-lg px-5 py-3 text-[14px] font-semibold transition-all duration-300 ${styles[variant]} ${className}`;
   const inner = external ? (

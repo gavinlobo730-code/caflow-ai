@@ -351,7 +351,7 @@ def test_the_header_is_brand_navy_and_not_a_grey():
     assert "bg-brand-dark" in live, (
         "SiteHeader's filled state must use the brand navy token."
     )
-    stray = re.findall(r"bg-\[#(?!5876c7|4d68af)[0-9a-fA-F]{6}\]", live)
+    stray = re.findall(r"bg-\[#(?!5272c2|4d68af)[0-9a-fA-F]{6}\]", live)
     assert not stray, (
         f"SiteHeader carries an off-palette background {stray}. The only raw "
         f"hexes allowed here are the accent CTA blue and its hover."

@@ -11,7 +11,7 @@
 // deduplicated gap list must render as a clean list, never as JSON.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { humanizeKey, renderClauseValue } from "./form3cdRender.ts";
+import { humanizeKey, percentFromBps, renderClauseValue } from "./form3cdRender.ts";
 
 test("a plain string or number renders as itself", () => {
   assert.equal(renderClauseValue("business"), "business");
@@ -48,8 +48,8 @@ test("clause 26's own shape — an object whose gaps field is a list — formats
     ],
   };
   const out = renderClauseValue(clause26Value);
-  assert.match(out, /^Msme sums disallowed paise: 118000$/m,
-    "the scalar field reads as a label, not a raw JSON key");
+  assert.match(out, /^Msme sums disallowed: ₹1,180\.00$/m,
+    "the scalar field reads as a label in rupees, not a raw JSON key with a paise count");
   assert.match(out, /^Gaps: /m);
   assert.match(out, /• Acme Tools: MSMED classification/);
   assert.match(out, /• Beta Traders: MSMED classification/);
@@ -78,4 +78,26 @@ test("a gap sentence's own section citation is never re-cased", () => {
   // string value straight through untouched, capital § and all.
   const out = renderClauseValue("§43B(h) reaches a MICRO or SMALL enterprise only.");
   assert.equal(out, "§43B(h) reaches a MICRO or SMALL enterprise only.");
+});
+
+test("a money key is rupees in Indian grouping and a rate key a percentage, and the label drops the unit word", () => {
+  assert.equal(renderClauseValue({ total_amount_paise: 12_34_567_50 }), "Total amount: ₹12,34,567.50");
+  assert.equal(renderClauseValue({ total_amount_paise: -150 }), "Total amount: -₹1.50");
+  assert.equal(renderClauseValue({ stock_to_turnover_bps: 1250 }), "Stock to turnover: 12.50%");
+  assert.equal(percentFromBps(675), "6.75%");
+  assert.equal(percentFromBps(5), "0.05%");
+  assert.equal(percentFromBps(-50), "-0.50%");
+});
+
+test("a bigint that arrived as text under a money key is still the figure", () => {
+  assert.equal(renderClauseValue({ tds_paise: "250000" }), "Tds: ₹2,500.00");
+});
+
+test("a unit is never given to a figure that was not stored with one", () => {
+  // A plain count keeps its own key and is not money.
+  assert.equal(renderClauseValue({ challans_read: 2 }), "Challans read: 2");
+  // A non-whole value under a money key is shown as it is, under its own key: money is never a float.
+  assert.equal(renderClauseValue({ tds_paise: 12.5 }), "Tds paise: 12.5");
+  // Free text under a money key is not a figure.
+  assert.equal(renderClauseValue({ tds_paise: "n/a" }), "Tds paise: n/a");
 });

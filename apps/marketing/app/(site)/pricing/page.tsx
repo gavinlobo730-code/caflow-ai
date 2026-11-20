@@ -151,7 +151,7 @@ export default function PricingPage() {
                 </div>
                 <p className="mt-2 text-[12px] text-slate-500">{tier.priceNote}</p>
 
-                <p className="mt-7 text-[12px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                <p className="mt-7 text-[12px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                   {tier.featuresLead}
                 </p>
                 <ul className="mt-4 space-y-2.5">
