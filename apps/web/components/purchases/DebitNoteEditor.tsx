@@ -544,7 +544,7 @@ export function DebitNoteEditor({
               />
               {openBillsUnread && (
                 <p role="alert" className="mt-1 text-3xs text-state-problem">
-                  The vendor's bills could not be read, so none can be chosen here. That is not a vendor with none: pick the vendor again to read them before you issue a standalone note.
+                  The vendor&apos;s bills could not be read, so none can be chosen here. That is not a vendor with none: pick the vendor again to read them before you issue a standalone note.
                 </p>
               )}
             </div>

@@ -470,7 +470,7 @@ export function SalesCreditNoteEditor({
               />
               {openInvoicesUnread && (
                 <p role="alert" className="mt-1 text-3xs text-state-problem">
-                  The customer's invoices could not be read, so none can be chosen here. That is not a customer with none: pick the customer again to read them before you issue a standalone note.
+                  The customer&apos;s invoices could not be read, so none can be chosen here. That is not a customer with none: pick the customer again to read them before you issue a standalone note.
                 </p>
               )}
             </div>
