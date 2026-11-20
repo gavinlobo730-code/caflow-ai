@@ -94,8 +94,8 @@ asked for again. Where one of them differs from a default, this section wins.
   and it is current with `main` (squash). Branch from `origin/main` and, after a merge, reset
   the work branch to `main`. Close an item's ledger line in the same commit as its work. Before
   each batch, confirm every item in it is still true against the code and close any that is
-  already done or moot. A change that touches no backend or frontend file skips the heavy
-  checks; a migration merged to `main` applies to production (see Migrations).
+  already done or moot. A change confined to the web apps skips the backend tests, one confined to
+  `docs/` and CLAUDE.md runs only the tests that read them; a migration merged to `main` applies to production (see Migrations).
 - **Sub-agents and workflows.** The default is to do the work directly. Sub-agents are for
   narrow, independent, read-only research, or an independent review of one specific diff: at
   most three at a time, each briefed with the goal, the files and what is already ruled out.
@@ -203,7 +203,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - AN AGEING BUCKET ON THE PRACTICE'S RECEIVABLES LISTS ITS INVOICES
 - A DEMO COMPANY IS SIZED BY ITS TURNOVER AND ITS COST SHARE, ITS OWNERS PAY FOR WHAT IT BOUGHT BEFORE THE BOOKS, AND A TEST WORKS ITS YEAR OUT
 
-### `docs/design-record/engineering-and-ci.md` (15 entries): Tests, lint and coverage ratchets, CI, dependency lock, migrations and the schema-drift check
+### `docs/design-record/engineering-and-ci.md` (16 entries): Tests, lint and coverage ratchets, CI, dependency lock, migrations and the schema-drift check
 
 - THE BACKEND HAS A LINT RATCHET, A PROPERTY SUITE, ONE PAGER, ONE DOOR TO THE DATABASE CLIENT AND A COVERAGE FLOOR, AND EACH IS A R
 - THE SMOKE WALK RUNS BY ITSELF, NIGHTLY AND ON DEMAND, AND IS NOT A CHECK ANYTHING WAITS ON
@@ -220,7 +220,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A TEST THAT NAMES ANOTHER TEST NAMES ONE THAT EXISTS
 - THE BACKEND INSTALLS FROM A HASH-PINNED LOCK AND THE IMAGE HOLDS NO TEST SUITE
 - THE SHARED PAGER RETRIES A READ, BUILDS A QUERY AFRESH FOR EVERY PAGE, AND READS IN A STATED ORDER THAT ENDS IN `id`
-
+- A DOCS-ONLY CHANGE RUNS ONLY THE TESTS THAT READ THE DOCUMENTS, DERIVED AND NEVER LISTED, AND A PUSH TO `main` RUNS EVERYTHING
 ### `docs/design-record/filing-and-compliance.md` (10 entries): Filing to government portals, trackers and the period lock
 - A TIED CHALLAN IS CHECKED AGAINST THE ACCOUNT IT CLEARS, AND THE CHALLANS NOBODY HAS TIED ARE A WORKLIST THAT FLAGS A MONTH'S WAIT
 
