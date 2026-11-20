@@ -95,6 +95,11 @@
  *     ──
  *     99  of a hard 100
  *
+ * Plus the literal rules, which are not in that sum because they come first and carry no placeholder: nine static leaves with
+ * four shapes each (staticLeafShadowRules) and, since 20-11-2026, three page-data files of static LIST pages that have a
+ * placeholder page under them (listPayloadRules: /clients, /health and /relationships `index.txt`). Without those three the
+ * `:id.txt` rules answered the list's own page data with another page's.
+ *
  * **41 OF THOSE 43 ARE UNDER `/clients/`**, which is why D10's consequence
  * names that subtree specifically and is binding on the whole navigation
  * phase: **no new dynamic route under `/clients/[id]`.** A new section there
@@ -315,9 +320,9 @@ function staticLeafShadowRules(segments) {
  * placeholder matches "index.txt" as readily as an engagement id: the year-end
  * landing page's own payload, "/clients/<real id>/year-end/index.txt", would be
  * answered with the engagement page's. So that one URL gets a rule of its own, listed
- * before it. Only a DYNAMIC parent needs one: a literal parent's "index.txt" is a file
- * the export holds, and a rewrite never overrides a file; a dynamic parent's file exists
- * only under "_placeholder", never under a real id. Each costs one dynamic rule. */
+ * before it. Only a DYNAMIC parent needs one HERE: a dynamic parent's file exists
+ * only under "_placeholder", never under a real id. (A literal parent's "index.txt" is a file the export holds, but a
+ * rewrite DOES override a file, so it needs its own rule, listPayloadRules, below.) Each costs one dynamic rule. */
 function landingPayloadRules(allRoutes, dynamicRoutes) {
   const have = new Set(allRoutes.map((r) => r.join("/")));
   const seen = new Set();
@@ -330,6 +335,39 @@ function landingPayloadRules(allRoutes, dynamicRoutes) {
     if (seen.has(from)) continue;
     seen.add(from);
     rules.push({ from, to: "/" + replaceDynamic(parent).join("/") + "/index.txt" });
+  }
+  return rules;
+}
+
+/** The page-data file of a STATIC route whose own folder also holds a placeholder page (20-11-2026).
+ *
+ * "/clients/index.txt" is the Clients LIST's page data, and the rule that serves a real client's page data,
+ * "/clients/:id.txt", matches it as readily as a client id: `:id` is "index". Cloudflare applies a rewrite even where the
+ * export holds a file at that path (the static-leaf shadows above exist for that reason), so the list was answered with the
+ * client workspace's page data and drew the workspace's "Loading workspace…" screen at the list's address, until a reload.
+ * Reading a page for a hard reload asks for the HTML, which no placeholder matches, so only moving to the list from inside
+ * the app failed, which is why it looked like a loading problem and not an address problem.
+ *
+ * It was hidden for weeks: until POST-A-148 (17-11-2026) the plain "/clients/:id" rule was listed first and answered the same
+ * request with HTML, which the browser ignores and then loads the page the ordinary way. Listing the ".txt" rule first, which
+ * year-end needed, turned that harmless answer into a valid-looking wrong one. /health and /relationships have the same shape.
+ *
+ * So the file's own payload gets a literal rule to itself, listed before the placeholder. It carries no placeholder, so it
+ * costs nothing against the 100-dynamic cap (literal rules come first, see the module doc). Only a STATIC parent needs one: a
+ * DYNAMIC parent's file exists under "_placeholder" only, and landingPayloadRules covers it. Written as the rule it is, and
+ * held by the first-match check in generate-redirects.test.ts over every static route, not by this list of three. */
+function listPayloadRules(allRoutes, dynamicRoutes) {
+  const have = new Set(allRoutes.map((r) => r.join("/")));
+  const seen = new Set();
+  const rules = [];
+  for (const segments of dynamicRoutes) {
+    if (!isDynamicSeg(segments[segments.length - 1])) continue;
+    const parent = segments.slice(0, -1);
+    if (parent.some(isDynamicSeg) || !have.has(parent.join("/"))) continue;
+    const from = (parent.length ? "/" + parent.join("/") : "") + "/index.txt";
+    if (seen.has(from)) continue;
+    seen.add(from);
+    rules.push({ from, to: from });
   }
   return rules;
 }
@@ -392,7 +430,8 @@ export function buildRedirectsFile(appDir) {
 
   const enumerated = [...dynamicRoutes.flatMap((segments) => bareRules(segments)),
     ...shadowedStaticRoutes.flatMap((segments) => staticLeafShadowRules(segments)),
-    ...landingPayloadRules(allRoutes, dynamicRoutes)]
+    ...landingPayloadRules(allRoutes, dynamicRoutes),
+    ...listPayloadRules(allRoutes, dynamicRoutes)]
     // See compareEnumeratedPaths' doc for why this can't be segment-count-tie
     // plus a raw alphabetical fallback: that version is not transitive once a
     // third, unrelated rule's path sorts (by plain string comparison) between
