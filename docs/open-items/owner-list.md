@@ -20,6 +20,28 @@ The owner's plan, set on 19 November 2026 at about 17:20 IST: **one question at 
 
 Findings made while walking the questions are not part of the walkthrough: those on Claude's side are in the Claude-only list (POST-A-511 to 515, of which 511 turned out to be moot once the server kept the sign-up link, and 516 to 526 from the EPFO documents, the Code's text, the 2026 schemes and the Central Rules); those on the owner's side are told to him on the spot (so far: the Render screenshot for POST-A-514, still unsent).
 
+## 0c. THE SESSION RECORD: 20 November 2026 (afternoon and evening IST), and the plan it set
+
+**What you decided, in the order you decided it.**
+
+1. **The demo.** One practising CA attends, your former teacher. It is shown on the seeded firm. Afterwards he may sign himself up to try the product; he files nothing on it and you tell him the essentials yourself. The product is reached at app.jlgsfinance.com until you buy another address. **There is no date again**: you first said 28 November as a placeholder, then chose to move it by about ten days so that everything below is built first, then said to forget the date and finish the platform (PRE-C-001).
+2. **Moved to after the demo:** the privacy notice and terms (POST-B-259), the data-processing agreement, and the pricing page's offer (POST-B-264; the product is free while it is not live and the public site is not shown at the demo).
+3. **The platform admin** (POST-B-350): after the demo, and designed together first. What I read in the code that day is on its line. In short: a stranger gets nothing, but reading needs only the password, and the checks before a permanent delete are weaker than they look.
+4. **The firm's own fee billing** (POST-B-193): it lives in the new My practice workspace, on the engine that reaches the books and GST; the old Fee Billing screen leaves the menu and its rows stay readable.
+5. **Four things to build before the demo, which you asked for after walking the live Test Firm:** one page frame and proper loading screens on every screen that lacks them, after an audit of all of them (POST-A-530); guided tips with a switch in Settings (POST-A-531); a My practice workspace holding everything a client workspace has and more (POST-A-532); and the first-day card pointing a new CA at the firm's own books, with the PAN and legal form asked at sign-up (POST-A-533). A notice when a new version of the site is live follows them (POST-A-529).
+6. **The firm's own staff payroll runs in My practice.** That reverses an earlier design rule (no payroll for the practice's own record); only a Partner reaches it.
+7. **Nothing is removed.** Knowledge, Instructions and Relationships stay as they are; if the live site's limit on address patterns ever forces a choice, we discuss it then.
+8. **The merge rules stay as they are** (no bundling of unrelated changes, no paid faster machines for now).
+9. **Jayden Associates**, the firm created on 19 November, was your own sign-up test.
+
+**What was done the same day.** The Clients list no longer sticks on "Loading workspace…": the cause was an address rule of mine from 17 November, not a stale tab, and you confirmed the fix on the live site (POST-A-495, closed). The Form 3CD paper, the public site's accessibility fixes and a faster lane for documents-only changes were merged.
+
+**The order of work now (Phase 1, then Phase 2).** The screen audit and the page frame; guided tips; My practice with payroll; the fee-billing move. Then the new-version notice and the own-practice first-day steps. You see pictures of the page frame, the tips and My practice as each is ready. Demo preparation (seeding the demo firm, the one-page demo map, the rehearsals) is parked until you say.
+
+**Waiting on you, when you have a moment.** Nothing blocks the work. Two things would help: whether the Health and Relationships lists also open cleanly now, and a screenshot if you still see the word "caflow" at sign-up step 2 (a change of 19 November should have removed it).
+
+**Three corrections of mine, for the record.** I said a documents-only change skips the heavy checks; it did not (it does now). I said the image reader used a free Google key; it has been on Google's paid terms since 16 November. I wrote clock times in my notes that ran ahead of the real clock; this record gives the order, not times.
+
 ## 0b. THE SESSION RECORD: 19 November 2026, from about 15:30 to 19:45 IST (so we can pick up where we stopped)
 
 **At 19:41 IST the owner took a break, asked me to record everything and start on the Claude-only list, and postponed the demo by one more week.** No new date is fixed; a week from 19 November is Thursday 26 November, which the owner is to confirm (PRE-C-001). His words: only three of the roughly fifty items on his side were finished, so a week more.
