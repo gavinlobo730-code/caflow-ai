@@ -265,7 +265,7 @@ export default function InvoiceSettingsPage() {
                     }`}
                   >
                     <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
-                      form.include_financial_year ? "translate-x-4.5" : "translate-x-0.5"
+                      form.include_financial_year ? "translate-x-5" : "translate-x-0.5"
                     }`} />
                   </button>
                 </div>
@@ -285,7 +285,7 @@ export default function InvoiceSettingsPage() {
                     }`}
                   >
                     <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
-                      form.manual_override_allowed ? "translate-x-4.5" : "translate-x-0.5"
+                      form.manual_override_allowed ? "translate-x-5" : "translate-x-0.5"
                     }`} />
                   </button>
                 </div>
@@ -316,7 +316,7 @@ export default function InvoiceSettingsPage() {
                     }`}
                   >
                     <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
-                      form.credit_limit_blocks ? "translate-x-4.5" : "translate-x-0.5"
+                      form.credit_limit_blocks ? "translate-x-5" : "translate-x-0.5"
                     }`} />
                   </button>
                 </div>

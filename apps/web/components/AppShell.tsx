@@ -10,6 +10,8 @@ import { SearchModal } from "@/components/SearchModal";
 import { SecureAccountBanner } from "@/components/shell/SecureAccountBanner";
 import { SkipToContent } from "@/components/shell/SkipToContent";
 import { isClientWorkspacePath } from "@/lib/workspace/clientPath";
+import { GuidedTipsProvider } from "@/lib/tips/GuidedTipsContext";
+import { GuidedTip } from "@/components/tips/GuidedTip";
 
 // usePathname() reflects the App Router's FlightRouterState, which under
 // `output: export` + Cloudflare's rewrite-to-_placeholder hosting is
@@ -136,12 +138,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             the first stop for a keyboard user. Only here: the no-shell branch
             above has no navigation to skip. */}
         <SkipToContent />
-        <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
-        {isClientWorkspace ? (
-          <ClientShell onOpenSearch={() => setSearchOpen(true)}>{content}</ClientShell>
-        ) : (
-          <WorkspaceShell onOpenSearch={() => setSearchOpen(true)}>{content}</WorkspaceShell>
-        )}
+        {/* One person's guided tips (POST-A-531). The pop-up is second in the document, straight after the skip link, so a
+            keyboard reaches it from the top of any screen; it is drawn beside whatever it explains. The provider wraps the
+            shell so the switch in Settings and the pop-up read one state. */}
+        <GuidedTipsProvider>
+          <GuidedTip pathname={realPathname} />
+          <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
+          {isClientWorkspace ? (
+            <ClientShell onOpenSearch={() => setSearchOpen(true)}>{content}</ClientShell>
+          ) : (
+            <WorkspaceShell onOpenSearch={() => setSearchOpen(true)}>{content}</WorkspaceShell>
+          )}
+        </GuidedTipsProvider>
       </WorkspaceProvider>
     </ClientNavProvider>
   );

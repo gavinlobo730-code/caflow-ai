@@ -37,7 +37,11 @@ from routers.mca_workspace import CreateCompanyRequest, CreateFilingRequest, Upd
 from routers.tds_workspace import CreateChallanRequest, router as tds_router
 
 PARTNER = {"id": "u1", "firm_id": "F1", "role": "Partner", "email": "p@f1.test", "auth_user_id": "auth-partner"}
-TOMORROW = ist_today().fromordinal(ist_today().toordinal() + 1).isoformat()
+def _tomorrow() -> str:
+    """The Indian day after today, worked out WHEN THE TEST RUNS. It was a constant set when this file was imported, so a run that began
+    before midnight in India and reached these tests after it called "tomorrow" a day that had by then come, and every test that expects a
+    refusal failed (seen on 20-11-2026, on a run that began at 23:52 IST)."""
+    return ist_today().fromordinal(ist_today().toordinal() + 1).isoformat()
 BAD_SHAPES = ["30/09/2026", "2026-02-30", "2026-9-1x", "soon"]
 CIN = "U74999MH2020PTC123456"
 
@@ -68,7 +72,7 @@ def test_an_incorporation_date_that_is_not_a_real_day_is_refused_naming_the_fiel
 
 def test_a_company_cannot_have_been_incorporated_on_a_day_that_has_not_come():
     with pytest.raises(ValidationError) as caught:
-        _company(incorporation_date=TOMORROW)
+        _company(incorporation_date=_tomorrow())
     assert "incorporation_date cannot be in the future" in str(caught.value)
 
 
@@ -99,7 +103,7 @@ def test_a_filing_without_a_due_date_is_refused_as_a_missing_field():
 
 
 def test_a_due_date_is_a_plan_and_may_be_any_day():
-    assert _filing(due_date=TOMORROW).due_date == TOMORROW
+    assert _filing(due_date=_tomorrow()).due_date == _tomorrow()
     assert _filing(due_date="2019-06-12").due_date == "2019-06-12"
     assert _filing(due_date="20261030").due_date == "2026-10-30"
 
@@ -115,7 +119,7 @@ def test_a_cessation_date_that_is_not_a_real_day_or_is_blank_is_refused_naming_t
 
 def test_an_omitted_cessation_date_stays_omitted_and_one_ahead_is_a_resignation_effective_later():
     assert UpdateDirectorRequest(kyc_status="active").date_of_cessation is None
-    assert UpdateDirectorRequest(date_of_cessation=TOMORROW).date_of_cessation == TOMORROW
+    assert UpdateDirectorRequest(date_of_cessation=_tomorrow()).date_of_cessation == _tomorrow()
 
 
 # ── the challan: its date, and the three fields it is known by ──────────────────────────────────────────────────────────────────
@@ -131,7 +135,7 @@ def test_a_challan_dated_after_today_is_refused_and_today_is_allowed():
     """The seventeenth slice reversed this file's earlier stance (a day only): the bank has taken the tax by the day the challan is dated. The rule's own tests are in
     test_the_day_goods_came_back_and_the_day_the_bank_took_the_tax_are_not_after_today.py; this holds the sentence at the door that the rest of this file drives."""
     with pytest.raises(ValidationError) as caught:
-        _challan(challan_date=TOMORROW)
+        _challan(challan_date=_tomorrow())
     assert "The challan date cannot be after today's date in India." in str(caught.value)
     assert _challan(challan_date=ist_today().isoformat()).challan_date == ist_today().isoformat()
 
@@ -199,7 +203,7 @@ def test_a_company_with_no_incorporation_date_is_created_with_no_date(client):
 
 
 def test_a_company_incorporated_on_a_day_that_has_not_come_is_a_422_with_the_sentence(client):
-    r = client.post("/api/mca-workspace/companies", json={"client_id": "C1", "cin": CIN, "company_name": "Acme Traders Pvt Ltd", "incorporation_date": TOMORROW})
+    r = client.post("/api/mca-workspace/companies", json={"client_id": "C1", "cin": CIN, "company_name": "Acme Traders Pvt Ltd", "incorporation_date": _tomorrow()})
     assert r.status_code == 422, r.text
     assert "incorporation_date cannot be in the future" in r.text
 

@@ -16,6 +16,7 @@ import { isValidPan } from "@/lib/identifiers/pan";
 import { RefusalText } from "@/components/auth/RefusalText";
 import { isMfaRefusal } from "@/lib/auth/mfaRefusal";
 import { PageHeader } from "@/components/ui/page-header";
+import { GuidedTipsCard } from "@/components/settings/GuidedTipsCard";
 import { istToday } from "@/lib/dateMath";
 
 // ─── Indian states list ────────────────────────────────────────────────────
@@ -471,6 +472,7 @@ function SettingsHome() {
               </button>
             </div>
           </div>
+          <GuidedTipsCard />
         </>
       )}
 

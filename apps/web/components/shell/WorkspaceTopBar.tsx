@@ -69,6 +69,7 @@ export function WorkspaceTopBar({ onOpenSearch }: { onOpenSearch: () => void }) 
           onClick={() => setMenuOpen((v) => !v)}
           aria-expanded={menuOpen}
           aria-controls={WORKSPACE_MENU_ID}
+          data-tip="workspace-menu"
           className={cn(
             "flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold text-white transition-colors",
             menuOpen ? "bg-white/20" : "bg-white/10 hover:bg-white/15",

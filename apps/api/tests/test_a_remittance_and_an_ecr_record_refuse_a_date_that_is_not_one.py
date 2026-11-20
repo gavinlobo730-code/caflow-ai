@@ -27,7 +27,11 @@ from core.ist_clock import ist_today
 from routers.payroll import ECRFiledIn, RemittanceIn, router
 
 PARTNER = {"id": "u1", "firm_id": "F1", "role": "Partner", "email": "p@f1.test", "auth_user_id": "auth-partner"}
-TOMORROW = ist_today().fromordinal(ist_today().toordinal() + 1).isoformat()
+def _tomorrow() -> str:
+    """The Indian day after today, worked out WHEN THE TEST RUNS. It was a constant set when this file was imported, so a run that began
+    before midnight in India and reached these tests after it called "tomorrow" a day that had by then come, and every test that expects a
+    refusal failed (seen on 20-11-2026, on a run that began at 23:52 IST)."""
+    return ist_today().fromordinal(ist_today().toordinal() + 1).isoformat()
 BAD_SHAPES = ["30/09/2026", "2026-02-30", "2026-9-1x", "soon"]
 
 REMITTANCE_FIELDS = ["submitted_on", "paid_on", "challan_date"]
@@ -59,14 +63,14 @@ def test_an_ecr_date_that_is_not_a_real_day_is_refused_naming_the_field(field, b
 @pytest.mark.parametrize("field", ["submitted_on", "paid_on", "challan_date"])
 def test_a_remittance_filed_or_paid_on_a_day_that_has_not_come_is_refused(field):
     with pytest.raises(ValidationError) as caught:
-        _remittance(**{field: TOMORROW})
+        _remittance(**{field: _tomorrow()})
     assert f"{field} cannot be in the future" in str(caught.value)
 
 
 @pytest.mark.parametrize("field", ECR_FIELDS)
 def test_an_ecr_submitted_or_approved_on_a_day_that_has_not_come_is_refused(field):
     with pytest.raises(ValidationError) as caught:
-        ECRFiledIn(**{field: TOMORROW})
+        ECRFiledIn(**{field: _tomorrow()})
     assert f"{field} cannot be in the future" in str(caught.value)
 
 
@@ -108,6 +112,6 @@ def test_the_remittance_door_answers_422_with_the_sentence(client):
 
 
 def test_the_ecr_door_answers_422_with_the_sentence(client):
-    r = client.post("/api/payroll/runs/run1/ecr/filed", json={"status": "approved", "submitted_on": TOMORROW})
+    r = client.post("/api/payroll/runs/run1/ecr/filed", json={"status": "approved", "submitted_on": _tomorrow()})
     assert r.status_code == 422, r.text
     assert "submitted_on cannot be in the future" in r.text

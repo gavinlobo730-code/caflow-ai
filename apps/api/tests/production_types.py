@@ -79,6 +79,8 @@ ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
     ("epfo_ecr_filings", "return_file_id"): "migration 769 (POST-A-518): the Return File ID the portal gives an EPFO return when its file passes the checks; NULL = not recorded",
     ("payroll_employees", "fixed_term_employment"): "migration 770 (POST-A-526): an employee recorded as on fixed-term employment, and the contract's end date; NULL = not recorded",
     ("payroll_employees", "fixed_term_end_date"): "migration 770 (POST-A-526): an employee recorded as on fixed-term employment, and the contract's end date; NULL = not recorded",
+    ("users", "guided_tips_on"): "migration 774 (POST-A-531): a person's guided tips: whether they want them (NULL = never chosen) and the ids of the ones they have closed",
+    ("users", "guided_tips_seen"): "migration 774 (POST-A-531): a person's guided tips: whether they want them (NULL = never chosen) and the ids of the ones they have closed",
 }
 
 
