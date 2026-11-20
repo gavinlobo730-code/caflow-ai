@@ -45,6 +45,7 @@ from __future__ import annotations
 import re
 from typing import Optional
 from core.db_provider import privileged_for
+from core.observability import capture_soft_failure
 
 _MONTH_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 
@@ -71,7 +72,9 @@ def months_of_fy(financial_year: str) -> list[str]:
     """The twelve 'YYYY-MM' months of a financial year, April first."""
     try:
         start = int(str(financial_year).split("-")[0])
-    except (ValueError, IndexError, AttributeError):
+    except (ValueError, IndexError, AttributeError) as unreadable:
+        # A financial year that cannot be read gives a report with no months: said, so an empty report is not mistaken for a quiet year (POST-A-505).
+        capture_soft_failure(unreadable, operation="payroll_report.months_of_fy_unreadable", financial_year=str(financial_year)[:20])
         return []
     return ([f"{start}-{m:02d}" for m in range(4, 13)]
             + [f"{start + 1}-{m:02d}" for m in range(1, 4)])

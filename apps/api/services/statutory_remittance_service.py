@@ -511,7 +511,10 @@ def entries_clearing_account(db, *, firm_id: str, client_id: str, account_id: st
     """
     try:
         centre = date.fromisoformat(str(paid_on)[:10])
-    except (ValueError, TypeError):
+    except (ValueError, TypeError) as unreadable:
+        # A payment date that cannot be read offers no entry that could be the payment: said, so a missing offer is not taken for none (POST-A-505).
+        from core.observability import capture_soft_failure
+        capture_soft_failure(unreadable, operation="statutory_remittance.paid_on_unreadable", paid_on=str(paid_on)[:20])
         return []
     lo = (centre - timedelta(days=window_days)).isoformat()
     hi = (centre + timedelta(days=window_days)).isoformat()

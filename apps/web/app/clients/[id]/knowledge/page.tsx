@@ -75,12 +75,14 @@ export default function ClientKnowledgePage() {
         result = r.data ?? [];
       } else {
         const supabase = getSupabaseClient();
-        const { data } = await selectAll(() =>
+        const { data, error } = await selectAll(() =>
           supabase.from("knowledge_articles")
             .select("id, title, current_version, tags, updated_at")
             .eq("client_id", clientId)
             .eq("is_archived", false)
             .order("updated_at", { ascending: false }));
+        // The pager hands a failure back as `error` and does not throw: a list that stopped partway is not the client's articles.
+        if (error) throw new Error("The articles could not be read.");
         result = (data as Article[]) ?? [];
       }
       if (latestQuery.current === q) { setArticles(result); setAnswered(q.trim()); }
