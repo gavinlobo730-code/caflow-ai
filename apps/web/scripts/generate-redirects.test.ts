@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildRedirectsFile, walkPages } from "./generate-redirects.js";
+import { parseRules, resolve } from "./check-live-redirects.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APP_DIR = path.join(__dirname, "..", "app");
@@ -211,8 +212,16 @@ test("the only rules with no placeholder are the named static-leaf shadow fixes"
     "/relationships/intelligence",
     "/relationships/ownership-map",
   ];
-  assert.equal(statics.length, shadowedLeaves.length * 4,
-    "expected exactly 4 literal rules (bare / bare-RSC / slash / slash-RSC) per shadowed leaf");
+  // The page-data file of a static LIST page that has a placeholder page under it (20-11-2026): "/clients/:id.txt" matches
+  // "/clients/index.txt" with the id "index", so the list was answered with the workspace's data and drew "Loading workspace…"
+  // at the list's address. One literal rule each, pointing at itself; the first-match test at the end of this file derives the
+  // set from the route tree, so this list is a pin on what the tree holds today and not the rule.
+  const listPayloads = ["/clients/index.txt", "/health/index.txt", "/relationships/index.txt"];
+  assert.equal(statics.length, shadowedLeaves.length * 4 + listPayloads.length,
+    "expected exactly 4 literal rules (bare / bare-RSC / slash / slash-RSC) per shadowed leaf, and one page-data rule per list page");
+  for (const from of listPayloads) {
+    assert.ok(statics.some((r) => r.from === from && r.to === from), `missing self-rule for the list page's data file ${from}`);
+  }
   for (const leaf of shadowedLeaves) {
     for (const from of [leaf, `${leaf}.txt`, `${leaf}/`, `${leaf}/index.txt`]) {
       assert.ok(statics.some((r) => r.from === from), `missing literal shadow rule for ${from}`);
@@ -226,6 +235,9 @@ test("the only rules with no placeholder are the named static-leaf shadow fixes"
   assert.ok(idx("/health/critical/") < idx("/health/:client_id/*"));
   assert.ok(idx("/relationships/explorer ") < idx("/relationships/:entity_id "));
   assert.ok(idx("/clients/documents ") < idx("/clients/:id "));
+  assert.ok(idx("/clients/index.txt ") < idx("/clients/:id.txt "));
+  assert.ok(idx("/health/index.txt ") < idx("/health/:client_id.txt "));
+  assert.ok(idx("/relationships/index.txt ") < idx("/relationships/:entity_id.txt "));
 });
 
 test("the budget is spent in the shape D10 says it is", () => {
@@ -459,11 +471,90 @@ test("a page whose last segment is a placeholder lists its .txt rule before its 
     }
     // a dynamic parent that has its own page gets its landing payload ahead of the placeholder that would swallow it
     assert.ok(at("/things/:id/sub/index.txt") >= 0 && at("/things/:id/sub/index.txt") < at("/things/:id/sub/:subId.txt"));
-    // a literal parent does not: its index.txt is a file the export holds
-    assert.equal(at("/health/index.txt"), -1);
+    // a literal parent's own page data gets a literal rule to itself, listed ahead of the placeholder that would swallow it: a
+    // rewrite DOES override a file the export holds, so "/health/:client_id.txt" would otherwise answer "/health/index.txt"
+    // with the history page's data (20-11-2026, the Clients list hang)
+    assert.ok(at("/health/index.txt") >= 0 && at("/health/index.txt") < at("/health/:client_id.txt"));
+    assert.equal(rulesIn(buildRedirectsFile(tmp)).find((r) => r.from === "/health/index.txt")?.to, "/health/index.txt");
     // and it is a total order: sorting any permutation gives the same file
     assert.equal(froms.length, new Set(froms).size);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
+});
+
+// ── No rewrite may catch a static page's own files (20-11-2026) ────────────────────────────────────────────────────────────
+//
+// WHAT WENT WRONG. Moving from inside a client's workspace to the Clients list stuck on "Loading workspace…" until a reload,
+// in an ordinary window and in Incognito. The app asks for the list's page data, "/clients/index.txt", and the first rule
+// that matched was "/clients/:id.txt" (`:id` = "index"), which answered with the CLIENT WORKSPACE's data. Reproduced on a
+// local copy served by Cloudflare's own Pages routing: the served bytes were the placeholder's, not the list's, with the
+// list's file sitting on disk. /health and /relationships had the same shape. It began on 17-11-2026, when POST-A-148 listed
+// the ".txt" rule before the plain one: until then the plain "/clients/:id" claimed the request first and answered HTML,
+// which the browser ignores and then loads the page the ordinary way, so a wrong answer was harmless and nobody could see it.
+//
+// WHY THE EARLIER TESTS DID NOT SEE IT. Every one of them starts from the DYNAMIC pages and checks their rules, or counts rules.
+// None starts from a page that EXISTS and asks "what would the file say to a request for it?". That is this test, and it is
+// written as the rule, over every static route in the tree, not as a list of the three that broke: any rewrite that is the
+// first to match a static page's own address, its page data, or their bare forms must send it to that page.
+//
+// IT USES THE LIVE CHECK'S FIRST-MATCH MODEL (`resolve` in check-live-redirects.mjs: `:name` is a run of non-slash characters,
+// dots included; first match wins), which was measured against the production site when it was written, so the two cannot
+// drift into modelling Cloudflare differently.
+//
+// NEGATIVE CONTROL (measured): with the three list-payload rules removed from the generated file, this finds exactly
+// /clients/index.txt, /health/index.txt and /relationships/index.txt.
+function staticRouteBases(): string[] {
+  return walkPages(APP_DIR)
+    .filter((segments: string[]) => !segments.some((s) => /^[:\[]/.test(s)))
+    .map((segments: string[]) => (segments.length ? "/" + segments.join("/") : ""));
+}
+
+/** Every request for a static page's own files that some rule answers with something other than that page. */
+function wronglyClaimed(rulesText: string, bases: string[]) {
+  const rules = parseRules(rulesText).filter((r: { status: string }) => r.status === "200");
+  const wrong: Array<{ request: string; target: string; expected: string }> = [];
+  let claimed = 0;
+  for (const base of bases) {
+    const shapes: Array<[string, string]> = [
+      [`${base}/`, `${base}/`],
+      [`${base}/index.txt`, `${base}/index.txt`],
+    ];
+    if (base) shapes.push([base, `${base}/`], [`${base}.txt`, `${base}/index.txt`]);
+    for (const [request, expected] of shapes) {
+      const hit = resolve(rules, request);
+      if (!hit) continue;
+      claimed += 1;
+      if (hit.target !== expected) wrong.push({ request, target: hit.target, expected });
+    }
+  }
+  return { wrong, claimed };
+}
+
+test("no rewrite answers a static page's own address or page data with another page (the Clients list hang)", () => {
+  const bases = staticRouteBases();
+  assert.ok(bases.length >= 100, `the walk found ${bases.length} static routes: a vacuous scan proves nothing`);
+
+  const { wrong, claimed } = wronglyClaimed(buildRedirectsFile(APP_DIR), bases);
+  assert.deepEqual(wrong, [],
+    "a rewrite is the first to match a static page's own file and sends it elsewhere: that page would draw another page's content. " +
+      "Give the file a literal rule to itself, listed before the placeholder (listPayloadRules / staticLeafShadowRules in generate-redirects.js)");
+  // The matcher has to engage, or "nothing wrong" could mean "nothing was compared": the nine shadowed leaves and the three
+  // list pages are claimed by their own self-rules, so at least that many requests have a rule at all.
+  assert.ok(claimed >= 40, `only ${claimed} requests matched any rule: the first-match model is not engaging`);
+});
+
+test("the guard's own model separates a client's page from a static one, and it fails on the file as it was", () => {
+  const generated = buildRedirectsFile(APP_DIR);
+  const rules = parseRules(generated).filter((r: { status: string }) => r.status === "200");
+
+  // Positive control: a real client id still goes to the shared placeholder page, in both shapes.
+  assert.equal(resolve(rules, "/clients/abc123/overview/index.txt")?.target, "/clients/_placeholder/overview/index.txt");
+  assert.equal(resolve(rules, "/clients/abc123.txt")?.target, "/clients/_placeholder/index.txt");
+
+  // Negative control: the file without the list-page rules is the file that shipped on 17-11-2026.
+  const without = generated.split("\n")
+    .filter((l) => !/^\/(clients|health|relationships)\/index\.txt\s/.test(l)).join("\n");
+  const found = wronglyClaimed(without, staticRouteBases()).wrong.map((w) => w.request).sort();
+  assert.deepEqual(found, ["/clients/index.txt", "/health/index.txt", "/relationships/index.txt"]);
 });
