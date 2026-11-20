@@ -85,19 +85,22 @@ export default function AdjustmentsPage() {
   // (migration 570). The two account columns hold a ledger account's ID (uuid), so the form picks one; it used to take free text ("5001 / Salary
   // Expense") that the database refuses, and the list showed the raw id.
   const [accounts, setAccounts] = useState<AccountLike[]>([]);
+  // A chart of accounts that could not be read is not a client with no accounts (POST-A-527): the form says so.
+  const [accountsUnread, setAccountsUnread] = useState(false);
   useEffect(() => {
     if (!clientId || clientId === "_placeholder") return;
     let alive = true;
     (async () => {
       const supabase = getSupabaseClient();
-      const { data } = await selectAll(() => supabase
+      const { data, error } = await selectAll(() => supabase
         .from("chart_of_accounts")
         .select("id, account_code, account_name, account_type, account_subtype, is_active, client_id")
         .or(`client_id.eq.${clientId},client_id.is.null`)
         .eq("is_active", true)
         .order("account_code")
         .order("id"));
-      if (alive) setAccounts((data as AccountLike[]) ?? []);
+      // The pager hands a failure back as `error` and does not throw.
+      if (alive) { setAccountsUnread(!!error); setAccounts(error ? [] : (data as AccountLike[]) ?? []); }
     })();
     return () => { alive = false; };
   }, [clientId]);
@@ -217,6 +220,11 @@ export default function AdjustmentsPage() {
         </button>
       </div>
 
+      {showForm && accountsUnread && (
+        <p role="alert" className="text-xs text-state-problem">
+          The client&apos;s accounts could not be read, so none can be chosen for an adjustment. That is not a client with no accounts: reload this page to read them.
+        </p>
+      )}
       {/* New Adjustment Form */}
       {showForm && (
         <AdjustmentForm

@@ -2630,6 +2630,8 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
     bill_date?: string | null;
     txn_currency?: string | null; exchange_rate?: string | null; txn_net_payable?: number | null;
   }[]>([]);
+  // A read of the vendor's open bills that did not come is not a vendor with none (POST-A-527): the settle panel says it instead of "no open bills".
+  const [openBillsUnread, setOpenBillsUnread] = useState(false);
   const [loading, setLoading] = useState(true);
   // See PurchaseBills.loadFailed (audit M17): a failed payments fetch must show a
   // retryable error, not the same ₹0 "Total Paid (FY)" + "No payments" empty state.
@@ -2795,7 +2797,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
 
   async function loadOpenBills(vId: string) {
     const supabase = getSupabaseClient();
-    const { data } = await selectAll(() => supabase
+    const { data, error } = await selectAll(() => supabase
       .from("purchase_bills")
       .select("id, our_reference, bill_no, net_payable_paise, outstanding_paise, bill_date, txn_currency, exchange_rate, txn_net_payable")
       .eq("client_id", clientId)
@@ -2803,7 +2805,9 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
       .in("status", ["received", "partially_paid"])
       .order("bill_date", { ascending: false })
       .order("id"));
-    setOpenBills(data ?? []);
+    // The pager hands a failure back as `error` and does not throw.
+    setOpenBillsUnread(!!error);
+    setOpenBills(error ? [] : data ?? []);
     setBillId("");
     setAlloc({});
   }
@@ -3153,7 +3157,12 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
                   </button>
                 </div>
               </div>
-              {allocatableBills.length === 0 ? (
+              {openBillsUnread ? (
+                <p role="alert" className="px-3 py-3 text-2xs text-state-problem">
+                  This vendor&apos;s open bills could not be read, so none are listed. That is not a vendor with none: pick the vendor again
+                  to read them before you record the payment, or the whole payment is recorded as an advance.
+                </p>
+              ) : allocatableBills.length === 0 ? (
                 <p className="px-3 py-3 text-2xs text-ps-hint">
                   This vendor has no open bills. The whole payment is recorded as an advance.
                 </p>
