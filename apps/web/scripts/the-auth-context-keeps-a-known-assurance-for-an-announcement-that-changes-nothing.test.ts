@@ -41,6 +41,22 @@ test("every read goes through readAssurance, which remembers what it was read fo
   assert.match(CONTEXT, /assuranceKnown\.current = \{ userId, accessToken, pending \};\s*setMfaPending\(pending\);/);
 });
 
+// The independent review of POST-A-515 (c) (20-11-2026) found two things the safety argument rests on and no test held.
+test("only the most recently started read of the assurance may settle it", () => {
+  assert.match(CONTEXT, /const assuranceGate = useRef\(latestWins\(\)\);/);
+  assert.match(CONTEXT, /const settle = assuranceGate\.current\.begin<boolean \| null>\(\(pending\) => \{\s*assuranceKnown\.current = \{ userId, accessToken, pending \};/,
+    "a read settles through the latest-wins gate: an older read that answers late must be dropped");
+});
+
+test("the handler starts a fresh read after the keep-or-reset decision, always, and exactly once", () => {
+  // A kept value is safe only because a read that will replace it is already on its way: moving the read into the `else` would make
+  // a keep permanent and still pass every other test here.
+  assert.match(CONTEXT, /\} else \{\s*assuranceKnown\.current = \{ userId: nextUserId, accessToken: nextAccessToken, pending: null \};\s*setMfaPending\(null\);\s*\}\s*readAssurance\(session\);/,
+    "the read no longer follows the keep-or-reset branch unconditionally");
+  const handler = CONTEXT.slice(CONTEXT.indexOf("onAuthStateChange("), CONTEXT.indexOf("return () => {", CONTEXT.indexOf("onAuthStateChange(")));
+  assert.equal((handler.match(/readAssurance\(/g) ?? []).length, 1, "the announcement handler starts the read in more than one place");
+});
+
 test("the guard still draws nothing for an unresolved assurance", () => {
   const guard = code("lib/auth/guardDecision.ts");
   assert.match(guard, /if \(!onLogin && mfaPending !== false\) return false;/, "a protected page is drawn for something other than a resolved 'no challenge owed'");
