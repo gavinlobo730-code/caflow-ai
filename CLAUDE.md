@@ -609,9 +609,9 @@ frontend environment is at best ignored and at worst published. All AI calls hap
   Needs `GEMINI_API_KEY`. Default model `gemini-3.5-flash`, overridable via
   `GEMINI_VISION_MODEL`.
 
-Why two providers: Groq's vision models returned a live 404 `model_not_found` on this
-account; Gemini's free tier is multimodal-native and already provisioned. The PDF/text
-path stayed on Groq and works fine. Treat the model names above as current defaults,
+Why two providers: Groq's vision models returned a live 404 on this account; Gemini is
+multimodal-native, on Google's paid terms since 16-11-2026 (PRE-B-013). The PDF/text
+path stayed on Groq. Treat the model names above as current defaults,
 not as contracts — `gemini-2.5-flash` was retired by Google ahead of its announced
 shutdown, and the code reads the env var precisely so the next retirement is a config
 change. The code is the authority; keep this file in step with it.
@@ -1855,8 +1855,8 @@ _Longer design records for this area were moved to `docs/design-record/engineeri
   between regions.
 - `apps/web` and `apps/marketing` → two separate Cloudflare Pages projects. **Which
   hostname is which is not guessable**: the product is the Cloudflare project
-  `practicesync-ai` and it serves at **`caflow-ai.pages.dev`** (the project's `pages.dev`
-  name predates the rename and cannot change); **`practicesync.pages.dev` is the
+  `practicesync-ai` and it serves at **`caflow-ai.pages.dev`** (a name that
+  cannot change; people use `app.jlgsfinance.com`); **`practicesync.pages.dev` is the
   MARKETING site**, a different project built from `apps/marketing`. Both build from
   this repo, so every PR shows two Cloudflare checks and two bot comments.
 - **THE REDIRECT FILE IS A 100-RULE BUDGET THAT FAILS SILENTLY, AND CLOUDFLARE COUNTS IT
