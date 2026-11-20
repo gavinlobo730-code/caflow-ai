@@ -7,7 +7,7 @@
 # function. This file may only SHRINK: `python scripts/ci/ruff_ratchet.py --update` deletes lines that no
 # longer fire and lowers numbers that fell, and cannot add or raise anything. A line is a defect the product
 # carries today, written down. It is never a judgement that the code is fine.
-core/auth.py :: B904 :: get_current_user :: 3
+core/auth.py :: B904 :: get_current_user :: 2
 core/auth.py :: B904 :: get_jwt_user :: 2
 core/ist_clock.py :: B904 :: fy_bounds :: 1
 domain/accounting/cost_centre.py :: F401 :: <module> :: 1

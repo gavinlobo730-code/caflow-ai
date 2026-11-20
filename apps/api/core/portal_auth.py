@@ -177,6 +177,19 @@ def get_current_portal_employee(jwt_user: dict = Depends(get_jwt_user)) -> dict:
     emp = rows[0]
     if not emp.get("portal_enabled"):
         raise denied
+    # AN EMPLOYEE OF A DELETED CLIENT IS NOT AN EMPLOYEE PORTAL USER (POST-A-504, decided 20-11-2026). Deleting a client sets
+    # `clients.deleted_at` and closes it to every staff screen, and the client portal already refuses a contact of one
+    # (`portal_access_service._of_live_clients`); this door did not ask, so an employee of a deleted client kept signing in and
+    # reading their payslips and leave, and could still make their one write, the tax declaration, into a payroll the practice
+    # no longer serves. The same refusal, in the same words: a different one would say that this identity is an employee of a
+    # client that exists. The client is read by (id, firm) together so a row naming another firm's client is not a client. An
+    # ARCHIVED client is deliberately not touched, as for the client portal: a former client's employees keeping their own
+    # payslips is a decision of its own, recorded in the design record. A read that FAILS raises and is a 500, never a pass.
+    live = (get_service_supabase().table("clients").select("id")
+            .eq("id", emp.get("client_id")).eq("firm_id", emp.get("firm_id"))
+            .is_("deleted_at", "null").limit(1).execute().data) or []
+    if not emp.get("client_id") or not live:
+        raise denied
 
     bind_firm(emp.get("firm_id"))  # ops-11: the firm's id for the request's log line, never the employee
     return {
