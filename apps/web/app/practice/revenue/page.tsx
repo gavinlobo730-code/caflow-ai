@@ -33,7 +33,7 @@ function Revenue() {
   useEffect(() => { load(); }, [load]);
 
   if (loading) return <PagePlaceholder label="Loading revenue" shape="dashboard" action={false} />;
-  if (error) return <div className="p-8 text-sm text-red-600">{error}</div>;
+  if (error) return <div role="alert" className={pageFrameClass("data", "text-sm text-state-problem")}>{error}</div>;
 
   const cards = [
     { label: "Total Receivable", value: formatPaise(dash?.total_receivable_paise ?? 0) },

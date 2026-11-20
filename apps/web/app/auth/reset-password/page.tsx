@@ -52,6 +52,7 @@ import { PasswordRules } from "@/components/auth/PasswordRules";
 import { forgetRecoveryLink, hasRecoveryMarkerInUrl, recoveryLinkWasOpened } from "@/lib/auth/recoveryLink";
 import { ArrowRight, Eye, EyeOff, ShieldCheck, AlertCircle } from "lucide-react";
 import { FrontDoor } from "@/components/FrontDoor";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const LINK_WAIT_MS = 4000;
 
@@ -184,9 +185,12 @@ export default function ResetPasswordPage() {
   return (
     <FrontDoor>
       {stage === "verifying" && (
-        <div className="text-center py-8">
-          <span className="inline-block w-6 h-6 border-2 border-ps-border border-t-blue-600 rounded-full animate-spin" />
-          <p className="text-sm text-ps-label mt-4">Verifying your reset link…</p>
+        // The two fields the form will have, as placeholders. NOT a `LoadingRegion`: this waits on the sign-in service reading
+        // the link, and the region's sentence is about this product's own server waking up, which would not be true here.
+        <div role="status" aria-label="Verifying your reset link" className="space-y-4 py-4">
+          <Skeleton className="h-9 w-full rounded-lg" />
+          <Skeleton className="h-9 w-full rounded-lg" />
+          <p className="text-sm text-ps-label text-center">Verifying your reset link…</p>
         </div>
       )}
 

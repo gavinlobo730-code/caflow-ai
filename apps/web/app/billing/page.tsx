@@ -11,6 +11,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Plus, RefreshCw, X, MessageCircle, IndianRupee, Download, Clock } from "lucide-react";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { TableSkeleton } from "@/components/ui/skeleton";
+import { SectionPlaceholder } from "@/components/ui/page-frame";
 import { api, ENGAGEMENT_TRANSITIONS } from "@/lib/api";
 import type { ApiResp, FeeEngagementStatus } from "@/lib/api";
 import { usePermissions } from "@/lib/auth/AuthContext";
@@ -673,7 +674,9 @@ export default function BillingPage() {
       </div>
 
       {/* Dashboard */}
-      {tab === "dashboard" && (
+      {/* A figure that has not been read is not a zero: the dashboard waits with a shape, as the other tabs do. */}
+      {tab === "dashboard" && loading && <SectionPlaceholder label="Loading the fee dashboard" shape="dashboard" rows={4} cols={4} />}
+      {tab === "dashboard" && !loading && (
         <div className="space-y-5">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="bg-white border rounded-xl p-4">

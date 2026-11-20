@@ -11,7 +11,7 @@ import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
 import { windowDescription } from "@/lib/lists/window";
 import { useEntityRegister } from "@/lib/relationships/useEntityRegister";
 import { doingOf, fetchBounded, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { SectionPlaceholder } from "@/components/ui/page-frame";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -125,11 +125,7 @@ export default function OwnershipMapPage() {
           </div>
 
           {loading && (
-            <LoadingRegion label="Loading the map" noticeClassName="justify-center text-center">
-              <div className="flex items-center justify-center py-12">
-                <div className="w-5 h-5 border-2 border-brand border-t-transparent rounded-full animate-spin" />
-              </div>
-            </LoadingRegion>
+            <SectionPlaceholder label="Loading the map" shape="list" rows={5} />
           )}
 
           {error && (
@@ -209,11 +205,7 @@ export default function OwnershipMapPage() {
                 </div>
 
                 {detailLoading && (
-                  <LoadingRegion label="Loading the entity" noticeClassName="justify-center text-center">
-                    <div className="flex items-center justify-center py-8">
-                      <div className="w-5 h-5 border-2 border-brand border-t-transparent rounded-full animate-spin" />
-                    </div>
-                  </LoadingRegion>
+                  <SectionPlaceholder label="Loading the entity" shape="list" rows={3} />
                 )}
 
                 {!detailLoading && detailError && (

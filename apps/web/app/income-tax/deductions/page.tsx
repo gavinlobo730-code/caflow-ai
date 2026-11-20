@@ -31,7 +31,7 @@ import type { Client } from "@/lib/types";
 import { PageHeader } from "@/components/ui/page-header";
 
 import { Button } from "@/components/ui/button";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface S80CItems {
@@ -703,8 +703,8 @@ export default function DeductionsPage() {
         </div>
 
         {computing ? (
-          <LoadingRegion label="Computing both regimes" className="rounded-lg px-4 py-3 text-sm font-medium bg-state-ready-surface text-state-ready">
-            Computing…
+          <LoadingRegion label="Computing both regimes" className="rounded-lg border border-ps-border px-4 py-3">
+            <SkeletonText lines={2} />
           </LoadingRegion>
         ) : (
           <div className="rounded-lg px-4 py-3 text-sm font-medium bg-state-ready-surface text-state-ready">

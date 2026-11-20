@@ -449,8 +449,10 @@ function RegisterTab({ clientId, openDoc }:
 
       {/* Table header */}
       <div className="flex items-center justify-between">
+        {/* Blank while the register is being read: a count is not known until then, and the table below draws the placeholder
+            (and the slow-server sentence) for the same read. */}
         <p className="text-xs font-semibold text-ps-body">
-          {loading ? "Loading…" : `${assets.length} asset${assets.length !== 1 ? "s" : ""}`}
+          {loading ? "\u00a0" : `${assets.length} asset${assets.length !== 1 ? "s" : ""}`}
         </p>
         <div className="flex gap-2">
           <button onClick={load} aria-label="Reload" title="Reload" className="p-1.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label">

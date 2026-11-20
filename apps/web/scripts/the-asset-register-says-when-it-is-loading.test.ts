@@ -64,7 +64,9 @@ test("RegisterTab's summary tiles check `loading` before computing a value", () 
 });
 
 test("the asset count line distinguishes loading from a genuinely empty register", () => {
-  assert.match(registerTab, /loading\s*\?\s*"Loading…"\s*:\s*`\$\{assets\.length\}/,
-    "the \"N assets\" line must say it is loading, not read `assets.length` " +
-    "(0, before the fetch resolves) as the real count");
+  // Blank (a no-break space, which keeps the line's height) while the register is being read, since POST-A-530: the table below
+  // draws the placeholder for the same read, and the walk counts a bare "Loading…" as a screen that waits as words. What this
+  // holds is unchanged: while loading, the line is NOT `assets.length`.
+  assert.match(registerTab, /loading\s*\?\s*"\\u00a0"\s*:\s*`\$\{assets\.length\}/,
+    "the \"N assets\" line must not read `assets.length` (0, before the fetch resolves) as the real count while loading");
 });

@@ -18,7 +18,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { YearPicker } from "@/components/ui/year-picker";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { SectionPlaceholder } from "@/components/ui/page-frame";
 import { EmptyState } from "@/components/ui/states";
 import { Card, CardContent } from "@/components/ui/card";
 import { failureSentence } from "@/lib/api/failureSentence";
@@ -94,7 +94,7 @@ export default function FilingSeasonPage() {
       </div>
 
       {error && <Callout tone="problem">{error}</Callout>}
-      {!data && !error && <LoadingRegion label="Loading the filing season"><div className="h-24" /></LoadingRegion>}
+      {!data && !error && <SectionPlaceholder label="Loading the filing season" shape="dashboard" rows={6} cols={6} />}
 
       {data && (
         <>

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   CheckSquare, Clock, AlertTriangle, CheckCircle2,
-  Calendar, Loader2, ExternalLink, Activity, InboxIcon, ListChecks,
+  Calendar, ExternalLink, Activity, InboxIcon, ListChecks,
 } from "lucide-react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,7 +22,8 @@ import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
 import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
 import { windowDescription } from "@/lib/lists/window";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
+import { SectionPlaceholder } from "@/components/ui/page-frame";
 
 const STATUS_COLORS: Record<TaskStatus, string> = {
   todo: "bg-ps-muted text-ps-label",
@@ -114,7 +115,7 @@ function MyObligationsCard({ data, error }: { data: MyObligations | null; error:
           <p className="text-sm text-state-problem text-center py-4">Your obligations could not be read: {error}</p>
         ) : data === null ? (
           <LoadingRegion label="Reading your obligations" noticeClassName="justify-center text-center">
-            <p className="text-sm text-ps-hint text-center py-4">Reading your obligations…</p>
+            <SkeletonText lines={3} className="px-2 py-3" />
           </LoadingRegion>
         ) : data.obligations.length === 0 ? (
           <p className="text-sm text-ps-hint text-center py-4">You are not named as preparer, reviewer or approver on any open obligation.</p>
@@ -257,11 +258,7 @@ export default function WorkPage() {
       {error && <Callout tone="problem">{error}</Callout>}
 
       {loadingTasks ? (
-        <LoadingRegion label="Loading your work" noticeClassName="justify-center text-center">
-          <div className="flex items-center justify-center py-20 text-ps-hint">
-            <Loader2 className="animate-spin mr-2" size={18} /> Loading your work…
-          </div>
-        </LoadingRegion>
+        <SectionPlaceholder label="Loading your work" shape="list" rows={6} />
       ) : isEmpty ? (
         <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
           <div className="w-12 h-12 rounded-full bg-ps-muted flex items-center justify-center">

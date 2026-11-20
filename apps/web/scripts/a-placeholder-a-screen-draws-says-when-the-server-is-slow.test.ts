@@ -72,10 +72,9 @@ const OWNERS = new Set(["components/ui/skeleton.tsx", "components/ui/states.tsx"
  */
 const NOT_A_READ_WAIT: Record<string, { marks: string[]; why: string }> = {
   "app/DashboardContent.tsx": { marks: Array(4).fill("DashboardContent:Skeleton"), why: "the four KPI tiles' figures load with the Recent Clients and Pending Tasks lists below (one `loading` flag), whose regions speak for the same read" },
-  "app/auth/reset-password/page.tsx": { marks: ["ResetPasswordPage:spinner"], why: "waits on the sign-in service reading the reset link, not on this product's server" },
+  "app/auth/reset-password/page.tsx": { marks: Array(2).fill("ResetPasswordPage:Skeleton"), why: "the two fields' placeholders while the sign-in service reads the reset link: it waits on that service, not on this product's server, so the sentence would not be true" },
   "app/clients/[id]/accounting/page.tsx": { marks: ["LedgerDrillDown:spinner"], why: "a busy mark beside the ledger's date filters; the ledger below draws a TableSkeleton while it reads (the same `loading` flag)" },
   "app/clients/[id]/compliance/gst/page.tsx": { marks: ["GSTR2BTab:words"], why: "\"Reading a GSTR-2B file and reconciling it needs permission…\": a sentence that tells a member without permission to compute why the button is not shown (POST-A-455); it begins with the step it names, not a wait, and nothing is read" },
-  "app/clients/[id]/fixed-assets/page.tsx": { marks: ["RegisterTab:words"], why: "the register's count line says \"Loading…\" while the table below draws a TableSkeleton, which speaks for the same read (the same `loading` flag)" },
   "app/clients/[id]/inventory/page.tsx": { marks: ["StockLedgerDrillDown:spinner"], why: "a busy mark beside the stock register's date filters; the register below draws a TableSkeleton while it reads (the same `loading` flag)" },
   "app/clients/[id]/page.tsx": { marks: ["ClientRootPage:spinner", "ClientRootPage:words"], why: "a redirect in the browser to the client's overview (a spinner and \"Loading workspace…\"); nothing is read" },
   "app/clients/[id]/reports/ageing/page.tsx": { marks: ["MsmeSelect:spinner"], why: "a supplier's MSME status being saved, shown inside its picker: a change" },
@@ -88,7 +87,7 @@ const NOT_A_READ_WAIT: Record<string, { marks: string[]; why: string }> = {
   "app/not-found.tsx": { marks: ["NotFound:spinner", "NotFound:words"], why: "a redirect in the browser to the client page the address names (a spinner and \"Loading workspace…\"); nothing is read" },
   "app/portal/activate/page.tsx": { marks: ["PortalActivatePage:spinner"], why: "the wait includes accepting the invitation, which is a change" },
   "app/portal/employee/activate/page.tsx": { marks: ["EmployeeActivatePage:spinner", "EmployeeActivatePage:words"], why: "the wait (a spinner and \"Checking your invitation…\") includes accepting the invitation, which is a change" },
-  "app/settings/security/page.tsx": { marks: ["MfaCard:spinner", "MfaCard:words"], why: "waits on the sign-in service listing the second factors (a spinner and its \"Loading…\"), not on this product's server, so the sentence would not be true" },
+  "app/settings/security/page.tsx": { marks: Array(2).fill("MfaCard:Skeleton"), why: "two placeholder lines while the sign-in service lists the second factors: it waits on that service, not on this product's server, so the sentence would not be true" },
   "app/tds/returns/page.tsx": { marks: ["TDSReturnsPage:words"], why: "\"Computing a statement from the books needs permission…\": a sentence that tells a member without permission to compute why the button is not shown (POST-A-455); it begins with the step it names, not a wait, and nothing is read" },
   "app/time/page.tsx": { marks: ["TimeTrackingPage:placeholder"], why: "the running timer's pulsing dot; nothing is loading" },
   "components/banking/AccountsPanel.tsx": { marks: ["BankAccounts:spinner"], why: "a busy mark in the Transactions heading; the region under the heading speaks for the same read (the same `txnsLoading` flag)" },
@@ -272,9 +271,12 @@ test("the walk is not vacuous for words either: it finds the lines of words, the
     }
   }
   // 185, 136 and 41 when POST-A-449 closed; a floor well under each, so a change to the walk that stops seeing words fails.
-  assert.ok(words > 150, `found only ${words} lines of waiting words`);
-  // 107 on 20-11-2026: POST-A-530 turned twenty-four word-only regions into shapes, which is the direction this count should go.
-  assert.ok(covered > 90, `found only ${covered} lines of waiting words inside a region`);
+  // 136 lines on 20-11-2026, after POST-A-530 turned the screens' own word-only waits into shapes (the lines left are a button's own
+  // label, a field's own part and the in-place hints a dialog or a log keeps as words).
+  assert.ok(words > 110, `found only ${words} lines of waiting words`);
+  // 107 on 20-11-2026 after POST-A-530 turned twenty-four word-only regions into shapes, and 87 when the last screens followed: this
+  // is the direction the count should go, and the floor follows it down.
+  assert.ok(covered > 70, `found only ${covered} lines of waiting words inside a region`);
   assert.ok(controls > 30, `found only ${controls} waiting words inside a control`);
 });
 

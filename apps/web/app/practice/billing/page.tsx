@@ -114,7 +114,7 @@ function Billing() {
   }
 
   if (loading) return <PagePlaceholder label="Loading billing schedules" shape="table" />;
-  if (error) return <div className="p-8 text-sm text-red-600">{error}</div>;
+  if (error) return <div role="alert" className={pageFrameClass("data", "text-sm text-state-problem")}>{error}</div>;
 
   // Where the practice's own fee invoices are checked, numbered, issued and paid.
   // Null until the server has named the practice client: a null renders no link.

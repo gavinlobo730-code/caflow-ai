@@ -63,7 +63,7 @@ import { todayIstISO } from "@/lib/dates/format";
 import { isOverdue } from "@/lib/compliance/overdue";
 import { formatDate } from "@/lib/services/formatting";
 import { PageHeader } from "@/components/ui/page-header";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, Skeleton } from "@/components/ui/skeleton";
 
 // ─── COLOUR SCHEME ────────────────────────────────────────────────────────────
 
@@ -380,7 +380,6 @@ export default function CalendarPage() {
             <span className="text-xs text-ps-label">{CATEGORY_LABELS[cat]}</span>
           </div>
         ))}
-        {loading && <LoadingRegion label="Loading the calendar" className="text-xs text-ps-hint ml-2">Loading…</LoadingRegion>}
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_300px] gap-6">
@@ -391,6 +390,23 @@ export default function CalendarPage() {
               <div key={d} className="py-2 text-center text-xs font-medium text-ps-hint">{d}</div>
             ))}
           </div>
+          {/* While the month is being read its days are drawn with placeholders in them: an empty day is "nothing due", and
+              that is not known until the read lands. */}
+          {loading ? (
+            <LoadingRegion label="Loading the calendar" className="grid grid-cols-7" noticeClassName="col-span-full px-3">
+              {cells.map((day, idx) => (
+                <div key={`wait-${idx}`} className={`min-h-[90px] border-b border-r border-ps-border p-1.5 ${day === null ? "bg-ps-bg/30" : ""}`}>
+                  {day !== null && (
+                    <>
+                      <div className="w-6 h-6 flex items-center justify-center text-xs font-medium mb-1 text-ps-hint">{day}</div>
+                      {idx % 3 === 0 && <Skeleton className="h-4 w-full" />}
+                      {idx % 7 === 2 && <Skeleton className="mt-1 h-4 w-2/3" />}
+                    </>
+                  )}
+                </div>
+              ))}
+            </LoadingRegion>
+          ) : (
           <div className="grid grid-cols-7">
             {cells.map((day, idx) => {
               if (day === null) {
@@ -432,6 +448,7 @@ export default function CalendarPage() {
               );
             })}
           </div>
+          )}
         </div>
 
         {/* Right side */}

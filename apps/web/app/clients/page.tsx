@@ -540,7 +540,7 @@ export default function ClientsPage() {
       {/* Header */}
       <PageHeader
         title="Clients"
-        subtitle={loading ? "Loading…" : `${filtered.length} client${filtered.length !== 1 ? "s" : ""}`}
+        subtitle={loading ? "\u00a0" : `${filtered.length} client${filtered.length !== 1 ? "s" : ""}`}
         actions={
           <div className="flex items-center gap-2">
             <button

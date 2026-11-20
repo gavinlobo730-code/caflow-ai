@@ -157,7 +157,7 @@ function ComplianceDashboard() {
   );
 
   if (loading) return <PagePlaceholder label="Loading the compliance workload" shape="dashboard" action={false} />;
-  if (error) return <div className="p-8 text-sm text-red-600">{error}</div>;
+  if (error) return <div role="alert" className={pageFrameClass("data", "text-sm text-state-problem")}>{error}</div>;
 
   const s = dash?.summary;
   return (
