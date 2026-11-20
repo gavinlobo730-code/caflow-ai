@@ -90,7 +90,7 @@ asked for again. Where one of them differs from a default, this section wins.
   owner's go-ahead.
 - **Pull requests.** One theme per pull request: about ten hours-sized items, four days-sized
   items, one weeks- or months-sized item, or one rule of a mechanical sweep. At most three are
-  open at once and they are merged one at a time, each only when both required checks are green
+  open at once and they are merged one at a time, each only when all three required checks are green
   and it is current with `main` (squash). Branch from `origin/main` and, after a merge, reset
   the work branch to `main`. Close an item's ledger line in the same commit as its work. Before
   each batch, confirm every item in it is still true against the code and close any that is
@@ -1795,10 +1795,15 @@ _Longer design records for this area were moved to `docs/design-record/engineeri
 
 ## CI
 
-Two **required** status checks on `main`, both in `.github/workflows/backend-ci.yml`:
+Three **required** status checks on `main`, two in `.github/workflows/backend-ci.yml` and one in `.github/workflows/frontend-ci.yml`
+(a merge is refused while any of them is failing, and the merge refusal names it; this file said two until 20 November 2026, when the
+third refused a merge):
 
 - `pytest — mock mode (Python 3.11)`
 - `migration apply — real Postgres 16`
+- `lint · typecheck · test · build (Node 22)`, the web app's `next lint`, type check, tests and build. **Run `pnpm lint` in `apps/web`
+  before pushing a web change**: it refuses an unescaped apostrophe in JSX text (`react/no-unescaped-entities`), which a type check and
+  the script tests do not see, and four were found only when this check refused #1177.
 
 Never add a `paths:` filter to the `on:` block of a workflow carrying a required check.
 A path-filtered workflow does not run when the filter misses, the check never reports,
