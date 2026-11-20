@@ -116,7 +116,7 @@ export default function AccountingHubPage() {
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {practiceId && (
-              <Link href={`/clients/${practiceId}/accounting`} className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-2 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-label">
+              <Link href={`/clients/${practiceId}/accounting`} data-tip="practice-books" className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-2 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-label">
                 Practice books
               </Link>
             )}

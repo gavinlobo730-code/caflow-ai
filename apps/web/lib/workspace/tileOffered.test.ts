@@ -10,7 +10,6 @@ const WEB = join(import.meta.dirname, "..", "..");
 const API = join(WEB, "..", "api");
 
 type Pair = readonly [string, string];
-const key = ([r, a]: Pair) => `${r}:${a}`;
 
 /** The pairs on the Team entry of WORKSPACE_CONFIGS, read from the source (the file imports icons node cannot load). */
 function teamAnyOf(): string[] {

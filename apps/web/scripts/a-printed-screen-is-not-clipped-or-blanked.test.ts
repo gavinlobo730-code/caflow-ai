@@ -225,6 +225,7 @@ const NOT_CHROME: Record<string, string> = {
   AuthGuard: "renders its children or a redirect, no chrome of its own",
   WorkspaceProvider: "context provider, draws nothing",
   ClientNavProvider: "context provider, draws nothing",
+  GuidedTipsProvider: "context provider, draws nothing",
   MonitoringInit: "starts error reporting, renders nothing",
   AppShell: "chooses a shell",
   WorkspaceShell: "the frame: held by the class-list rule above",
@@ -243,6 +244,8 @@ const CHROME: Record<string, { file: string; anchor: string }> = {
   // Toaster renders only a viewport; the class list that places it is in the primitive.
   Toaster: { file: "components/ui/toast.tsx", anchor: "fixed top-0 z-[100]" },
   ConfirmDialogHost: { file: "components/ui/confirm-dialog.tsx", anchor: "fixed inset-0 z-[80]" },
+  // A guided tip is a pop-up beside a button on the screen; a printed statement must not carry one (POST-A-531).
+  GuidedTip: { file: "components/tips/GuidedTip.tsx", anchor: "fixed z-[46]" },
   // The idle warning draws nothing until the last minute before a sign-out, and then a small banner that must not print.
   SessionKeeper: { file: "components/auth/SessionKeeper.tsx", anchor: "fixed bottom-4 left-1/2" },
 };

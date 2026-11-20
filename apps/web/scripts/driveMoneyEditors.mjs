@@ -44,6 +44,8 @@
  *                  `not_driven`) and exits 1. The workflow's job has an allowance, and a job that runs past it is cancelled WITHOUT running its later steps, the one that uploads
  *                  this report among them: the run of 6 November 2026 ran 55 minutes against 45 and left nothing. A runner that stops itself leaves the report and the job red.
  * --list           print the runs that would be driven, one a line, and exit 0 before any build or browser is needed (what the tests of the rotation read)
+ * --weekly         drive the scenarios in `scripts/drive/weekly/` INSTEAD of the ones in `scripts/drive/scenarios/`: the checks that are not part of a night or of the whole
+ *                  matrix, because both are at the end of their allowance. The weekly workflow asks for it; every other flag means what it means without it
  * --now <instant>  read the rotation at this instant (`2026-11-07T00:30:00Z`, with its zone) and not at the real clock, to reproduce a night or to test the runner's own use of it
  * --shots          keep a screenshot of every failed scenario in .smoke/drive/
  * --browser <name> chromium (the default), firefox or webkit: the browser the drive runs in. The weekly other-browsers run (drive-other-browsers.yml) asks for the other two
@@ -93,6 +95,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB = path.join(__dirname, "..");
 const SHOT_DIR = path.join(WEB, ".smoke", "drive");
 const SCENARIO_DIR = path.join(__dirname, "drive", "scenarios");
+/** The scenarios that are NOT part of a night or of the whole matrix (`--weekly`): the nightly drive and the on-demand matrix are each at the end of their allowance
+ *  (`the-nightly-drive-fits-its-allowance-and-visits-each-zone-in-turn.test.ts`; on 20-11-2026 the matrix was estimated at 96.98 of its 97 minutes, so not one more run fits), and a scenario
+ *  that does not post money is driven once a week by `.github/workflows/frame-walk.yml` instead of being left undriven or squeezing a money scenario out. */
+const WEEKLY_DIR = path.join(__dirname, "drive", "weekly");
 
 /** The port `pnpm smoke:build` bakes into the bundle (the walk's `SMOKE_PORT`, the same default). */
 const PORT = Number(process.env.SMOKE_PORT || 4319);
@@ -144,10 +150,13 @@ console.log(
 // Discovered, not listed, so a scenario file cannot be written and forgotten. A module exports `group` (a
 // word) and `scenarios` (an array of { id, title, run(env), contexts? }). They are read BEFORE the export is looked for, so `--list` needs no build.
 const modules = [];
-for (const file of fs.readdirSync(SCENARIO_DIR).filter((f) => f.endsWith(".mjs")).sort()) {
-  const mod = await import(pathToFileURL(path.join(SCENARIO_DIR, file)).href);
+const weekly = Boolean(flags["--weekly"]);
+const scenarioFiles = weekly ? fs.readdirSync(WEEKLY_DIR) : fs.readdirSync(SCENARIO_DIR);
+const scenarioDir = weekly ? WEEKLY_DIR : SCENARIO_DIR;
+for (const file of scenarioFiles.filter((f) => f.endsWith(".mjs")).sort()) {
+  const mod = await import(pathToFileURL(path.join(scenarioDir, file)).href);
   if (typeof mod.group !== "string" || !Array.isArray(mod.scenarios)) {
-    console.error(`scripts/drive/scenarios/${file} must export \`group\` (a string) and \`scenarios\` (an array).`);
+    console.error(`scripts/drive/${weekly ? "weekly" : "scenarios"}/${file} must export \`group\` (a string) and \`scenarios\` (an array).`);
     process.exit(2);
   }
   modules.push({ file, group: mod.group, scenarios: mod.scenarios });
@@ -165,7 +174,7 @@ function runsOf(group, scenario) {
 const selected = modules.flatMap((m) => m.scenarios.flatMap((s) => runsOf(m.group, s)))
   .filter((r) => matchesOnly(r, only));
 if (!selected.length) {
-  console.error(only ? `No scenario matches --only ${only}.` : "No scenarios were found under scripts/drive/scenarios/.");
+  console.error(only ? `No scenario matches --only ${only}.` : "No scenarios were found under scripts/drive/" + (weekly ? "weekly" : "scenarios") + "/.");
   process.exit(2);
 }
 if (listOnly) {

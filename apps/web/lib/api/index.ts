@@ -6914,6 +6914,15 @@ export const api = {
     dismiss: () => request<ApiResp<{ dismissed: boolean; dismissed_at: string }>>(
       "/api/onboarding/first-run/dismiss", { method: "POST" }),
   },
+  // One person's guided tips (POST-A-531): whether they want them, and the ids of the ones they have closed. Every route acts
+  // on the caller's own row. `data` is `unknown` on purpose: read it with `readTipsState` (lib/tips/engine.ts), which answers
+  // null for anything that is not the server's own shape, and null shows no tips.
+  guidedTips: {
+    get: () => request<ApiResp<unknown>>("/api/guided-tips"),
+    set: (on: boolean) => request<ApiResp<unknown>>("/api/guided-tips", { method: "PUT", body: JSON.stringify({ on }) }),
+    seen: (tipId: string) => request<ApiResp<unknown>>("/api/guided-tips/seen", { method: "POST", body: JSON.stringify({ tip_id: tipId }) }),
+    showAgain: () => request<ApiResp<unknown>>("/api/guided-tips/show-again", { method: "POST" }),
+  },
   onboarding: {
     /** Start a 10-step Product Bible Ch. 7 onboarding checklist for a client. */
     start: (body: { client_id: string; entity_type?: string; notes?: string }) =>

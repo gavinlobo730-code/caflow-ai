@@ -425,6 +425,9 @@ app.include_router(audit.router)
 # handler calls assert_client_access itself, same posture as audit.router above).
 app.include_router(reconciliation.router)
 app.include_router(onboarding.router)
+# POST-A-531: one person's guided-tips switch and the tips they have closed. The caller's own row only, so NO _CLIENT_GUARD.
+from routers import guided_tips  # noqa: E402
+app.include_router(guided_tips.router)
 app.include_router(search.router)  # M2: authorization-scoped global search
 # H6: DSC tracker — firm-level settings resource (no client_id surface), so NO _CLIENT_GUARD
 app.include_router(dsc.router)

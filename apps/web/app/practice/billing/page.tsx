@@ -128,7 +128,7 @@ function Billing() {
         title="Billing Schedules"
         actions={
           <div className="flex items-center gap-3">
-            <button onClick={() => setShowForm((v) => !v)} className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-brand text-white">
+            <button onClick={() => setShowForm((v) => !v)} data-tip="new-billing-schedule" className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-brand text-white">
               <Plus size={13} /> New schedule
             </button>
             {practiceInvoicesHref && (

@@ -102,6 +102,14 @@ jobs:
         working-directory: apps/web
         run: node scripts/smoke-walk.mjs --no-axe --no-slow-server --no-headers --frame --frame-only --shots --real-client --only /clients/00000000 --report .smoke/frame-client.json
 
+      # The browser scenarios that neither the nightly drive nor the on-demand matrix has room for (each is at the end
+      # of its allowance; `apps/web/scripts/drive/weekly/` says which they are). They read the same build and the same
+      # stub, a few minutes in all, so they ride with the measurement and never with a pull request.
+      - name: Drive the weekly scenarios
+        if: always() && steps.build.outcome == 'success'
+        working-directory: apps/web
+        run: node scripts/driveMoneyEditors.mjs --weekly --shots --report .smoke/weekly-drive.json
+
       - name: Keep the reports and the pictures
         if: always()
         uses: actions/upload-artifact@v7

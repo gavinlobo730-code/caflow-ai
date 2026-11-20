@@ -77,7 +77,7 @@ export function UtilityCluster({
           : "flex items-center gap-1 shrink-0"
       )}
     >
-      <button onClick={onOpenSearch} title="Search (⌘K)" aria-label="Search" className={button}>
+      <button onClick={onOpenSearch} title="Search (⌘K)" aria-label="Search" data-tip="open-search" className={button}>
         <Search size={15} />
       </button>
 

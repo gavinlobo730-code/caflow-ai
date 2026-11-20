@@ -245,7 +245,7 @@ export function contextsFor(contexts, zone) {
 /** Every flag the runner knows. A "value" flag takes one, spelled `--zone rotate` or `--zone=rotate`; a "bare" flag takes none. */
 export const FLAGS = {
   "--only": "value", "--report": "value", "--out": "value", "--zone": "value", "--shard": "value", "--stop-after": "value", "--now": "value", "--browser": "value", "--width": "value",
-  "--shots": "bare", "--no-tz-matrix": "bare", "--no-headers": "bare", "--list": "bare",
+  "--shots": "bare", "--no-tz-matrix": "bare", "--no-headers": "bare", "--list": "bare", "--weekly": "bare",
 };
 /** What a value flag says it needs when it is not given one (the first two keep the words they always had). */
 const NEEDS = {
