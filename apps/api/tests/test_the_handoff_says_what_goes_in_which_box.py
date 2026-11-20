@@ -126,6 +126,47 @@ def test_a_supplementary_return_is_called_out_before_the_upload():
     assert panel.record_options == ["regular", "supplementary"]
 
 
+def test_the_panel_tells_the_ca_what_the_portal_checks_that_the_product_cannot_see():
+    """POST-A-520. Before the download: mark exits on the portal first, and compare the file with the portal's own Active Member List. In plain words,
+    from EPFO's own FAQs and manual, and with no claim of what the portal will accept."""
+    warnings = _epf().warnings
+    assert h.EPF_MARK_EXITS_FIRST in warnings
+    assert h.EPF_COMPARE_WITH_THE_PORTALS_LIST in warnings
+    assert "Active Member List" in h.EPF_COMPARE_WITH_THE_PORTALS_LIST
+    assert "cannot see" in h.EPF_COMPARE_WITH_THE_PORTALS_LIST
+    # No promise either way about acceptance, and the word the ordinary-return test above guards against stays out.
+    for sentence in (h.EPF_MARK_EXITS_FIRST, h.EPF_COMPARE_WITH_THE_PORTALS_LIST, h.epf_rate_sentence(1200)):
+        low = sentence.lower()
+        assert "will accept" not in low and "will be accepted" not in low and "egular" not in sentence
+        assert "guarantee" not in low
+
+
+def test_a_run_with_no_file_says_nothing_about_uploading_one():
+    """A run in which nobody carries a PF contribution has no ECR; the three sentences about uploading a file are not said beside
+    "there is no ECR to build" (found by an independent read, 20-11-2026)."""
+    for problems in ([], ["R. Kumar has no UAN"]):
+        panel = _epf(filable=False, problems=problems, employee_rate_bps=1200)
+        warnings = " ".join(panel.warnings)
+        assert h.EPF_MARK_EXITS_FIRST not in panel.warnings
+        assert h.EPF_COMPARE_WITH_THE_PORTALS_LIST not in panel.warnings
+        assert "built at" not in warnings and "Active Member List" not in warnings
+        assert not panel.artefact.available
+
+
+def test_the_panel_says_which_rate_the_file_was_built_at_when_it_is_told():
+    panel = _epf(employee_rate_bps=1200)
+    rate = [w for w in panel.warnings if w.startswith("The portal's upload form asks for the contribution rate")]
+    assert len(rate) == 1
+    assert "built at 12%" in rate[0] and "12% or 10%" in rate[0]
+    # A caller that does not say the rate (every one written before this) gets no sentence about it, and no wrong one.
+    assert not any("upload form asks for the contribution rate" in w for w in _epf().warnings)
+
+
+@pytest.mark.parametrize("bps, said", [(1200, "12"), (1000, "10"), (833, "8.33"), (1250, "12.5")])
+def test_the_rate_is_said_in_integer_arithmetic(bps, said):
+    assert f"built at {said}%" in h.epf_rate_sentence(bps)
+
+
 def test_an_ordinary_regular_return_adds_no_noise():
     """ecr_sequence's values are LOWERCASE — REGULAR = "regular". Comparing
     against "Regular" would fire this warning on every ordinary month, which is

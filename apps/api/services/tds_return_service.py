@@ -293,7 +293,9 @@ def _typed_rate_bps(rate_pct) -> int:
     from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
     try:
         return int((Decimal(str(rate_pct or 0)) * 100).to_integral_value(rounding=ROUND_HALF_UP))
-    except InvalidOperation:
+    except InvalidOperation as unreadable:
+        # A stored rate that cannot be read becomes 0%, which is a TDS row that deducted nothing, so it is reported (POST-A-505).
+        capture_soft_failure(unreadable, operation="tds_return.typed_rate_unreadable", rate=str(rate_pct)[:40])
         return 0
 
 

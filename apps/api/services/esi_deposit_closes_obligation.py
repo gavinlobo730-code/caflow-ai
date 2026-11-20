@@ -61,6 +61,7 @@ from typing import Any, Optional
 
 from core.db_provider import privileged_for
 from core.db_paging import fetch_all
+from core.observability import capture_soft_failure
 from core.ist_clock import ist_today
 from domain.money_sentence import rupee_text
 from repositories.compliance_records_repository import compliance_records_repo
@@ -174,7 +175,10 @@ def close_for_recorded_remittance(
     try:
         year, mon = int(wage_month[:4]), int(wage_month[5:7])
         month_start = date(year, mon, 1)
-    except (ValueError, IndexError):
+    except (ValueError, IndexError) as unreadable:
+        # A PAID ESI remittance whose wage month cannot be read: nothing can be said about its deposit obligation, so it is said here
+        # that nothing was (POST-A-505), and the answer stays "nothing to say".
+        capture_soft_failure(unreadable, operation="esi_deposit_closes_obligation.wage_month_unreadable", wage_month=wage_month[:20])
         return []
     what = _what(wage_month)
     if not firm_id or not client_id:
