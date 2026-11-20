@@ -79,7 +79,8 @@ test("the list only shrinks: it is no longer than it was when it was written", (
   // 20-11-2026: 6 and 55 after the Practice menu; 0 and 50 after Approvals, E-Invoice, Knowledge, Data Migration and the Team
   // menu. No screen hugs the left any more, so that list stays EMPTY. Lower the second when a pull request shortens the list.
   assert.deepEqual(baseline.hugs_left, [], "a screen hugs the left again: put it in the page frame");
-  assert.ok(baseline.no_placeholder.length <= 50, `${baseline.no_placeholder.length} screens wait without a shape; the list was 50`);
+  // 29 after the one-line word loaders (the hub worklists, Payroll, Settings, Insights and others) took a shape.
+  assert.ok(baseline.no_placeholder.length <= 29, `${baseline.no_placeholder.length} screens wait without a shape; the list was 29`);
 });
 
 test("the Practice menu's screens use the one frame and are on neither list", () => {

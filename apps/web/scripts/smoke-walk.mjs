@@ -857,7 +857,8 @@ if (frame) {
     const shotBase = shots ? path.join(shotDir, "frame-" + (route === "/" ? "root" : route.slice(1).replace(/[/?=&]/g, "_"))) : null;
     const m = await measureFrame({ context, url, stub, sealOff, escaped, shotBase });
     // A route that lands somewhere else drew the destination, which is measured under its own route.
-    const moved = m.landed && trim(m.landed) !== trim(new URL(url).pathname);
+    // …and so did a route pinned as a redirect, even when the measurement caught it before it left (the platform gate's spinner).
+    const moved = EXPECTED_LANDINGS[route] !== undefined || (m.landed && trim(m.landed) !== trim(new URL(url).pathname));
     frameRows.push({
       route, key: axeRouteKey(trim(routePath), realClient ? CLIENT_UUID : null),
       waiting: moved ? "redirected" : waitingVerdict(m.waiting), layout: moved ? "redirected" : layoutVerdict(m.layout), detail: m,

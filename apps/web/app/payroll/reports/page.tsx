@@ -45,9 +45,9 @@ import { unreadSentence } from "@/lib/export/unread";
 import { toast } from "@/components/ui/use-toast";
 import { formatPaise } from "@/lib/money/format";
 import { PageHeader } from "@/components/ui/page-header";
-import { LoadingRegion } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { SectionPlaceholder, PagePlaceholder } from "@/components/ui/page-frame";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -1404,7 +1404,7 @@ function SliceState({ loading, error }: { loading: boolean; error: string | null
     );
   }
   if (loading) {
-    return <LoadingRegion label="Loading this report" className="text-xs text-ps-hint px-1 py-2">Loading…</LoadingRegion>;
+    return <SectionPlaceholder label="Loading this report" shape="table" rows={4} />;
   }
   return null;
 }
@@ -1470,11 +1470,7 @@ export default function PayrollReportsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-ps-bg flex items-center justify-center">
-        <LoadingRegion label="Loading payroll reports" className="text-center" noticeClassName="justify-center">
-          <p className="text-ps-label">Loading payroll reports...</p>
-        </LoadingRegion>
-      </div>
+      <PagePlaceholder label="Loading payroll reports" shape="table" />
     );
   }
 

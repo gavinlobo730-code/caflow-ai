@@ -41,7 +41,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { formatPaise } from "@/lib/money/format";
 import { istToday } from "@/lib/dateMath";
 import { CLIENT_LIST_UNREAD } from "@/lib/clients/clientListUnread";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { SectionPlaceholder } from "@/components/ui/page-frame";
 
 type Client = { id: string; client_name: string };
 
@@ -214,7 +214,7 @@ export default function StatutoryPage() {
         <GapList gaps={summary?.gaps ?? []} tone="attention" className="mb-4" />
 
         {loading && (
-          <Card><CardContent className="py-12 text-center text-ps-label"><LoadingRegion label="Loading the statutory summary" noticeClassName="justify-center text-center">Loading…</LoadingRegion></CardContent></Card>
+          <Card><CardContent className="py-12 text-center text-ps-label"><SectionPlaceholder label="Loading the statutory summary" shape="table" rows={4} /></CardContent></Card>
         )}
 
         {!loading && loadFailed && (

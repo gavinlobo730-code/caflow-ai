@@ -42,7 +42,7 @@ import { formatPaise } from "@/lib/services/formatting";
 import type { Column } from "@/lib/table/types";
 import { PageHeader } from "@/components/ui/page-header";
 import { istToday } from "@/lib/dateMath";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { SectionPlaceholder, PagePlaceholder } from "@/components/ui/page-frame";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -700,7 +700,7 @@ export default function AttendancePage() {
   ];
 
   if (loading) {
-    return <div className="min-h-screen bg-ps-bg flex items-center justify-center"><LoadingRegion label="Loading attendance" className="text-center" noticeClassName="justify-center"><p className="text-ps-label">Loading...</p></LoadingRegion></div>;
+    return <PagePlaceholder label="Loading attendance" shape="table" />;
   }
 
   if (loadFailed) {
@@ -1203,7 +1203,7 @@ export default function AttendancePage() {
                 {!earnClient ? (
                   <p className="text-sm text-ps-label">Select a client to record earnings.</p>
                 ) : earnLoading ? (
-                  <LoadingRegion label="Loading the month's earnings" className="text-sm text-ps-label">Loading…</LoadingRegion>
+                  <SectionPlaceholder label="Loading the month's earnings" shape="table" rows={4} />
                 ) : earnLoadError !== null ? (
                   // Before the empty state, whose sentence ("that is a real
                   // answer") would otherwise be said about a month nobody read.

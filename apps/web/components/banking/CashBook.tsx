@@ -6,7 +6,7 @@ import { apiGet, getAuthToken } from "@/lib/invoices/shared";
 import { formatPaise } from "@/lib/money/format";
 import { objectWithLists } from "@/lib/api/shape";
 import { formatDate } from "@/lib/dates/format";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { SectionPlaceholder } from "@/components/ui/page-frame";
 
 /**
  * Cash Book — every Cash ledger in date order, and the one rule cash has.
@@ -119,7 +119,7 @@ export function CashRegister({ clientId }: { clientId: string }) {
         </p>
       </div>
 
-      {loading && <LoadingRegion label="Loading the cash book" className="text-2xs text-ps-hint">Loading…</LoadingRegion>}
+      {loading && <SectionPlaceholder label="Loading the cash book" shape="table" rows={4} />}
 
       {error && (
         <div role="alert" className="rounded-lg border border-state-problem-border bg-state-problem-surface p-3">

@@ -21,7 +21,7 @@ import type {
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { hasEmployeePortalAccess } from "@/lib/portal/employeeAccess";
 import { formatPaise, formatDate } from "@/lib/services/formatting";
-import { PageLoader, LoadingRegion } from "@/components/ui/skeleton";
+import { PageLoader } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import {
@@ -31,6 +31,7 @@ import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
 import { failureSentence } from "@/lib/api/failureSentence";
 import { DateInput } from "@/components/ui/date-input";
 import { OnlinePaymentNotice, PayOnlineControl } from "@/components/portal/PayOnlineControl";
+import { SectionPlaceholder } from "@/components/ui/page-frame";
 
 interface Section {
   key: string;
@@ -381,7 +382,7 @@ export default function PortalDashboardPage() {
     finally { setBusy(false); }
   };
 
-  if (loading || redirecting) return <LoadingRegion label="Loading your portal" className="p-8 text-sm text-ps-label">Loading your portal…</LoadingRegion>;
+  if (loading || redirecting) return <SectionPlaceholder label="Loading your portal" shape="dashboard" className="mx-auto max-w-5xl p-8" />;
   if (error) {
     return (
       <div className="p-8 max-w-md">

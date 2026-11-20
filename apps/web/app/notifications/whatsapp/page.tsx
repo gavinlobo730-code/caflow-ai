@@ -18,7 +18,7 @@ import { ClientLookup } from "@/components/lookups/ClientLookup";
 import type { Client } from "@/lib/types/index";
 import { formatDateTime } from "@/lib/dates/format";
 import { PageHeader } from "@/components/ui/page-header";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, Skeleton } from "@/components/ui/skeleton";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -555,7 +555,7 @@ export default function WhatsAppPage() {
                 Select Client
               </label>
               {loadingClients ? (
-                <LoadingRegion label="Loading clients" className="text-xs text-ps-hint py-2">Loading clients…</LoadingRegion>
+                <LoadingRegion label="Loading clients"><Skeleton className="h-9 w-full" /></LoadingRegion>
               ) : clientsError ? (
                 <div className="text-xs text-red-600 py-2">
                   {clientsError}{" "}
@@ -738,7 +738,7 @@ export default function WhatsAppPage() {
               </div>
 
               {loadingClients ? (
-                <LoadingRegion label="Loading clients" className="text-xs text-ps-hint">Loading clients…</LoadingRegion>
+                <LoadingRegion label="Loading clients"><Skeleton className="h-9 w-full" /></LoadingRegion>
               ) : clientsError ? (
                 <div className="text-xs text-red-600">
                   {clientsError}{" "}

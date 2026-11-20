@@ -273,7 +273,8 @@ test("the walk is not vacuous for words either: it finds the lines of words, the
   }
   // 185, 136 and 41 when POST-A-449 closed; a floor well under each, so a change to the walk that stops seeing words fails.
   assert.ok(words > 150, `found only ${words} lines of waiting words`);
-  assert.ok(covered > 120, `found only ${covered} lines of waiting words inside a region`);
+  // 107 on 20-11-2026: POST-A-530 turned twenty-four word-only regions into shapes, which is the direction this count should go.
+  assert.ok(covered > 90, `found only ${covered} lines of waiting words inside a region`);
   assert.ok(controls > 30, `found only ${controls} waiting words inside a control`);
 });
 
@@ -355,25 +356,27 @@ test("self-test: words in a region, in a button, in a table cell's region, in a 
   assert.deepEqual(uncovered("Sample.tsx", sample).map((m) => `${m.line}:${m.kind}`), ["12:words", "15:words"]);
 });
 
-test("negative control: the payroll roster with its region taken away names the words it left bare", () => {
-  const rel = "app/payroll/people/page.tsx";
+// The two controls below once used the payroll roster and the recurring templates' cell. Both wait with a shape now (POST-A-530),
+// so the controls moved to two small in-place hints that stay words by design: a line inside a dialog and a line under a log.
+test("negative control: the allocate-receipt dialog with its region taken away names the words it left bare", () => {
+  const rel = "components/sales/AllocateReceiptModal.tsx";
   const text = read(rel);
-  const open = '<LoadingRegion label="Loading the roster" className="text-center" noticeClassName="justify-center">';
+  const open = '<LoadingRegion label="Loading open invoices" className="text-xs text-ps-hint">';
   const at = text.indexOf(open);
   const close = text.indexOf("</LoadingRegion>", at);
-  assert.ok(at > 0 && close > at, "premise: the roster's region is where this test expects it");
+  assert.ok(at > 0 && close > at, "premise: the dialog's region is where this test expects it");
   const broken = text.slice(0, at) + "<div>" + text.slice(at + open.length, close) + "</div>" + text.slice(close + "</LoadingRegion>".length);
-  assert.deepEqual(uncovered(rel), [], "premise: the roster draws no uncovered mark today");
-  assert.deepEqual(uncovered(rel, broken).map((m) => `${m.owner}:${m.kind}`), ["PayrollPeoplePage:words"]);
+  assert.deepEqual(uncovered(rel), [], "premise: the dialog draws no uncovered mark today");
+  assert.deepEqual(uncovered(rel, broken).map((m) => `${m.owner}:${m.kind}`), ["AllocateReceiptModal:words"]);
 });
 
-test("negative control: the recurring templates' cell with its region taken away names the words it left bare", () => {
-  const rel = "app/accounting/recurring/page.tsx";
+test("negative control: the statement delivery log with its region taken away names the words it left bare", () => {
+  const rel = "components/sales/StatementDeliveryLog.tsx";
   const text = read(rel);
-  const inCell = '<LoadingRegion label="Loading the recurring templates" noticeClassName="justify-center text-center">Loading…</LoadingRegion>';
-  assert.equal(text.split(inCell).length, 2, "premise: the region sits inside the table cell once");
-  const broken = text.replace(inCell, "Loading…");
-  assert.deepEqual(uncovered(rel, broken).map((m) => `${m.owner}:${m.kind}`), ["RecurringPage:words"]);
+  const region = '<LoadingRegion label="Loading the delivery log" className="mt-2 text-xs text-ps-hint">Loading the delivery log…</LoadingRegion>';
+  assert.equal(text.split(region).length, 2, "premise: the region sits under the log once");
+  const broken = text.replace(region, "<p>Loading the delivery log…</p>");
+  assert.deepEqual(uncovered(rel, broken).map((m) => `${m.owner}:${m.kind}`), ["StatementDeliveryLog:words"]);
 });
 
 test("negative control: a listed mark taken away does not make room for a new bare one elsewhere in the file", () => {
