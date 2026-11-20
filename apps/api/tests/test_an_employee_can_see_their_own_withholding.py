@@ -275,6 +275,7 @@ def test_an_enabled_employee_resolves_to_their_own_ids(monkeypatch):
         "id": EMP, "firm_id": FIRM, "client_id": CLIENT, "name": "Someone",
         "employee_code": "EMP-001",
         "auth_user_id": "uid-1", "portal_enabled": True})
+    db.seed("clients", {"id": CLIENT, "firm_id": FIRM, "deleted_at": None})   # the door asks the client is not deleted (POST-A-504)
     monkeypatch.setenv("SUPABASE_URL", "https://example.test")
     monkeypatch.setattr("core.supabase_client.get_service_supabase", lambda: db)
     ctx = auth_mod.get_current_portal_employee(
@@ -310,6 +311,7 @@ def test_the_principal_is_the_identity_it_is_BOUND_to_and_not_the_first_row(monk
         "id": EMP, "firm_id": FIRM, "client_id": CLIENT, "name": "The Caller",
         "employee_code": "EMP-001",
         "auth_user_id": "uid-1", "portal_enabled": True})
+    db.seed("clients", {"id": CLIENT, "firm_id": FIRM, "deleted_at": None})   # the door asks the client is not deleted (POST-A-504)
     monkeypatch.setenv("SUPABASE_URL", "https://example.test")
     monkeypatch.setattr("core.supabase_client.get_service_supabase", lambda: db)
 
