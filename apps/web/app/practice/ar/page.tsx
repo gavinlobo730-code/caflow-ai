@@ -10,7 +10,7 @@ import { formatPaise } from "@/lib/services/formatting";
 import { PartnerGuard } from "@/components/practice/PartnerGuard";
 import { PageHeader } from "@/components/ui/page-header";
 import { formatDate } from "@/lib/dates/format";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { PagePlaceholder, pageFrameClass } from "@/components/ui/page-frame";
 
 type Bucket = { paise: number; count: number };
 /** One invoice in a bucket, as the server listed it (POST-A-099): the same reading the bucket's total is made of. */
@@ -74,14 +74,14 @@ function ARDashboard() {
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  if (loading) return <LoadingRegion label="Loading AR aging" className="p-8 text-sm text-gray-500">Loading AR aging…</LoadingRegion>;
+  if (loading) return <PagePlaceholder label="Loading AR aging" shape="dashboard" action={false} />;
   if (error) return <div className="p-8 text-sm text-red-600">{error}</div>;
 
   const buckets = aging?.buckets ?? {};
   const practiceInvoicesHref = books.state === "known" ? practiceSalesHref(books.clientId) : null;
   const practiceReceiptsHref = books.state === "known" ? practiceSalesHref(books.clientId, { tab: "receipts" }) : null;
   return (
-    <div className="p-6 max-w-3xl">
+    <div className={pageFrameClass("data")}>
       <PageHeader
         icon={<ClipboardList size={18} className="text-brand" />}
         title="AR Aging"

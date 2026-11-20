@@ -20,7 +20,8 @@ import { formatHours } from "@/lib/data/analytics";
 import { ANALYTICS_FY_COUNT, CUSTOM_WINDOW_ID, analyticsWindowChoices, analyticsWindowOf, customWindowProblem } from "@/lib/practice/analyticsWindow";
 import { financialYearChoices } from "@/lib/dates/periods";
 import { todayIstISO } from "@/lib/dates/format";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, TableSkeleton } from "@/components/ui/skeleton";
+import { pageFrameClass } from "@/components/ui/page-frame";
 
 /**
  * Which clients make the practice money — Phase 3a-2.
@@ -236,7 +237,7 @@ export default function ProfitabilityPage() {
   );
 
   return (
-    <div className="p-6 max-w-ps-data space-y-5">
+    <div className={pageFrameClass("data", "space-y-5")}>
       <PageHeader
         title="Profitability"
         subtitle={<>Revenue less what the time cost, per client · {(!loading && !error ? (profit?.period ?? realization?.period) : null) ?? "—"}</>}
@@ -290,7 +291,7 @@ export default function ProfitabilityPage() {
         </div>
       )}
 
-      {loading && <LoadingRegion label="Loading profitability" className="text-xs text-ps-hint">Loading…</LoadingRegion>}
+      {loading && <LoadingRegion label="Loading profitability"><TableSkeleton rows={6} cols={6} /></LoadingRegion>}
 
       {!loading && error && (
         <div className="bg-white rounded-xl border border-ps-border p-6">

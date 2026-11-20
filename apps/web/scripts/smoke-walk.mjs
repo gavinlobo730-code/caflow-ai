@@ -118,7 +118,9 @@ import {
   initialBaseline, loadAxeBuilder, parseBaseline, planShrink, serialiseBaseline, settleVerdict,
   summaryMarkdown,
 } from "./axeAudit.mjs";
-import { auditNamedScreens, slowServerScenario } from "./walkAudits.mjs";
+import {
+  auditNamedScreens, frameBaselineFrom, judgeFrame, layoutVerdict, measureFrame, slowServerScenario, waitingVerdict,
+} from "./walkAudits.mjs";
 import { CLIENT_UUID, knownRead } from "./walkStub.mjs";
 
 
@@ -466,6 +468,12 @@ const EXPECTED_LANDINGS = {
 const args = process.argv.slice(2);
 const only = args.includes("--only") ? args[args.indexOf("--only") + 1] : null;
 const shots = args.includes("--shots");
+// `--frame` (POST-A-530): after the walk, open each route once more and measure how it sits on the page and what it draws while
+// its data is out (scripts/walkAudits.mjs has the two measurements). Off by default: it holds the stubbed API for every route.
+const frame = args.includes("--frame");
+// `--frame-only`: take the measurement and skip the walk itself, for the person converting screens who wants the numbers again
+// in minutes. It proves nothing about whether a screen renders; the walk without it does.
+const frameOnly = frame && args.includes("--frame-only");
 /** `--no-axe` skips the accessibility scan; `--axe-init` / `--axe-shrink` write scripts/axe-baseline.json (see
  *  axeAudit.mjs). `--slow-server` / `--no-slow-server` force or skip the slow-server scenario. */
 const noAxe = args.includes("--no-axe");
@@ -730,7 +738,7 @@ const timings = [];            // how long each screen took to settle, for --rep
 const walkStarted = Date.now();
 let walked = 0;
 
-for (const route of routes) {
+for (const route of frameOnly ? [] : routes) {
   const routeStarted = Date.now();
   const page = await context.newPage();
   const errors = [];
@@ -835,6 +843,56 @@ if (axe.run && !realClient) {
 
 // The slow-server notice, against an API that takes 24 s (frontend_ux-05). Holds the walk for about half a minute.
 let slowProblems = null;
+const frameRows = [];
+const FRAME_BASELINE_FILE = path.join(__dirname, "frame-baseline.json");
+let frameVerdict = null;
+if (frame) {
+  console.log("\nframe: measuring each screen's layout and what it draws while it waits …");
+  let n = 0;
+  for (const route of routes) {
+    const [routePath, routeQuery = ""] = route.split("?");
+    const withSlash = routePath.endsWith("/") ? routePath : routePath + "/";
+    const url = `http://127.0.0.1:${PORT}${withSlash}${routeQuery ? "?" + routeQuery : ""}`;
+    // `--shots` with `--frame` keeps two pictures per route, at the wide window: while it waits, and once it has settled.
+    const shotBase = shots ? path.join(shotDir, "frame-" + (route === "/" ? "root" : route.slice(1).replace(/[/?=&]/g, "_"))) : null;
+    const m = await measureFrame({ context, url, stub, sealOff, escaped, shotBase });
+    // A route that lands somewhere else drew the destination, which is measured under its own route.
+    const moved = m.landed && trim(m.landed) !== trim(new URL(url).pathname);
+    frameRows.push({
+      route, key: axeRouteKey(trim(routePath), realClient ? CLIENT_UUID : null),
+      waiting: moved ? "redirected" : waitingVerdict(m.waiting), layout: moved ? "redirected" : layoutVerdict(m.layout), detail: m,
+    });
+    process.stdout.write(m.error ? "X" : ".");
+    if (++n % 60 === 0) process.stdout.write(` ${n}\n`);
+  }
+  const tally = (key) => Object.entries(frameRows.reduce((a, r) => ({ ...a, [r[key]]: (a[r[key]] || 0) + 1 }), {}))
+    .map(([k, v]) => `${v} ${k}`).join(", ");
+  console.log(`\nframe: waiting — ${tally("waiting")}`);
+  console.log(`frame: layout — ${tally("layout")}`);
+
+  // Against the committed list, which only shrinks (`--frame-init` writes it, `--frame-shrink` deletes the lines a run cleared).
+  const old = fs.existsSync(FRAME_BASELINE_FILE) ? JSON.parse(fs.readFileSync(FRAME_BASELINE_FILE, "utf8")) : null;
+  if (args.includes("--frame-init") || (args.includes("--frame-shrink") && old)) {
+    const next = frameBaselineFrom(frameRows, old);
+    if (args.includes("--frame-shrink")) {
+      // Shrink deletes; it never adds. A screen that is newly wrong is still a failure below.
+      next.hugs_left = next.hugs_left.filter((k) => old.hugs_left.includes(k));
+      next.no_placeholder = next.no_placeholder.filter((k) => old.no_placeholder.includes(k));
+    }
+    fs.writeFileSync(FRAME_BASELINE_FILE, JSON.stringify(next, null, 2) + "\n");
+    console.log(`frame: wrote ${path.relative(WEB, FRAME_BASELINE_FILE)} (${next.hugs_left.length} hug the left, ${next.no_placeholder.length} wait without a shape)`);
+  }
+  const now = fs.existsSync(FRAME_BASELINE_FILE) ? JSON.parse(fs.readFileSync(FRAME_BASELINE_FILE, "utf8")) : null;
+  if (now) {
+    frameVerdict = judgeFrame(frameRows, now);
+    for (const f of frameVerdict.fresh) console.log(`frame: NEW  ${f.route} — ${f.saw} (not on the list; fix the screen)`);
+    for (const f of frameVerdict.stale) console.log(`frame: DONE ${f.route} — no longer ${f.list === "hugs_left" ? "hugs the left" : "waits without a shape"}; delete its line (--frame-shrink)`);
+    if (!frameVerdict.fresh.length && !frameVerdict.stale.length) console.log("frame: every measured screen agrees with the list.");
+  } else {
+    console.log("frame: no list to judge against (scripts/frame-baseline.json); --frame-init writes one.");
+  }
+}
+
 if (runSlowServer) {
   process.stdout.write("slow-server notice: holding the API for 24 s on /tasks … ");
   slowProblems = await slowServerScenario({ context, port: PORT, stub, sealOff, escaped });
@@ -986,7 +1044,9 @@ if (slowProblems) {
 }
 
 const failed = Boolean(
-  broken.length || (!anon && herds.length) || (axeVerdict && !axeVerdict.ok) || (slowProblems && slowProblems.length),
+  broken.length || (!anon && herds.length) || (axeVerdict && !axeVerdict.ok) || (slowProblems && slowProblems.length)
+  // POST-A-530: a screen newly wrong, or a line of the list a run has cleared and nobody deleted.
+  || frameVerdict?.fresh.length || frameVerdict?.stale.length,
 );
 
 if (reportPath) {
@@ -1023,6 +1083,8 @@ if (reportPath) {
         lowerable: axeVerdict.lowerable,
       }
       : { ran: false, reason: axe.line },
+    // POST-A-530. null means `--frame` was not asked for on this run.
+    frame: frame ? { verdict: frameVerdict, rows: frameRows } : null,
     // frontend_ux-05. null means the scenario was not asked for on this run.
     slow_server: slowProblems === null ? null : { ok: slowProblems.length === 0, problems: slowProblems },
   };

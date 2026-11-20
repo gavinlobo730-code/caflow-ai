@@ -11,7 +11,7 @@ import { PartnerGuard } from "@/components/practice/PartnerGuard";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { EmptyStateAction } from "@/components/ui/empty-state-action";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { PagePlaceholder, pageFrameClass } from "@/components/ui/page-frame";
 
 /** What the practice client's own tax identity is, as the server holds it. */
 interface PracticeIdentity {
@@ -281,7 +281,7 @@ function PracticeOverview() {
     }
   }
 
-  if (loading) return <LoadingRegion label="Loading the practice" className="p-8 text-sm text-gray-500">Loading Practice…</LoadingRegion>;
+  if (loading) return <PagePlaceholder label="Loading the practice" shape="dashboard" />;
   if (error) return <div className="p-8 text-sm text-red-600">{error}</div>;
 
   if (provisioned === false) {
@@ -328,7 +328,7 @@ function PracticeOverview() {
   // belong on Revenue, so here they are one summary line with a link across.
   const overdueCount = dash?.overdue_count ?? 0;
   return (
-    <div className="p-6 max-w-5xl">
+    <div className={pageFrameClass("data")}>
       <PageHeader
         icon={<Building2 size={18} className="text-brand" />}
         title="Practice Overview"
