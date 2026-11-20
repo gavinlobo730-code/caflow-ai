@@ -264,8 +264,16 @@ export const WAITS_WITHOUT_A_SHAPE = new Set([
  * the list: a new screen, or one that was right. `stale` is a screen on the list that the run measured and found right: its
  * line is deleted, which is how the list shrinks and can never grow. A route the run did not measure (`--only`) is left alone.
  */
+/**
+ * @typedef {{ route: string, key?: string, layout: string, waiting: string }} FrameRow
+ * @typedef {{ hugs_left?: string[], no_placeholder?: string[] }} FrameList
+ * @param {FrameRow[]} rows
+ * @param {FrameList | null} baseline
+ * @returns {{ fresh: Array<{ list: string, route: string, saw: string }>, stale: Array<{ list: string, route: string }> }}
+ */
 export function judgeFrame(rows, baseline) {
   const measured = new Map(rows.map((r) => [r.key ?? r.route, r]));
+  /** @type {{ fresh: Array<{ list: string, route: string, saw: string }>, stale: Array<{ list: string, route: string }> }} */
   const out = { fresh: [], stale: [] };
   const lists = [
     ["hugs_left", (r) => r.layout === "hugs the left"],
@@ -282,8 +290,14 @@ export function judgeFrame(rows, baseline) {
 }
 
 /** The list a run would write: every measured offender, sorted, and the unmeasured lines of the old list kept as they were. */
+/**
+ * @param {FrameRow[]} rows
+ * @param {FrameList | null} [old]
+ * @returns {{ hugs_left: string[], no_placeholder: string[] }}
+ */
 export function frameBaselineFrom(rows, old = null) {
   const measured = new Set(rows.map((r) => r.key ?? r.route));
+  /** @param {"hugs_left" | "no_placeholder"} name */
   const keep = (name) => (old?.[name] ?? []).filter((k) => !measured.has(k));
   return {
     hugs_left: [...new Set([...keep("hugs_left"), ...rows.filter((r) => r.layout === "hugs the left").map((r) => r.key ?? r.route)])].sort(),

@@ -61,7 +61,7 @@ test("the judge fails a screen that is newly wrong and a line a run has cleared,
 });
 
 test("the committed list is sorted, has no line twice, and names only screens that exist", () => {
-  const routes = new Set(walkPages(path.join(web, "app")).map((segments: string[]) => "/" + segments.join("/")));
+  const routes = new Set<string>((walkPages(path.join(web, "app")) as string[][]).map((segments) => "/" + segments.join("/")));
   const toRoute = (key: string) => key.replace("/clients/{client}", "/clients/:id").replace(/_placeholder/g, ":x");
   const shape = (r: string) => r.replace(/:[A-Za-z_]+/g, ":x");
   const known = new Set([...routes].map(shape));
