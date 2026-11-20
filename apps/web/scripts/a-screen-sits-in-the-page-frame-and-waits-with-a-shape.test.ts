@@ -61,7 +61,7 @@ test("the judge fails a screen that is newly wrong and a line a run has cleared,
 });
 
 test("the committed list is sorted, has no line twice, and names only screens that exist", () => {
-  const routes = new Set(walkPages(path.join(web, "app")).map((segments: string[]) => "/" + segments.join("/")));
+  const routes = new Set<string>((walkPages(path.join(web, "app")) as string[][]).map((segments) => "/" + segments.join("/")));
   const toRoute = (key: string) => key.replace("/clients/{client}", "/clients/:id").replace(/_placeholder/g, ":x");
   const shape = (r: string) => r.replace(/:[A-Za-z_]+/g, ":x");
   const known = new Set([...routes].map(shape));
@@ -76,9 +76,10 @@ test("the committed list is sorted, has no line twice, and names only screens th
 });
 
 test("the list only shrinks: it is no longer than it was when it was written", () => {
-  // 20-11-2026, after the Practice menu's nine screens were converted. Lower these when a pull request shortens the list.
-  assert.ok(baseline.hugs_left.length <= 6, `${baseline.hugs_left.length} screens hug the left; the list was 6`);
-  assert.ok(baseline.no_placeholder.length <= 55, `${baseline.no_placeholder.length} screens wait without a shape; the list was 55`);
+  // 20-11-2026: 6 and 55 after the Practice menu; 0 and 50 after Approvals, E-Invoice, Knowledge, Data Migration and the Team
+  // menu. No screen hugs the left any more, so that list stays EMPTY. Lower the second when a pull request shortens the list.
+  assert.deepEqual(baseline.hugs_left, [], "a screen hugs the left again: put it in the page frame");
+  assert.ok(baseline.no_placeholder.length <= 50, `${baseline.no_placeholder.length} screens wait without a shape; the list was 50`);
 });
 
 test("the Practice menu's screens use the one frame and are on neither list", () => {

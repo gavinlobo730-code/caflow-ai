@@ -1,12 +1,5 @@
 {
-  "hugs_left": [
-    "/approvals",
-    "/einvoice",
-    "/knowledge",
-    "/migration",
-    "/team/assignments",
-    "/team/login-history"
-  ],
+  "hugs_left": [],
   "no_placeholder": [
     "/accounting/banking",
     "/accounting/fixed-assets",
@@ -32,7 +25,6 @@
     "/income-tax/deductions",
     "/income-tax/season",
     "/insights",
-    "/knowledge",
     "/memory",
     "/notifications/whatsapp",
     "/payroll",
@@ -55,10 +47,6 @@
     "/tasks",
     "/tasks/templates",
     "/tds",
-    "/team",
-    "/team/assignments",
-    "/team/login-history",
-    "/team/workload",
     "/time",
     "/work",
     "/workflows",

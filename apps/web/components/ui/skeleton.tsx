@@ -75,18 +75,22 @@ export function LoadingRegion({
   label,
   className,
   noticeClassName,
+  onRetry,
   children,
 }: {
   /** What is loading, read to a screen reader ("Loading the client's health"). */
   label: string;
   className?: string;
   noticeClassName?: string;
+  /** Read again. Offered after twenty seconds, and only where the screen passes its own read (POST-A-530): a screen that
+   *  swaps a `PageLoader` for a shape keeps the way to ask again that the loader gave it. */
+  onRetry?: () => void;
   children?: React.ReactNode;
 }) {
   return (
     <div role="status" aria-label={label} className={className}>
       <SlowServerScope>{children}</SlowServerScope>
-      <SlowServerNotice className={noticeClassName} />
+      <SlowServerNotice onRetry={onRetry} className={noticeClassName} />
     </div>
   );
 }

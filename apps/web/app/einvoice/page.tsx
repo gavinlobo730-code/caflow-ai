@@ -33,6 +33,7 @@ import { formatDate } from "@/lib/dates/format";
 import { describeRecord } from "@/lib/einvoice/recordRow";
 import { treatmentLabel } from "@/lib/invoices/compliance";
 import { useClientPicker } from "@/lib/workspace/useClientPicker";
+import { pageFrameClass } from "@/components/ui/page-frame";
 
 /** The window the screen first asks for; "Show more" widens it by the shared step up to the server's ceiling. */
 const DEFAULT_WINDOW = 100;
@@ -109,7 +110,7 @@ export default function EInvoicePage() {
   }, [clientId, attempt, limit, load]);
 
   return (
-    <div className="p-6 max-w-4xl space-y-4">
+    <div className={pageFrameClass("data", "space-y-4")}>
       <div>
         <h2 className="text-sm font-semibold text-ps-ink">E-Invoice Integration</h2>
         <p className="text-xs text-ps-hint mt-0.5">CGST Act §31B, Rule 48(4) — IRN management</p>

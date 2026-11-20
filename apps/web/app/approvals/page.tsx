@@ -12,6 +12,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { AUTHENTICATOR_RESET, askedWithText } from "@/lib/auth/authenticatorReset";
 import { formatRelativeTime } from "@/lib/services/formatting";
+import { pageFrameClass } from "@/components/ui/page-frame";
 
 // Module 9.0 M4 — Governance Approval Inbox (maker-checker).
 // Partners approve/reject; everyone with access sees pending + history.
@@ -92,7 +93,7 @@ export default function ApprovalsPage() {
   }
 
   return (
-    <div className="p-6 max-w-4xl">
+    <div className={pageFrameClass("data")}>
       <PageHeader
         icon={<ShieldCheck size={18} className="text-brand" />}
         title="Approvals"

@@ -5,7 +5,6 @@ import { History, LogOut, Loader2, ShieldAlert } from "lucide-react";
 import { api, type LoginEvent } from "@/lib/api";
 import { formatDateTime } from "@/lib/dates/format";
 import { usePermissions } from "@/lib/auth/AuthContext";
-import { PageLoader } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
@@ -13,6 +12,7 @@ import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
 import { SignedInNow } from "@/components/team/SignedInNow";
 import { readWindow } from "@/lib/lists/readWindow";
 import { windowDescription } from "@/lib/lists/window";
+import { SectionPlaceholder, pageFrameClass } from "@/components/ui/page-frame";
 
 // M6 — administrative login history + global force-logout (Partner oversight).
 // The server answers a window and says whether older events exist (POST-A-262); the first window is the size it defaults
@@ -82,7 +82,7 @@ export default function LoginHistoryPage() {
   }
 
   return (
-    <div className="p-6 max-w-4xl">
+    <div className={pageFrameClass("data")}>
       <PageHeader
         icon={<History size={18} className="text-brand" />}
         title="Login History"
@@ -128,7 +128,7 @@ export default function LoginHistoryPage() {
       {notice && <div className="text-xs text-emerald-700 mb-2">{notice}</div>}
 
       {loading ? (
-        <PageLoader onRetry={() => { void load(); }} />
+        <SectionPlaceholder label="Loading the login history" shape="table" onRetry={() => { void load(); }} />
       ) : events.length === 0 ? (
         <div className="py-12 text-center text-xs text-ps-hint">No login events recorded yet.</div>
       ) : (

@@ -122,3 +122,32 @@ export function PagePlaceholder({
     </LoadingRegion>
   );
 }
+
+/**
+ * The same thing for PART of a screen: the title and the filters are already drawn and only the table (or the list, or the
+ * cards) under them is out. It takes the `onRetry` a read can offer after twenty seconds, which `PageLoader` took, so a screen that swaps its spinner for a shape keeps its way to ask again. It is a `LoadingRegion`,
+ * which carries the scope and the one notice.
+ */
+export function SectionPlaceholder({
+  label,
+  shape = "table",
+  rows,
+  cols = 5,
+  onRetry,
+  className,
+}: {
+  label: string;
+  shape?: PlaceholderShape;
+  rows?: number;
+  cols?: number;
+  /** Read again. Offered after twenty seconds, and only where the screen passes one. */
+  onRetry?: () => void;
+  className?: string;
+}) {
+  const count = rows ?? (shape === "form" ? 5 : 6);
+  return (
+    <LoadingRegion label={label} onRetry={onRetry} className={cn("space-y-4", className)}>
+      <Shape shape={shape} rows={count} cols={cols} />
+    </LoadingRegion>
+  );
+}
