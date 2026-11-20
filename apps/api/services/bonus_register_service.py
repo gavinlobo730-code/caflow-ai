@@ -25,9 +25,11 @@ WHAT IT HAS TO GO AND GET, AND WHY EACH SOURCE
 """
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Optional
 
 from core.db_paging import fetch_all
+from core.observability import capture_soft_failure
 from core.ist_clock import fy_bounds
 from domain.payroll import bonus_register
 from core.db_provider import privileged_for
@@ -57,9 +59,18 @@ def _fy_months(accounting_year: str) -> list:
 
 
 def _percent_of(base_paise: int, percent) -> int:
+    """`base_paise` times `percent` per cent, in whole-number arithmetic: the percentage is read as the decimal text it is (4.35 is
+    435 basis points, 8.33 is 833), then taken in basis points, truncating toward zero as before. It was `int(float(percent) * 100)`,
+    and binary floating point made a stored 4.35 read as 434 basis points (4.35 * 100 is 434.99999999999994) and a bonus a basis
+    point short on some stored percentages (found by an independent read, 20-11-2026)."""
     try:
-        return int(base_paise) * int(float(percent or 0) * 100) // 10000
-    except (TypeError, ValueError):
+        basis_points = int(Decimal(str(percent or 0)) * 100)
+        return int(base_paise) * basis_points // 10000
+    except (TypeError, ValueError, ArithmeticError) as unreadable:
+        # A stored percentage or base that cannot be read makes a bonus of nothing, so it is reported (POST-A-505). Only the
+        # operation and the unreadable percentage are sent: the base is an employee's basic pay, which is no business of an
+        # error tracker's, so it is not.
+        capture_soft_failure(unreadable, operation="bonus_register.percent_of_unreadable", percent=str(percent)[:40])
         return 0
 
 

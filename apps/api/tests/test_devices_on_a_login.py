@@ -177,13 +177,17 @@ def test_a_mark_nobody_can_read_refuses_the_request_and_is_not_skipped():
 
 
 def test_the_dependency_that_every_route_uses_actually_asks_the_check():
-    """A helper nobody calls refuses nothing: the check is only as real as the call in `get_current_user`."""
+    """A helper nobody calls refuses nothing: the check is only as real as the call in `get_current_user`, which asks it through the one
+    function that holds the four refusals (POST-A-498), the same one the invitation's repeat-accept asks."""
     import ast
     import core.auth as auth
     tree = ast.parse(Path(auth.__file__).read_text(encoding="utf-8"))
-    fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "get_current_user")
-    called = {c.func.id for c in ast.walk(fn) if isinstance(c, ast.Call) and isinstance(c.func, ast.Name)}
-    assert "_refuse_a_session_signed_out_from_elsewhere" in called
+    fns = {n.name: n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
+
+    def called(name):
+        return {c.func.id for c in ast.walk(fns[name]) if isinstance(c, ast.Call) and isinstance(c.func, ast.Name)}
+    assert "_refuse_an_ended_session" in called("get_current_user")
+    assert "_refuse_a_session_signed_out_from_elsewhere" in called("_refuse_an_ended_session")
     assert "session_id" in Path(auth.__file__).read_text(encoding="utf-8").split("def get_current_user")[1].split("def get_jwt_user")[0]
 
 

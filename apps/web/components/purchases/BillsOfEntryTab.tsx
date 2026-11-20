@@ -63,6 +63,8 @@ export function BillsOfEntryTab({ clientId, openDoc }:
       openDoc?: string | null }) {
   const [rows, setRows] = useState<BillOfEntry[]>([]);
   const [accounts, setAccounts] = useState<AccountLike[]>([]);
+  // A chart of accounts that could not be read is not a client with no accounts (POST-A-527): the form says so.
+  const [accountsUnread, setAccountsUnread] = useState(false);
   const [authorities, setAuthorities] = useState<BillOfEntryAuthorities | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -110,14 +112,15 @@ export function BillsOfEntryTab({ clientId, openDoc }:
     let alive = true;
     (async () => {
       const supabase = getSupabaseClient();
-      const { data } = await selectAll(() => supabase
+      const { data, error } = await selectAll(() => supabase
         .from("chart_of_accounts")
         .select("id, account_code, account_name, account_type, account_subtype, is_active, client_id")
         .or(`client_id.eq.${clientId},client_id.is.null`)
         .eq("is_active", true)
         .order("account_code")
         .order("id"));
-      if (alive) setAccounts((data as AccountLike[]) ?? []);
+      // The pager hands a failure back as `error` and does not throw.
+      if (alive) { setAccountsUnread(!!error); setAccounts(error ? [] : (data as AccountLike[]) ?? []); }
     })();
     return () => { alive = false; };
   }, [clientId]);
@@ -491,6 +494,11 @@ export function BillsOfEntryTab({ clientId, openDoc }:
               </div>
 
               <div className="border-t border-ps-border pt-3 space-y-3">
+                {accountsUnread && (
+                  <p role="alert" className="text-3xs text-state-problem">
+                    The client&apos;s accounts could not be read, so none can be chosen below. That is not a client with no accounts: reload this page to read them.
+                  </p>
+                )}
                 <div>
                   <label htmlFor="boe-payment-account" className="block text-xs font-medium text-ps-body mb-1">
                     Paid from

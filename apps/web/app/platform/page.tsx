@@ -120,7 +120,12 @@ export default function PlatformAdminPage() {
   // is decided ONLY by a SUCCESSFUL /me response; any request failure is treated
   // as "couldn't verify" (error state), never as "denied".
   const verify = useCallback(async () => {
-    setGate("checking");
+    // A gate that is already open stays open while it is read again (POST-A-528): the effect below runs `verify` whenever the context's
+    // session object changes, which a verified code and the hourly token refresh both cause, and "checking" draws a spinner in place of
+    // the page, so an administrator who had stepped up or had typed something lost it. Only a first check, or one after a failure or a
+    // refusal, shows "checking". A re-check that says no takes the page away at once (`denied`, below), and one that fails shows the
+    // error state, exactly as before: the gate is never kept open by a read that did not confirm it.
+    setGate((g) => (g === "ok" ? g : "checking"));
     setGateErr("");
     // Authoritative session check. /platform is a PUBLIC, self-gating route, so
     // (unlike AuthGuard-protected pages) its body runs even while the context

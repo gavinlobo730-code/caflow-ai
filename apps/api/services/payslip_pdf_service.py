@@ -169,6 +169,7 @@ def fy_months_upto(month: str) -> list[str]:
     try:
         year, mon = int(text[:4]), int(text[5:7])
     except ValueError:
+        # By design, and in the docstring: a label this cannot parse leaves the year-to-date block out rather than wrong.
         return []
     if not 1 <= mon <= 12:
         return []

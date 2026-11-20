@@ -107,6 +107,8 @@ const EMPTY_FORM: TemplateForm = {
 export default function RecurringPage() {
   const [templates, setTemplates] = useState<RecurringJournalTemplate[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  // A chart of accounts that could not be read is not a firm with no accounts (POST-A-527): the form says so.
+  const [accountsUnread, setAccountsUnread] = useState(false);
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -166,11 +168,12 @@ export default function RecurringPage() {
         // read feeds is the account DROPDOWNS — and PostgREST's ~1000-row cap
         // would remove accounts from them with no error and no empty state, so
         // a template simply could not be built against an account past the cap.
-        const { data } = await selectAll(() => sb.from("chart_of_accounts").select("*")
+        const { data, error } = await selectAll(() => sb.from("chart_of_accounts").select("*")
           .eq("firm_id", fid).eq("is_active", true)
           .order("account_name").order("id"));
-        if (!cancelled) setAccounts((data ?? []) as Account[]);
-      } catch { /* the dropdowns degrade; the list above still loads */ }
+        // The pager hands a failure back as `error` and does not throw.
+        if (!cancelled) { setAccountsUnread(!!error); setAccounts(error ? [] : (data ?? []) as Account[]); }
+      } catch { if (!cancelled) setAccountsUnread(true); /* the dropdowns are empty and the form says so; the list above still loads */ }
       try {
         const cs = await getClients();
         if (!cancelled) setClients(cs);
@@ -668,6 +671,11 @@ export default function RecurringPage() {
               />
             </div>
 
+            {accountsUnread && (
+              <p role="alert" className="text-xs text-state-problem">
+                The firm&apos;s accounts could not be read, so none can be chosen below. That is not a firm with no accounts: reload this page to read them.
+              </p>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label htmlFor="rj-dr" className="text-xs font-medium text-ps-body block mb-1">Debit account</label>
