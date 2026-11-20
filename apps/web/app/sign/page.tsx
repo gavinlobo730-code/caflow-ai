@@ -14,7 +14,7 @@ import { useEffect, useState } from "react";
 import { CheckCircle2, Loader2, AlertCircle, FileText, XCircle } from "lucide-react";
 import { formatDateTime } from "@/lib/dates/format";
 import { FrontDoor } from "@/components/FrontDoor";
-import { PlainFailure, failureSentence, fetchBounded, notOursSentence } from "@/lib/api/failureSentence";
+import { PlainFailure, failureSentence, fetchBounded, jsonPlain, notOursSentence, type UntypedJson } from "@/lib/api/failureSentence";
 import { LoadingRegion } from "@/components/ui/skeleton";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -77,8 +77,10 @@ export default function SignPage() {
     // A dropped connection said "Failed to fetch" to the CLIENT on this public page (POST-A-406): the product's sentence is said instead.
     fetchBounded(`${API}/api/public/engagement-letters/${encodeURIComponent(t)}`, undefined, "read")
       .then(async (r) => {
-        const j = await r.json().catch(() => null);
-        // A body that is not JSON is a gateway's page (the API waking, a proxy), not an answer about THIS link: a client holding a valid link was told that it was invalid or had expired.
+        // `jsonPlain` says WHY there is no body: a page that is not JSON is "not the product's answer", and a body the bound cut off while it was
+        // being read is "did not answer in time" (POST-A-501: both used to be `.catch(() => null)`, so a timeout was named a gateway's page).
+        const j = await jsonPlain<UntypedJson>(r, "read");
+        // A body of literal `null` is not an answer about THIS link either, and a client holding a valid link was told that it was invalid or had expired.
         if (j === null) throw new PlainFailure("not_ours", notOursSentence("read"));
         if (!r.ok || !j?.success) {
           // Read both shapes: api_response uses `error`, FastAPI HTTPException
@@ -102,7 +104,8 @@ export default function SignPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       }, "write");
-      const j = await r.json().catch(() => null);
+      // A body cut off by the bound says so ("not known whether it went through"), and one that is not JSON says it is not the product's answer.
+      const j = await jsonPlain<UntypedJson>(r, "write");
       // A body that is not JSON says nothing about whether the letter was accepted, and "please try again" could accept it twice.
       if (j === null) throw new PlainFailure("not_ours", notOursSentence("write"));
       if (!r.ok || !j?.success) throw new Error(j?.error || j?.detail || "Something went wrong. Please try again.");

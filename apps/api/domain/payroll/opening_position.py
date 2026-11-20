@@ -60,6 +60,7 @@ def validate(body: Mapping[str, Any], *, fy: str, joining_date: Optional[str]) -
     try:
         first = date.fromisoformat(f"{str(body.get('first_month_here'))[:7]}-01")
     except ValueError:
+        # Not a substitution: the person is TOLD, in the returned sentence, that the month they typed is not a month.
         return ["The first month this product runs payroll for this client is not a month (use YYYY-MM)."]
     start_year = int(fy[:4])
     if not (date(start_year, 4, 1) <= first <= date(start_year + 1, 3, 1)):
