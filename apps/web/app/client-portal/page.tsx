@@ -23,7 +23,7 @@ import type { Client } from "@/lib/types";
 import type { ComplianceEntry } from "@/lib/data/compliance";
 import { formatDate } from "@/lib/services/formatting";
 import { formatPaise } from "@/lib/services/formatting";
-import { ListSkeleton, TransactionListSkeleton, LoadingRegion } from "@/components/ui/skeleton";
+import { ListSkeleton, TransactionListSkeleton, LoadingRegion, Skeleton } from "@/components/ui/skeleton";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "@/components/ui/use-toast";
 import { PageHeader } from "@/components/ui/page-header";
@@ -630,14 +630,17 @@ export default function ClientPortalPage() {
                 Select a client to manage their portal
               </label>
               <div className="w-full max-w-sm">
-                <ClientLookup
-                  clients={clients}
-                  value={selectedClientId}
-                  onChange={setSelectedClientId}
-                  ariaLabel="Client"
-                  placeholder={clientsLoading ? "Loading clients…" : "— Choose a client —"}
-                  disabled={clientsLoading}
-                />
+                {clientsLoading ? (
+                  <LoadingRegion label="Loading clients"><Skeleton className="h-9 w-full rounded-lg" /></LoadingRegion>
+                ) : (
+                  <ClientLookup
+                    clients={clients}
+                    value={selectedClientId}
+                    onChange={setSelectedClientId}
+                    ariaLabel="Client"
+                    placeholder="— Choose a client —"
+                  />
+                )}
               </div>
             </div>
           </div>

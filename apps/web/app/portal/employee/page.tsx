@@ -18,6 +18,7 @@ import { TdsProjectionTab } from "@/components/portal/TdsProjectionTab";
 import { PortalShell } from "@/components/portal/PortalShell";
 import { formatMonthYear } from "@/lib/dates/format";
 import { LoadingRegion } from "@/components/ui/skeleton";
+import { SectionPlaceholder } from "@/components/ui/page-frame";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -237,14 +238,9 @@ export default function EmployeePortalPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-ps-bg flex items-center justify-center">
-        <LoadingRegion label="Loading your portal" noticeClassName="justify-center text-center">
-          <div className="flex items-center gap-3 text-ps-label">
-            <Loader2 className="w-5 h-5 animate-spin" />
-            <span className="text-sm">Loading your portal…</span>
-          </div>
-        </LoadingRegion>
-      </div>
+      <PortalShell title="Employee Portal">
+        <SectionPlaceholder label="Loading your portal" shape="cards" rows={3} />
+      </PortalShell>
     );
   }
 

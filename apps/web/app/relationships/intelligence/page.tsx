@@ -8,7 +8,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/ui/page-header";
 import { formatDate } from "@/lib/dates/format";
 import { doingOf, fetchBounded, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { SectionPlaceholder } from "@/components/ui/page-frame";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -242,11 +242,7 @@ export default function RelationshipIntelligencePage() {
       </div>
 
       {loading && (
-        <LoadingRegion label="Loading relationship intelligence" noticeClassName="justify-center text-center">
-          <div className="flex items-center justify-center py-16">
-            <div className="w-5 h-5 border-2 border-brand border-t-transparent rounded-full animate-spin" />
-          </div>
-        </LoadingRegion>
+        <SectionPlaceholder label="Loading relationship intelligence" rows={6} cols={6} />
       )}
 
       {error && (

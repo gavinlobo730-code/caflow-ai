@@ -201,7 +201,8 @@ export async function measureFrame({ context, url, stub, sealOff, escaped, shotB
         if (!el || !vis(el)) continue;
         (el.closest('[role="status"]') ? inStatus : bare).push(t);
       }
-      return { pulses: count(".animate-pulse"), status: count('[role="status"]'), spinners: count(".animate-spin"), bare, inStatus,
+      const statusSeen = [...main.querySelectorAll('[role="status"]')].filter(vis).map((el) => (el.getAttribute("aria-label") || "(no label)") + ": " + (el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 60));
+      return { pulses: count(".animate-pulse"), status: count('[role="status"]'), spinners: count(".animate-spin"), bare, inStatus, statusSeen,
                text: (main.innerText || "").replace(/\s+/g, " ").trim().slice(0, 140) };
     });
     // A screen behind a gate (the session, the person's permissions) draws nothing until the gate's own read lands, and that

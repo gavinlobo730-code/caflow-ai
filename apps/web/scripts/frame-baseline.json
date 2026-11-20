@@ -1,34 +1,4 @@
 {
   "hugs_left": [],
-  "no_placeholder": [
-    "/auth/reset-password",
-    "/billing",
-    "/calendar",
-    "/client-portal",
-    "/clients",
-    "/clients/onboarding",
-    "/clients/{client}/fixed-assets",
-    "/clients/{client}/knowledge",
-    "/clients/{client}/reports/ageing",
-    "/clients/{client}/reports/ratios",
-    "/clients/{client}/reports/trend",
-    "/executive-dashboard",
-    "/income-tax/deductions",
-    "/income-tax/season",
-    "/memory",
-    "/portal/employee",
-    "/relationships/cross-client",
-    "/relationships/intelligence",
-    "/relationships/ownership-map",
-    "/risks",
-    "/settings/scheduled-reports",
-    "/settings/security",
-    "/tasks",
-    "/tasks/templates",
-    "/tds",
-    "/time",
-    "/work",
-    "/workflows",
-    "/workflows/approvals"
-  ]
+  "no_placeholder": []
 }

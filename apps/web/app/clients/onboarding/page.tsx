@@ -19,7 +19,7 @@ import { Callout } from "@/components/ui/callout";
 import { objectOrNull, objectWithLists } from "@/lib/api/shape";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { SectionPlaceholder } from "@/components/ui/page-frame";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -416,12 +416,7 @@ export default function OnboardingChecklistPage() {
         /* ── List View ────────────────────────────────────────────────── */
         <div className="space-y-3">
           {loading && (
-            <LoadingRegion label="Loading onboardings" noticeClassName="justify-center text-center">
-              <div className="flex items-center justify-center py-16 text-ps-hint">
-                <Loader2 size={24} className="animate-spin mr-2" />
-                Loading onboardings…
-              </div>
-            </LoadingRegion>
+            <SectionPlaceholder label="Loading onboardings" shape="list" rows={4} />
           )}
           {error && <Callout tone="problem">{error}</Callout>}
           {!loading && !error && workflows.length === 0 && (

@@ -282,7 +282,7 @@ function PracticeOverview() {
   }
 
   if (loading) return <PagePlaceholder label="Loading the practice" shape="dashboard" />;
-  if (error) return <div className="p-8 text-sm text-red-600">{error}</div>;
+  if (error) return <div role="alert" className={pageFrameClass("data", "text-sm text-state-problem")}>{error}</div>;
 
   if (provisioned === false) {
     return (

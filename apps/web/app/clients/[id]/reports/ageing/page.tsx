@@ -23,7 +23,7 @@ import type { Column } from "@/lib/table/types";
 import { DateInput } from "@/components/ui/date-input";
 import { formatDate, todayIstISO } from "@/lib/dates/format";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { SectionPlaceholder } from "@/components/ui/page-frame";
 /**
  * Trade Receivables and Trade Payables ageing schedules — the notes to the
  * balance sheet required by Schedule III to the Companies Act 2013 as amended
@@ -413,11 +413,7 @@ export default function ClientAgeingSchedulePage() {
       </div>
 
       {loading && (
-        <LoadingRegion label="Building the schedule">
-          <div className="flex items-center gap-2 text-2xs text-ps-hint py-8">
-            <Loader2 size={14} className="animate-spin" /> Building the schedule…
-          </div>
-        </LoadingRegion>
+        <SectionPlaceholder label="Building the schedule" rows={5} cols={6} />
       )}
 
       {error && <Callout tone="problem">{error}</Callout>}
@@ -960,11 +956,7 @@ function UnbilledPanel({
 }) {
   if (accounts === null) {
     return (
-      <LoadingRegion label="Loading the chart of accounts">
-        <div className="flex items-center gap-2 text-2xs text-ps-hint py-8">
-          <Loader2 size={14} className="animate-spin" /> Loading the chart of accounts…
-        </div>
-      </LoadingRegion>
+      <SectionPlaceholder label="Loading the chart of accounts" rows={5} cols={4} />
     );
   }
   const marked = accounts.filter((a) => a.unbilled_dues_side);

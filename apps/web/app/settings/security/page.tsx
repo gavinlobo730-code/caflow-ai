@@ -23,7 +23,7 @@
  * verified factor lets the user elevate to aal2 at login (see app/login).
  */
 import { useState, useEffect, useCallback, useRef } from "react";
-import { ShieldCheck, Smartphone, Trash2, CheckCircle2, Loader2, AlertCircle, KeyRound } from "lucide-react";
+import { ShieldCheck, Smartphone, Trash2, CheckCircle2, AlertCircle, KeyRound } from "lucide-react";
 import { getSupabaseClient, makeEphemeralAuthClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { setPasswordWithReauthNonce, isInvalidNonceError } from "@/lib/auth/reauth";
@@ -36,7 +36,7 @@ import { authErrorMessage } from "@/lib/auth/authErrorMessage";
 
 import { todayIstISO } from "@/lib/dates/format";
 import { PageHeader } from "@/components/ui/page-header";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, Skeleton, SkeletonText } from "@/components/ui/skeleton";
 import { passwordProblem } from "@/lib/auth/passwordRules";
 import { rememberPasswordNotice, takePasswordNotice, rememberPasswordRefusal, takePasswordRefusal } from "@/lib/auth/passwordNotice";
 import { verifyCurrentPassword } from "@/lib/auth/verifyCurrentPassword";
@@ -172,7 +172,7 @@ function PostureCard() {
         {error && (
           <p className="text-xs text-red-600 flex items-start gap-1.5"><AlertCircle size={13} className="mt-0.5 shrink-0" /> {error}</p>
         )}
-        {!posture && !error && <LoadingRegion label="Reading the live settings" className="text-sm text-ps-label">Reading the live settings…</LoadingRegion>}
+        {!posture && !error && <LoadingRegion label="Reading the live settings"><SkeletonText lines={4} /></LoadingRegion>}
         {posture && (
           <>
             <ul className="divide-y divide-ps-border">
@@ -502,7 +502,12 @@ function MfaCard() {
           )}
 
           {loading ? (
-            <p className="text-sm text-ps-hint flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Loading…</p>
+            // NOT a `LoadingRegion`: the second factors are listed by the sign-in service, and the region's sentence is about
+            // this product's own server waking up, which would not be true here.
+            <div role="status" aria-label="Loading your sign-in methods" className="space-y-2">
+              <Skeleton className="h-3 w-2/3" />
+              <Skeleton className="h-3 w-1/3" />
+            </div>
           ) : enrolling ? (
             /* ── Enrolment in progress: QR + verify ── */
             <div className="space-y-4">

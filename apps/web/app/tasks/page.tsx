@@ -695,7 +695,7 @@ export default function TasksPage() {
       {/* Header */}
       <PageHeader
         title="Tasks"
-        subtitle={loading ? "Loading…" : `${tasks.length} task${tasks.length !== 1 ? "s" : ""}`}
+        subtitle={loading ? "\u00a0" : `${tasks.length} task${tasks.length !== 1 ? "s" : ""}`}
         actions={
           <div className="flex items-center gap-2">
             <button

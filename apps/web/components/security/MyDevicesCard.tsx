@@ -7,7 +7,7 @@ import { objectWithLists } from "@/lib/api/shape";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 import { DeviceList } from "@/components/security/DeviceList";
 
 /**
@@ -96,7 +96,7 @@ export function MyDevicesCard() {
           </p>
         )}
         {!summary && !error && (
-          <LoadingRegion label="Reading where you are signed in" className="text-sm text-ps-label">Reading where you are signed in…</LoadingRegion>
+          <LoadingRegion label="Reading where you are signed in"><SkeletonText lines={3} /></LoadingRegion>
         )}
         {summary && (
           <>

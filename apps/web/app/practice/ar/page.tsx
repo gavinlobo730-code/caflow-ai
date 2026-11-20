@@ -75,7 +75,7 @@ function ARDashboard() {
   useEffect(() => { load(); }, [load]);
 
   if (loading) return <PagePlaceholder label="Loading AR aging" shape="dashboard" action={false} />;
-  if (error) return <div className="p-8 text-sm text-red-600">{error}</div>;
+  if (error) return <div role="alert" className={pageFrameClass("data", "text-sm text-state-problem")}>{error}</div>;
 
   const buckets = aging?.buckets ?? {};
   const practiceInvoicesHref = books.state === "known" ? practiceSalesHref(books.clientId) : null;
