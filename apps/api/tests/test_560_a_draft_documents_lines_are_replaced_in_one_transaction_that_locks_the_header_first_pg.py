@@ -210,9 +210,17 @@ def test_an_assigned_manager_replaces_a_drafts_lines_and_a_reviewer_is_refused(w
 # ── THE RACE ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 def _hold_open(dsn: str, sql: str, marker: str) -> subprocess.Popen:
+    """Start `sql` in its own session and return once it is HOLDING what it locked.
+
+    "Active with the marker in its query text" is not that: the statement text `pg_stat_activity.query` shows is the WHOLE string sent
+    with `-c` ("BEGIN; ...; SELECT pg_sleep(6); COMMIT;"), so it matched the moment the command arrived, before the first statement
+    had run and taken the header's lock. The caller then raced it, and on a loaded runner the issue got in first and "did not wait"
+    (0.08 s, 20-11-2026, which failed the required real-Postgres check of an unrelated documents-only pull request). The session is
+    holding only once it is SLEEPING, which is its wait event: every statement before the `pg_sleep` has run and its locks are held."""
     proc = subprocess.Popen(["psql", dsn, "-X", "-q", "-c", sql], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     for _ in range(60):
-        held = _rows(dsn, f"SELECT count(*) FROM pg_stat_activity WHERE state = 'active' AND query LIKE '%{marker}%' AND pid <> pg_backend_pid()")
+        held = _rows(dsn, "SELECT count(*) FROM pg_stat_activity WHERE state = 'active' AND wait_event = 'PgSleep' "
+                          f"AND query LIKE '%{marker}%' AND pid <> pg_backend_pid()")
         if held == [["1"]]:
             return proc
         time.sleep(0.2)

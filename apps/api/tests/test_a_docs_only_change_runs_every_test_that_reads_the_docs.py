@@ -1,0 +1,307 @@
+"""A pull request that changes only `docs/` and `CLAUDE.md` runs the tests that read them, and nothing it could not break (the docs lane).
+
+WHAT WAS WRONG
+    The backend suite reads the whole repository, so a change to a document had to run all of it: about 45 minutes for a sentence in the
+    ledger, because three merges had once taken CLAUDE.md over its size limit before a change that touched the backend ran the test. The
+    cost of that safety was paid on every notes change, which is most of what happens between sessions.
+
+WHAT THIS HOLDS
+    * `scripts/ci/tests_reading_the_docs.py` finds the test modules that read the documents, by RULE (a path constant outside a docstring,
+      a path built with `/`, a walk from the repository root, an import of a module that does), and each rule is shown on a synthetic tests
+      directory: the spelling it exists for is selected, and a docstring, a comment and a lookalike word are not. A module that reaches the
+      documents only through a test module it imports is selected, and `e2e_harness` is not a way in (it would select the suite).
+    * On the real tree the list is not empty, it holds the guards that exist for exactly this (the ledger, the CLAUDE.md size limit and
+      design-record index, the coming-soon register), it holds only test modules, and the real-Postgres set holds the one that reads the
+      documents. A second, independent look (a constant that names a thing only the documents hold, such as `open-items`) finds no module
+      outside the list.
+    * The workflow's `detect` step marks a change docs-only exactly when every changed file is under `docs/` or is `CLAUDE.md`, and only
+      for a pull request: a document plus a line of code, a document plus a workflow, a frontend, an empty diff and a PUSH are not. It is
+      run for real over throw-away git histories, like the rule beside it.
+    * The workflow gives the docs lane its own steps in both required jobs, under the unchanged job names, and the whole-suite, lint and
+      coverage steps are the ones it skips. The lane is the ONLY thing that changed: the whole-suite steps are unchanged for everything else.
+"""
+from __future__ import annotations
+
+import ast
+import functools
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+API = Path(__file__).resolve().parents[1]
+WORKFLOW = Path(__file__).resolve().parents[3] / ".github" / "workflows" / "backend-ci.yml"
+sys.path.insert(0, str(API / "scripts" / "ci"))
+import tests_reading_the_docs as finder  # noqa: E402
+
+from tests.test_the_backend_suite_runs_for_everything_but_a_frontend_only_change import (  # noqa: E402
+    _detect_script, _git)
+
+
+# ── the finder's rules, each on a synthetic tests directory ──────────────────────────────────────────────────────────────────────
+
+def _tests_dir(tmp_path: Path, files: dict[str, str]) -> Path:
+    d = tmp_path / "tests"
+    d.mkdir()
+    for name, text in files.items():
+        (d / name).write_text(text)
+    return d
+
+
+def _selected(tmp_path: Path, files: dict[str, str]) -> set[str]:
+    return {p.name for p in finder.modules_reading_the_docs(_tests_dir(tmp_path, files))}
+
+
+@pytest.mark.parametrize("spelling", [
+    'ROOT = Path(__file__).parents[3]\ntext = (ROOT / "docs" / "open-items" / "README.md").read_text()\n',
+    'text = open("docs/open-items/README.md").read()\n',
+    'text = open("../../docs/x.md").read()\n',
+    'text = (ROOT / "CLAUDE.md").read_text()\n',
+    'p = f"{ROOT}/docs/open-items/{name}"\n',
+    'DOCS = "docs"\n',
+    'from pathlib import Path\nfor f in Path(__file__).parents[3].rglob("*.md"):\n    f.read_text()\n',
+])
+def test_each_spelling_of_a_read_selects_its_module(tmp_path, spelling):
+    assert "test_a.py" in _selected(tmp_path, {"test_a.py": spelling})
+
+
+@pytest.mark.parametrize("prose", [
+    '"""Reads nothing: it only says docs/open-items/README.md and CLAUDE.md in its docstring."""\n\ndef test_x():\n    assert True\n',
+    "# the ledger lives in docs/open-items and CLAUDE.md names it\n\ndef test_x():\n    assert True\n",
+    'def test_x():\n    """A function docstring about docs/ and CLAUDE.md."""\n    assert True\n',
+    'def test_x():\n    mydocs = 1\n    docstring = "a docstring is not a document"\n    assert mydocs and docstring\n',
+])
+def test_prose_a_comment_and_a_lookalike_word_do_not(tmp_path, prose):
+    assert _selected(tmp_path, {"test_a.py": prose}) == set()
+
+
+def test_a_module_that_reaches_the_documents_only_through_an_import_is_selected(tmp_path):
+    got = _selected(tmp_path, {
+        "test_reader.py": 'text = open("CLAUDE.md").read()\n',
+        "test_b.py": "from tests.test_reader import text\n",
+        "test_c.py": "import test_b\n",
+        "test_unrelated.py": "def test_x():\n    assert 1\n",
+    })
+    assert got == {"test_reader.py", "test_b.py", "test_c.py"}, "the walk must go through the imports, however long the chain"
+
+
+def test_a_helper_that_reads_the_documents_selects_the_modules_that_import_it_and_is_not_itself_run(tmp_path):
+    got = _selected(tmp_path, {
+        "_helper.py": 'DOCS = "docs"\n',
+        "test_user.py": "from tests._helper import DOCS\n",
+        "test_other.py": "def test_x():\n    assert 1\n",
+    })
+    assert got == {"test_user.py"}, "a helper is not a test module; the modules that import it are"
+
+
+def test_a_helper_imported_by_everyone_is_not_a_way_in_unless_it_reads_the_documents_itself(tmp_path):
+    files = {"e2e_harness.py": "class FakeDB:\n    pass\n"}
+    files.update({f"test_{i}.py": "from tests.e2e_harness import FakeDB\n" for i in range(5)})
+    assert _selected(tmp_path, files) == set(), "a closure through a helper that reads nothing would select the whole suite"
+
+
+def test_a_file_that_cannot_be_parsed_is_run_rather_than_skipped(tmp_path):
+    assert "test_broken.py" in _selected(tmp_path, {"test_broken.py": "def (:\n"}), "not known NOT to read the documents: run it"
+
+
+# ── the real tree ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+@functools.lru_cache(maxsize=None)
+def _real_list() -> tuple[Path, ...]:
+    return tuple(finder.modules_reading_the_docs())
+
+
+def _names() -> set[str]:
+    return {p.name for p in _real_list()}
+
+
+def test_the_guards_that_exist_for_the_documents_are_in_the_list():
+    names = _names()
+    assert len(names) >= 40, f"only {len(names)} modules read the documents: the finder has stopped seeing them"
+    for must in ("test_the_open_items_ledger_is_well_formed.py",
+                 "test_the_design_record_index_matches_the_files_and_claude_md_stays_small.py",
+                 "test_the_coming_soon_register_is_well_formed.py",
+                 "test_claude_md_states_the_facts_the_code_holds.py",
+                 "test_a_docs_only_change_runs_every_test_that_reads_the_docs.py"):
+        assert must in names, f"{must} reads the documents and the docs lane would not run it"
+
+
+def test_the_list_holds_only_test_modules_and_both_sets_are_what_the_flags_say():
+    names = _names()
+    assert all(n.startswith("test_") and n.endswith(".py") for n in names)
+    mock = {p.name for p in _real_list() if not p.stem.endswith("_pg")}
+    pg = {p.name for p in _real_list() if p.stem.endswith("_pg")}
+    assert mock and pg and mock | pg == names and not (mock & pg)
+    assert "test_every_client_table_is_assignment_scoped_or_says_why_pg.py" in pg
+
+
+def test_the_command_line_never_prints_nothing_for_the_mock_or_the_whole_set():
+    for flag in ([], ["--mock"]):
+        done = subprocess.run([sys.executable, str(API / "scripts" / "ci" / "tests_reading_the_docs.py"), *flag],
+                              capture_output=True, text=True)
+        assert done.returncode == 0 and done.stdout.strip(), done.stderr
+        assert all(line.startswith("tests/test_") for line in done.stdout.splitlines())
+
+
+def test_a_second_independent_look_finds_no_module_outside_the_list():
+    """A constant that names a thing only the documents hold (`open-items`, `design-record`, a ledger file) in a module the finder did not
+    select would be a read it missed. Not the same rule: a different angle on the same question."""
+    only_the_documents_hold = re.compile(r"open-items|design-record|checked-closed|owner-list|new-findings|post-demo-|schema-drift\.md")
+    names = _names()
+    missed = []
+    for path in sorted((API / "tests").glob("test_*.py")):
+        if path.name in names:
+            continue
+        tree = ast.parse(path.read_text(errors="ignore"))
+        skip = finder._docstring_ids(tree)
+        if any(isinstance(n, ast.Constant) and isinstance(n.value, str) and id(n) not in skip and only_the_documents_hold.search(n.value)
+               for n in ast.walk(tree)):
+            missed.append(path.name)
+    assert not missed, f"modules that name a document-only thing and are not in the docs lane: {missed}"
+
+
+# ── the detect step: what is a docs-only change ───────────────────────────────────────────────────────────────────────────────
+
+BASE = {"docs/a.md": "1", "docs/open-items/x.md": "1", "CLAUDE.md": "1", "apps/api/x.py": "1", "apps/web/a.ts": "1",
+        ".github/workflows/backend-ci.yml": "1", "README.md": "1"}
+
+
+def _docs_only(tmp_path: Path, edit, *, event: str = "pull_request") -> str:
+    import os
+    repo = tmp_path / "repo"
+    repo.mkdir(parents=True)
+    _git(repo, "init", "-q")
+    for name, text in BASE.items():
+        (repo / name).parent.mkdir(parents=True, exist_ok=True)
+        (repo / name).write_text(text)
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "base")
+    base = _git(repo, "rev-parse", "HEAD")
+    edit(repo)
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "head", "--allow-empty")
+    head = _git(repo, "rev-parse", "HEAD")
+    out = tmp_path / "out"
+    out.write_text("")
+    # The step's own text with the event name swapped, so a push is judged by the same lines a pull request is.
+    script = _detect_script().replace('[ "pull_request" = "pull_request" ]', f'[ "{event}" = "pull_request" ]')
+    done = subprocess.run(["bash", "-c", script], cwd=repo, capture_output=True, text=True,
+                          env={**os.environ, "BASE_SHA": base, "HEAD_SHA": head, "GITHUB_OUTPUT": str(out)})
+    assert done.returncode == 0, done.stderr
+    return dict(line.split("=", 1) for line in out.read_text().splitlines() if "=" in line)["docs_only"]
+
+
+def _write(*names: str):
+    def edit(repo: Path) -> None:
+        for n in names:
+            (repo / n).parent.mkdir(parents=True, exist_ok=True)
+            (repo / n).write_text("2")
+    return edit
+
+
+@pytest.mark.parametrize("names, expected", [
+    (("docs/a.md",), "true"),
+    (("CLAUDE.md",), "true"),
+    (("docs/a.md", "docs/open-items/x.md", "CLAUDE.md"), "true"),
+    (("docs/a.md", "apps/api/x.py"), "false"),                        # a document plus a line of code
+    (("CLAUDE.md", ".github/workflows/backend-ci.yml"), "false"),    # a document plus the workflow itself
+    (("docs/a.md", "apps/web/a.ts"), "false"),                        # a document plus a frontend
+    (("apps/web/a.ts",), "false"),                                    # a frontend alone is the frontend rule's, not this one
+    (("README.md",), "false"),                                        # the root README is not CLAUDE.md and not under docs/
+    (("apps/api/x.py",), "false"),
+])
+def test_docs_only_exactly_when_every_changed_file_is_a_document(tmp_path, names, expected):
+    assert _docs_only(tmp_path, _write(*names)) == expected
+
+
+def test_a_lookalike_path_is_not_a_document(tmp_path):
+    for i, name in enumerate(("apps/api/docs/x.md", "docsX/a.md", "docs.md", "CLAUDE.md.bak", "apps/web/docs/a.md")):
+        assert _docs_only(tmp_path / str(i), _write(name)) == "false", name
+
+
+def test_an_empty_diff_is_not_docs_only(tmp_path):
+    assert _docs_only(tmp_path, lambda r: None) == "false"
+
+
+def test_a_push_is_never_docs_only_so_the_whole_suite_runs_after_every_merge(tmp_path):
+    assert _docs_only(tmp_path, _write("docs/a.md"), event="push") == "false"
+
+
+def test_a_docs_only_change_still_runs_the_suite_it_is_marked_api_true():
+    """`api` stays true for a document: the docs lane is a narrower suite, not a skipped one, and the jobs' install steps key on it."""
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert "docs_only=true" in text and "api=false" in text
+    detect = text[text.index("- id: detect"):text.index("  test:")]
+    assert detect.count('echo "api=false"') == 1, "only the frontend-only branch may set api=false"
+
+
+# ── the workflow's steps ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+# Read from the workflow's own text: PyYAML is not in the locked test set, and a test that needs a new dependency to guard a workflow
+# would be the first thing to go red on a lock change.
+
+def _jobs() -> dict[str, str]:
+    text = WORKFLOW.read_text(encoding="utf-8")
+    start = text.index("\njobs:\n")
+    body = text[start:]
+    marks = list(re.finditer(r"^  ([a-z][a-z-]*):[ ]*$", body, re.M))
+    return {m.group(1): body[m.start(): marks[i + 1].start() if i + 1 < len(marks) else len(body)] for i, m in enumerate(marks)}
+
+
+def _steps(job: str) -> list[dict]:
+    out = []
+    for block in re.split(r"^      - ", job, flags=re.M)[1:]:
+        name = re.search(r"^(?:name: )(.+)$", block, re.M)
+        cond = re.search(r"^ {8}if: (.+)$|^if: (.+)$", block, re.M)
+        out.append({"name": (name.group(1).strip() if name else ""),
+                    "if": next((g for g in (cond.groups() if cond else ()) if g), "").strip(),
+                    "text": block})
+    return out
+
+
+def _step(job: str, starts: str) -> dict:
+    found = [s for s in _steps(job) if s["name"].startswith(starts)]
+    assert len(found) == 1, f"expected one step starting {starts!r}, found {len(found)}"
+    return found[0]
+
+
+def test_the_required_jobs_keep_their_names_and_the_scope_job_reports_the_new_output():
+    text = WORKFLOW.read_text(encoding="utf-8")
+    jobs = _jobs()
+    assert re.search(r"^    name: pytest — mock mode \(Python 3\.11\)$", jobs["test"], re.M)
+    assert re.search(r"^    name: migration apply — real Postgres 16$", jobs["migrations"], re.M)
+    assert "docs_only: ${{ steps.detect.outputs.docs_only }}" in jobs["scope"]
+    # No `paths:` filter on a workflow that carries a required check (the top of the workflow says why).
+    on = text[text.index("\non:\n"): text.index("\nconcurrency:")]
+    assert "paths" not in on, "a path filter on a workflow carrying a required check"
+
+
+def test_the_whole_suite_lint_and_coverage_steps_skip_the_docs_lane_and_nothing_else_changed_for_them():
+    jobs = _jobs()
+    skipping = "needs.scope.outputs.api == 'true' && needs.scope.outputs.docs_only != 'true'"
+    for starts in ("Lint — ruff", "Run tests (in-memory", "Coverage — report", "Keep the coverage report"):
+        assert _step(jobs["test"], starts)["if"] == skipping, starts
+    assert _step(jobs["migrations"], "Run real-Postgres regression suite")["if"] == skipping
+    # Steps both lanes need are unchanged: they key on the backend alone, so the lane has Python and its dependencies.
+    assert _step(jobs["test"], "Install dependencies")["if"] == "needs.scope.outputs.api == 'true'"
+    assert _step(jobs["migrations"], "Install dependencies")["if"] == "needs.scope.outputs.api == 'true'"
+    assert _step(jobs["migrations"], "Install psql client")["if"] == "needs.scope.outputs.api == 'true'"
+
+
+def test_the_docs_lane_steps_run_the_derived_list_and_only_in_the_lane():
+    jobs = _jobs()
+    lane = "needs.scope.outputs.api == 'true' && needs.scope.outputs.docs_only == 'true'"
+    mock = _step(jobs["test"], "Run the tests that read docs/")
+    assert mock["if"] == lane and "tests_reading_the_docs.py --mock" in mock["text"] and 'pytest "${modules[@]}"' in mock["text"]
+    pg = _step(jobs["migrations"], "Run the real-Postgres tests that read docs/")
+    assert pg["if"] == lane and "tests_reading_the_docs.py --pg" in pg["text"] and 'pytest "${modules[@]}"' in pg["text"]
+    assert "HARNESS_PG" in pg["text"], "the real-Postgres modules need the database the job started"
+    # An empty list must end the step, never reach pytest bare (a bare pytest collects the whole suite).
+    assert re.search(r'-eq 0 \][\s\S]*exit 0', pg["text"])
+    assert "set -euo pipefail" in mock["text"] and "set -euo pipefail" in pg["text"]
+
+
+def test_the_pull_request_comment_about_coverage_is_not_posted_for_a_lane_that_measured_nothing():
+    step = _step(_jobs()["test"], "Post the coverage figures")
+    assert "docs_only != 'true'" in step["if"]
