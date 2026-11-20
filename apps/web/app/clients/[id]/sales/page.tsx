@@ -3152,12 +3152,22 @@ function Customers({
 
     // Snapshot the current active customers to match against.
     const supabase = getSupabaseClient();
-    const { data: existingRows } = await selectAll(() => supabase
+    const { data: existingRows, error: existingError } = await selectAll(() => supabase
       .from("customers")
       .select("name, gstin, pan")
       .eq("client_id", clientId)
       .eq("is_active", true)
       .order("id"));
+    // The pager hands a failure back as `error` and does not throw. Without the snapshot every row would be taken for a new customer, so a
+    // failed read stops the import: nothing is sent, and the person is told why (POST-A-527).
+    if (existingError) {
+      return {
+        imported: 0,
+        errors: [...errors, "The customers already on file could not be read, so nothing was imported: without that check a row that already exists would be added again. Try the import again."],
+        skipped: 0,
+        skippedDetail: [],
+      };
+    }
 
     const keyOf = (r: { gstin?: string | null; pan?: string | null; name?: string | null }): string | null => {
       if (r.gstin) return "g:" + r.gstin.trim().toUpperCase();
@@ -3970,6 +3980,8 @@ function ReceiptForm({
   }, [clientId]);
   const [referenceNo, setReferenceNo] = useState("");
   const [openInvoices, setOpenInvoices] = useState<SalesInvoice[]>([]);
+  // A read of the customer's open invoices that did not come is not a customer with none (POST-A-527): a receipt recorded now would be an advance.
+  const [openInvoicesUnread, setOpenInvoicesUnread] = useState(false);
   const [allocations, setAllocations] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -4014,10 +4026,10 @@ function ReceiptForm({
   // Load open invoices for selected customer, then keep only those in the
   // receipt's own currency (INR when domestic, matching code when foreign).
   useEffect(() => {
-    if (!customerId) { setOpenInvoices([]); return; }
+    if (!customerId) { setOpenInvoices([]); setOpenInvoicesUnread(false); return; }
     async function loadInvoices() {
       const supabase = getSupabaseClient();
-      const { data } = await selectAll(() => supabase
+      const { data, error } = await selectAll(() => supabase
         .from("client_sales_invoices")
         // `outstanding_paise` (migration 278, a GENERATED column: total +
         // debit notes − paid − credited) is what a CA allocates against.
@@ -4027,7 +4039,9 @@ function ReceiptForm({
         .in("status", ["issued", "partially_paid"])
         .order("invoice_date")
         .order("id"));
-      setOpenInvoices((data as SalesInvoice[]) ?? []);
+      // The pager hands a failure back as `error` and does not throw.
+      setOpenInvoicesUnread(!!error);
+      setOpenInvoices(error ? [] : (data as SalesInvoice[]) ?? []);
     }
     loadInvoices();
   }, [customerId, clientId]);
@@ -4382,6 +4396,12 @@ function ReceiptForm({
         </div>
       )}
 
+      {openInvoicesUnread && (
+        <p role="alert" className="text-xs text-state-problem">
+          This customer&apos;s open invoices could not be read, so none can be allocated here. That is not a customer with none: pick the customer
+          again to read them before you record the receipt, or it is recorded as an advance.
+        </p>
+      )}
       {/* Allocate against open invoices */}
       {visibleInvoices.length > 0 && (
         <div className="space-y-2">
