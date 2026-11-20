@@ -2,7 +2,7 @@
 
 Every entry below was something an audit, plan or CLAUDE.md paragraph said was open, which a reader then checked against the code on 1-2 Oct 2026 and found done, answered or moot. It exists so a future session does not reopen them and so the audit documents can be deleted with their conclusions kept. Each entry names the evidence. The list is grouped by the source it came from; it is not exhaustive of everything ever fixed (CLAUDE.md is the record of that), only of what the sweep tested.
 
-501 entries.
+502 entries.
 
 ## From `claude-md-1` (6)
 
