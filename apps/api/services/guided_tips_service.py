@@ -22,7 +22,6 @@ from core.db_provider import privileged_for
 from domain.guidance import tips as rule
 
 _db = db_provider.service_db
-_COLUMNS = "id, guided_tips_on, guided_tips_seen"
 
 
 class NotFound(Exception):
@@ -30,7 +29,9 @@ class NotFound(Exception):
 
 
 def _row(db, firm_id: str, user_id: str) -> Optional[dict]:
-    rows = (db.table("users").select(_COLUMNS)
+    # The columns are a LITERAL here: `tests/test_backend_columns_exist_pg.py` checks every column this product reads against
+    # the real schema, and it can read a name only where it is written out (a list held in a variable is one it cannot see).
+    rows = (db.table("users").select("id, guided_tips_on, guided_tips_seen")
             .eq("id", user_id).eq("firm_id", firm_id).limit(1).execute().data) or []
     return rows[0] if rows else None
 
