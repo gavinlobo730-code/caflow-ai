@@ -37,7 +37,7 @@ sys.path.insert(0, str(API / "scripts" / "ci"))
 import tests_reading_the_docs as finder  # noqa: E402
 
 from tests.test_the_backend_suite_runs_for_everything_but_a_frontend_only_change import (  # noqa: E402
-    _detect_script, _git, _outputs_for)
+    _detect_script, _git)
 
 
 # ── the finder's rules, each on a synthetic tests directory ──────────────────────────────────────────────────────────────────────
