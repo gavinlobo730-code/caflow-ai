@@ -10,7 +10,8 @@ import { currentFinancialYearLabel } from "@/lib/dateMath";
 import FinancialYearPicker from "@/components/FinancialYearPicker";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { PageHeader } from "@/components/ui/page-header";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, TableSkeleton } from "@/components/ui/skeleton";
+import { pageFrameClass } from "@/components/ui/page-frame";
 
 /**
  * Where each client sits in the firm's own tax and cost distribution —
@@ -179,7 +180,7 @@ export default function BenchmarkPage() {
     key.replace(/_paise$/, "").replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
 
   return (
-    <div className="p-4 md:p-6 space-y-4 max-w-5xl">
+    <div className={pageFrameClass("data", "space-y-4")}>
       <PageHeader
         icon={<BarChart3 size={18} className="text-ps-label" />}
         title="Client benchmark"
@@ -200,7 +201,7 @@ export default function BenchmarkPage() {
       {error && <ErrorState message={error} onRetry={() => void load()} />}
 
       {!error && loading && (
-        <LoadingRegion label="Loading the firm's distribution" className="text-sm text-ps-hint">Loading the firm&apos;s distribution…</LoadingRegion>
+        <LoadingRegion label="Loading the firm's distribution"><TableSkeleton rows={6} cols={6} /></LoadingRegion>
       )}
 
       {!error && !loading && data && data.clients === 0 && (
