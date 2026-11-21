@@ -44,6 +44,7 @@ export function AddEmployeeModal({
   clients,
   employee,
   lockedClientId,
+  teamMember,
   onClose,
   onSaved,
 }: {
@@ -54,6 +55,10 @@ export function AddEmployeeModal({
    *  that does not say which client it is adding to is how an employee lands
    *  on the wrong one. */
   lockedClientId?: string;
+  /** A NEW employee of the firm's own payroll who IS a team member (POST-A-540): the name box starts from the sign-in's name
+   *  (and stays editable, because the two records are linked and never merged) and the employee is created linked to them.
+   *  The server asks whether the link is allowed before it writes anything. Ignored on an edit: the link has its own control. */
+  teamMember?: { id: string; name: string };
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -61,7 +66,7 @@ export function AddEmployeeModal({
   const clientLocked = !!lockedClientId;
   const [form, setForm] = useState({
     client_id: employee?.client_id ?? lockedClientId ?? clients[0]?.id ?? "",
-    name: employee?.name ?? "",
+    name: employee?.name ?? teamMember?.name ?? "",
     pan: employee?.pan ?? "",
     gender: employee?.gender ?? "",
     designation: employee?.designation ?? "",
@@ -253,7 +258,8 @@ export function AddEmployeeModal({
         // client_id can't change on edit (EmployeeUpdateIn has no client_id).
         await api.payroll.updateEmployee(employee.id, payload);
       } else {
-        await api.payroll.createEmployee({ client_id: form.client_id, ...payload });
+        // The link is named only when there is one, so an ordinary create sends what it always sent.
+        await api.payroll.createEmployee({ client_id: form.client_id, ...payload, ...(teamMember ? { staff_user_id: teamMember.id } : {}) });
       }
       onSaved();
     } catch (e) {
@@ -280,6 +286,12 @@ export function AddEmployeeModal({
       )}
     >
         {err && <p className="text-red-600 text-sm mb-3">{err}</p>}
+        {teamMember && !isEdit && (
+          <p data-linked-team-member className="text-xs text-ps-body bg-ps-bg border border-ps-border rounded-lg px-3 py-2 mb-3">
+            This employee will be linked to the team sign-in of <strong>{teamMember.name}</strong>. The two records stay separate:
+            a change to one does not change the other.
+          </p>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
             <label className="block text-xs font-medium text-ps-body mb-1">Client</label>

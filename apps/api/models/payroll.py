@@ -115,6 +115,10 @@ class EmployeeIn(BaseModel):
     #: an end date or a short service. The end date is the contract's, optional, and belongs only to a fixed-term employee.
     fixed_term_employment: Optional[bool] = None
     fixed_term_end_date: OptionalIsoDate = None
+    #: The team member (`users.id`) this employee IS, for an employee of the firm's OWN payroll only (POST-A-540, migration 776). A link,
+    #: never a merge: nothing of the member is copied here. The create door asks the three rules of a link before it writes
+    #: (`practice_staff_link_service.the_member_may_be_linked`). Absent on an edit on purpose: the link has a door of its own.
+    staff_user_id: Optional[str] = None
 
     @field_validator("name")
     @classmethod

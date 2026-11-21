@@ -5,7 +5,11 @@ import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 import { Users, UserPlus, Shield, Mail, MoreVertical, AlertCircle, Lock, SlidersHorizontal, Smartphone, Send } from "lucide-react";
 import MemberAccessDrawer from "@/components/team/MemberAccessDrawer";
 import ResetAuthenticatorModal from "@/components/team/ResetAuthenticatorModal";
-import { usePermissions } from "@/lib/auth/AuthContext";
+import { useAuth, usePermissions } from "@/lib/auth/AuthContext";
+import { StaffLinksPanel } from "@/components/payroll/StaffLinksPanel";
+import { AddEmployeeModal } from "@/components/payroll/AddEmployeeModal";
+import { useStaffLinks } from "@/lib/payroll/useStaffLinks";
+import { employeeOfMember } from "@/lib/payroll/staffLinks";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { api } from "@/lib/api";
 import { formatDate, formatDateTime } from "@/lib/dates/format";
@@ -125,14 +129,19 @@ interface InviteOutcome {
   problem: string | null;
   /** When the invitation's link stops working, as stored. */
   expiresAt: string | null;
+  /** The new member's id, for the offer to add them to the firm's own payroll (POST-A-540). */
+  memberId: string | null;
 }
 
 interface InviteModalProps {
   onClose: () => void;
   onInvite: (name: string, email: string, role: Role) => Promise<InviteOutcome>;
+  /** Present only for a Partner whose firm runs its own payroll here (POST-A-540): once somebody is invited, the result
+   *  offers to add them to that payroll, linked to the sign-in just made. The Team record is already written either way. */
+  onAddToPayroll?: (member: { id: string; name: string }) => void;
 }
 
-function InviteModal({ onClose, onInvite }: InviteModalProps) {
+function InviteModal({ onClose, onInvite, onAddToPayroll }: InviteModalProps) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<Role>("Executive");
@@ -140,7 +149,20 @@ function InviteModal({ onClose, onInvite }: InviteModalProps) {
   const [success, setSuccess] = useState(false);
   const [emailProblem, setEmailProblem] = useState<string | null>(null);
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
+  const [memberId, setMemberId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const payrollOffer = onAddToPayroll && memberId ? (
+    <div data-payroll-offer className="border-t border-ps-border pt-3 text-left">
+      <p className="text-xs text-ps-label mb-2">
+        {name} now has a sign-in. If the firm also pays them here, add them to the firm&apos;s own payroll: the two records are kept
+        separate and linked.
+      </p>
+      <button type="button" onClick={() => onAddToPayroll({ id: memberId, name: name.trim() })}
+        className="w-full border border-ps-border text-ps-body text-sm py-2 rounded-lg hover:bg-ps-bg">
+        Add to the firm&apos;s payroll
+      </button>
+    </div>
+  ) : null;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -151,6 +173,7 @@ function InviteModal({ onClose, onInvite }: InviteModalProps) {
       const outcome = await onInvite(name.trim(), email.trim(), role);
       setEmailProblem(outcome.problem);
       setExpiresAt(outcome.expiresAt);
+      setMemberId(outcome.memberId);
       setSuccess(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to send invitation");
@@ -175,6 +198,7 @@ function InviteModal({ onClose, onInvite }: InviteModalProps) {
         <button onClick={onClose} autoFocus className="w-full bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark">
           Close
         </button>
+        {payrollOffer}
       </Modal>
     );
   }
@@ -194,6 +218,7 @@ function InviteModal({ onClose, onInvite }: InviteModalProps) {
           <button onClick={onClose} autoFocus className="w-full bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark">
             Done
           </button>
+          {payrollOffer}
         </div>
       </Modal>
     );
@@ -772,6 +797,14 @@ export default function TeamPage() {
   // decides whether to offer it. approval:approve is held by Partners alone.
   const { can } = usePermissions();
   const canResetAuthenticators = can("approval", "approve");
+  // POST-A-540. Who is in the firm's own payroll is a Partner's alone to read (guardrail G4), so the two reads are made for a
+  // Partner only; the server refuses them to anybody else whatever this screen does.
+  const { userRole } = useAuth();
+  const { links: staffLinks, reload: reloadStaffLinks } = useStaffLinks(userRole === "Partner");
+  const staffRoster = staffLinks.state === "ready" ? staffLinks.roster : null;
+  // The offer made when somebody is invited: only where the firm has a payroll of its own that is switched on.
+  const practicePayrollId = staffRoster?.payroll_enabled === true ? staffRoster.practice_client_id : null;
+  const [payrollFor, setPayrollFor] = useState<{ id: string; name: string } | null>(null);
   // Inviting is team:write, a Partner's. The header's button was drawn for everybody, so a Manager (who reads this screen
   // and cannot invite) was offered a form the server refuses. `can()` answers false until the permissions are known.
   const canInvite = can("team", "write");
@@ -875,10 +908,12 @@ export default function TeamPage() {
     const created = await api.identity.createUser(name, email, role);
     if (!created.success || !created.data) throw new Error(created.error ?? "The invitation could not be created.");
     await loadTeam();
+    reloadStaffLinks();
     const mail = created.data.invite_mail;
     return {
       problem: mail?.sent === true ? null : (mail?.problem ?? "The server did not say whether the email went."),
       expiresAt: created.data.invite_expires_at ?? null,
+      memberId: created.data.id ?? null,
     };
   }
 
@@ -1106,6 +1141,9 @@ export default function TeamPage() {
                                   <span className="ml-1.5 text-xs text-blue-500 font-normal">(You)</span>
                                 )}
                               </p>
+                              {employeeOfMember(staffRoster, member.id) && (
+                                <p data-on-payroll className="text-2xs text-ps-hint">In the firm&apos;s own payroll</p>
+                              )}
                             </div>
                           </div>
                         </td>
@@ -1148,6 +1186,14 @@ export default function TeamPage() {
         </div>
       )}
 
+      {/* Not behind `loading`: the list above is read again after a link is written, and a panel taken off the screen for
+          that read would lose the sentence that says what was just done. The panel has its own three states. */}
+      {activeTab === "members" && (
+        <div className="mt-4">
+          <StaffLinksPanel links={staffLinks} side="team" onChanged={() => { void loadTeam(); reloadStaffLinks(); }} />
+        </div>
+      )}
+
       {/* Tab: Permissions */}
       {activeTab === "permissions" && (
         loading ? (
@@ -1165,6 +1211,16 @@ export default function TeamPage() {
         <InviteModal
           onClose={() => setShowInvite(false)}
           onInvite={handleInvite}
+          onAddToPayroll={practicePayrollId ? (member) => { setShowInvite(false); setPayrollFor(member); } : undefined}
+        />
+      )}
+      {payrollFor && practicePayrollId && (
+        <AddEmployeeModal
+          clients={[{ id: practicePayrollId, client_name: "The firm's own payroll" }]}
+          lockedClientId={practicePayrollId}
+          teamMember={payrollFor}
+          onClose={() => setPayrollFor(null)}
+          onSaved={() => { setPayrollFor(null); reloadStaffLinks(); }}
         />
       )}
       {editMember && (

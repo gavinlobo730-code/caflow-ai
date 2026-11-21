@@ -34,7 +34,8 @@ from services import payroll_report_service
 from services.timeline_service import timeline_service
 from services import employee_portal_service
 from services import it_declaration_service
-from services.internal_client_service import assert_practice_payroll_is_the_partners, get_internal_client_id
+from services import practice_staff_link_service
+from services.internal_client_service import assert_practice_payroll_is_the_partners, get_internal_client_id, is_partner
 
 
 def _the_firms_clients_only(current_user: dict, rows: list[dict]) -> list[dict]:
@@ -2179,13 +2180,83 @@ def create_employee(
     for key in ("fixed_term_employment", "fixed_term_end_date"):
         if payload.get(key) is None:
             payload.pop(key, None)
+    # The same again for the link to a team member (migration 776): an employee created without one never names the column. One created
+    # WITH one is asked the three rules of a link first (the member is the firm's, the payroll is the firm's own, one person is one employee).
+    if not payload.get("staff_user_id"):
+        payload.pop("staff_user_id", None)
+    else:
+        practice_staff_link_service.the_member_may_be_linked(db, current_user["firm_id"], data.client_id, data.staff_user_id)
     row = db.table("payroll_employees").insert(payload).execute()
     emp = (row.data or [{}])[0]
     if payload.get(pf_election.ELECTION) is not None:
         _log_pf_election_change(current_user, emp.get("id"), None, payload)
+    if payload.get("staff_user_id"):
+        from services.audit_service import log_event
+        log_event(
+            current_user["firm_id"], "payroll_employee", str(emp.get("id") or ""), "create",
+            actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+            old_data=None, new_data={"staff_user_id": payload["staff_user_id"]},
+            metadata={"what": "team_member_link"},
+        )
     timeline_service.log(data.client_id, "work", "Employee Added",
         f"{data.name} added to payroll", "info")
     return api_response(True, emp)
+
+
+class StaffLinkIn(BaseModel):
+    """The team member an employee of the firm's own payroll is, or null to remove the link (POST-A-540)."""
+    staff_user_id: Optional[str] = None
+
+
+@router.get("/practice-staff")
+def practice_staff(current_user: dict = Depends(rbac("payroll", "read"))):
+    """The firm's OWN payroll as the Team screen needs it (POST-A-540): whether there is one, whether it is switched on, and each
+    employee with the team member they are linked to. A Partner's alone, and a non-Partner is told 404, the answer guardrail G1
+    gives for everything of the practice: who the firm pays, and that it runs its own payroll at all, is not theirs to learn.
+    No pay, no identifier and no bank detail is in the answer."""
+    if not is_partner(current_user):
+        raise HTTPException(status_code=404, detail="Not found")
+    # The same two doors every payroll route for one client asks, of the one client this answer is about: the caller may open
+    # it, and it is the practice's own payroll (G4). A firm with no practice has nothing to ask of.
+    practice = get_internal_client_id(current_user.get("firm_id"))
+    if practice:
+        assert_client_access(current_user, practice, detail="Not found")
+        assert_practice_payroll_is_the_partners(practice, current_user)
+    return api_response(True, practice_staff_link_service.roster(_db(), current_user["firm_id"]))
+
+
+@router.put("/employees/{employee_id}/staff-link")
+def link_employee_to_team_member(
+    employee_id: str,
+    data: StaffLinkIn,
+    current_user: dict = Depends(rbac("payroll", "write"))
+):
+    """Say which team member an employee of the firm's own payroll is, or (null) that they are none (POST-A-540).
+
+    A link, never a merge: neither record is changed otherwise. Not asked of the per-client payroll switch, because the link says
+    who somebody is and pays nobody; an employee of a payroll that has been switched off is still a person."""
+    db = _db()
+    client_id = _assert_employee_scope(db, current_user, employee_id)
+    if not db:
+        return api_response(True, {"id": employee_id, "staff_user_id": data.staff_user_id})
+    # Guardrail G4: the practice's own payroll is the Partner's alone (a non-Partner is told 404).
+    assert_practice_payroll_is_the_partners(client_id, current_user)
+    firm_id = current_user["firm_id"]
+    if not data.staff_user_id and str(get_internal_client_id(firm_id) or "") != str(client_id or ""):
+        # Removing a link from a client's employee: there is none to remove, and the door says whose payroll it is for.
+        raise HTTPException(status_code=422, detail=practice_staff_link_service.A_CLIENTS_EMPLOYEE)
+    before = (db.table("payroll_employees").select("staff_user_id")
+              .eq("id", employee_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute().data) or [{}]
+    row = practice_staff_link_service.set_link(db, firm_id, employee_id, client_id, data.staff_user_id)
+    from services.audit_service import log_event
+    log_event(
+        firm_id, "payroll_employee", str(employee_id), "update",
+        actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+        old_data={"staff_user_id": before[0].get("staff_user_id")},
+        new_data={"staff_user_id": row.get("staff_user_id")},
+        metadata={"what": "team_member_link"},
+    )
+    return api_response(True, row)
 
 
 def _log_pf_election_change(current_user: dict, employee_id, old: Optional[dict],

@@ -19,6 +19,8 @@
 export type Client = { id: string; client_name: string };
 
 export type Employee = {
+  /** The team sign-in (`users.id`) this employee of the firm's OWN payroll is linked to (POST-A-540); null or absent = none. */
+  staff_user_id?: string | null;
   // Set by the portal invite flow (migration 264); absent on older rows.
   portal_enabled?: boolean;
   id: string;

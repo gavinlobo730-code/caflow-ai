@@ -6295,6 +6295,12 @@ export const api = {
       request(`/api/payroll/employees/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
     deleteEmployee: (id: string) =>
       request(`/api/payroll/employees/${id}`, { method: "DELETE" }),
+    /** The firm's OWN payroll as the Team screen needs it (POST-A-540): is there one, is it switched on, and each employee with
+     *  the team member they are linked to. A Partner's alone; no pay, identifier or bank detail is in the answer. */
+    practiceStaff: () => request("/api/payroll/practice-staff"),
+    /** Say which team member an employee of the firm's own payroll is, or (null) that they are none. A link, never a merge. */
+    linkStaff: (employeeId: string, staffUserId: string | null) =>
+      request(`/api/payroll/employees/${employeeId}/staff-link`, { method: "PUT", body: JSON.stringify({ staff_user_id: staffUserId }) }),
     listRuns: (clientId?: string) =>
       request(`/api/payroll/runs${clientId ? `?client_id=${clientId}` : ""}`),
     createRun: (body: { client_id: string; month: string }) =>
