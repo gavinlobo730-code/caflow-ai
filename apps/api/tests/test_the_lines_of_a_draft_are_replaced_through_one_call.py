@@ -140,6 +140,7 @@ REVIEWED = {
     ("services/recurring_purchase_bill_service.py", "_stamp_recurring"): "the same, for a bill generated from a recurring template",
     ("services/billing_service.py", "_stamp_billing_fields"): "the loser of a unique(schedule, period) race removes the draft invoice it just built",
     ("services/late_interest_service.py", "_delete_draft"): "takes back a draft invoice this module just made when its claim failed",
+    ("services/time_billing_service.py", "_drop_draft"): "takes back the draft invoice of time this request just made when its claim on the entries lost a race",
 }
 
 

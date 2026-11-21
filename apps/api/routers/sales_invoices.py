@@ -2366,6 +2366,19 @@ def issue_invoice(
         return api_response(False, None, "Unable to complete invoice operation. Please try again.")
 
 
+def _release_billed_time(db, firm_id: str, invoice_id: str, client_id) -> Optional[int]:
+    """Unmark the time a cancelled invoice had billed, and answer how many entries (None when it could not be done). The cancellation is
+    already committed when this runs and stands whatever happens here; a failure is logged and reported, never raised."""
+    try:
+        from services.time_billing_service import release_for_invoice
+        return release_for_invoice(db, firm_id, invoice_id)
+    except Exception as e:  # noqa: BLE001 - reported here; the cancellation stands
+        from core.observability import capture_soft_failure
+        _logger.error("cancel_invoice: the time billed by %s could not be released: %s", invoice_id, e, exc_info=True)
+        capture_soft_failure(e, operation="sales_invoice.cancel.release_time", firm_id=firm_id, client_id=client_id)
+        return None
+
+
 @router.post("/{invoice_id}/cancel")
 def cancel_invoice(
     invoice_id: str,
@@ -2471,11 +2484,17 @@ def cancel_invoice(
         except Exception as e:
             _logger.error("cancel_invoice: inventory reversal failed for %s: %s", invoice_id, e, exc_info=True)
 
+        # Time billed by this invoice is unbilled again (POST-B-194): a cancelled invoice bills nothing, so the entries it
+        # carried are released and offered for the next invoice. An invoice that billed no time releases nothing. After
+        # the cancellation is committed and never blocking it; a release that fails is reported, because entries left
+        # marked against a cancelled invoice would never be billed.
+        time_released = _release_billed_time(db, firm_id or "", invoice_id, inv.get("client_id"))
+
         log_event(
             firm_id or "", "sales_invoice", invoice_id,
             "cancel", actor_id=current_user.get("auth_user_id"),
             actor_email=current_user.get("email"),
-            new_data={"status": "cancelled", "reversed_journal": jrnl_id},
+            new_data={"status": "cancelled", "reversed_journal": jrnl_id, "time_entries_released": time_released},
         )
         return api_response(True, updated)
     except HTTPException:

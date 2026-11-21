@@ -11,8 +11,9 @@ WHAT WAS WRONG
 WHAT IS HELD
     * The export's rate and amount are `time_rate.entry_worth`'s, which is what the Time screen shows: an hour priced in either column
       is priced; one with no rate, a non-billable hour and a running entry leave the cells EMPTY, never 0.
-    * No production module reads `hourly_rate_paise` off a row except `domain/billing/time_rate.py`. The one named exception is the
-      legacy `POST /api/invoices/from-time`, which no screen calls and whose replacement is POST-B-194's decision.
+    * No production module reads `hourly_rate_paise` off a row except `domain/billing/time_rate.py`. The one named exception, the
+      legacy `POST /api/invoices/from-time`, went on 21-11-2026 (POST-B-194): time is billed through the sales engine and priced by
+      the rule.
     * The restatement that had no caller is gone.
 """
 from __future__ import annotations
@@ -31,7 +32,6 @@ API = Path(__file__).resolve().parents[1]
 #: Modules allowed to read the legacy column off a row, each with why.
 READS_THE_LEGACY_COLUMN = {
     "domain/billing/time_rate.py": "the rule itself: billable_rate_paise first, hourly_rate_paise second",
-    "services/invoice_generation_service.py": "the legacy POST /api/invoices/from-time, no screen caller; POST-B-194 replaces or retires it",
 }
 
 _BASE = {"user_id": "u1", "client_id": "c1", "started_at": "2026-06-01T09:00:00Z", "ended_at": "2026-06-01T11:00:00Z",

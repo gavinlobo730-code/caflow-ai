@@ -205,6 +205,10 @@ def test_no_mutating_route_is_guarded_by_a_read_level_action():
         # screens. It writes nothing but the usage row every model call writes, and it is ai:read on purpose: a Reviewer
         # on their first day is who most needs to ask where a thing is.
         "/api/guide/where",
+        # Hourly billing's PREVIEW (POST-B-194): POST because it carries the list of chosen time entries. It prices them by
+        # the one rule and answers the lines a draft would carry; `time_billing_service.preview` writes nothing (the test
+        # of that module asserts no invoice is made and no entry is marked). Creating the draft is billing:write.
+        "/api/billing/time-invoices/preview",
         # Copilot: deliberately open to every role. The protection here is that
         # the prompt carries no client-identifying data at all (see
         # test_copilot_no_client_data.py), which holds regardless of role.

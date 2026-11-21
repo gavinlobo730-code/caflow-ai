@@ -70,7 +70,7 @@ MUST_NAME = (
     "billing_service.generate_for_schedule", "collections_service.assess_invoice",
     "collections_service.sweep_overdue", "collections_service.flag_overdue_for_internal_followup",
     "knowledge_service.restore_version", "knowledge_service.can_view_client_content",
-    "billing_service.mark_time_entries_billed",
+    "time_billing_service.create_draft", "time_billing_service.release_for_invoice",
 )
 #: Database objects the record names without `()` and which a migration must create.
 SQL_OBJECTS = ("unbilled_time_summary", "my_internal_client_id", "get_my_user_id", "provision_internal_client",
@@ -380,11 +380,11 @@ def test_the_defects_observed_while_writing_the_record_are_still_there():
 
     When one fails: it was fixed. Delete its bullet from §9, delete its assertion, and say so in the commit.
     """
-    # 6. Nothing schedules draft generation, and nothing bills time.
-    for name in ("run_due", "mark_time_entries_billed"):
+    # 6. Nothing schedules draft generation. (Time IS billed since 21-11-2026, POST-B-194: `time_billing_service`.)
+    for name in ("run_due",):
         users = {rel for rel, text in _production().items()
                  if re.search(rf"billing_service\.{name}\b|from services\.billing_service import[^\n]*\b{name}\b", text)}
-        allowed = {"routers/billing.py"} if name == "run_due" else set()
+        allowed = {"routers/billing.py"}
         assert users == allowed, f"{name} is now reached from {sorted(users - allowed)}; fix §4/§6 and §9"
 
 

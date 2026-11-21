@@ -72,7 +72,7 @@ Written on 30 Sep 2026 from the per-area improvement plans. Each decision gates 
 - **Why it matters:** Two billing systems and two deadline stores are live, so screens disagree and some fee income never reaches the firm's own books or GST return. Dropping an old table is a production migration.
 - **Cost or time:** No cash cost; weeks of work; a migration.
 - **Roadmap points it unlocks:** practice_management-13, practice_management-16, practice_management-18, practice_management-14 revenue figures
-- **Open ledger items carrying them:** POST-B-193, POST-B-194, POST-B-326, POST-B-150, POST-B-323
+- **Open ledger items carrying them:** POST-B-193, POST-B-326, POST-B-150, POST-B-323 (hourly billing, formerly carried here, was built and closed on 21 November 2026)
 
 ### Decision 12. Approve a staging copy (second database project and second API service) and a second engineer or reviewer
 - **Why it matters:** Migrations apply to the live database on merge with no rehearsal, and one human holds nearly all knowledge of the money path. Customers' accountants will ask about both.

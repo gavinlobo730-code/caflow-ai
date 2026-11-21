@@ -24,12 +24,15 @@ import { nothingUnbilled, readUnbilledWork, type UnbilledWork } from "@/lib/time
 import { formatDate } from "@/lib/services/formatting";
 import type { Client } from "@/lib/types";
 import { LoadingRegion } from "@/components/ui/skeleton";
+import BillTimeDialog from "@/components/time/BillTimeDialog";
 
 export function UnbilledWorkPanel({ clients, canEdit }: { clients: Client[]; canEdit: boolean }) {
   const [work, setWork] = useState<UnbilledWork | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
+  // The client whose unbilled time is being billed (POST-B-194), or null when the dialog is closed.
+  const [billing, setBilling] = useState<string | null>(null);
 
   const clientName = new Map(clients.map((c) => [c.id, c.client_name]));
   const nameOf = (id: string | null | undefined) =>
@@ -136,6 +139,10 @@ export function UnbilledWorkPanel({ clients, canEdit }: { clients: Client[]; can
                     <span className="flex-1 min-w-0 truncate text-sm text-gray-800">{nameOf(id)}</span>
                     <span className="text-xs text-ps-label">{formatDuration(g.minutes)} · {g.count} entries</span>
                     <span className="text-sm font-semibold text-gray-800 w-28 text-right">{formatPaise(g.value_paise)}</span>
+                    {/* Time with no client has nobody to bill. Offered to whoever may write the practice's billing. */}
+                    {canEdit && id !== "unassigned" && (
+                      <Button size="sm" variant="outline" onClick={() => setBilling(id)}>Bill this time</Button>
+                    )}
                   </div>
                 ))}
               </CardContent>
@@ -198,6 +205,14 @@ export function UnbilledWorkPanel({ clients, canEdit }: { clients: Client[]; can
             </Card>
           )}
         </>
+      )}
+      {billing && (
+        <BillTimeDialog
+          clientId={billing}
+          clientName={nameOf(billing)}
+          onClose={() => setBilling(null)}
+          onBilled={() => { void load(); }}
+        />
       )}
     </div>
   );

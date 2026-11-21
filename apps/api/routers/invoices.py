@@ -200,42 +200,11 @@ def generate_from_engagement(
         raise HTTPException(status_code=status, detail=sentence)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# POST /api/invoices/from-time/{engagement_id} — Generate from time entries
-# ─────────────────────────────────────────────────────────────────────────────
-
-@router.post("/from-time/{engagement_id}")
-def generate_from_time_entries(
-    engagement_id: str,
-    invoice_month: Optional[str] = Query(None),
-    billable_only: bool = Query(True),
-    current_user: dict = Depends(rbac("billing", "write")),
-):
-    """
-    Generate a draft invoice from time entries.
-
-    Queries time_entries for the engagement in the specified month and
-    calculates invoice amount based on hourly rates.
-
-    Query parameters:
-      - invoice_month: Optional invoice date (ISO format, defaults to today)
-      - billable_only: Include only billable time entries (default: true)
-    """
-    from services.invoice_generation_service import generate_invoice_from_time_entries
-
-    # Verify the engagement exists and the caller may access its client
-    _assert_engagement_scope(current_user, engagement_id)
-
-    try:
-        invoice_id = generate_invoice_from_time_entries(
-            engagement_id,
-            invoice_month,
-            billable_only,
-        )
-        invoice = invoice_repo.find_by_id(invoice_id)
-        return api_response(True, {"invoice": invoice})
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+# `POST /api/invoices/from-time/{engagement_id}` WAS HERE AND IS GONE (POST-B-194, 21-11-2026). No screen called it. It
+# priced every minute at the last entry's rate, fell back to an engagement's fixed fee as an hourly rate, dropped the last
+# day of the month, charged a flat 18% with no SAC or place of supply, wrote the earlier fee tables and never marked an
+# entry as billed. Time is billed through the sales engine now: `POST /api/billing/time-invoices`
+# (`services/time_billing_service`).
 
 
 # ─────────────────────────────────────────────────────────────────────────────

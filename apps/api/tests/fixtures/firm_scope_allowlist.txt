@@ -109,7 +109,6 @@ services/employee_portal_service.py | accept_employee_invite | call:_update | up
 services/employee_portal_service.py | revoke_employee_portal | call:_update | update | 1 | looked-up-first | lookup=_employee
 services/inventory_location_service.py | transfer | call:_last_ledger_row | read | 1 | gated-in-function | gate=position_detail
 services/invoice_generation_service.py | generate_invoice_from_engagement | repo:engagement_repo.get_or_raise | read | 1 | gated-by-route | route=routers/invoices.py::generate_from_engagement
-services/invoice_generation_service.py | generate_invoice_from_time_entries | repo:engagement_repo.get_or_raise | read | 1 | gated-by-route | route=routers/invoices.py::generate_from_time_entries
 services/invoice_generation_service.py | generate_recurring_invoice | repo:engagement_repo.get_or_raise | read | 1 | unreachable-code | symbol=generate_recurring_invoice
 services/invoice_generation_service.py | generate_recurring_invoice | repo:invoice_repo.list_for_engagement | read | 1 | unreachable-code | symbol=generate_recurring_invoice
 services/invoice_pdf_service.py | get_invoice_pdf | repo:client_repo.find_by_id | read | 1 | gated-by-route | route=routers/invoices.py::download_invoice_pdf
