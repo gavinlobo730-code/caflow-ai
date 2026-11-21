@@ -9,15 +9,8 @@ import { INDIAN_STATES } from "@/lib/constants/indianStates";
 import { Callout } from "@/components/ui/callout";
 import { gstinProblem } from "@/lib/gst/gstin";
 import { panProblem } from "@/lib/identifiers/pan";
-// The values `clients.entity_type` may hold — migration 453 added the last
-// three. Pinned from the Python side against models/client.EntityType
-// (tests/test_a_huf_aop_and_boi_have_their_own_tax_basis.py), because a list
-// asserted against its own copy passes whenever both drift together.
-const ENTITY_TYPES = [
-  "Proprietorship", "Partnership", "LLP", "Private Limited",
-  "Public Limited", "Trust", "Society", "Individual",
-  "HUF", "AOP", "BOI",
-];
+// The values `clients.entity_type` may hold: one list, shared with the sign-up's firm profile (lib/clients/entityTypes.ts).
+import { ENTITY_TYPES } from "@/lib/clients/entityTypes";
 
 // THE CANONICAL LIST, not a fifth copy. This held 31 of the 36 live codes —
 // Dadra & Nagar Haveli and Daman & Diu (26), Lakshadweep (31), Puducherry (34),

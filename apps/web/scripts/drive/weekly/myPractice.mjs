@@ -13,7 +13,9 @@
  *      the books could not be read; neither draws a tile that leads nowhere, and the practice's screens stay listed;
  *   4. with guided tips on, Practice home draws the tip about the firm's own books beside the bar's menu button, the tip
  *      waits while the grid is open, and a client's workspace (the same button) draws none;
- *   5. an ordinary client is untouched: its name is the switcher and the way out is the client list.
+ *   5. the dashboard's first-day card draws a second list for a Partner, "Your own firm", whose steps open My practice
+ *      (POST-A-533); with no such list sent, a firm that has done its four steps sees no card;
+ *   6. an ordinary client is untouched: its name is the switcher and the way out is the client list.
  *
  * No scenario has a date of its own, so none has a zone.
  */
@@ -140,6 +142,47 @@ export const scenarios = [
       await bar(page).getByRole("link", { name: /All clients/ }).waitFor();
       await page.waitForTimeout(600);
       assert.equal(await page.locator("[data-guided-tip]:visible").count(), 0, "a client's workspace drew the practice's tip");
+    },
+  },
+  {
+    id: "the-first-day-card-walks-a-partner-through-the-firms-own-practice",
+    title: "the dashboard's first-day card draws a second list, Your own firm, whose steps open My practice; with no practice list sent the card is the four steps it was",
+    async run(env) {
+      const { page } = env;
+      const step = (id, title, done) => ({ id, title, why: "Why this matters.", done, done_at: null });
+      const clients = [step("first_client", "Add your first client", true), step("first_invoice", "Raise your first invoice", true),
+        step("first_statement", "Import a bank statement", true), step("invite_colleague", "Invite a colleague", true)];
+      const firstRun = (practice) => ({
+        steps: clients, total: 4, done_count: 4, complete: true, next_step: null, unreadable: [], dismissed: false,
+        visible: practice !== null, minutes_to_first_invoice: 12, practice,
+      });
+      const ownFirm = {
+        steps: [step("practice_identity", "Check your own firm's details", true), step("practice_books", "Start your own firm's books", false),
+          step("practice_statement", "Import your firm's own bank statement", null), step("practice_fee_bill", "Raise your first fee bill", false)],
+        total: 4, done_count: 1, complete: false, next_step: "practice_books", unreadable: ["practice_statement"], client_id: env.clientId,
+      };
+      let sent = ownFirm;
+      env.stub.route({ method: "GET", re: /\/api\/onboarding\/status/, reply: () => ok({ checks: {}, score: 0, total: 0, first_run: firstRun(sent) }) });
+      await page.goto(`${env.base}/`, { waitUntil: "networkidle" });
+      const card = page.locator("[data-first-run]");
+      await card.waitFor();
+      // Both lists are counted: four client steps done and one of the practice's four.
+      assert.match(await card.innerText(), /5 of 8 done/);
+      const own = card.locator("[data-first-run-practice]");
+      assert.match(await own.innerText(), /Your own firm/);
+      assert.equal(await own.locator("li").count(), 4);
+      assert.equal(await own.locator('li[data-step="practice_statement"]').getAttribute("data-done"), "unknown");
+      // The practice's next step is the one to start with, since the clients' list has none left.
+      const books = own.locator('li[data-step="practice_books"]').getByRole("link");
+      assert.match(await books.innerText(), /Start here/);
+      assert.equal(await books.getAttribute("href"), `/clients/${env.clientId}/accounting/?tab=opening-balances`);
+      assert.equal(await own.locator('li[data-step="practice_fee_bill"]').getByRole("link").getAttribute("href"), "/practice/billing/");
+      assert.equal(await own.locator('li[data-step="practice_identity"]').getByRole("link").count(), 0, "a step that is done still offers its link");
+      // Somebody who is sent no practice list (a Manager) and has done the four steps sees no card at all.
+      sent = null;
+      await page.goto(`${env.base}/`, { waitUntil: "networkidle" });
+      await page.waitForTimeout(600);
+      assert.equal(await page.locator("[data-first-run]").count(), 0);
     },
   },
   {

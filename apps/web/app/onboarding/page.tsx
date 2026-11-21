@@ -32,6 +32,7 @@ import { FirmHsnLibraryQuickAddModal } from "@/components/lookups/FirmHsnLibrary
 import { Callout } from "@/components/ui/callout";
 import { gstinProblem } from "@/lib/gst/gstin";
 import { isValidPan } from "@/lib/identifiers/pan";
+import { ENTITY_TYPES } from "@/lib/clients/entityTypes";
 import { Button } from "@/components/ui/button";
 import { hasChanges, useUnsavedChanges } from "@/lib/invoices/dirtyState";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
@@ -109,6 +110,8 @@ function otpTrace(step: string, detail: Record<string, unknown> = {}) {
 // ─── Types ─────────────────────────────────────────────────────────────────
 interface FirmForm {
   name: string;
+  /** The firm's own legal form, "" until chosen. The practice's own books are set up as this (POST-A-533). */
+  entity_type: string;
   pan: string;
   gstin: string;
   phone: string;
@@ -121,6 +124,7 @@ interface FirmForm {
 
 const EMPTY_FIRM: FirmForm = {
   name: "",
+  entity_type: "",
   pan: "",
   gstin: "",
   phone: "",
@@ -423,7 +427,7 @@ export default function OnboardingPage() {
   // RLS that forbids a firm-less user from inserting a firms row. Single
   // entrypoint (called from Save and Skip) so there is no create race.
   const ensureFirmExists = useCallback(
-    async (extra?: { pan?: string; gstin?: string; phone?: string; address?: string; city?: string; state?: string }): Promise<string | null> => {
+    async (extra?: { pan?: string; gstin?: string; phone?: string; address?: string; city?: string; state?: string; entity_type?: string }): Promise<string | null> => {
       if (firmId) return firmId;
       if (!user?.email) return null;
       const stash = readSignupStash();
@@ -718,6 +722,9 @@ export default function OnboardingPage() {
         // Backend seeds the full Chart of Accounts automatically; no onboarding step needed.
         const id = await ensureFirmExists({
           pan: firmForm.pan.trim() || undefined,
+          // The firm's own legal form: its own books are set up as this. Not chosen is not sent, and the server then
+          // records a Partnership, which Practice home says and lets a Partner correct.
+          entity_type: firmForm.entity_type || undefined,
           gstin: firmForm.gstin.trim() || undefined,
           phone: firmForm.phone.trim() || undefined,
           address: firmForm.address.trim() || undefined,
@@ -758,6 +765,12 @@ export default function OnboardingPage() {
               "Your practice books could not be set up automatically. You can set them up later from the Practice section.");
           } else {
             setProvisionNote(null);
+            // The books exist now: record the legal form chosen here on them. A refusal is said and does not stop the
+            // step, because the form can be corrected on Practice home.
+            if (firmForm.entity_type) {
+              const kept = await api.practice.updateIdentity({ entity_type: firmForm.entity_type }) as ApiResp<unknown>;
+              if (!kept?.success) setProvisionNote(kept?.error || "Your firm's legal form could not be recorded just now. You can set it on Practice home.");
+            }
           }
         } catch {
           setProvisionNote("Your practice books will be set up later — you can trigger it from the Practice section.");
@@ -1020,6 +1033,18 @@ export default function OnboardingPage() {
                   required
                 />
               </div>
+              <div>
+                <label htmlFor="firm-entity-type" className="text-xs font-medium text-ps-label block mb-1">Your firm&apos;s legal form</label>
+                <select id="firm-entity-type" data-firm-entity-type
+                  value={firmForm.entity_type}
+                  onChange={(e) => setFirmForm((p) => ({ ...p, entity_type: e.target.value }))}
+                  className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg"
+                >
+                  <option value="">Select…</option>
+                  {ENTITY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+                <p className="text-xs text-ps-hint mt-1">Your firm&apos;s own books are set up as this. Left blank, they are set up as a Partnership, which you can correct in My practice.</p>
+              </div>
               <Field
                 label="PAN"
                 field="pan"
@@ -1027,7 +1052,7 @@ export default function OnboardingPage() {
                 setForm={setFirmForm}
                 errors={firmErrors}
                 placeholder="e.g. AABCU9603R"
-                hint="IT Act §139A — 10-char PAN"
+                hint="Your firm's own PAN. Its own books are set up from it; without it they are not created until you add it in My practice."
                 maxLength={10}
               />
               <Field
