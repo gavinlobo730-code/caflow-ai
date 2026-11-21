@@ -4,12 +4,10 @@ import { useState } from "react";
 import Link from "next/link";
 import { ChevronDown, ChevronRight, MoreHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useAuth, usePermissions } from "@/lib/auth/AuthContext";
 import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 import { WORKSPACE_CONFIGS, type WorkspaceConfig } from "@/lib/workspace/workspaceConfig";
-import { workspaceTileOffered } from "@/lib/workspace/tileOffered";
+import { useScreenAccess } from "@/lib/access/useScreenAccess";
 import { MORE_ID, areaShown, outerMenu } from "@/lib/workspace/outerMenu";
-import { canAccessWorkspace } from "@/lib/auth/permissions";
 import { ContextPanel } from "@/components/ContextPanel";
 
 /**
@@ -33,12 +31,10 @@ import { ContextPanel } from "@/components/ContextPanel";
  * at "Payroll" while standing on a Clients page shows Payroll's own list
  * without a click.
  *
- * SAME VISIBILITY RULE AS THE RAIL IT REPLACES: `canAccessWorkspace` (product
- * role rule) AND, where a workspace's `requires` names one rbac pair or its
- * `requiresAnyOf` several, `can()` (`workspaceTileOffered`) — asked only once
- * `resolved`, so a permission map still in flight does not
- * flash the tile and then pull it (WorkspaceRail's own comment explains why
- * that one-frame delay is deliberate here, not a bug).
+ * WHICH AREAS ARE LISTED IS ONE RULE (POST-A-543): the permissions a Partner ticked for the person, asked of the one table
+ * (`lib/access/screenAccess.ts`) through `useScreenAccess().areaOn`. Nothing is withheld on a permission until the
+ * permissions are known, so an area does not flash in and then out on the first frame; My practice is asked of the role,
+ * which is known sooner, and is never offered to somebody who is not a Partner.
  *
  * THE LIST SHOWS LESS, AND AN ENTRY IS A LINK (the owner's review of the live Test Firm, 21-11-2026). Three things were
  * wrong with the left column. It listed thirteen areas at once; `lib/workspace/outerMenu.ts` now says which are listed
@@ -60,13 +56,11 @@ const MORE_REGION_ID = "workspace-menu-more";
 
 export function WorkspaceMegaMenu({ onOpenSearch, onNavigate }: { onOpenSearch: () => void; onNavigate?: () => void }) {
   const { activeWorkspace } = useWorkspace();
-  const { userRole } = useAuth();
-  const { can, resolved } = usePermissions();
   const [hovered, setHovered] = useState<string | null>(null);
 
-  const offered = WORKSPACE_CONFIGS.filter(
-    (ws) => canAccessWorkspace(ws.id, userRole) && workspaceTileOffered(ws, can, resolved),
-  );
+  // One rule (POST-A-543): an area is on the menu when the person holds what `screenAccess.AREA_RULES` asks for it.
+  const { areaOn } = useScreenAccess();
+  const offered = WORKSPACE_CONFIGS.filter((ws) => areaOn(ws.id));
   const byId = new Map<string, WorkspaceConfig>(offered.map((ws) => [ws.id, ws]));
   const menu = outerMenu(offered.map((ws) => ws.id));
   const [moreOpen, setMoreOpen] = useState<boolean>(() => activeWorkspace !== null && menu.more.includes(activeWorkspace));

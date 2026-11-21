@@ -168,7 +168,7 @@ BUDGET: dict[str, int] = {
     # whole register in the browser from six PostgREST reads and called no
     # endpoint on this prefix at all. It asks GET /register now, and the
     # ratchet credits what that screen reaches.
-    "/api/risks": 3,
+    "/api/risks": 4,
     # /api/compliance 4 -> 3 on 01-10-2026 (practice_management-17):
     # `GET /obligations/calendar` had a `lib/api` method and no screen — the
     # firm Calendar built its deadlines in the browser instead. It is that
@@ -192,7 +192,7 @@ BUDGET: dict[str, int] = {
     # /api/invoices 3 -> 2 on 28-09-2026: the engagement screen's Raise
     # Invoice now asks POST /from-engagement/{id}, which carries the
     # once-per-billing-period refusal a hand-built invoice never did.
-    "/api/ai-copilot": 3, "/api/invoices": 2, "/api/purchase-cycle": 4,
+    "/api/ai-copilot": 3, "/api/invoices": 4, "/api/purchase-cycle": 4,
     # /api/accounting 2 -> 1 on 25-09-2026 (Phase 3a-3): the client
     # Reports tab renders `GET /statement-analysis`, whose method
     # `lib/api.accounting.statementAnalysis` had carried with no caller
@@ -203,11 +203,23 @@ BUDGET: dict[str, int] = {
     "/api/public": 2, "/api/sales-cycle": 3,
     "/api/scheduler": 2, "/api/settings": 2, "/api/vendors": 1,
     "/api/approvals": 2,
-    "/api/document-intelligence-v2": 1, "/api/documents": 1,
+    "/api/document-intelligence-v2": 2, "/api/documents": 1,
     "/api/knowledge": 1,
     "/api/purchase-bills": 1,
     "/api/rcm-documents": 1,
-    "/api/tds-workspace": 1,
+    "/api/tds-workspace": 2,
+    # SEVEN RAISED ON 21-11-2026, AND NOT ONE OF THEM IS A NEW ROUTE (POST-A-547). `_literal_siblings` asked only for static siblings of the
+    # SAME verb, and a URL in the source carries no verb, so a read, an edit or a delete of one record was counted as called wherever a
+    # static route of ANOTHER verb sat beside it (`POST /gstr2b/upload` beside `GET /gstr2b/{upload_id}`). It was met when
+    # `POST /api/approvals/access-requests` made the unused `GET /api/approvals/{request_id}` read as called. With the rule corrected the
+    # tree owes seven more than this table said, each a route that was already unreached and that no screen calls:
+    #   /api/document-intelligence-v2  1 -> 2  GET /notices/{notice_id}
+    #   /api/gst-workspace             0 -> 2  DELETE /gstr1/{return_id}, GET /gstr2b/{upload_id}
+    #   /api/invoices                  2 -> 4  DELETE /{invoice_id}, GET /{invoice_id}
+    #   /api/risks                     3 -> 4  PATCH /{risk_id}
+    #   /api/tds-workspace             1 -> 2  GET /form26as/{upload_id}
+    # `/api/approvals` stays at 2 (`GET /{request_id}` is still owed). Each is to be wired or deleted under POST-A-547, lowering its line.
+    "/api/gst-workspace": 2,
     # /api/gst-workspace and /api/workload 1 -> 0 on 7-11-2026 (POST-A-374): the two routes that had raised them from 0 to 1 on 2-11-2026 were
     # DELETED, not wired. `GET /gstr1/{return_id}` (read one return) and `GET /api/workload/{user_id}` (read one member's workload) had no
     # screen that called them (their static siblings `/gstr1/advances`, `/gstr1/exceptions`, `/gstr1/amendments`; `/capacity`,
@@ -314,7 +326,10 @@ NOT_REACHED_BY_A_SCREEN: dict[tuple[str, str], str] = {
 # allowed one more) is a visible edit of two numbers and not of one. A shuffle (one prefix allowed one more, another one fewer) still passes: that is the per-prefix budgets' job to refuse.
 # 195 -> 193 on 12-11-2026 (POST-B-321): the two staff cost-rate routes got a screen (the Profitability screen's cost-rate panel), and `/api/billing` fell 6 -> 4.
 # 193 -> 192 on 14-11-2026 (POST-A-156): `GET /api/time-entries/summary/me` got a screen, and `/api/time-entries` fell 1 -> 0.
-TOTAL_BUDGET = 187
+# 187 -> 194 on 21-11-2026 (POST-A-547): no route was added that reaches no screen. The scan's sibling rule was corrected to ignore the verb (see
+# `_literal_siblings` and the note in BUDGET), and seven routes that had been reading as called are counted. A raise with a reason: the debt
+# was there and the number could not see it.
+TOTAL_BUDGET = 194
 
 
 # ---------------------------------------------------------------------------
@@ -639,12 +654,17 @@ def _routes() -> set[tuple[str, str]]:
 
 
 def _literal_siblings(path: str, method: str) -> tuple[str, ...]:
-    """For a path that ends in a parameter, the final segments of the mounted static routes of the same method under the same parent."""
+    """For a path that ends in a parameter, the final segments of the mounted static routes under the same parent, of ANY method.
+
+    It asked for the same method until 21-11-2026, and that was a blind spot the day it was met: the blob is searched for a URL and a URL
+    carries no method, so when `POST /api/approvals/access-requests` was added, its literal satisfied `GET /api/approvals/{request_id}`,
+    which no screen calls, and the budget for the prefix read one lower than the tree owes. A URL that names a static sibling reaches that
+    static route whatever verb it is sent with. `method` stays in the signature for the callers that pass it."""
     if not path.endswith("}"):
         return ()
     parent = path.rsplit("/", 1)[0]
-    return tuple(sorted({other.rsplit("/", 1)[1] for m, other in _routes()
-                         if m == method and other.rsplit("/", 1)[0] == parent and not other.endswith("}")}))
+    return tuple(sorted({other.rsplit("/", 1)[1] for _m, other in _routes()
+                         if other.rsplit("/", 1)[0] == parent and not other.endswith("}")}))
 
 
 @pytest.fixture(scope="module")

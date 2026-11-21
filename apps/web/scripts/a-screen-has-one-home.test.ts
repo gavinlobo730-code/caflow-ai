@@ -52,18 +52,13 @@ const LISTED_TWICE: Record<string, string> = {
   "/deadlines":
     "owned by DeadlinesPanel; HomePanel lists it because Home is the " +
     "launchpad and the deadline list is one of the two things due today. " +
-    "⚠️ It is also in STAFF_HIDDEN_HREFS, and HomePanel had no role filter " +
-    "at all until this guard found it — so an Executive, a Reviewer and a " +
-    "Client were offered from Home a workspace the rail deliberately hides " +
-    "from them. HomePanel now filters on canAccessHref",
+    "HomePanel offers it by the one table the menu and the page gate ask " +
+    "(lib/access/screenAccess.ts), so it is listed only for somebody whose " +
+    "own menu has Deadlines",
   "/work":
     "owned by WorkPanel; HomePanel lists it for the same reason as " +
-    "/deadlines — the work queue is the other of the two. ⚠️ Worth knowing: " +
-    "the `work` WORKSPACE is in STAFF_HIDDEN_WORKSPACES and the `/work` HREF " +
-    "is not in STAFF_HIDDEN_HREFS, so `canAccessWorkspace` and " +
-    "`canAccessHref` give opposite answers about one destination. Left as it " +
-    "is rather than picked by me: which is right is a product decision, and " +
-    "the href rule is the one the panels apply",
+    "/deadlines, the work queue being the other of the two, and offers it " +
+    "by the same table",
   "/clients":
     "owned by ClientsPanel; the second occurrence is not a sidebar entry at " +
     "all — DeadlinesPanel's triage note says 'To file, open a client' with " +

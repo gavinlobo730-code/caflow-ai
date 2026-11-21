@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { CheckSquare, ListTodo, Clock, LayoutTemplate, Workflow, ShieldCheck } from "lucide-react";
 import { cn, isExactPath } from "@/lib/utils";
+import { useScreenAccess } from "@/lib/access/useScreenAccess";
 
 const WORK_ITEMS = [
   { href: "/work", label: "All Work", icon: CheckSquare },
@@ -21,6 +22,10 @@ const AUTOMATION_ITEMS = [
 
 export function WorkPanel() {
   const pathname = usePathname();
+  // Each entry is offered by the one table the menu and the page gate ask (POST-A-543).
+  const { offered } = useScreenAccess();
+  const work = WORK_ITEMS.filter((i) => offered(i.href));
+  const automation = AUTOMATION_ITEMS.filter((i) => offered(i.href));
 
   return (
     <div className="flex flex-col h-full">
@@ -34,7 +39,7 @@ export function WorkPanel() {
           My Work
         </p>
         <div className="space-y-0.5">
-          {WORK_ITEMS.map(({ href, label, icon: Icon }) => {
+          {work.map(({ href, label, icon: Icon }) => {
             const active = isExactPath(pathname, href);
             return (
               <Link
@@ -64,7 +69,7 @@ export function WorkPanel() {
           Automation
         </p>
         <div className="space-y-0.5">
-          {AUTOMATION_ITEMS.map(({ href, label, icon: Icon }) => {
+          {automation.map(({ href, label, icon: Icon }) => {
             const active = isExactPath(pathname, href);
             return (
               <Link

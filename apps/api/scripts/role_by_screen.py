@@ -1,8 +1,9 @@
 """The role-by-screen table (POST-A-447, part 3): what each staff role is OFFERED in the menus, by role template.
 
 Written from two sources and nothing else: the backend's permission table (`core.permissions.PERMISSIONS`, the
-template `rbac()` falls back to) and the menu declarations in `apps/web` (the workspace tiles and their role rules,
-each firm panel's entries with the pair each asks, the Settings links' roles, and the client workspace's sections).
+template `rbac()` falls back to) and the menu declarations in `apps/web` (the ONE table of which permission opens
+which area and screen, `lib/access/screenAccess.ts`, since POST-A-543; each firm panel's entries with the pair each
+names itself; the Settings links' roles; and the client workspace's sections).
 It is a READING of those declarations, so it says what the menus draw for a role and not what a page then does: a
 page may still narrow its rows to the person's assigned clients, hide a button, or be refused by the server.
 
@@ -91,10 +92,70 @@ def _requires_any(obj: str):
     return [(a, b) for a, b in re.findall(_PAIR, m.group(1))] if m else None
 
 
-def _set_literal(src: str, name: str) -> set[str]:
-    m = re.search(rf"const {name}\b[^=]*=\s*new Set(?:<[^>]*>)?\(\[(.*?)\]\)", src, re.S)
-    assert m, f"{name} is not a Set literal any more"
-    return set(re.findall(_STR, m.group(1)))
+def _rule(text: str) -> dict:
+    """One `AccessRule` literal of `screenAccess.ts`: `{ all: [...], any: [...], partnerOnly: true }`."""
+    def pairs(key: str) -> list[tuple[str, str]]:
+        m = re.search(rf"\b{key}:\s*\[", text)
+        if not m:
+            return []
+        depth, i = 1, m.end()
+        while depth and i < len(text):
+            depth += {"[": 1, "]": -1}.get(text[i], 0)
+            i += 1
+        body = text[m.end():i - 1]
+        found = [(m2.start(), (m2.group(1), "read")) for m2 in re.finditer(r'read\("([a-z_]+)"\)', body)]
+        found += [(m2.start(), (m2.group(1), m2.group(2))) for m2 in re.finditer(_PAIR, body)]
+        return [pair for _, pair in sorted(found)]
+    return {"all": pairs("all"), "any": pairs("any"), "partner_only": bool(re.search(r"\bpartnerOnly:\s*true", text))}
+
+
+def _access_table() -> tuple[dict[str, dict], list[tuple[str, dict]]]:
+    """(the rule of each area, the rule of each screen prefix), read from `apps/web/lib/access/screenAccess.ts`."""
+    src = (WEB / "lib" / "access" / "screenAccess.ts").read_text()
+    areas_at = src.index("export const AREA_RULES")
+    areas_src = src[src.index("{", src.index("=", areas_at)):src.index("\n};", areas_at)]
+    areas = {m.group(1): _rule(m.group(2)) for m in re.finditer(r"(?m)^  ([a-z]+): (\{.*\}),\s*$", areas_src)}
+    assert len(areas) >= 13, f"the areas of screenAccess.ts are not being read: {sorted(areas)}"
+    screens_at = src.index("export const SCREEN_RULES")
+    screens_src = src[screens_at:src.index("\n];", screens_at)]
+    screens = [(m.group(1), _rule(m.group(2))) for m in re.finditer(r'(?m)^  \["([^"]+)", (\{.*\})\],\s*$', screens_src)]
+    assert len(screens) >= 30, f"the screens of screenAccess.ts are not being read: {len(screens)}"
+    return areas, screens
+
+
+def _rule_holders(rule: dict, sets) -> set[str]:
+    """The roles whose TEMPLATE holds what a rule asks."""
+    if rule["partner_only"]:
+        return {"Partner"}
+    out = set(ROLES)
+    for pair in rule["all"]:
+        assert pair in sets, f"{pair} is not a pair of core/permissions.py"
+        out &= sets[pair]
+    if rule["any"]:
+        for pair in rule["any"]:
+            assert pair in sets, f"{pair} is not a pair of core/permissions.py"
+        out &= set().union(*(sets[pair] for pair in rule["any"]))
+    return out & set(ROLES)
+
+
+def _rule_words(rule: dict) -> str:
+    if rule["partner_only"]:
+        return "Partner only"
+    parts = [f"`{a}` `{b}`" for a, b in rule["all"]]
+    if rule["any"]:
+        parts.append(" or ".join(f"`{a}` `{b}`" for a, b in rule["any"]))
+    return " and ".join(parts)
+
+
+def _screen_rule(screens: list[tuple[str, dict]], href: str):
+    """The longest prefix the address is, or is under: the rule `screenRule()` answers in the browser."""
+    path = re.split(r"[?#]", href)[0]
+    path = path.rstrip("/") if len(path) > 1 else path
+    best = None
+    for prefix, rule in screens:
+        if (path == prefix or path.startswith(prefix + "/")) and (best is None or len(prefix) > len(best[0])):
+            best = (prefix, rule)
+    return best[1] if best else None
 
 
 def _holders(pairs, sets) -> set[str]:
@@ -149,7 +210,7 @@ def _client_lines(sets) -> list[str]:
     return lines
 
 
-def _panel_lines(sets, tile_roles, labels, staff_hidden_hrefs, manager_hidden_hrefs) -> list[str]:
+def _panel_lines(sets, tile_roles, labels, areas, screens) -> list[str]:
     lines: list[str] = []
     panels = {
         "home": "HomePanel.tsx", "clients": "ClientsPanel.tsx", "deadlines": "DeadlinesPanel.tsx",
@@ -175,12 +236,17 @@ def _panel_lines(sets, tile_roles, labels, staff_hidden_hrefs, manager_hidden_hr
             if re.search(r"\bpartnerOnly:\s*true", obj):
                 roles &= {"Partner"}
                 asks.append("Partner only")
-            if ws_id == "home":
-                # The Home panel filters its links by the href role rule (canAccessHref).
-                if href in manager_hidden_hrefs:
-                    roles -= {"Manager"}
-                if href in staff_hidden_hrefs:
-                    roles -= {"Executive", "Reviewer"}
+            # The one table: the rule of the area the address is in (Home lists the roots of two other areas) and the
+            # screen's own rule. `_AREA_OF` is the route-ownership chain's answer for the addresses a panel lists.
+            owner = _area_of(href)
+            if owner and owner != ws_id and owner in areas:
+                roles &= _rule_holders(areas[owner], sets)
+            own = _screen_rule(screens, href)
+            if own:
+                roles &= _rule_holders(own, sets)
+                words = _rule_words(own)
+                if words not in asks:
+                    asks.append(words)
             rows.append((label, href, ", ".join(asks), roles))
         rows.sort(key=lambda r: src.find(f'"{r[1]}"'))
         lines += ["", f"## {labels.get(ws_id, ws_id)} panel", "",
@@ -192,18 +258,23 @@ def _panel_lines(sets, tile_roles, labels, staff_hidden_hrefs, manager_hidden_hr
     return lines
 
 
+def _area_of(href: str):
+    """Which area owns an address: `lib/workspace/routeOwnership.ts`, read as the ordered list of prefixes it is."""
+    src = (WEB / "lib" / "workspace" / "routeOwnership.ts").read_text()
+    body = src[src.index("export function getActiveWorkspaceForPathname"):]
+    path = re.split(r"[?#]", href)[0]
+    for block in re.finditer(r"if \((.*?)\)\s*\n?\s*return \"([a-z]+)\";", body, re.S):
+        cond, area = block.group(1), block.group(2)
+        if any(path == exact for exact in re.findall(r'pathname === "([^"]+)"', cond)):
+            return area
+        if any(path.startswith(prefix) for prefix in re.findall(r'pathname\.startsWith\("([^"]+)"\)', cond)):
+            return area
+    return None
+
+
 def build() -> str:
     sets = _role_sets()
-    perm_src = (WEB / "lib" / "auth" / "permissions.ts").read_text()
-    partner_only = _set_literal(perm_src, "PARTNER_ONLY_WORKSPACES")
-    staff_hidden = _set_literal(perm_src, "STAFF_HIDDEN_WORKSPACES")
-    staff_hidden_hrefs = _set_literal(perm_src, "STAFF_HIDDEN_HREFS")
-    manager_hidden_hrefs = _set_literal(perm_src, "MANAGER_HIDDEN_HREFS")
-
-    def workspace_roles(ws_id: str) -> set[str]:
-        if ws_id in partner_only:
-            return {"Partner"}
-        return {"Partner", "Manager"} | (set() if ws_id in staff_hidden else {"Executive", "Reviewer"})
+    areas, screens = _access_table()
 
     tiles = []
     cfg = (WEB / "lib" / "workspace" / "workspaceConfig.ts").read_text()
@@ -211,16 +282,8 @@ def build() -> str:
         ws_id, label = _key(obj, "id"), _key(obj, "label")
         if not ws_id or not label or "defaultRoute" not in obj:
             continue
-        roles = workspace_roles(ws_id)
-        req, anyof = _requires(obj), _requires_any(obj)
-        asks = ""
-        if req:
-            roles &= _holders([req], sets)
-            asks = f"`{req[0]}` `{req[1]}`"
-        if anyof:
-            roles &= set().union(*(_holders([p], sets) for p in anyof))
-            asks = " or ".join(f"`{a}` `{b}`" for a, b in anyof)
-        tiles.append((ws_id, label, asks, roles))
+        assert ws_id in areas, f"the area {ws_id!r} has no rule in screenAccess.ts"
+        tiles.append((ws_id, label, _rule_words(areas[ws_id]), _rule_holders(areas[ws_id], sets)))
     tile_roles = {t[0]: t[3] for t in tiles}
 
     lines = [
@@ -230,13 +293,14 @@ def build() -> str:
         "`apps/api/tests/test_the_role_by_screen_table_is_current.py` fails when this file and the code disagree.",
         "",
         "**What it reads.** The role templates in `apps/api/core/permissions.py` (what `rbac()` falls back to when a "
-        "person has no grant of their own), the workspace tiles and their role rules (`apps/web/lib/workspace/"
-        "workspaceConfig.ts`, `apps/web/lib/auth/permissions.ts`), each firm panel's entries and the permission each "
-        "asks, the Settings links' roles (`apps/web/lib/settings/groups.ts`) and the client workspace's sections "
-        "(`apps/web/lib/workspace/ClientNavContext.tsx`).",
+        "person has no grant of their own), the one table of which permission opens which area of the firm menu and "
+        "which screen (`apps/web/lib/access/screenAccess.ts`: since 21-11-2026 the menu, the page and the guide all "
+        "follow it, and no list of roles hides an area or an address), each firm panel's entries and the permission "
+        "each names itself, the Settings links' roles (`apps/web/lib/settings/groups.ts`) and the client workspace's "
+        "sections (`apps/web/lib/workspace/ClientNavContext.tsx`).",
         "",
         "**What it does not read.** A per-person grant or block (the Team screen's grid) changes what one person is "
-        "offered and is not here. A page drawn for a role may still narrow its rows to the clients the person is "
+        "offered and is not here: this is what each ROLE starts with. A page drawn for a role may still narrow its rows to the clients the person is "
         "assigned to (a Partner sees every client; every other role sees only assigned ones), hide a button the "
         "person may not use, or be refused by the server. A Client-portal contact and an employee are not staff and "
         "have their own portals, which read only their own client's or their own records (see "
@@ -250,9 +314,9 @@ def build() -> str:
         "|---|---|" + "---|" * len(ROLES),
     ]
     for _, label, asks, roles in tiles:
-        lines.append(f"| {label} | {asks or 'the role rule only'} | " + " | ".join(_cell(roles)) + " |")
+        lines.append(f"| {label} | {asks or 'nothing: always offered'} | " + " | ".join(_cell(roles)) + " |")
 
-    lines += _panel_lines(sets, tile_roles, {t[0]: t[1] for t in tiles}, staff_hidden_hrefs, manager_hidden_hrefs)
+    lines += _panel_lines(sets, tile_roles, {t[0]: t[1] for t in tiles}, areas, screens)
     lines += _settings_lines() + _client_lines(sets)
     return "\n".join(lines) + "\n"
 
