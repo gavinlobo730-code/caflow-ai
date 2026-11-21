@@ -30,8 +30,7 @@ import { useAuth, usePermissions } from "@/lib/auth/AuthContext";
 import { sectionsOffered, useClientNav } from "@/lib/workspace/ClientNavContext";
 import { api } from "@/lib/api";
 import { WORKSPACE_CONFIGS } from "@/lib/workspace/workspaceConfig";
-import { workspaceTileOffered } from "@/lib/workspace/tileOffered";
-import { canAccessWorkspace } from "@/lib/auth/permissions";
+import { useScreenAccess } from "@/lib/access/useScreenAccess";
 import {
   MAX_QUESTION, answersFor, offeredIds, plainSearch, sentenceFor, type GuideAnswer, type Places,
 } from "@/lib/guide/whereIs";
@@ -55,6 +54,7 @@ export function WhereIsGuide({ open, onClose }: { open: boolean; onClose: () => 
 function GuideDialog({ onClose }: { onClose: () => void }) {
   const { userRole } = useAuth();
   const { can, resolved } = usePermissions();
+  const { areaOn } = useScreenAccess();
   const { clientId, client } = useClientNav();
   const [question, setQuestion] = useState("");
   const [asking, setAsking] = useState(false);
@@ -72,10 +72,8 @@ function GuideDialog({ onClose }: { onClose: () => void }) {
   // The areas on this person's firm menu, worked out the way the menu works them out, so the sentence under an answer names
   // the entry they will actually see ("under More, then Accounting"; "under Team" for a Manager).
   const places: Places = useMemo(() => ({
-    areas: WORKSPACE_CONFIGS
-      .filter((ws) => canAccessWorkspace(ws.id, userRole) && workspaceTileOffered(ws, can, resolved))
-      .map((ws) => ws.id),
-  }), [userRole, can, resolved]);
+    areas: WORKSPACE_CONFIGS.filter((ws) => areaOn(ws.id)).map((ws) => ws.id),
+  }), [areaOn]);
 
   async function ask() {
     const asked = question.trim().slice(0, MAX_QUESTION);

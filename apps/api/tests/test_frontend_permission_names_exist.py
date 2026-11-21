@@ -26,7 +26,10 @@ from core.permissions import PERMISSIONS
 WEB = pathlib.Path(__file__).resolve().parents[3] / "apps" / "web"
 
 # can("resource", "action") — the hook form. `\bcan\(` deliberately does not
-# match canAccessHref( / canAccessWorkspace( / canAll(, which take other shapes.
+# match canAll(, which takes another shape. The pairs of the one table of areas and
+# screens (`apps/web/lib/access/screenAccess.ts`, POST-A-543) are written in a third
+# shape and are held to the matrix where they are read: `scripts/role_by_screen.py`
+# refuses to build the role-by-screen document over a pair the matrix does not have.
 _CALL = re.compile(r'\bcan\(\s*"([a-z_]+)"\s*,\s*"([a-z_]+)"\s*\)')
 # requires: ["resource", "action"] — the nav-item form used by the panels.
 _REQUIRES = re.compile(r'requires:\s*\[\s*"([a-z_]+)"\s*,\s*"([a-z_]+)"\s*\]')

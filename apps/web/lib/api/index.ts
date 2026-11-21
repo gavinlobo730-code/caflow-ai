@@ -7711,6 +7711,13 @@ export const api = {
     reject: (id: string, reason?: string) =>
       request(`/api/approvals/${id}/reject`, { method: "POST", body: JSON.stringify({ reason }) }),
     cancel: (id: string) => request(`/api/approvals/${id}/cancel`, { method: "POST" }),
+    /** Ask the firm's Partners for one permission (POST-A-543). Any member of staff may; the server says what may be
+     *  asked for and that nobody approves their own. `asked_from` and `note` are the asker's own words, shown as such. */
+    requestAccess: (body: { resource: string; action: string; asked_from?: string; note?: string }) =>
+      request<ApiResp<{ id: string; status: string; asked_at: string | null }>>(
+        "/api/approvals/access-requests", { method: "POST", body: JSON.stringify(body) }),
+    /** The caller's OWN requests for access and what became of each, newest first. Read through `readMine`. */
+    myAccessRequests: () => request<ApiResp<unknown>>("/api/approvals/access-requests/mine"),
   },
   // Module 9.0/M1: authoritative, append-only audit trail (Partner-only read).
   // Backed by the audit_log table, written server-side by audit_service.log_event

@@ -2,6 +2,8 @@
 //   node --experimental-strip-types --test lib/guide/whereIs.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { ALL_SCREENS } from "../navigation/screens.ts";
 import {
   AREA_NAMES, MAX_ANSWERS, answersFor, offeredIds, offeredTo, plainSearch, screenId, sentenceFor, whereOf, wordsOf, type Places, type Who,
@@ -9,13 +11,20 @@ import {
 import { MAIN_AREAS, MORE_AREAS } from "../workspace/outerMenu.ts";
 import type { UserRole } from "../auth/permissions.ts";
 
-// The pairs a Manager holds by default that this module asks about (the server's table gives a Manager each of them).
-const MANAGER_PAIRS = ["team:read", "assignment:read", "approval:read", "workload:read", "payroll:read", "pipeline:read", "engagement:read"];
-const who = (role: UserRole | null, pairs: string[] = [], over: Partial<Who> = {}): Who => ({
-  role, can: (r, a) => pairs.includes(`${r}:${a}`), resolved: true, clientSectionOffered: () => true, ...over,
-});
+// What each role holds to start with, written from the server's own table (`scripts/drive/role-permissions.json`, which a
+// Python test holds to `core/permissions.py`). Since POST-A-543 the guide asks permissions for every firm screen, so a
+// person here is a role WITH that role's permissions, less whatever a test blocks.
+const MAPS = JSON.parse(readFileSync(join(import.meta.dirname, "..", "..", "scripts", "drive", "role-permissions.json"), "utf8")) as Record<string, Record<string, string[]>>;
+const pairsOf = (role: UserRole | null): string[] =>
+  Object.entries(MAPS[role ?? "Reviewer"] ?? {}).flatMap(([resource, actions]) => actions.map((a) => `${resource}:${a}`));
+/** A person: `pairs` omitted means the role's own permissions; given, exactly those. */
+const who = (role: UserRole | null, pairs?: string[], over: Partial<Who> = {}): Who => {
+  const held = pairs ?? pairsOf(role);
+  return { role, can: (r, a) => held.includes(`${r}:${a}`), resolved: true, clientSectionOffered: () => true, ...over };
+};
+const without = (role: UserRole, ...blocked: string[]) => who(role, pairsOf(role).filter((p) => !blocked.includes(p)));
 const ids = (w: Who) => new Set(offeredIds(w));
-const PARTNER = who("Partner", MANAGER_PAIRS);
+const PARTNER = who("Partner");
 // The firm menus of a Partner (every area) and of a Manager (every area but My practice), as the menu works them out.
 const PARTNER_MENU: Places = { areas: [...MAIN_AREAS, ...MORE_AREAS] };
 const MANAGER_MENU: Places = { areas: [...MAIN_AREAS, ...MORE_AREAS].filter((a) => a !== "practice") };
@@ -33,7 +42,7 @@ test("a Partner is offered every screen", () => {
 });
 
 test("a Manager is offered Team and payroll, and nothing of My practice", () => {
-  const m = ids(who("Manager", MANAGER_PAIRS));
+  const m = ids(who("Manager"));
   for (const yes of ["firm:/team", "firm:/team/assignments", "firm:/approvals", "firm:/payroll", "firm:/gst", "firm:/settings/statutory-values"]) {
     assert.ok(m.has(yes), `a Manager is not offered ${yes}`);
   }
@@ -42,29 +51,43 @@ test("a Manager is offered Team and payroll, and nothing of My practice", () => 
   }
 });
 
-test("an Executive and a Reviewer are offered no Team screen, no My practice, no payroll and none of the firm's compliance desks", () => {
+test("an Executive and a Reviewer are offered Deadlines, the tax desks and Work, and no Team, My practice, payroll, pipeline or engagements", () => {
+  // POST-A-543: the guide follows the permissions. Both roles hold the compliance, tax and task permissions (they need them
+  // inside a client), so the firm-wide lists are theirs, each limited by the server to their assigned clients.
   for (const role of ["Executive", "Reviewer"] as UserRole[]) {
     const e = ids(who(role));
-    for (const no of ["firm:/team", "firm:/team/workload", "firm:/approvals", "firm:/practice", "firm:/payroll", "firm:/gst", "firm:/tds", "firm:/deadlines", "firm:/settings/statutory-values", "firm:/billing"]) {
+    for (const no of ["firm:/team", "firm:/team/workload", "firm:/approvals", "firm:/practice", "firm:/payroll", "firm:/pipeline", "firm:/engagements", "firm:/settings/statutory-values", "firm:/billing", "firm:/risks"]) {
       assert.ok(!e.has(no), `${role} is offered ${no}`);
     }
-    for (const yes of ["firm:/", "firm:/clients", "firm:/knowledge", "firm:/ai-assistant"]) assert.ok(e.has(yes), `${role} is not offered ${yes}`);
+    for (const yes of ["firm:/", "firm:/clients", "firm:/knowledge", "firm:/ai-assistant", "firm:/deadlines", "firm:/gst", "firm:/tds", "firm:/tasks", "firm:/work"]) assert.ok(e.has(yes), `${role} is not offered ${yes}`);
+  }
+  // Where the two differ: the books, and the three screens whose read needs the right to compute.
+  for (const id of ["firm:/accounting", "firm:/accounting/budget", "firm:/income-tax/book-to-tax", "firm:/income-tax/section-32"]) {
+    assert.ok(ids(who("Executive")).has(id), `an Executive is not offered ${id}`);
+    assert.ok(!ids(who("Reviewer")).has(id), `a Reviewer is offered ${id}, which the server refuses them`);
   }
 });
 
-test("a screen under an address the role's menus hide is hidden too", () => {
+test("a tick a Partner takes away removes the desk and every screen under it, for any role", () => {
   const deep = ALL_SCREENS.find((s) => s.scope === "firm" && s.href.startsWith("/gst/"));
   assert.ok(deep, "no screen under /gst/: the inventory has moved");
-  assert.equal(offeredTo(deep, who("Executive")), false);
-  assert.equal(offeredTo(deep, who("Manager", MANAGER_PAIRS)), true);
+  assert.equal(offeredTo(deep, who("Executive")), true);
+  assert.equal(offeredTo(deep, without("Executive", "gst:read")), false);
+  assert.equal(offeredTo(deep, without("Manager", "gst:read")), false, "a Manager a Partner blocked is still pointed at it");
+  assert.equal(offeredTo(screen("firm:/tds"), without("Manager", "gst:read")), true, "blocking one desk took another");
+  // A whole area: nothing under Work is offered to somebody who holds none of its pairs.
+  const noWork = without("Executive", "task:read", "time_entry:read", "workflow:read");
+  for (const id of ["firm:/work", "firm:/tasks", "firm:/time", "firm:/workflows"]) assert.ok(!ids(noWork).has(id), id);
 });
 
 test("nobody signed in, or a role that is not known, is offered what a Reviewer is and no more", () => {
   assert.deepEqual([...ids(who(null))].sort(), [...ids(who("Reviewer"))].sort());
+  // And a role that is not known never opens My practice, whatever permissions arrive with it.
+  assert.equal(ids(who(null, pairsOf("Partner"))).has("firm:/practice"), false);
 });
 
 test("a People screen needs the pair its reads need, once the permissions are known", () => {
-  const blocked = who("Manager", ["team:read"]);
+  const blocked = without("Manager", "workload:read");
   assert.equal(ids(blocked).has("firm:/team"), true);
   assert.equal(ids(blocked).has("firm:/team/workload"), false, "a Manager blocked from workload is still pointed at it");
   // While the permissions are still being read nothing is withheld on a pair.
@@ -85,7 +108,7 @@ test("a client's screen is offered when its section is, and needs a client to op
 });
 
 test("an answer is a screen on the list that the person is offered: in order, once, at most three, and nothing else", () => {
-  const offered = ids(who("Manager", MANAGER_PAIRS));
+  const offered = ids(who("Manager"));
   const got = answersFor(["firm:/tds", "firm:/made-up", "firm:/practice/billing", "firm:/tds", 7, null, "firm:/gst", "firm:/team", "firm:/"], offered, null, MANAGER_MENU);
   assert.deepEqual(got.map((a) => a.id), ["firm:/tds", "firm:/gst", "firm:/team"]);
   assert.equal(got.length, MAX_ANSWERS);

@@ -12,21 +12,13 @@ import {
   CheckSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useAuth } from "@/lib/auth/AuthContext";
-import { canAccessHref } from "@/lib/auth/permissions";
+import { useScreenAccess } from "@/lib/access/useScreenAccess";
 
 import { formatWeekdayDate, todayIstISO } from "@/lib/dates/format";
-// Home is the launchpad, so two of these are the ROOT of another workspace —
-// `/deadlines` and `/work`, each with its own rail tile. That is deliberate
-// (the two things due today are the deadline list and the work queue) and is
-// recorded in `scripts/a-screen-has-one-home.test.ts`'s LISTED_TWICE.
-//
-// ⚠️ WHICH MEANS THEY NEED THE SAME ROLE GATE THE RAIL APPLIES, and did not
-// have it. `/deadlines` is in `STAFF_HIDDEN_HREFS` and the `deadlines` and
-// `work` WORKSPACES are both in `STAFF_HIDDEN_WORKSPACES`, so the rail hides
-// them from an Executive, a Reviewer and a Client — while this panel, which
-// had no role filter at all, offered both to everyone. A hidden workspace
-// reachable from the panel of another one is the hiding not working.
+// Home is the launchpad, so two of these are the ROOT of another area, `/deadlines` and `/work`. That is deliberate (the two
+// things due today are the deadline list and the work queue) and is recorded in `scripts/a-screen-has-one-home.test.ts`'s
+// LISTED_TWICE. Each entry is offered by the one table the menu and the page gate ask (`lib/access/screenAccess.ts`,
+// POST-A-543), so this panel cannot offer a screen whose own area the person does not hold.
 const HOME_ITEMS = [
   { href: "/", label: "Morning Brief", icon: LayoutDashboard },
   { href: "/deadlines", label: "Deadlines", icon: Calendar },
@@ -39,8 +31,8 @@ const HOME_ITEMS = [
 
 export function HomePanel() {
   const pathname = usePathname();
-  const { userRole } = useAuth();
-  const items = HOME_ITEMS.filter((i) => canAccessHref(i.href, userRole));
+  const { offered } = useScreenAccess();
+  const items = HOME_ITEMS.filter((i) => offered(i.href));
   const dateStr = formatWeekdayDate(todayIstISO());
 
   return (

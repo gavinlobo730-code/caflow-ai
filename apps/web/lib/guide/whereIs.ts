@@ -23,9 +23,10 @@
  */
 import { ALL_SCREENS, screenHref, type Screen } from "../navigation/screens.ts";
 import { getActiveWorkspaceForPathname } from "../workspace/routeOwnership.ts";
-import { canAccessHref, canAccessWorkspace, type UserRole } from "../auth/permissions.ts";
+import type { UserRole } from "../auth/permissions.ts";
+import { mayOpen } from "../access/screenAccess.ts";
 import { SETTINGS_GROUPS, linkShownTo } from "../settings/groups.ts";
-import { PRACTICE_PEOPLE_SECTIONS, isPeoplePath, isPracticePath } from "../workspace/practiceWorkspace.ts";
+import { isPeoplePath, isPracticePath } from "../workspace/practiceWorkspace.ts";
 import { outerMenu } from "../workspace/outerMenu.ts";
 
 /** A question longer than this is cut before it is sent; the server refuses a longer one. */
@@ -40,15 +41,6 @@ export function screenId(s: Screen): string {
 
 const BY_ID: ReadonlyMap<string, Screen> = new Map(ALL_SCREENS.map((s) => [screenId(s), s]));
 
-/**
- * The firm screens whose page mounts a gate on one permission pair: the address (and everything under it), the resource and
- * the action. The menus, the gate and the guide read the same pair, so none of them offers what another refuses.
- */
-export const SCREEN_PAIRS: ReadonlyArray<readonly [prefix: string, resource: string, action: string]> = [
-  ["/pipeline", "pipeline", "read"],
-  ["/engagements", "engagement", "read"],
-];
-
 export interface Who {
   role: UserRole | null;
   can: (resource: string, action: string) => boolean;
@@ -58,24 +50,16 @@ export interface Who {
   clientSectionOffered: (sectionId: string) => boolean;
 }
 
-function ancestors(href: string): string[] {
-  const parts = href.split("/").filter(Boolean);
-  return parts.map((_, i) => "/" + parts.slice(0, i + 1).join("/"));
-}
-
-/** Whether this person is offered this screen, by the rules the menus ask. */
+/**
+ * Whether this person is offered this screen, by the rules the menus ask.
+ *
+ * A firm screen is asked of the one table (`lib/access/screenAccess.ts`, POST-A-543): its area's rule and its own. The guide
+ * therefore names exactly what the menu lists and what the page gate opens. Two families keep their own rule and are asked
+ * first: a Settings page (the roles its own link names) and a screen inside a client (the sections that client offers).
+ */
 export function offeredTo(s: Screen, who: Who): boolean {
   if (s.scope === "client") return who.clientSectionOffered(s.href.split("/")[0]);
   const href = s.href;
-  // My practice is a Partner's alone, and so is every screen drawn in its frame.
-  if (isPracticePath(href) || getActiveWorkspaceForPathname(href) === "practice") return canAccessWorkspace("practice", who.role);
-  // A People screen: whoever holds the pair its reads need (a Partner finds it in My practice, a Manager under Team).
-  if (isPeoplePath(href)) {
-    const exact = PRACTICE_PEOPLE_SECTIONS.find((p) => p.href.replace(/\/$/, "") === href);
-    const pair = (exact ?? PRACTICE_PEOPLE_SECTIONS[0]).requires;
-    return canAccessHref("/team", who.role) && (!who.resolved || who.can(pair[0], pair[1]));
-  }
-  // A Settings page: the roles its own link names, which are the roles its page admits.
   if (href === "/settings" || href.startsWith("/settings/")) {
     for (const group of SETTINGS_GROUPS) {
       const link = group.links.find((l) => l.href.split(/[?#]/)[0] === href);
@@ -83,16 +67,10 @@ export function offeredTo(s: Screen, who: Who): boolean {
     }
     return true;
   }
-  // A screen whose own gate asks a permission pair (POST-A-543): the pipeline and the engagement letters are shown to whoever
-  // holds the pair their reads need, by the Partner's ticks and not by a role. `SCREEN_PAIRS` is the list, and
-  // `scripts/a-screen-behind-a-tick-is-offered-by-that-tick.test.ts` holds it to the gates the pages mount.
-  const pair = SCREEN_PAIRS.find(([prefix]) => href === prefix || href.startsWith(prefix + "/"));
-  if (pair && who.resolved && !who.can(pair[1], pair[2])) return false;
-  // Every other firm screen: its area's role rule, and no address above it that the role's menus hide.
-  const area = getActiveWorkspaceForPathname(href);
-  if (area && !canAccessWorkspace(area, who.role)) return false;
-  if (area === "payroll" && who.resolved && !who.can("payroll", "read")) return false;
-  return ancestors(href).every((a) => canAccessHref(a, who.role));
+  const isPartner = who.role === "Partner";
+  // Until the permissions are known nothing is withheld on a pair; the Partner-only rule is asked of the role and stands.
+  const asker = who.resolved ? { can: who.can, isPartner } : { can: () => true, isPartner };
+  return mayOpen(href, asker).allowed;
 }
 
 /** The ids of every screen this person is offered: what the guide may answer with. */

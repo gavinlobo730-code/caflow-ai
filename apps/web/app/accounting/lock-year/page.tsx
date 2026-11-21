@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from "react";
 import { Lock, Unlock, Shield, AlertTriangle, KeyRound, X, Eye, EyeOff } from "lucide-react";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
-import { RoleGuard } from "@/components/RoleGuard";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
@@ -354,10 +353,9 @@ function LockYearContent() {
   );
 }
 
+// WHO MAY OPEN THIS IS THE ONE TABLE'S ANSWER (`lib/access/screenAccess.ts`, POST-A-543): the permission the server asks to
+// set the lock, accounting approve, a Partner's by default. The page carried a Partner-only role guard of its own, which
+// refused somebody a Partner had ticked for it although the server would have let them lock the year.
 export default function LockYearPage() {
-  return (
-    <RoleGuard allowed={["Partner"]}>
-      <LockYearContent />
-    </RoleGuard>
-  );
+  return <LockYearContent />;
 }

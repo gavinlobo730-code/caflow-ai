@@ -472,6 +472,10 @@ interface PermissionsMatrixProps {
 }
 
 function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
+  // Changing a person's access is `team` `write` on the server, a Partner's by default. A Manager reads this tab and was
+  // offered Edit and a Save that the server then refused (POST-A-543): the button is behind the permission the save asks.
+  const { can } = usePermissions();
+  const mayEditAccess = can("team", "write");
   // THE MATRIX IS SERVED, AND THE GRID IS READ-ONLY.
   //
   // It used to be a per-member toggle grid backed by localStorage, under a
@@ -644,15 +648,17 @@ function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
                             <span className={`text-xs px-1.5 py-px rounded-full font-medium ${ROLE_COLORS[member.role]}`}>
                               {member.role}
                             </span>
-                            <button
-                              type="button"
-                              onClick={() => setAccessFor(member.id)}
-                              title={`Set what ${member.full_name} can reach`}
-                              className="inline-flex items-center gap-0.5 text-xs text-blue-700 hover:underline"
-                            >
-                              <SlidersHorizontal className="w-3 h-3" />
-                              Edit
-                            </button>
+                            {mayEditAccess && (
+                              <button
+                                type="button"
+                                onClick={() => setAccessFor(member.id)}
+                                title={`Set what ${member.full_name} sees on the menu and can open`}
+                                className="inline-flex items-center gap-0.5 text-xs text-blue-700 hover:underline"
+                              >
+                                <SlidersHorizontal className="w-3 h-3" />
+                                Edit
+                              </button>
+                            )}
                           </div>
                         </div>
                       </div>

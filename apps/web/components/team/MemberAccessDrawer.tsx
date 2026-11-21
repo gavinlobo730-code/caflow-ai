@@ -36,6 +36,24 @@
  *     is the SERVER's answer re-read after every save, not a local recompute —
  *     a browser that worked out the effect itself would be a second resolver,
  *     and the two disagreeing is exactly how the read-only grid came to lie.
+ *
+ * THE TICKS SIT UNDER THE MENU'S OWN NAMES (POST-A-543, the owner's decision of
+ * 21-11-2026: what a Partner ticks is what a person sees on the menu and can
+ *     open). The list used to be every permission the server knows, under its
+ *     technical name and in the server's order, so a Partner could not tell
+ *     which tick put which area on a person's menu. It is now grouped by the
+ *     areas of the firm menu, read from the one table that decides them
+ *     (`lib/access/permissionGroups.ts` over `screenAccess.ts`): under each
+ *     area, the permissions that put it on the menu and the ones that open a
+ *     screen inside it, in plain words, with what each opens. What is left
+ *     over (what a person may DO inside a screen) is one group beneath.
+ *
+ * THE PREVIEW IS A PREVIEW, AND SAYS SO
+ *     "Their menu" is the firm menu's own arithmetic over the choices in the
+ *     drawer, so a Partner sees the effect of a tick before saving it. Until a
+ *     save it is of a draft; after one the drawer holds the server's answer
+ *     and the preview is worked from that. My practice is never on it for
+ *     somebody who is not a Partner: no tick opens it.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -43,6 +61,9 @@ import { X, ShieldAlert, Lock, RotateCcw } from "lucide-react";
 import { api, type MemberAccessGrid } from "@/lib/api";
 import { denialNotice } from "@/lib/team/denialNotice";
 import { LoadingRegion } from "@/components/ui/skeleton";
+import { menuFor, menuGroups, menuPermissionKeys, pairWords, wouldHold } from "@/lib/access/permissionGroups";
+import { AREA_NAMES } from "@/lib/guide/whereIs";
+import { ALL_SCREENS } from "@/lib/navigation/screens";
 
 type Pair = {
   resource: string;
@@ -68,6 +89,12 @@ function choiceOf(overrides: Record<string, boolean>, key: string): Choice {
 function wireValue(choice: Choice): boolean | null {
   return choice === "role" ? null : choice === "allow";
 }
+
+/** The name a firm screen has on the menus, for the line that says what a permission opens. */
+const SCREEN_NAME: ReadonlyMap<string, string> = new Map(ALL_SCREENS.filter((s) => s.scope === "firm").map((s) => [s.href, s.name]));
+const MENU_GROUPS = menuGroups();
+const ON_THE_MENU = menuPermissionKeys();
+const names = (ids: readonly string[]) => ids.map((id) => AREA_NAMES[id] ?? id);
 
 /** Title Case from a snake_case resource or action, so no label list is kept here. */
 function humanise(token: string): string {
@@ -188,6 +215,89 @@ export default function MemberAccessDrawer({ userId, onClose, onSaved }: Props) 
 
   const isPartner = grid?.role === "Partner";
 
+  /** The server's description of each permission, by "resource:action". */
+  const described = useMemo(() => new Map((vocabulary ?? []).map((p) => [`${p.resource}:${p.action}`, p])), [vocabulary]);
+  /** What a person may do inside a screen: every permission that puts nothing on a menu, grouped by resource. */
+  const insideScreens = useMemo(
+    () => byResource
+      .map(([resource, pairs]) => [resource, pairs.filter((p) => !ON_THE_MENU.has(`${p.resource}:${p.action}`))] as [string, Pair[]])
+      .filter(([, pairs]) => pairs.length > 0),
+    [byResource],
+  );
+  /** The firm menu this person would have with the choices in the drawer: the menu's own rule, over a draft. */
+  const preview = useMemo(
+    () => (grid ? menuFor(wouldHold(grid.role_defaults, draft), isPartner) : null),
+    [grid, draft, isPartner],
+  );
+
+  /** One permission: its words, what the role gives, and the three choices. */
+  function row(p: Pair, words: string, opens?: string) {
+    if (!grid) return null;
+    const key = `${p.resource}:${p.action}`;
+    const current = draft[key] ?? "role";
+    const roleGives = (grid.role_defaults[p.resource] ?? []).includes(p.action);
+    const partnerFloor = isPartner && p.unrevokable_for_partner;
+    return (
+      <div key={key} data-permission={key} className="flex items-center justify-between gap-3 py-1.5 px-2 rounded hover:bg-ps-bg">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-ps-body">{words}</span>
+            <span className="text-3xs text-ps-hint">{roleGives ? "role allows" : "role does not allow"}</span>
+            {p.privilege_changing && (
+              <span
+                title="Granting this lets them change what other people can do."
+                className="inline-flex items-center gap-1 text-3xs text-state-attention bg-state-attention-surface px-1.5 py-px rounded"
+              >
+                <ShieldAlert className="w-3 h-3" />
+                changes others&apos; access
+              </span>
+            )}
+            {partnerFloor && (
+              <span
+                title="A Partner cannot be blocked from this — it is what reaches this screen, so removing it would leave nobody able to put it back."
+                className="inline-flex items-center gap-1 text-3xs text-ps-label bg-ps-muted px-1.5 py-px rounded"
+              >
+                <Lock className="w-3 h-3" />
+                always on for a Partner
+              </span>
+            )}
+          </div>
+          {opens && <p className="text-3xs text-ps-hint mt-0.5">{opens}</p>}
+        </div>
+        <div className="flex shrink-0 rounded-md border border-ps-border overflow-hidden">
+          {CHOICES.map((c) => {
+            const disabled = partnerFloor && c.key === "block";
+            const active = current === c.key;
+            return (
+              <button
+                key={c.key}
+                type="button"
+                title={disabled ? "A Partner cannot be blocked from this." : c.title}
+                disabled={disabled}
+                aria-pressed={active}
+                onClick={() => setDraft((d) => ({ ...d, [key]: c.key }))}
+                className={[
+                  "px-2 py-1 text-2xs border-r last:border-r-0 border-ps-border",
+                  disabled
+                    ? "text-ps-disabled cursor-not-allowed"
+                    : active
+                      ? c.key === "block"
+                        ? "bg-red-600 text-white"
+                        : c.key === "allow"
+                          ? "bg-state-ready-solid text-white"
+                          : "bg-ps-muted text-ps-ink"
+                      : "text-ps-label hover:bg-ps-bg",
+                ].join(" ")}
+              >
+                {c.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/30" onClick={(e) => { e.stopPropagation(); if (!saving) onClose(); }}>
       <div
@@ -240,81 +350,73 @@ export default function MemberAccessDrawer({ userId, onClose, onSaved }: Props) 
           {!vocabulary || !grid ? (
             <LoadingRegion label="Loading this member's access" className="text-sm text-ps-hint">Loading…</LoadingRegion>
           ) : (
-            byResource.map(([resource, pairs]) => (
-              <div key={resource}>
-                <h3 className="text-xs font-semibold text-ps-ink mb-2">{humanise(resource)}</h3>
-                <div className="space-y-1">
-                  {pairs.map((p: Pair) => {
-                    const key = `${p.resource}:${p.action}`;
-                    const current = draft[key] ?? "role";
-                    const roleGives = (grid.role_defaults[p.resource] ?? []).includes(p.action);
-                    const partnerFloor = isPartner && p.unrevokable_for_partner;
-                    return (
-                      <div
-                        key={key}
-                        className="flex items-center justify-between gap-3 py-1.5 px-2 rounded hover:bg-ps-bg"
-                      >
-                        <div className="min-w-0 flex items-center gap-2">
-                          <span className="text-xs text-ps-body">{humanise(p.action)}</span>
-                          <span className="text-3xs text-ps-hint">
-                            {roleGives ? "role allows" : "role does not allow"}
-                          </span>
-                          {p.privilege_changing && (
-                            <span
-                              title="Granting this lets them change what other people can do."
-                              className="inline-flex items-center gap-1 text-3xs text-state-attention bg-state-attention-surface px-1.5 py-px rounded"
-                            >
-                              <ShieldAlert className="w-3 h-3" />
-                              changes others&apos; access
-                            </span>
-                          )}
-                          {partnerFloor && (
-                            <span
-                              title="A Partner cannot be blocked from this — it is what reaches this screen, so removing it would leave nobody able to put it back."
-                              className="inline-flex items-center gap-1 text-3xs text-ps-label bg-ps-muted px-1.5 py-px rounded"
-                            >
-                              <Lock className="w-3 h-3" />
-                              always on for a Partner
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex shrink-0 rounded-md border border-ps-border overflow-hidden">
-                          {CHOICES.map((c) => {
-                            const disabled = partnerFloor && c.key === "block";
-                            const active = current === c.key;
-                            return (
-                              <button
-                                key={c.key}
-                                type="button"
-                                title={disabled
-                                  ? "A Partner cannot be blocked from this."
-                                  : c.title}
-                                disabled={disabled}
-                                onClick={() => setDraft((d) => ({ ...d, [key]: c.key }))}
-                                className={[
-                                  "px-2 py-1 text-2xs border-r last:border-r-0 border-ps-border",
-                                  disabled
-                                    ? "text-ps-disabled cursor-not-allowed"
-                                    : active
-                                      ? c.key === "block"
-                                        ? "bg-red-600 text-white"
-                                        : c.key === "allow"
-                                          ? "bg-state-ready-solid text-white"
-                                          : "bg-ps-muted text-ps-ink"
-                                      : "text-ps-label hover:bg-ps-bg",
-                                ].join(" ")}
-                              >
-                                {c.label}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })}
+            <>
+              {preview && (
+                <div className="rounded-md border border-ps-border bg-ps-bg/60 px-3 py-2.5" data-menu-preview>
+                  <p className="text-xs font-semibold text-ps-ink">
+                    {dirty ? "Their menu once you save" : "Their menu now"}
+                  </p>
+                  <p className="text-xs text-ps-body mt-1" data-menu-preview-main>{names(preview.main).join(" · ")}</p>
+                  {preview.more.length > 0 && (
+                    <p className="text-xs text-ps-label mt-0.5" data-menu-preview-more>
+                      Under More: {names(preview.more).join(" · ")}
+                    </p>
+                  )}
+                  <p className="text-3xs text-ps-hint mt-1.5">
+                    Home is on everyone&apos;s menu. My practice is a Partner&apos;s alone and no permission here opens it.
+                    {dirty ? " This is a preview of the choices below; nothing has changed until you save." : ""}
+                  </p>
                 </div>
-              </div>
-            ))
+              )}
+
+              {MENU_GROUPS.map((group) => {
+                const rows = group.permissions.filter((mp) => described.has(`${mp.resource}:${mp.action}`));
+                if (rows.length === 0) return null;
+                const area = AREA_NAMES[group.areaId] ?? group.areaId;
+                return (
+                  <div key={group.areaId} data-menu-group={group.areaId}>
+                    <h3 className="text-xs font-semibold text-ps-ink">{area}</h3>
+                    <p className="text-3xs text-ps-hint mb-2">
+                      {group.areaNeeds === "any"
+                        ? `${area} is on their menu when at least one of the permissions marked "puts ${area} on the menu" is allowed.`
+                        : `${area} is on their menu when the permission marked "puts ${area} on the menu" is allowed.`}
+                    </p>
+                    <div className="space-y-1">
+                      {rows.map((mp) => {
+                        // An address with no name on a menu (an older address that still opens) is not a thing a Partner can look for.
+                        const opened = mp.screens.map((href) => SCREEN_NAME.get(href)).filter((name): name is string => !!name);
+                        const parts = [
+                          mp.opensTheArea ? `Puts ${area} on the menu.` : "",
+                          opened.length > 0 ? `Opens: ${opened.join(", ")}.` : "",
+                          mp.alsoIn.length > 0 ? `The same permission also decides ${names(mp.alsoIn).join(", ")}.` : "",
+                        ].filter(Boolean);
+                        return row(described.get(`${mp.resource}:${mp.action}`)!, pairWords(mp.resource, mp.action), parts.join(" "));
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {insideScreens.length > 0 && (
+                <details data-inside-screens>
+                  <summary className="text-xs font-semibold text-ps-ink cursor-pointer">
+                    What they may do inside a screen ({insideScreens.reduce((n, [, pairs]) => n + pairs.length, 0)} permissions)
+                  </summary>
+                  <p className="text-3xs text-ps-hint mt-1 mb-3">
+                    These put nothing on a menu. They decide what a person may add, change, approve or delete on a screen
+                    they can already open, and are listed by the name the server gives each.
+                  </p>
+                  <div className="space-y-5">
+                    {insideScreens.map(([resource, pairs]) => (
+                      <div key={resource}>
+                        <h4 className="text-xs font-medium text-ps-ink mb-2">{humanise(resource)}</h4>
+                        <div className="space-y-1">{pairs.map((p: Pair) => row(p, humanise(p.action)))}</div>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
+            </>
           )}
         </div>
 

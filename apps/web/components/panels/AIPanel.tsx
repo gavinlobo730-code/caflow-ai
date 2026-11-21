@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Sparkles, ShieldAlert, BarChart3, MessageSquare, Brain, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePermissions } from "@/lib/auth/AuthContext";
+import { useScreenAccess } from "@/lib/access/useScreenAccess";
 
 // `/reports/cash-flow` was on the Reports landing page and nowhere else, so
 // from inside it there was no way back to any sibling — the rule in
@@ -40,7 +41,8 @@ export const AI_ITEMS: readonly AIItem[] = [
 export function AIPanel() {
   const pathname = usePathname();
   const { can, resolved } = usePermissions();
-  const items = AI_ITEMS.filter((i) => !i.requires || !resolved || can(i.requires[0], i.requires[1]));
+  const { offered } = useScreenAccess();
+  const items = AI_ITEMS.filter((i) => offered(i.href) && (!i.requires || !resolved || can(i.requires[0], i.requires[1])));
 
   return (
     <div className="flex flex-col h-full">

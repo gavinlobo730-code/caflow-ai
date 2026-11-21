@@ -1482,6 +1482,15 @@ EXEMPT: dict[str, str] = {
         "approval_requests has a firm_id and NO client_id column (migration "
         "083) — a governance request is a firm object. Covers GET "
         "(list_approvals) and POST (create_approval), which share this path.",
+    "/api/approvals/access-requests":
+        "same table. A member of staff asks for one permission for "
+        "THEMSELVES (POST-A-543): the stored request names the caller and a "
+        "permission pair, never a client, and what may be asked for and by "
+        "whom is services/access_request_service.prepare.",
+    "/api/approvals/access-requests/mine":
+        "same table, filtered to the rows the CALLER raised "
+        "(approval_repo.by_requester): the asker's own requests for access "
+        "and nobody else's.",
     "/api/approvals/types":
         "the static REQUEST_TYPES tuple. No stored data read at all.",
     "/api/approvals/{request_id}":
@@ -1836,7 +1845,7 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/service-catalogue": 6, "/api/time-entries": 10,
               "/api/dsc": 5, "/api/firm-hsn-library": 7, "/api/settings": 14,
               "/api/identity": 18, "/api/tally-migration": 7, "/api/reports": 2,
-              "/api/accounting": 21, "/api/approvals": 7, "/api/xbrl": 7,
+              "/api/accounting": 21, "/api/approvals": 9, "/api/xbrl": 7,
               "/api/income-tax": 11, "/api/compliance": 12,
               "/api/ai-insights": 5, "/api/eway-bill": 6, "/api/inventory": 6,
               "/api/public/engagement-letters": 3,

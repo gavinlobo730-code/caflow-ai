@@ -5,21 +5,18 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { workspaceTileOffered } from "./tileOffered.ts";
+import { AREA_RULES } from "../access/screenAccess.ts";
 
 const WEB = join(import.meta.dirname, "..", "..");
 const API = join(WEB, "..", "api");
 
 type Pair = readonly [string, string];
 
-/** The pairs on the Team entry of WORKSPACE_CONFIGS, read from the source (the file imports icons node cannot load). */
+/** The pairs the Team area asks, any one of which puts it on the menu: `AREA_RULES.team` in the one table (POST-A-543). */
 function teamAnyOf(): string[] {
-  const src = readFileSync(join(WEB, "lib", "workspace", "workspaceConfig.ts"), "utf8");
-  const at = src.indexOf('id: "team"');
-  assert.ok(at >= 0, "the Team workspace is gone from workspaceConfig.ts");
-  const block = src.slice(at, src.indexOf("\n  },", at));
-  const list = block.match(/requiresAnyOf:\s*\[(.*)\],?\s*$/m);
-  assert.ok(list, "the Team workspace names no requiresAnyOf: an Executive is offered a tile that opens on nothing");
-  return [...list[1].matchAll(/\["([a-z_]+)",\s*"([a-z_]+)"\]/g)].map((m) => `${m[1]}:${m[2]}`).sort();
+  const any = AREA_RULES.team.any;
+  assert.ok(any && any.length > 0, "the Team area names no pairs: an Executive is offered an area that opens on nothing");
+  return any.map(([r, a]) => `${r}:${a}`).sort();
 }
 
 /** Every entry TeamPanel lists, with the pair it filters on, or null where it carries none. */
@@ -75,8 +72,8 @@ test("nothing is withheld while the permissions are still being read", () => {
   assert.equal(workspaceTileOffered({ requiresAnyOf: [["team", "read"]] }, () => false, false), true);
 });
 
-test("the menu asks this rule, not a hand-written copy of it", () => {
+test("the menu asks the one table, not a hand-written copy of a rule", () => {
   const menu = readFileSync(join(WEB, "components", "shell", "WorkspaceMegaMenu.tsx"), "utf8");
-  assert.match(menu, /workspaceTileOffered\(ws, can, resolved\)/);
-  assert.doesNotMatch(menu, /ws\.requires\[0\]/, "the menu checks a pair by hand again and will miss requiresAnyOf");
+  assert.match(menu, /WORKSPACE_CONFIGS\.filter\(\(ws\) => areaOn\(ws\.id\)\)/);
+  assert.doesNotMatch(menu, /ws\.requires\[0\]|userRole ===/, "the menu decides an area by hand again");
 });

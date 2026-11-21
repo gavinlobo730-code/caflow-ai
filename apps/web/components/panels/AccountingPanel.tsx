@@ -26,7 +26,8 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { cn, isExactPath } from "@/lib/utils";
-import { usePermissions, useAuth } from "@/lib/auth/AuthContext";
+import { usePermissions } from "@/lib/auth/AuthContext";
+import { useScreenAccess } from "@/lib/access/useScreenAccess";
 
 /**
  * The Accounting workspace's browse surface.
@@ -60,10 +61,10 @@ import { usePermissions, useAuth } from "@/lib/auth/AuthContext";
  * not for. Account Groups and Export COA read the chart, which every member of
  * the firm may, and Loans & FD reads `loans`, so those three have none.
  *
- * `partnerOnly` mirrors a page's OWN `RoleGuard allowed={["Partner"]}` and is
- * used once, on Lock Financial Year. It is not a second permission system —
- * `rbac()` remains the boundary — it stops the panel offering a link that can
- * only bounce.
+ * Lock Financial Year asks `accounting` `approve`, the pair the server asks to set
+ * the lock (a Partner's by default). It used to carry a `partnerOnly` flag that
+ * mirrored a role guard on the page; both went with POST-A-543, so somebody a
+ * Partner ticks for it is offered it and can open it.
  *
  * Fee Billing and Data Migration map to this workspace (see routeOwnership.ts),
  * so their screens are grouped here rather than left unreachable from the rail.
@@ -82,7 +83,6 @@ export type NavItem = {
   icon: typeof GitBranch;
   exact?: boolean;
   requires?: [resource: string, action: string];
-  partnerOnly?: boolean;
 };
 
 // Exported so app/accounting/page.tsx can build its own quick-access cards for
@@ -174,8 +174,9 @@ export const NAV_GROUPS: Array<{ heading: string | null; items: NavItem[] }> = [
       // a Reviewer offered this link could only fill the form in and be refused.
       { label: "Trial Balance Import", href: "/accounting/trial-balance-import", icon: Scale,
         requires: ["accounting", "write"] },
+      // accounting.py set_year_lock → rbac("accounting", "approve").
       { label: "Lock Financial Year", href: "/accounting/lock-year", icon: Lock,
-        partnerOnly: true },
+        requires: ["accounting", "approve"] },
     ],
   },
   {
@@ -194,14 +195,14 @@ export const NAV_GROUPS: Array<{ heading: string | null; items: NavItem[] }> = [
 export function AccountingPanel() {
   const pathname = usePathname();
   const { can } = usePermissions();
-  const { userRole } = useAuth();
 
+  const { offered } = useScreenAccess();
   const groups = NAV_GROUPS.map((g) => ({
     ...g,
     items: g.items.filter(
       (i) =>
-        (!i.requires || can(i.requires[0], i.requires[1])) &&
-        (!i.partnerOnly || userRole === "Partner"),
+        offered(i.href) &&
+        (!i.requires || can(i.requires[0], i.requires[1])),
     ),
   })).filter((g) => g.items.length > 0);
 

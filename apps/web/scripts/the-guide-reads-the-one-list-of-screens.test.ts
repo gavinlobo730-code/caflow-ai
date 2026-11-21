@@ -66,8 +66,8 @@ test("the guide calls each area of the firm menu by the name the menu gives it",
   assert.deepEqual(AREA_NAMES, Object.fromEntries(pairs), "the guide's names for the menu's areas are not the menu's own");
   // And the box works the person's areas out the way the menu does.
   const box = code("components/guide/WhereIsGuide.tsx");
-  assert.match(box, /canAccessWorkspace\(ws\.id, userRole\) && workspaceTileOffered\(ws, can, resolved\)/);
-  assert.match(code("components/shell/WorkspaceMegaMenu.tsx"), /canAccessWorkspace\(ws\.id, userRole\) && workspaceTileOffered\(ws, can, resolved\)/);
+  assert.match(box, /WORKSPACE_CONFIGS\.filter\(\(ws\) => areaOn\(ws\.id\)\)/);
+  assert.match(code("components/shell/WorkspaceMegaMenu.tsx"), /WORKSPACE_CONFIGS\.filter\(\(ws\) => areaOn\(ws\.id\)\)/);
 });
 
 test("the guided tips are gone: no file, no mark on a screen, no call", () => {
