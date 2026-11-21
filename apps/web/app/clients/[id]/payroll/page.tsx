@@ -2053,7 +2053,7 @@ function StatutoryIdentityTab({ clientId }: { clientId: string }) {
         <div>
           <h2 className="text-sm font-semibold text-ps-ink">Professional tax registrations</h2>
           <p className="text-2xs text-ps-label mt-0.5">
-            One per state — PT is a state levy under Article 276(2). The PTRC is the
+            One per state: professional tax is set by each state. The PTRC is the
             employer&apos;s authority to <em>deduct</em> from employees and deposit; the PTEC is the
             entity&apos;s own enrolment. A payroll run reports any state it deducts in with no PTRC here.
           </p>

@@ -4,18 +4,28 @@
  * The firm's own reading of the state professional-tax notifications.
  *
  * WHY THIS SCREEN EXISTS
- *   Professional tax is levied by twenty-two states, each setting its own slabs
- *   by its own notification on its own cycle. The software models FOUR of them
- *   and reports the rest as gaps rather than deducting zero — which is right,
- *   because Article 276 makes the employer liable to deduct and deposit it, so
- *   a silent nil is a shortfall with interest, not an absence of liability.
+ *   Professional tax is set by each state, by its own notification on its own
+ *   cycle. The software has slabs built in for FOUR states and, for any other
+ *   state it lists as levying the tax, reports a gap on the payroll run rather
+ *   than deducting zero in silence: a nil nobody can see is the fault.
  *
  *   Correct, and not a product: the only remedy on offer was that somebody
- *   edits Python. Writing the other eighteen states' slabs from memory would
- *   put eighteen confidently wrong deductions into people's pay, and
- *   maintaining them against notification cycles is a compliance research desk
- *   with no revenue behind it. So the CA records what they READ — once per
- *   firm, reused across every client of that firm.
+ *   edits Python. Writing the other states' slabs from memory would put
+ *   confidently wrong deductions into people's pay, and maintaining them
+ *   against notification cycles is a compliance research desk with no revenue
+ *   behind it. So the CA records what they READ — once per firm, reused across
+ *   every client of that firm.
+ *
+ * WHAT THE PAGE SAYS, AND WHAT IT NO LONGER SAYS (POST-A-539, 21-11-2026)
+ *   The owner, shown this page on the live Test Firm, could not tell what it was
+ *   for, and two of its sentences stated things nobody had confirmed: that
+ *   twenty-two states levy the tax (the list is this product's own, graded [S],
+ *   and probably one or two too long) and that Article 276 makes the employer
+ *   liable (a legal reading that was never checked against the text; the duty to
+ *   deduct is each state's own Act). The page now says what it is for in its
+ *   first sentence, says only what the product does, says the list of states is
+ *   the product's own and unconfirmed, and counts nothing but what it holds.
+ *   The two questions are on the owner's list (S9) for a practising CA.
  *
  * THE WHOLE SET IN ONE SAVE
  *   The bands must start at zero and meet end to start, and the endpoint
@@ -236,10 +246,11 @@ export default function StatutoryValuesPage() {
           title="Statutory values"
           subtitle={
             <>
-              Your firm&apos;s reading of the state professional-tax notifications, recorded
-              once and used for every client with staff in that state. Twenty-two states levy
-              it; {modelled.length} are built in and verified against the state Act, and the
-              rest are reported as gaps on a run until you record them here.
+              Professional tax is set by each state. PracticeSync has the slabs of{" "}
+              {modelled.length} state{modelled.length === 1 ? "" : "s"} built in. For any other state,
+              payroll deducts no professional tax and names the gap on the run, until you record
+              that state&apos;s slabs here from its own notification. What you record is used for
+              every client of your firm with staff in that state.
             </>
           }
           actions={
@@ -356,8 +367,11 @@ export default function StatutoryValuesPage() {
                   deduct nothing
                 </p>
                 <p className="text-xs text-ps-label mt-0.5">
-                  An employee in one of these is reported as a gap on the run and has no
-                  professional tax withheld. Article 276 makes the employer liable either way.
+                  PracticeSync lists these as levying professional tax and has no slabs for
+                  them, so an employee in one of them has none withheld and the payroll run
+                  names the gap. Record a state&apos;s slabs above if your firm has staff there.
+                  The list is PracticeSync&apos;s own and has not been confirmed against each
+                  state&apos;s current law, so check your state before relying on it.
                 </p>
                 <div className="flex flex-wrap gap-1.5 mt-2">
                   {stillMissing.map(code => (

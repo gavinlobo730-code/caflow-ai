@@ -538,8 +538,7 @@ def _statutory_gaps(emp: dict, pt_covered: Optional[set] = None) -> list[str]:
         # The EMPLOYEE-level question, not the state-level one (PAY-05). A
         # blank state is "not a gap" as a statement about a state code and is
         # exactly a gap once the CA has ticked pt_applicable: nothing is
-        # withheld, month after month, and Article 276 leaves the employer
-        # liable for it.
+        # withheld, month after month, with nothing to show it.
         pt = classify_pt_for_employee(True, emp.get("pt_state"))
         # A state the FIRM has recorded usable slabs for is no longer a gap —
         # the deduction was computed, from a notification somebody read
@@ -4667,8 +4666,8 @@ def payroll_bank_advice_csv(
 # ── The firm's own reading of the state PT slabs ─────────────────────────────
 # Migration 327. domain/payroll/professional_tax.py models four of the
 # twenty-two states that levy PT and reports the rest as gaps. That refusal is
-# right — Article 276 makes the employer liable, so a silent nil is a shortfall
-# with interest — and it is also not a product: the only remedy on offer was
+# right (a nil nobody can see is the fault; who is liable for it is each state's
+# own Act, not read here) and it is also not a product: the only remedy on offer was
 # that somebody edits Python.
 #
 # So the CA records what they READ, once per firm, with the notification it came
