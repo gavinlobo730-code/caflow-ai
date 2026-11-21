@@ -41,14 +41,17 @@ import { MAIN_CONTENT_ID } from "@/components/shell/SkipToContent";
  */
 export function ClientShell({
   onOpenSearch,
+  practicePath = false,
   children,
 }: {
   onOpenSearch: () => void;
+  /** True on a fixed `/practice/…` address: My practice is this shell too (POST-A-532; `ClientTopBar` has the account). */
+  practicePath?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-ps-bg print:block print:h-auto print:overflow-visible">
-      <ClientTopBar onOpenSearch={onOpenSearch} />
+      <ClientTopBar onOpenSearch={onOpenSearch} practicePath={practicePath} />
       {/* The skip link's target — see SkipToContent. */}
       {/* `relative` (PRE-A-024): an absolutely positioned descendant with no positioned ancestor of its own (a
           screen-reader-only table caption is one) is otherwise placed against the WINDOW, escapes this scrolling

@@ -22,6 +22,7 @@ import { selectAll } from "@/lib/supabase/selectAll";
 import { daysBetweenLocalISO } from "@/lib/dateMath";
 import { formatDate, todayIstISO } from "@/lib/dates/format";
 import type { Client } from "@/lib/types";
+import Link from "next/link";
 import { Callout } from "@/components/ui/callout";
 // A payload field is not a list until something has checked.
 import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
@@ -365,7 +366,13 @@ export default function BillingPage() {
   // rather than testing the role, and a Manager granted billing sees the
   // controls their grant gives them.
   const { can } = usePermissions();
-  const canWrite = can("billing", "write");
+  // THIS SCREEN IS A RECORD SINCE 21-11-2026 (POST-B-193, decided by the owner on 20-11-2026). The firm's own fee billing lives
+  // in My practice, on the sales engine in the practice's own books (billing schedules, the practice's sales invoices, real GST,
+  // a posted journal). The bills raised here before that are kept exactly as they were and nothing is added to them or changed:
+  // every control that writes is drawn only where `canWrite` is true, and it is false for everybody. The handlers and the two
+  // dialogs below are kept so that the screen can be read against what it used to do; they are unreachable.
+  const FEE_BILLING_IS_A_RECORD = true;
+  const canWrite = !FEE_BILLING_IS_A_RECORD && can("billing", "write");
   const [transitioning, setTransitioning] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("dashboard");
   const [clients, setClients] = useState<Client[]>([]);
@@ -646,14 +653,22 @@ export default function BillingPage() {
   return (
     <div className="p-4 md:p-6 max-w-ps-data mx-auto space-y-5">
       <PageHeader
-        title="Fee Billing"
-        subtitle="Manage CA firm fee engagements and invoices"
+        title="Earlier fee bills"
+        subtitle="Fee bills raised before billing moved to My practice. A record: nothing here is added to or changed."
         actions={
           <button aria-label="Refresh" onClick={() => load()} className="p-2 rounded-lg border border-ps-border hover:bg-ps-bg text-ps-label">
             <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
           </button>
         }
       />
+
+      <Callout tone="note" title="New fee bills are raised in My practice">
+        Set up what you bill a client on{" "}
+        <Link href="/practice/billing/" className="font-medium underline underline-offset-2">Billing Schedules</Link>; each bill is
+        prepared as a draft in your own firm&apos;s books and issued from there. The bills on this screen stay as they were when
+        they were raised. What is still owed on them is on{" "}
+        <Link href="/accounting/receivables/" className="font-medium underline underline-offset-2">their ageing</Link>.
+      </Callout>
 
       {error && (
         <div className="rounded-lg bg-state-attention-surface border border-state-attention-border px-4 py-3 text-sm text-amber-800">{error}</div>
@@ -746,12 +761,14 @@ export default function BillingPage() {
       {/* Engagements */}
       {tab === "engagements" && (
         <div className="space-y-4">
-          <div className="flex justify-end">
-            <button onClick={() => setShowEngModal(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-brand text-white text-sm rounded-lg hover:bg-brand-dark">
-              <Plus size={15} /> Add Engagement
-            </button>
-          </div>
+          {canWrite && (
+            <div className="flex justify-end">
+              <button onClick={() => setShowEngModal(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-brand text-white text-sm rounded-lg hover:bg-brand-dark">
+                <Plus size={15} /> Add Engagement
+              </button>
+            </div>
+          )}
           {loading ? (
             <TableSkeleton cols={6} rows={3} />
           ) : (
@@ -772,14 +789,14 @@ export default function BillingPage() {
                     <tr><td colSpan={6}>
                       <EmptyState
                         className="py-10"
-                        title="No engagements yet"
-                        description="An engagement is the work you do for a client and the fee agreed for it. Fee invoices are raised from engagements."
-                        action={
+                        title="No engagements were recorded here"
+                        description="An engagement was the work done for a client and the fee agreed for it. New ones are set up as billing schedules in My practice."
+                        action={canWrite ? (
                           <EmptyStateActions>
                             <EmptyStateAction requires={["billing", "write"]} icon={<Plus size={14} />} label="Add Engagement"
                               onClick={() => setShowEngModal(true)} />
                           </EmptyStateActions>
-                        }
+                        ) : undefined}
                       />
                     </td></tr>
                   )}
@@ -834,7 +851,7 @@ export default function BillingPage() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <p className="text-xs text-ps-label">GST @ 18% applied on CA services — SAC 998211</p>
-            <div className="flex items-center gap-2">
+            {canWrite && <div className="flex items-center gap-2">
               <Button variant="plain" size="none" onClick={handleRunOverdueCheck} disabled={actionInFlight}
                 className="flex items-center gap-2 px-4 py-2 border border-ps-border text-ps-body text-sm rounded-lg hover:bg-ps-bg disabled:opacity-60">
                 <Clock size={15} /> {runningOverdueCheck ? "Checking…" : "Run Overdue Check"}
@@ -843,7 +860,7 @@ export default function BillingPage() {
                 className="flex items-center gap-2 px-4 py-2 bg-brand text-white text-sm rounded-lg hover:bg-brand-dark disabled:opacity-60">
                 <IndianRupee size={15} /> {raisingInvoice ? "Raising…" : "Raise Invoice"}
               </Button>
-            </div>
+            </div>}
           </div>
           {loading ? (
             <TableSkeleton cols={8} rows={3} />
@@ -867,16 +884,16 @@ export default function BillingPage() {
                     <tr><td colSpan={8}>
                       <EmptyState
                         className="py-10"
-                        title="No invoices yet"
-                        description="Fee invoices are raised from your engagements. Raise them once an engagement with a fee is in place."
-                        action={
+                        title="No fee invoices were raised here"
+                        description="Fee invoices are now prepared from billing schedules in My practice and issued from your own firm's books."
+                        action={canWrite ? (
                           <EmptyStateActions>
                             <EmptyStateAction requires={["billing", "write"]} icon={<IndianRupee size={14} />} label="Raise Invoice"
                               disabled={actionInFlight} onClick={() => handleRaiseInvoice()} />
                             <EmptyStateAction requires={["billing", "write"]} variant="secondary" icon={<Plus size={14} />} label="Add Engagement"
                               onClick={() => setShowEngModal(true)} />
                           </EmptyStateActions>
-                        }
+                        ) : undefined}
                       />
                     </td></tr>
                   )}
@@ -962,12 +979,14 @@ export default function BillingPage() {
       {/* Receipts */}
       {tab === "receipts" && (
         <div className="space-y-4">
-          <div className="flex justify-end">
-            <button onClick={() => setShowReceiptModal(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700">
-              <Plus size={15} /> Record Receipt
-            </button>
-          </div>
+          {canWrite && (
+            <div className="flex justify-end">
+              <button onClick={() => setShowReceiptModal(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700">
+                <Plus size={15} /> Record Receipt
+              </button>
+            </div>
+          )}
           <div className="overflow-x-auto rounded-xl border border-ps-border bg-white">
             <table className="w-full text-sm min-w-[700px]">
               <thead className="bg-ps-bg border-b border-ps-border">
@@ -985,14 +1004,14 @@ export default function BillingPage() {
                   <tr><td colSpan={6}>
                     <EmptyState
                       className="py-10"
-                      title="No receipts recorded"
-                      description="A receipt records money received against one of your fee invoices and clears it from what is owed."
-                      action={
+                      title="No receipts were recorded here"
+                      description="Money received against a fee bill is now recorded against the practice's own sales invoice, in My practice."
+                      action={canWrite ? (
                         <EmptyStateActions>
                           <EmptyStateAction requires={["billing", "write"]} icon={<Plus size={14} />} label="Record Receipt"
                             onClick={() => setShowReceiptModal(true)} />
                         </EmptyStateActions>
-                      }
+                      ) : undefined}
                     />
                   </td></tr>
                 )}

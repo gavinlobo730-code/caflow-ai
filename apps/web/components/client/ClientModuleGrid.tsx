@@ -42,7 +42,7 @@ import { usePermissions } from "@/lib/auth/AuthContext";
  * ONE VOCABULARY. `CLIENT_SECTIONS` already is the list of what a client
  * workspace holds, in the order it holds it, and this renders exactly it.
  */
-const SECTION_ICONS: Record<string, React.ElementType> = {
+export const SECTION_ICONS: Record<string, React.ElementType> = {
   overview:        LayoutGrid,
   accounting:      BookOpen,
   sales:           ShoppingCart,

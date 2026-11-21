@@ -10,6 +10,7 @@ import { SearchModal } from "@/components/SearchModal";
 import { SecureAccountBanner } from "@/components/shell/SecureAccountBanner";
 import { SkipToContent } from "@/components/shell/SkipToContent";
 import { isClientWorkspacePath } from "@/lib/workspace/clientPath";
+import { isPracticePath } from "@/lib/workspace/practiceWorkspace";
 import { GuidedTipsProvider } from "@/lib/tips/GuidedTipsContext";
 import { GuidedTip } from "@/components/tips/GuidedTip";
 
@@ -98,6 +99,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const showShell = !isOutsideTheShell(realPathname);
   const isClientWorkspace = isClientWorkspacePath(realPathname);
+  // My practice (POST-A-532): the firm's own screens at fixed addresses wear the client workspace's shell, because the
+  // practice IS a client of itself and its books are that workspace. A wrong answer here still draws a shell with search,
+  // Settings and sign-out, as the comment above getRealPathname requires.
+  const isPractice = isPracticePath(realPathname);
 
   // Global ⌘K / Ctrl+K listener — opens the command palette from anywhere
   useEffect(() => {
@@ -144,8 +149,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <GuidedTipsProvider>
           <GuidedTip pathname={realPathname} />
           <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
-          {isClientWorkspace ? (
-            <ClientShell onOpenSearch={() => setSearchOpen(true)}>{content}</ClientShell>
+          {isClientWorkspace || isPractice ? (
+            <ClientShell onOpenSearch={() => setSearchOpen(true)} practicePath={isPractice}>{content}</ClientShell>
           ) : (
             <WorkspaceShell onOpenSearch={() => setSearchOpen(true)}>{content}</WorkspaceShell>
           )}

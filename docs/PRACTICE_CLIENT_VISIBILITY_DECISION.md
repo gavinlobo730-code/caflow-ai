@@ -19,7 +19,7 @@ under four guardrails:
 | **G1 — Partner-only access** | `internal_client_service.assert_can_view_client` / `assert_partner_for_internal_id` (404 to non-Partners); router guard `require_client_access` mounted on accounting/banking/clients/gst/tds in `main.py`; RBAC `practice`+`billing` resources are Partner-only |
 | **G2 — excluded from client lists** | `client_repository.find_all/count` (`is_internal=false` default); frontend `lib/data/clients.ts` (`.eq("is_internal", false)`); analytics/search exclusions |
 | **G3 — one linked customer** | one customer per practice client (revenue-ops) |
-| **G4 — module cap** | `assert_not_internal_for_payroll` (no payroll/HR for the internal client) |
+| **G4 — the practice's own payroll is the Partner's alone** | `assert_practice_payroll_is_the_partners` at every payroll door (until 21-11-2026 a module cap: no payroll or HR for the internal client at all) |
 | **RLS (defence-in-depth)** | migration 074 restrictive policies: `get_my_role()='Partner' OR client_id IS DISTINCT FROM my_internal_client_id()` on `clients`, `journal_entries`, sales/GST/TDS tables (binds the anon-key browser; the service-role backend relies on the app-layer checks above) |
 
 ## Option A — Keep Partner-only (status quo)

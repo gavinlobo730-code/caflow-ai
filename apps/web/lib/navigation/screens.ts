@@ -109,8 +109,8 @@ export const SCREENS: Screen[] = [
   // that name sent the Sales hub tile here for a client's CUSTOMER
   // receivables, and a client owed ₹19.9 crore showed ₹0 (accounting-hub-2-05).
   // A CA typing "debtors" wants the Sales worklist below.
-  firm("/accounting/receivables", "Fee receivables (practice)", "Accounting",
-    ["unpaid fees", "fee invoices", "practice billing", "owed to the firm", "fee ageing"]),
+  firm("/accounting/receivables", "Earlier fee receivables", "Practice",
+    ["unpaid fees", "fee invoices", "fee receivables", "owed to the firm", "fee ageing"]),
   // The firm-level WORKLISTS (D22, G3) — which clients need work in a module
   // whose register lives only in the client workspace. Named with the words a
   // CA would type for the QUESTION, not for the module: somebody looking for
@@ -174,7 +174,7 @@ export const SCREENS: Screen[] = [
   firm("/mca", "MCA / ROC", "MCA", ["roc", "aoc-4", "mgt-7", "adt-1", "company filings"]),
 
   // ── Practice ──────────────────────────────────────────────────────────────
-  firm("/practice", "Practice", "Practice", ["firm"]),
+  firm("/practice", "My practice", "Practice", ["firm", "own books", "our books", "my firm", "practice home"]),
   firm("/practice/ar", "Practice receivables", "Practice", ["fee outstanding", "our debtors"]),
   firm("/practice/billing", "Practice billing", "Practice", ["fee bills", "invoicing"]),
   firm("/practice/collections", "Collections", "Practice", ["chasing", "reminders", "dunning"]),
@@ -193,7 +193,7 @@ export const SCREENS: Screen[] = [
   firm("/practice/benchmark", "Client benchmark", "Practice",
        ["effective tax rate", "ITC to purchases", "GST to turnover",
         "compare clients", "where does this client sit", "peer", "ratios"]),
-  firm("/billing", "Fee Billing", "Practice", ["fees", "client invoices"]),
+  firm("/billing", "Earlier fee bills", "Practice", ["fee billing", "old fee bills", "fees"]),
   firm("/team", "Team", "Practice", ["staff", "users", "permissions"]),
   firm("/team/assignments", "Client assignments", "Practice", ["who handles which client"]),
   firm("/team/login-history", "Login history", "Practice", ["sign ins", "access log"]),

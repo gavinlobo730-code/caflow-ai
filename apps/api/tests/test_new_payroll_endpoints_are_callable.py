@@ -4,6 +4,7 @@ Every payroll endpoint added in this batch is actually CALLED at least once.
 WHY THIS FILE EXISTS
 
 Four of these endpoints shipped with `assert_not_internal_for_payroll(client_id)`
+(the door check of the time, since replaced by `assert_practice_payroll_is_the_partners`)
 — one argument, where the function requires two. Every one of them would have
 raised TypeError on its first real request. Nothing caught it, because the work
 was tested at the domain level (the statutory arithmetic, which is where the

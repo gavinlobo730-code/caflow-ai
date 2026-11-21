@@ -167,9 +167,11 @@ export const WORKSPACE_CONFIGS: WorkspaceConfig[] = [
   },
   {
     // Amendment v1.1 — firm-as-internal-client + Revenue Operations (Partner-only).
+    // "My practice" since POST-A-532: the owner could not tell from "Practice" that this is where the firm's OWN books,
+    // billing and revenue are. The id, the route and who sees it (a Partner alone) are unchanged.
     id: "practice",
-    label: "Practice",
-    description: "Firm revenue & practice operations",
+    label: "My practice",
+    description: "Your own firm: books, billing and revenue",
     defaultRoute: "/practice",
     icon: Building2,
   },

@@ -80,6 +80,8 @@ export interface PayrollAttendanceBoard {
     id: string; employee_id: string; working_days: number; days_present: number;
     casual_leaves: number; sick_leaves: number; earned_leaves: number;
   }[];
+  /** The firm's own practice client, when its roster was added to the sheet because the screen was opened for it. */
+  practice_client_id?: string | null;
 }
 
 /** `GET /api/portal/employee/me`: the signed-in employee's own record. */
@@ -6341,12 +6343,16 @@ export const api = {
     // of them. See domain/payroll/attendance.py.
     /** The firm-wide attendance sheet for one month ("2026-08"): every employee the caller may see (four columns, leavers
      *  included) and the rows entered. The server reads them in pages of its own and narrows them to the caller's clients. */
-    attendanceBoard: (month: string) =>
-      request<ApiResp<PayrollAttendanceBoard>>(`/api/payroll/attendance-board?month=${encodeURIComponent(month)}`),
+    attendanceBoard: (month: string, clientId?: string) =>
+      // `clientId` is the client the screen was opened for (the link from a client's Payroll page). The firm-wide sheet leaves
+      // the firm's own practice out; naming it is how a Partner reaches the practice's own roster (POST-A-532).
+      request<ApiResp<PayrollAttendanceBoard>>(
+        `/api/payroll/attendance-board?month=${encodeURIComponent(month)}${clientId ? `&client_id=${encodeURIComponent(clientId)}` : ""}`),
     /** One line per employee the caller may see: the entitlement recorded for a calendar year (null when none) and the leave
      *  taken in it, added up by the server. */
-    leaveLedger: (year: number) =>
-      request<ApiResp<PayrollLeaveLedger>>(`/api/payroll/leave-ledger?year=${year}`),
+    // `clientId` as for `attendanceBoard`: the client the screen was opened for, so the practice's own staff are on the list.
+    leaveLedger: (year: number, clientId?: string) =>
+      request<ApiResp<PayrollLeaveLedger>>(`/api/payroll/leave-ledger?year=${year}${clientId ? `&client_id=${encodeURIComponent(clientId)}` : ""}`),
     getAttendance: (clientId: string, month: string) =>
       request(`/api/payroll/attendance?client_id=${encodeURIComponent(clientId)}&month=${encodeURIComponent(month)}`),
     // `rows` must carry ONLY the employees the CA actually touched. lop_days is
@@ -6399,8 +6405,12 @@ export const api = {
      */
     payrollEmployeeExceptions: (financialYear?: string) =>
       request(`/api/payroll/employee-exceptions${financialYear ? `?financial_year=${encodeURIComponent(financialYear)}` : ""}`),
-    payrollClientStates: (month?: string) =>
-      request(`/api/payroll/client-states${month ? `?month=${encodeURIComponent(month)}` : ""}`),
+    // `clientId` is the client whose own Payroll page is asking. The firm-wide answer leaves the firm's own practice out;
+    // naming it is how the practice's page reads its own line (POST-A-532). Any other id changes nothing.
+    payrollClientStates: (month?: string, clientId?: string) => {
+      const q = [month ? `month=${encodeURIComponent(month)}` : "", clientId ? `client_id=${encodeURIComponent(clientId)}` : ""].filter(Boolean).join("&");
+      return request(`/api/payroll/client-states${q ? `?${q}` : ""}`);
+    },
     /** Switch payroll on or off for one client. PARTNER ONLY (migration 332).
      *
      *  Through the API and NOT PostgREST, and that is not a convention here —

@@ -182,6 +182,10 @@ export interface ResolvedClient {
    *  offer to restore it (sweep-clients-admin-05) — every module still opens
    *  for an archived client, so without it nothing on the screen said so. */
   status?: string | null;
+  /** True for the firm's own practice, which is a client of itself (POST-A-532). The shell then draws the My practice bar and
+   *  not a client's: no switcher, no health badge, and the practice's own screens on its menu. Only a Partner can read the row
+   *  at all (guardrail G1), so nobody else is ever shown it. */
+  is_internal?: boolean | null;
 }
 
 export interface ClientNavContextValue {
@@ -251,7 +255,7 @@ export function ClientNavProvider({ children }: ClientNavProviderProps) {
     }
     supabase
       .from("clients")
-      .select("id, client_name, entity_type, gstin, status")
+      .select("id, client_name, entity_type, gstin, status, is_internal")
       .eq("id", clientId)
       // `.maybeSingle()`, deliberately, where the bar used `.single()`: single
       // answers an ERROR for zero rows, so "this client does not exist" and

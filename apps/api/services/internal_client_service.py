@@ -3,16 +3,19 @@ Firm-as-Internal-Client (Amendment v1.1) — provisioning + guardrail helpers.
 
 The CA firm is modelled as a single `clients` row with `is_internal = true`,
 referenced by `firms.internal_client_id`. It reuses the full client stack
-(accounting, GST, TDS, documents, reports, billing) but is governed by four
-mandatory guardrails:
+(accounting, GST, TDS, payroll, documents, reports, billing) but is governed by
+four guardrails:
 
   G1  Partner-only access to the internal client and its financial data.
   G2  Excluded from every client-population surface (counts, lists, Health,
       dashboards, reporting, search, lifecycle) — see clients_external + the
       repository default and the per-router patches.
   G3  Exactly one linked customer per practice client (wired in Batch 3).
-  G4  Module cap: accounting + GST + TDS + documents + reports + billing only;
-      payroll/HR provisioning is blocked for the internal client.
+  G4  The practice's own payroll is the Partner's alone. Until 21-11-2026 this was
+      a module cap (no payroll or HR for the internal client at all); the owner
+      decided the firm runs its own staff's payroll in My practice (POST-A-532),
+      so the cap is lifted and what stands at every payroll door is G1, asked by
+      name: a non-Partner is told 404, as for everything else of the practice.
 
 ENFORCEMENT NOTE. The backend connects with the Supabase SERVICE_ROLE key, which
 BYPASSES RLS (see core/supabase_client.py + SECURITY.md). Therefore these
@@ -80,16 +83,25 @@ def assert_partner_for_internal_id(client_id: Optional[str], current_user: dict)
         raise HTTPException(status_code=404, detail="Client not found")
 
 
-# ── Guardrail G4 — module cap (no payroll/HR for the internal client) ────────
+# ── Guardrail G4 — the practice's own payroll is the Partner's alone ─────────
 
-def assert_not_internal_for_payroll(client_id: Optional[str], firm_id: Optional[str]) -> None:
-    """G4: the internal client gets accounting/GST/TDS/documents/reports/billing
-    only — payroll/HR provisioning is blocked."""
-    if is_internal_client(client_id, firm_id):
-        raise HTTPException(
-            status_code=403,
-            detail="Payroll/HR is not available for the firm's internal practice client.",
-        )
+def assert_practice_payroll_is_the_partners(client_id: Optional[str], current_user: dict) -> None:
+    """G4 since 21-11-2026 (POST-A-532): the firm runs its own staff's payroll on the
+    practice client, and only a Partner may. A non-Partner who names the practice at a
+    payroll door is told 404, the answer G1 gives for everything else of the practice,
+    so its existence is not disclosed.
+
+    WHY A DOOR ASKS THIS BY NAME when two other layers already refuse: the router guard
+    (`require_client_access`) asks G1 of any request that names a client, and
+    `assert_client_access` refuses a non-Partner the practice because it cannot be
+    assigned (`core/authz` drops an assignment that names it). Both hold. But payroll's
+    own permission is Manager and above, these are the rows that say what each colleague
+    is paid, and until this change nothing of the practice was ever stored behind these
+    doors, so nothing had tested them against it. The door says what it relies on.
+
+    It replaced `assert_not_internal_for_payroll`, which refused everybody, the Partner
+    included, with a 403."""
+    assert_partner_for_internal_id(client_id, current_user)
 
 
 async def require_client_access(

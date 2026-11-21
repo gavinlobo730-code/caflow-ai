@@ -81,6 +81,12 @@ AUDITED: dict[str, tuple[str, ...]] = {
         # named and where assert_client_access runs; both endpoints reach the
         # database only through it.
         "_assemble_annexure_ii",
+        # The firm-wide payroll lists narrow through this since POST-A-532: it
+        # is `filter_by_client` and then guardrail G2 (the practice's own staff
+        # are left out of a list across clients). The sweep reads a route's own
+        # source, so it is named here; that it really calls `filter_by_client`
+        # first is `test_the_payroll_list_narrowing_is_the_assignment_narrowing_first`.
+        "_the_firms_clients_only",
     ),
     "/api/recurring-invoices": (
         "assert_client_access", "filter_by_client", "effective_client_ids",
@@ -1959,6 +1965,25 @@ def test_every_endpoint_in_an_audited_router_consults_client_scope(
         f"Firm scoping alone lets any member of the firm reach every client in "
         f"it. Expected one of: {', '.join(AUDITED[prefix])}. If this resource "
         f"genuinely has no client_id, add it to EXEMPT with the reason.")
+
+
+def test_the_payroll_list_narrowing_is_the_assignment_narrowing_first():
+    """`_the_firms_clients_only` is on the audited list for payroll. That is only
+    honest while it calls `filter_by_client` on what it was given, before anything
+    else, and returns nothing wider than that answer."""
+    import ast
+    import textwrap
+    from routers import payroll
+    fn = ast.parse(textwrap.dedent(inspect.getsource(payroll._the_firms_clients_only))).body[0]
+    stmts = [s for s in fn.body if not (isinstance(s, ast.Expr) and isinstance(s.value, ast.Constant))]
+    first = stmts[0]
+    assert isinstance(first, ast.Assign) and isinstance(first.value, ast.Call)
+    assert getattr(first.value.func, "id", None) == "filter_by_client"
+    assert [getattr(a, "id", None) for a in first.value.args] == ["current_user", "rows"]
+    assert [t.id for t in first.targets] == ["rows"], "the narrowed rows must replace what came in"
+    # Behaviour: it never returns a row the assignment narrowing dropped.
+    kept = payroll._the_firms_clients_only({"firm_id": "f", "role": "Partner", "id": "u"}, [{"client_id": "c1"}])
+    assert kept == [{"client_id": "c1"}]
 
 
 def test_a_shadowing_prefix_does_not_capture_a_longer_ones_routes():

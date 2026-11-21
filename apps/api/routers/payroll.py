@@ -34,7 +34,45 @@ from services import payroll_report_service
 from services.timeline_service import timeline_service
 from services import employee_portal_service
 from services import it_declaration_service
-from services.internal_client_service import assert_not_internal_for_payroll
+from services.internal_client_service import assert_practice_payroll_is_the_partners, get_internal_client_id
+
+
+def _the_firms_clients_only(current_user: dict, rows: list[dict]) -> list[dict]:
+    """A payroll list that names no client is a list across the firm's CLIENTS: narrowed to the caller's own, and WITHOUT the
+    practice's own staff.
+
+    Guardrail G2 says the practice is not one of the firm's clients to list or count. That cost nothing here while the practice
+    could have no payroll (G4 was a cap until 21-11-2026). Now that the firm runs its own staff's payroll on the practice client
+    (POST-A-532), every list below that answers across clients (the roster with no client named, the runs, the attendance and
+    declaration boards, the hub, the exceptions) would have put a Partner's own colleagues among their clients' employees, under
+    a client name the screens cannot show because every client picker leaves the practice out. So the firm-wide answer leaves it
+    out too, for everybody, and the practice's payroll is reached by NAMING the practice (from My practice), where the door asks
+    whose it is. `filter_by_client` is the assignment narrowing, unchanged; this is that, and then G2."""
+    rows = filter_by_client(current_user, rows)
+    practice = get_internal_client_id(current_user.get("firm_id"))
+    if not practice:
+        return rows
+    return [r for r in rows if str(r.get("client_id") or "") != str(practice)]
+
+
+def _the_practice_when_named(current_user: dict, client_id: Optional[str]) -> Optional[str]:
+    """The practice's client id when a firm-wide payroll list was opened FOR the practice, by a Partner; None otherwise.
+
+    The firm-wide lists leave the practice out (`_the_firms_clients_only`, G2), and three of them are the only place a
+    thing about the firm's own staff can be read at all: the attendance sheet, the leave ledger, and the line on a
+    client's Payroll page that says whether payroll is switched on. Each takes the client its screen was opened for and
+    adds that one client's rows when it is the practice. Any OTHER id is ignored here and never refused: on these
+    lists it only preselects a picker, the list itself is already narrowed to the caller's clients, and a stale id in
+    a bookmarked address must not turn the whole sheet into a 404. The practice named by somebody who is not a Partner
+    IS refused, as not found (G1), by the same two checks every payroll door for one client makes."""
+    if not client_id:
+        return None
+    practice = get_internal_client_id(current_user.get("firm_id"))
+    if not practice or str(practice) != str(client_id):
+        return None
+    assert_client_access(current_user, client_id)
+    assert_practice_payroll_is_the_partners(client_id, current_user)
+    return str(practice)
 import calendar
 
 from domain.payroll import wage_base
@@ -2112,7 +2150,7 @@ def list_employees(
     rows = fetch_all(_query, "id", label="payroll_employees")
     rows.sort(key=lambda r: (str(r.get("name") or "").casefold(), str(r.get("id") or "")))
     if not client_id:
-        rows = filter_by_client(current_user, rows)
+        rows = _the_firms_clients_only(current_user, rows)
     return api_response(True, [_with_full_month_gross(r) for r in rows])
 
 
@@ -2125,8 +2163,8 @@ def create_employee(
     db = _db()
     if not db:
         return api_response(True, {"id": "mock-id", **data.model_dump()})
-    # Guardrail G4: no payroll/HR for the internal practice client.
-    assert_not_internal_for_payroll(data.client_id, current_user["firm_id"])
+    # Guardrail G4: the practice's own payroll is the Partner's alone (a non-Partner is told 404).
+    assert_practice_payroll_is_the_partners(data.client_id, current_user)
     assert_payroll_enabled(db, current_user["firm_id"], data.client_id)
     payload = data.model_dump()
     payload["firm_id"] = current_user["firm_id"]
@@ -2210,7 +2248,7 @@ def import_employees(
         result = importer.validate(data.rows, existing_by_code={})
         return api_response(True, result.summary())
 
-    assert_not_internal_for_payroll(data.client_id, current_user["firm_id"])
+    assert_practice_payroll_is_the_partners(data.client_id, current_user)
     assert_payroll_enabled(db, current_user["firm_id"], data.client_id)
 
     # ONE query for every code already on file, not one per row — the whole
@@ -2489,8 +2527,8 @@ def create_salary_structure(
     db = _db()
     if not db:
         return api_response(True, {"id": "mock-id", **data.model_dump()})
-    # Guardrail G4: no payroll/HR for the internal practice client.
-    assert_not_internal_for_payroll(data.client_id, current_user["firm_id"])
+    # Guardrail G4: the practice's own payroll is the Partner's alone (a non-Partner is told 404).
+    assert_practice_payroll_is_the_partners(data.client_id, current_user)
     assert_payroll_enabled(db, current_user["firm_id"], data.client_id)
     payload = data.model_dump()
     payload["firm_id"] = current_user["firm_id"]
@@ -2536,7 +2574,7 @@ def apply_salary_structure(
                                    "preview": data.preview, "employees": [],
                                    "notes": []})
 
-    assert_not_internal_for_payroll(data.client_id, firm_id)
+    assert_practice_payroll_is_the_partners(data.client_id, current_user)
     assert_payroll_enabled(db, firm_id, data.client_id)
 
     structure = (db.table("salary_structures")
@@ -2673,7 +2711,7 @@ def list_runs(
     rows.sort(key=lambda r: str(r.get("id") or ""))
     rows.sort(key=lambda r: str(r.get("month") or ""), reverse=True)
     if not client_id:
-        rows = filter_by_client(current_user, rows)
+        rows = _the_firms_clients_only(current_user, rows)
     return api_response(True, rows)
 
 
@@ -2911,8 +2949,8 @@ def create_run(
     if not db:
         return api_response(True, {"id": "mock-run", "month": month, "status": "draft"})
 
-    # Guardrail G4: no payroll/HR for the internal practice client.
-    assert_not_internal_for_payroll(client_id, current_user["firm_id"])
+    # Guardrail G4: the practice's own payroll is the Partner's alone (a non-Partner is told 404).
+    assert_practice_payroll_is_the_partners(client_id, current_user)
     assert_payroll_enabled(db, current_user["firm_id"], client_id)
 
     # Check for duplicate run
@@ -3287,7 +3325,7 @@ def get_run_summaries(
         q = q.in_("month", payroll_report_service.months_of_fy(financial_year))
     runs = q.order("month", desc=True).execute().data or []
     if not client_id:
-        runs = filter_by_client(current_user, runs)
+        runs = _the_firms_clients_only(current_user, runs)
 
     summaries = payroll_report_service.run_summaries(
         db, current_user["firm_id"], [str(r["id"]) for r in runs])
@@ -3342,7 +3380,7 @@ def get_slips(
         rq = rq.eq("client_id", client_id)
     runs = rq.execute().data or []
     if not client_id:
-        runs = filter_by_client(current_user, runs)
+        runs = _the_firms_clients_only(current_user, runs)
     if not runs:
         return api_response(True, {"slips": [], "runs": []})
 
@@ -3373,11 +3411,21 @@ def get_year_end_summary(
     db = _db()
     if not db:
         return api_response(True, {"rows": [], "financial_years": []})
+    if client_id:
+        assert_practice_payroll_is_the_partners(client_id, current_user)
+
+    # WITH NO CLIENT NAMED THIS IS A LIST ACROSS CLIENTS, AND IT WAS NOT NARROWED AT ALL (found by the review of
+    # POST-A-532): the service reads every run of the firm through the privileged client, so a Manager assigned to
+    # nothing read the name, PAN, gross, net and TDS of every employee of every client. The runs are narrowed here, in
+    # the handler where the scope audit reads it, to the caller's clients and without the practice's own staff (G2).
+    def _runs_in_reach(runs: list[dict]) -> list[dict]:
+        return runs if client_id else _the_firms_clients_only(current_user, runs)
+
     return api_response(True, {
         "rows": payroll_report_service.employee_year_totals(
-            db, current_user["firm_id"], financial_year, client_id),
+            db, current_user["firm_id"], financial_year, client_id, narrow=_runs_in_reach),
         "financial_years": payroll_report_service.financial_years(
-            db, current_user["firm_id"]),
+            db, current_user["firm_id"], narrow=_runs_in_reach),
     })
 
 
@@ -4848,7 +4896,7 @@ def assert_payroll_enabled(db, firm_id: str, client_id: str) -> None:
     run, so this cannot switch off a payroll somebody is already running.
 
     Mock mode has no database and no settings; the guard is a no-op there, the
-    same way assert_not_internal_for_payroll's lookup is.
+    same way assert_practice_payroll_is_the_partners's lookup is.
     """
     if not db:
         return
@@ -5049,6 +5097,8 @@ def _firm_employees(db, firm_id: str) -> list[dict]:
 @router.get("/attendance-board")
 def attendance_board(
     month: str = Query(..., description='Payroll month, e.g. "2026-08"'),
+    # `Annotated` with a real default, so a direct call (a test, another handler) gets None and not the `Query` object.
+    client_id: Annotated[Optional[str], Query(description="The client the screen was opened for, whose roster is included even when it is the firm's own practice")] = None,
     current_user: dict = Depends(rbac("payroll", "read")),
 ):
     """The firm-wide attendance sheet for one month: every employee the caller may see, and the attendance rows entered.
@@ -5056,16 +5106,26 @@ def attendance_board(
     The Attendance screen used to read `payroll_employees` and `attendance` straight from PostgREST (POST-A-010). This is
     exactly what it loaded: the employees (leavers included, four columns) and the month's rows, both in the server's own
     pages and both narrowed to the clients the caller is assigned to. A row is an entered month; an employee with no row
-    has none entered, and the screen says so (the per-client `GET /attendance` is the one that reports `entered`)."""
+    has none entered, and the screen says so (the per-client `GET /attendance` is the one that reports `entered`).
+
+    THE PRACTICE'S OWN STAFF ARE ON THE SHEET ONLY WHEN THE PRACTICE IS NAMED (POST-A-532). The firm-wide sheet is the firm's
+    clients' and leaves the practice out (guardrail G2). But this screen is the one editor of attendance, and a client's Payroll
+    page links to it with its own client and month; opened that way for the practice, by a Partner, it must show the practice's
+    roster or the firm's own staff could have no attendance entered at all. `client_id` adds that one client's roster to the
+    sheet, after the scope check and the practice check, and the answer says so (`practice_client_id`) so the screen can name it."""
     try:
         year, mon = attendance_domain.parse_month(month)
     except attendance_domain.AttendanceError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
     db = _db()
     if not db:
-        return api_response(True, {"month": month, "employees": [], "attendance": []})
+        return api_response(True, {"month": month, "employees": [], "attendance": [], "practice_client_id": None})
     firm_id = current_user["firm_id"]
-    employees = filter_by_client(current_user, _firm_employees(db, firm_id))
+    everyone = _firm_employees(db, firm_id)
+    employees = _the_firms_clients_only(current_user, everyone)
+    practice_client_id = _the_practice_when_named(current_user, client_id)
+    if practice_client_id:
+        employees = employees + [e for e in everyone if str(e.get("client_id") or "") == practice_client_id]
     reach = {str(e["id"]) for e in employees}
     rows = fetch_all(
         lambda: db.table("attendance").select(
@@ -5076,12 +5136,16 @@ def attendance_board(
         "month": month,
         "employees": employees,
         "attendance": [r for r in rows if str(r.get("employee_id")) in reach],
+        # The practice's client id when its roster was added because the practice was named, else null. Always present.
+        "practice_client_id": practice_client_id,
     })
 
 
 @router.get("/leave-ledger")
 def leave_ledger(
     year: int = Query(..., ge=2000, le=2100, description="The calendar year the rows are kept under, e.g. 2026"),
+    *,
+    client_id: Annotated[Optional[str], Query(description="The client the screen was opened for, whose staff are included even when it is the firm's own practice")] = None,
     current_user: dict = Depends(rbac("payroll", "read")),
 ):
     """One line per employee the caller may see: the leave entitlement recorded for the year, and the leave taken in it.
@@ -5095,7 +5159,13 @@ def leave_ledger(
     if not db:
         return api_response(True, {"year": year, "rows": []})
     firm_id = current_user["firm_id"]
-    employees = filter_by_client(current_user, _firm_employees(db, firm_id))
+    everyone = _firm_employees(db, firm_id)
+    employees = _the_firms_clients_only(current_user, everyone)
+    # The practice's own staff, when the sheet was opened for the practice by a Partner (see `attendance_board`): the Leave
+    # tab draws only the lines it is sent, so without this the firm's own staff could have no entitlement recorded.
+    practice_client_id = _the_practice_when_named(current_user, client_id)
+    if practice_client_id:
+        employees = employees + [e for e in everyone if str(e.get("client_id") or "") == practice_client_id]
     # The lines are built from the employees in reach, so a balance or an attendance row of anyone else is never looked up.
     balances = {
         str(b.get("employee_id")): b
@@ -5167,6 +5237,7 @@ def put_attendance(
     db = _db()
     firm_id = current_user["firm_id"]
 
+    assert_practice_payroll_is_the_partners(body.client_id, current_user)
     assert_payroll_enabled(db, firm_id, body.client_id)
 
     if db:
@@ -5345,6 +5416,7 @@ def put_opening_positions(
     firm_id = current_user["firm_id"]
     if not db:
         return api_response(True, {"client_id": body.client_id, "saved": len(body.rows)})
+    assert_practice_payroll_is_the_partners(body.client_id, current_user)
     assert_payroll_enabled(db, firm_id, body.client_id)
     roster = _roster_all(db, firm_id, body.client_id)
     # An employee id the request names is refused unless it is on this client's roster (read by firm and client above).
@@ -5460,6 +5532,7 @@ def import_opening_positions(
     if not db:
         result = reader.read(body.rows, employee_by_code={})
         return api_response(True, {"ok": result.ok, "problems": result.problems, "would_record": len(result.rows)})
+    assert_practice_payroll_is_the_partners(body.client_id, current_user)
     assert_payroll_enabled(db, firm_id, body.client_id)
     roster_rows = (db.table("payroll_employees").select("id, name, status, joining_date, employee_code")
                    .eq("firm_id", firm_id).eq("client_id", body.client_id).execute().data) or []
@@ -5499,6 +5572,7 @@ def delete_opening_position(
     firm_id = current_user["firm_id"]
     if not db:
         return api_response(True, {"deleted": 0})
+    assert_practice_payroll_is_the_partners(client_id, current_user)
     assert_payroll_enabled(db, firm_id, client_id)
     _employee_of_client(db, current_user, employee_id, client_id)
     gone = (db.table("payroll_opening_positions").delete().eq("firm_id", firm_id).eq("client_id", client_id)
@@ -5584,6 +5658,7 @@ def put_one_time_earnings(
     db = _db()
     firm_id = current_user["firm_id"]
 
+    assert_practice_payroll_is_the_partners(body.client_id, current_user)
     assert_payroll_enabled(db, firm_id, body.client_id)
 
     if db:
@@ -5749,9 +5824,16 @@ def put_payroll_settings(
 def payroll_client_states(
     month: Optional[str] = Query(None, description='Payroll month, e.g. "2026-08". '
                                                    'Defaults to the current IST month.'),
+    *,
+    client_id: Annotated[Optional[str], Query(description="The client whose Payroll page is asking, whose line is included even when it is the firm's own practice")] = None,
     current_user: dict = Depends(rbac("payroll", "read"))
 ):
     """Where every client of this firm stands on one payroll month.
+
+    THE PRACTICE'S OWN LINE IS IN THE ANSWER ONLY WHEN THE PRACTICE ASKS (POST-A-532). A client's Payroll page reads its
+    own line here to say whether payroll is switched on. The list leaves the practice out (G2), so the practice's own
+    page found no line and said "Payroll is off" while every write succeeded. Named by a Partner, the practice's line
+    is added; the firm-wide queue (no client named) never carries it.
 
     THE FIRM GRAIN. Every other payroll read in this router answers for ONE
     client, because that is where a month is completed. This one answers for the
@@ -5825,8 +5907,11 @@ def payroll_client_states(
             "headcount": (run or {}).get("headcount"),
             "total_net_paise": (run or {}).get("total_net_paise"),
         })
-    return api_response(True, {"month": month,
-                               "clients": filter_by_client(current_user, out)})
+    clients = _the_firms_clients_only(current_user, out)
+    practice_client_id = _the_practice_when_named(current_user, client_id)
+    if practice_client_id:
+        clients = clients + [c for c in out if c["client_id"] == practice_client_id]
+    return api_response(True, {"month": month, "clients": clients})
 
 
 @router.get("/employee-exceptions")
@@ -5920,7 +6005,7 @@ def payroll_employee_exceptions(
             gap["client_name"] = names.get(str(emp.get("client_id"))) or ""
             out.append(gap)
 
-    out = filter_by_client(current_user, out)
+    out = _the_firms_clients_only(current_user, out)
     return api_response(True, {
         "financial_year": fy,
         "exceptions": out,
@@ -5928,7 +6013,7 @@ def payroll_employee_exceptions(
         # The denominator. "14 employees need a UAN" means something different
         # out of 20 than out of 400, and a list with no total invites the first
         # reading.
-        "employees_checked": len(filter_by_client(
+        "employees_checked": len(_the_firms_clients_only(
             current_user, [{"client_id": str(e.get("client_id"))} for e in employees])),
     })
 
@@ -5958,7 +6043,7 @@ def put_payroll_enablement(
     are refused. A switch that lost history would be one nobody dared use.
     """
     assert_client_access(current_user, body.client_id)
-    assert_not_internal_for_payroll(body.client_id, current_user["firm_id"])
+    assert_practice_payroll_is_the_partners(body.client_id, current_user)
 
     db = _db()
     firm_id = current_user["firm_id"]
@@ -6126,6 +6211,7 @@ def put_statutory_identity(
     # TAN, so its 26Q could never be computed — and the 422 telling the CA to
     # record it here sent them to a door that was locked (sweep-tds-mca-05).
     if set(update) - _NOT_PAYROLL_REGISTRATIONS:
+        assert_practice_payroll_is_the_partners(body.client_id, current_user)
         assert_payroll_enabled(db, firm_id, body.client_id)
     if not db:
         row = {**_MOCK_IDENTITY.get((firm_id, body.client_id), {}), **update}
@@ -6181,6 +6267,7 @@ def put_pt_registration(
 
     db = _db()
     firm_id = current_user["firm_id"]
+    assert_practice_payroll_is_the_partners(body.client_id, current_user)
     assert_payroll_enabled(db, firm_id, body.client_id)
     key = (firm_id, body.client_id, body.state)
     if not db:
@@ -7685,7 +7772,7 @@ def upsert_declaration(
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
     """
     assert_client_access(current_user, body.client_id)
-    assert_not_internal_for_payroll(body.client_id, current_user["firm_id"])
+    assert_practice_payroll_is_the_partners(body.client_id, current_user)
 
     candidate = decl_domain.Declaration(
         employee_id=body.employee_id,
@@ -8686,7 +8773,7 @@ def record_settlement(
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
     """
     assert_client_access(current_user, body.client_id)
-    assert_not_internal_for_payroll(body.client_id, current_user["firm_id"])
+    assert_practice_payroll_is_the_partners(body.client_id, current_user)
 
     if body.new_status not in ("resigned", "terminated"):
         raise HTTPException(
@@ -9140,7 +9227,7 @@ def record_perquisites(
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
     """
     assert_client_access(current_user, body.client_id)
-    assert_not_internal_for_payroll(body.client_id, current_user["firm_id"])
+    assert_practice_payroll_is_the_partners(body.client_id, current_user)
     db = _db()
     assert_payroll_enabled(db, current_user["firm_id"], body.client_id)
     if not db:
@@ -9247,7 +9334,7 @@ def add_salary_revision(
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
     """
     assert_client_access(current_user, body.client_id)
-    assert_not_internal_for_payroll(body.client_id, current_user["firm_id"])
+    assert_practice_payroll_is_the_partners(body.client_id, current_user)
     try:
         effective = date.fromisoformat(body.effective_from)
     except ValueError:
@@ -9344,7 +9431,7 @@ def add_employee_loan(
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
     """
     assert_client_access(current_user, body.client_id)
-    assert_not_internal_for_payroll(body.client_id, current_user["firm_id"])
+    assert_practice_payroll_is_the_partners(body.client_id, current_user)
     if body.principal_paise <= 0:
         raise HTTPException(status_code=422, detail="principal must be positive")
     if body.monthly_instalment_paise <= 0:

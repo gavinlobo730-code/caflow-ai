@@ -8,11 +8,9 @@ import {
   Upload,
   Download,
   BookOpen,
-  Receipt,
   DatabaseZap,
   LayoutDashboard,
   Users,
-  Clock,
   Landmark,
   FileText,
   Target,
@@ -120,13 +118,9 @@ export const NAV_GROUPS: Array<{ heading: string | null; items: NavItem[] }> = [
       // vendors.py list_vendors → rbac("client", "read").
       { label: "Supplier Master", href: "/accounting/suppliers", icon: Users,
         requires: ["client", "read"] },
-      // The PRACTICE's own fee receivables (`fee_invoices`) — what clients owe
-      // the firm. Named so, because "Receivables Ageing" read as the clients'
-      // own customer receivables, and the Sales hub tile linked here for them
-      // (accounting-hub-2-05). Those are the Sales worklist below.
-      // fee_invoices is read by someone with billing access only (495).
-      { label: "Fee Receivables", href: "/accounting/receivables", icon: Clock,
-        requires: ["billing", "read"] },
+      // "Fee Receivables" (`/accounting/receivables`, the ageing of the practice's EARLIER fee bills) left this menu on
+      // 21-11-2026 with Fee Billing (POST-B-193): the firm's own billing and what it is owed are in My practice, where the
+      // page is now listed as Earlier fee receivables.
       { label: "Loans & FD", href: "/accounting/loans", icon: Landmark },
       // income_tax.py msme_section_43bh → rbac("income_tax", "compute").
       { label: "MSME §43B(h)", href: "/accounting/msme-tracker", icon: FileText,
@@ -187,8 +181,8 @@ export const NAV_GROUPS: Array<{ heading: string | null; items: NavItem[] }> = [
   {
     heading: "Firm",
     items: [
-      { label: "Fee Billing", href: "/billing", icon: Receipt,
-        requires: ["billing", "read"] },
+      // "Fee Billing" (`/billing`) left this menu on 21-11-2026 (POST-B-193, the owner's decision of 20-11-2026): the firm's own
+      // fee billing is in My practice, and the old screen is a read-only record there, called Earlier fee bills.
       // tally_migration.py list_jobs → rbac("accounting", "read"), which
       // excludes Reviewer; the page's first call is that list.
       { label: "Data Migration", href: "/migration", icon: DatabaseZap,

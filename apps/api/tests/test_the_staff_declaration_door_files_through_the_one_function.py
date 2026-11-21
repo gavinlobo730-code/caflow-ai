@@ -40,7 +40,7 @@ def world(monkeypatch):
     wire_e2e(monkeypatch, db, [pr])
     monkeypatch.setattr(pr, "_db", lambda: db)
     monkeypatch.setattr(pr, "assert_payroll_enabled", lambda *a, **k: None)
-    monkeypatch.setattr(pr, "assert_not_internal_for_payroll", lambda *a, **k: None)
+    monkeypatch.setattr(pr, "assert_practice_payroll_is_the_partners", lambda *a, **k: None)
     logged: list = []
     monkeypatch.setattr(pr.timeline_service, "log", lambda *a, **k: logged.append((a, k)))
     db.logged = logged
@@ -144,7 +144,7 @@ def test_the_door_hands_the_function_the_routers_own_server_client_and_never_the
     monkeypatch.setattr(dbp, "_configured", lambda: True)
     monkeypatch.setattr(pr, "_db", dbp.service_db_or_none)          # the router's own binding, as it is in production
     monkeypatch.setattr(pr, "assert_payroll_enabled", lambda *a, **k: None)
-    monkeypatch.setattr(pr, "assert_not_internal_for_payroll", lambda *a, **k: None)
+    monkeypatch.setattr(pr, "assert_practice_payroll_is_the_partners", lambda *a, **k: None)
     monkeypatch.setattr(pr.timeline_service, "log", lambda *a, **k: None)
     out = pr.upsert_declaration(_body(), current_user=USER)
     assert out["success"] is True and len(server.rows("payroll_it_declarations")) == 1
