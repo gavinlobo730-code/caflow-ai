@@ -7,7 +7,7 @@ handlers; every transition is audited.
 """
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
 from models.common import api_response
@@ -63,12 +63,8 @@ def list_request_types(current_user: dict = Depends(rbac("approval", "read"))):
     return api_response(True, {"request_types": list(approvals.REQUEST_TYPES)})
 
 
-@router.get("/{request_id}")
-def get_approval(request_id: str, current_user: dict = Depends(rbac("approval", "read"))):
-    req = approvals.get_request(current_user["firm_id"], request_id)
-    if not req:
-        raise HTTPException(404, "Approval request not found")
-    return api_response(True, req)
+# `GET /{request_id}` (read one request) was deleted on 21-11-2026 (POST-A-547): no screen opened it. The Approvals screen lists the firm's
+# requests whole (`GET ""`) and a person's own requests for access come from `GET /access-requests/mine`.
 
 
 # NOT behind mfa_guard, on purpose (POST-A-006): a person whose authenticator is lost is at the password level, and asking

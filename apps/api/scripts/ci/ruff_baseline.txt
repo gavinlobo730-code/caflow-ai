@@ -195,7 +195,6 @@ routers/document_intelligence.py :: F811 :: trigger_extraction :: 1
 routers/document_intelligence_v1.py :: F401 :: <module> :: 2
 routers/document_intelligence_v2.py :: F841 :: approve_notice :: 1
 routers/document_intelligence_v2.py :: F841 :: extract_notice :: 1
-routers/document_intelligence_v2.py :: F841 :: get_notice :: 1
 routers/document_intelligence_v2.py :: F841 :: list_notices :: 1
 routers/document_intelligence_v2.py :: F841 :: update_notice_status :: 1
 routers/documents.py :: F401 :: <module> :: 2
@@ -246,7 +245,6 @@ routers/gst_workspace.py :: B904 :: upload_gstr2b :: 1
 routers/gst_workspace.py :: C901 :: update_gstr3b_status :: 16
 routers/gst_workspace.py :: F401 :: <module> :: 3
 routers/gst_workspace.py :: F841 :: filing_history :: 1
-routers/gst_workspace.py :: F841 :: get_gstr2b :: 1
 routers/gst_workspace.py :: F841 :: get_gstr3b :: 1
 routers/gst_workspace.py :: F841 :: gst_dashboard :: 1
 routers/gst_workspace.py :: F841 :: list_returns :: 1

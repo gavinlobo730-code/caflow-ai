@@ -1967,24 +1967,8 @@ def get_gstr9(
         return api_response(False, None, "Unable to complete GST operation. Please try again.")
 
 
-@router.get("/gstr2b/{upload_id}")
-def get_gstr2b(upload_id: str, current_user: dict = Depends(rbac("gst", "read"))):
-    """Get GSTR-2B reconciliation result."""
-    try:
-        firm_id = current_user["firm_id"]
-        if _USE_MOCK:
-            rec = _MOCK_GSTR2B.get(upload_id)
-        else:
-            from core.supabase_client import get_supabase
-            rows = get_supabase().table("gstr2b_uploads").select("*").eq("id", upload_id).eq("firm_id", firm_id).execute().data
-            rec = rows[0] if rows else None
-        rec = _visible_or_none(current_user, rec)
-        if not rec:
-            return api_response(False, None, "Not found")
-
-        return api_response(True, rec)
-    except Exception as e:
-        return api_response(False, None, "Unable to complete GST operation. Please try again.")
+# `GET /gstr2b/{upload_id}` (read one GSTR-2B upload) was deleted on 21-11-2026 (POST-A-547): no screen opened it. The reconciliation a CA
+# reads is `GET /gstr2b/reconciliation`, kept per client and period; an upload answers with its own result when it is made.
 
 
 @router.get("/gstr1/amendments")

@@ -162,7 +162,9 @@ def rows(monkeypatch):
 
 # `get_gstr1` (read one GSTR-1 return) was deleted on 7-11-2026 (POST-A-374): no screen opened it, the GST workspace lists returns whole and acts on one
 # by `PATCH /gstr1/{id}/status`, whose scope is held below.
-READS = [("get_gstr3b", "G3"), ("get_gstr2b", "B2")]
+# `get_gstr2b` (read one GSTR-2B upload) followed it on 21-11-2026 (POST-A-547), for the same reason: the reconciliation a CA reads is
+# `GET /gstr2b/reconciliation`, per client and period.
+READS = [("get_gstr3b", "G3")]
 
 
 @pytest.mark.parametrize("fn,pfx", READS, ids=[r[0] for r in READS])

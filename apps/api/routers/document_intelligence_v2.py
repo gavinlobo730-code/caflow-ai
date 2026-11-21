@@ -371,16 +371,9 @@ def list_notices(
         return api_response(False, None, "Unable to complete document processing. Please try again.")
 
 
-@router.get("/notices/{notice_id}")
-def get_notice(notice_id: str, current_user: dict = Depends(rbac("compliance", "read"))):
-    """Get a government notice with its linked task ID."""
-    try:
-        rec = _assert_notice_scope(current_user, notice_id)
-        if rec is None:
-            return api_response(False, None, "Notice not found")
-        return api_response(True, rec)
-    except Exception as e:
-        return api_response(False, None, "Unable to complete document processing. Please try again.")
+# `GET /notices/{notice_id}` (read one notice) was deleted on 21-11-2026 (POST-A-547): no screen opened it. The compliance screen lists a
+# client's notices whole (`GET /notices`) and acts on one by its id through the three routes below, each of which resolves the row and
+# asks whose it is (`_assert_notice_scope`).
 
 
 @router.patch("/notices/{notice_id}/status")
