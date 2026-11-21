@@ -577,7 +577,6 @@ export default function ClientsPage() {
             {canAdd && (
               <button
                 onClick={openCreate}
-                data-tip="add-client"
                 className="flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark transition-colors"
               >
                 <Plus size={15} />

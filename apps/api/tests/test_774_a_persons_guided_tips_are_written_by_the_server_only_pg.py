@@ -1,8 +1,12 @@
 """Migration 774, against a real Postgres: a person's guided-tips columns exist as the API expects, and a signed-in session cannot write them
 (POST-A-531).
 
-WHY A DATABASE TEST. The API writes `users.guided_tips_on` and `users.guided_tips_seen` with its privileged client and names the person and the
-firm on every query (`tests/test_a_person_keeps_their_guided_tips.py` holds that half). The other half is a fact about grants: a signed-in
+SINCE POST-A-538 (21-11-2026) NOTHING READS OR WRITES THESE TWO COLUMNS: the guided tips were replaced by the "Where is…?" guide, and their
+route, service and screen were removed. The columns stay until POST-A-541 drops them (a drop is a migration applied to production, so it
+is its own change, merged after this one is live). Until then this test is what holds them harmless.
+
+WHY A DATABASE TEST. The API wrote `users.guided_tips_on` and `users.guided_tips_seen` with its privileged client, naming the person and the
+firm on every query. The other half is a fact about grants: a signed-in
 session reaches `users` straight over PostgREST, where it may write its own NAME and nothing else, and a column added later takes no grant by
 itself. That is true only while nobody grants UPDATE on the table as a whole, so it is asserted here and not assumed: a tip marked "closed"
 from a hand-made request would be harmless, but a column on `users` that a browser can write is a habit this product does not start.

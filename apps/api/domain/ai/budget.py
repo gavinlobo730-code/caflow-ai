@@ -266,6 +266,7 @@ FEATURE_LABELS: dict[str, str] = {
     "statement_scan": "PracticeSync AI bank statement scan",
     "statement_analysis": "PracticeSync AI statement analysis",
     "practice_digest": "PracticeSync AI practice digest",
+    "guide": "PracticeSync AI \"Where is…?\" guide",
 }
 
 #: The company each call went to, by the name the status page shows. The provider is never hidden behind the product's

@@ -11,11 +11,9 @@
  *   2. the practice's own client workspace says "My practice" too, opens on the same grid, and asks for no health score;
  *   3. a practice that is not set up says so in the books group and points at Practice home, and a read that failed says
  *      the books could not be read; neither draws a tile that leads nowhere, and the practice's screens stay listed;
- *   4. with guided tips on, Practice home draws the tip about the firm's own books beside the bar's menu button, the tip
- *      waits while the grid is open, and a client's workspace (the same button) draws none;
- *   5. the dashboard's first-day card draws a second list for a Partner, "Your own firm", whose steps open My practice
+ *   4. the dashboard's first-day card draws a second list for a Partner, "Your own firm", whose steps open My practice
  *      (POST-A-533); with no such list sent, a firm that has done its four steps sees no card;
- *   6. an ordinary client is untouched: its name is the switcher and the way out is the client list.
+ *   5. an ordinary client is untouched: its name is the switcher and the way out is the client list.
  *
  * No scenario has a date of its own, so none has a zone.
  */
@@ -119,31 +117,6 @@ export const scenarios = [
       await until(async () => /could not be read/.test(await books.innerText()), "the could-not-be-read sentence");
       assert.doesNotMatch(await books.innerText(), /not set up/);
       assert.equal(await books.getByRole("link").count(), 0);
-    },
-  },
-  {
-    id: "the-tip-about-the-firms-own-books-is-on-my-practice",
-    title: "with tips on, Practice home draws the tip about the firm's own books beside the bar's menu button; a client's workspace, which has the same button, draws none",
-    async run(env) {
-      const { page } = env;
-      practiceIs(env, { internal_client_id: env.clientId, provisioned: true, firm_has_pan: true, can_provision: false, identity: null, entity_types: [] });
-      env.stub.route({ method: "GET", re: /\/api\/guided-tips$/, reply: () => ok({ on: true, chosen: false, seen: [] }) });
-      await page.goto(`${env.base}/practice/`, { waitUntil: "networkidle" });
-      await page.locator("[data-my-practice]").waitFor();
-      const tip = page.locator("[data-guided-tip]");
-      await until(async () => (await tip.count()) === 1 && (await tip.isVisible()), "the tip on Practice home");
-      assert.equal(await tip.getAttribute("data-guided-tip"), "own-books");
-      assert.match(await tip.innerText(), /Everything about your own firm is here/);
-      const button = page.locator('[aria-controls="client-module-menu"]');
-      assert.ok(await button.getAttribute("aria-describedby"), "the button the tip explains is not described by it");
-      // Opening the grid draws a layer over the page, and the tip waits behind it.
-      await openGrid(page);
-      await until(async () => !(await tip.isVisible().catch(() => false)), "the tip to hide while the grid is open");
-      // The same button on an ordinary client's bar explains nothing: the tip is Practice home's.
-      await page.goto(`${env.base}/clients/${env.clientId}/`, { waitUntil: "networkidle" });
-      await bar(page).getByRole("link", { name: /All clients/ }).waitFor();
-      await page.waitForTimeout(600);
-      assert.equal(await page.locator("[data-guided-tip]:visible").count(), 0, "a client's workspace drew the practice's tip");
     },
   },
   {

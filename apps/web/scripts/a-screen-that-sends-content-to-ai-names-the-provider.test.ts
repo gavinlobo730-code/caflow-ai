@@ -46,6 +46,7 @@ const TRIGGERS: Record<string, AiDisclosureSurface> = {
   "api.assistant.ask": "assistant",
   "allow_vision": "statement_scan",
   "copilotV2.sendMessage": "copilot",
+  "api.guide.where": "guide",
 };
 
 /** Screens that call a model route and send it no content a person typed or

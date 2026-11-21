@@ -32,7 +32,7 @@ import { WorkspaceMegaMenu } from "@/components/shell/WorkspaceMegaMenu";
  */
 const WORKSPACE_MENU_ID = "workspace-menu";
 
-export function WorkspaceTopBar({ onOpenSearch }: { onOpenSearch: () => void }) {
+export function WorkspaceTopBar({ onOpenSearch, onOpenGuide }: { onOpenSearch: () => void; onOpenGuide: () => void }) {
   const { activeWorkspace } = useWorkspace();
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -69,7 +69,6 @@ export function WorkspaceTopBar({ onOpenSearch }: { onOpenSearch: () => void }) 
           onClick={() => setMenuOpen((v) => !v)}
           aria-expanded={menuOpen}
           aria-controls={WORKSPACE_MENU_ID}
-          data-tip="workspace-menu"
           className={cn(
             "flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold text-white transition-colors",
             menuOpen ? "bg-white/20" : "bg-white/10 hover:bg-white/15",
@@ -82,7 +81,7 @@ export function WorkspaceTopBar({ onOpenSearch }: { onOpenSearch: () => void }) 
 
         <div className="min-w-0 flex-1" />
 
-        <UtilityCluster orientation="bar-dark" onOpenSearch={onOpenSearch} />
+        <UtilityCluster orientation="bar-dark" onOpenSearch={onOpenSearch} onOpenGuide={onOpenGuide} />
       </header>
 
       {menuOpen && (

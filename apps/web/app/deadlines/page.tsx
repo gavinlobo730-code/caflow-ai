@@ -539,7 +539,7 @@ function DeadlinesContent() {
         subtitle="Cross-client compliance calendar — triage here, file inside each client"
       />
 
-      <div data-tip="deadline-counts" className="grid grid-cols-2 md:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
         {STATS.map((s) => (
           <Card key={s.label}>
             <CardContent className="pt-4 pb-3">

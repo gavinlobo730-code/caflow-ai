@@ -15,8 +15,7 @@ import { wearsThePracticeFrame } from "@/lib/workspace/practiceWorkspace";
 import { rememberPracticeAccess, rememberedPracticeAccess } from "@/lib/workspace/practiceAccessMemory";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { canAccessWorkspace } from "@/lib/auth/permissions";
-import { GuidedTipsProvider } from "@/lib/tips/GuidedTipsContext";
-import { GuidedTip } from "@/components/tips/GuidedTip";
+import { WhereIsGuide } from "@/components/guide/WhereIsGuide";
 
 // usePathname() reflects the App Router's FlightRouterState, which under
 // `output: export` + Cloudflare's rewrite-to-_placeholder hosting is
@@ -100,6 +99,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [realPathname, setRealPathname] = useState<string>(() => getRealPathname());
   useEffect(() => { setRealPathname(getRealPathname()); }, [pathname]);
   const [searchOpen, setSearchOpen] = useState(false);
+  // "Where is…?" (POST-A-538): one dialog, held here like the search box, opened from either shell's bar.
+  const [guideOpen, setGuideOpen] = useState(false);
 
   const showShell = !isOutsideTheShell(realPathname);
   const isClientWorkspace = isClientWorkspacePath(realPathname);
@@ -158,20 +159,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             the first stop for a keyboard user. Only here: the no-shell branch
             above has no navigation to skip. */}
         <SkipToContent />
-        {/* One person's guided tips (POST-A-531). The pop-up is second in the document, straight after the skip link, so a
-            keyboard reaches it from the top of any screen; it is drawn beside whatever it explains. The provider wraps the
-            shell so the switch in Settings and the pop-up read one state. */}
-        <GuidedTipsProvider>
-          <GuidedTip pathname={realPathname} />
-          <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
-          {/* A tab opened before the site was republished is told, and loads the new build at its next move (POST-A-529). */}
-          <NewVersionNotice pathname={realPathname} />
-          {isClientWorkspace || isPractice ? (
-            <ClientShell onOpenSearch={() => setSearchOpen(true)} practicePath={isPractice}>{content}</ClientShell>
-          ) : (
-            <WorkspaceShell onOpenSearch={() => setSearchOpen(true)}>{content}</WorkspaceShell>
-          )}
-        </GuidedTipsProvider>
+        <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
+        <WhereIsGuide open={guideOpen} onClose={() => setGuideOpen(false)} />
+        {/* A tab opened before the site was republished is told, and loads the new build at its next move (POST-A-529). */}
+        <NewVersionNotice pathname={realPathname} />
+        {isClientWorkspace || isPractice ? (
+          <ClientShell onOpenSearch={() => setSearchOpen(true)} onOpenGuide={() => setGuideOpen(true)} practicePath={isPractice}>{content}</ClientShell>
+        ) : (
+          <WorkspaceShell onOpenSearch={() => setSearchOpen(true)} onOpenGuide={() => setGuideOpen(true)}>{content}</WorkspaceShell>
+        )}
       </WorkspaceProvider>
     </ClientNavProvider>
   );

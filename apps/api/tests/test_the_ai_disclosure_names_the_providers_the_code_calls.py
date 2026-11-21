@@ -57,6 +57,8 @@ SURFACE_MODULES = {
     "notice_extraction": "routers/document_intelligence_v2.py",
     "assistant": "routers/assistant.py",
     "copilot": "domain/ai_copilot_service.py",
+    # "Where is…?" (POST-A-538): the question and the names of the product's own screens.
+    "guide": "routers/guide.py",
 }
 
 #: Modules that send to a provider and are NOT a surface, each with its category and why.
@@ -331,7 +333,7 @@ def test_the_chat_surfaces_say_a_pan_or_gstin_is_replaced_because_the_door_repla
     import inspect
     from domain.ai import groq_text
     assert inspect.signature(groq_text.chat_detailed).parameters["redact"].default is True
-    for surface in ("assistant", "copilot"):
+    for surface in ("assistant", "copilot", "guide"):
         assert "PAN or a GSTIN is replaced" in disclosure["entries"][surface]["sentence"]
 
 
