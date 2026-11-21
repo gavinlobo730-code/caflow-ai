@@ -27,7 +27,9 @@ import EmployeeDrawer from "@/components/payroll/EmployeeDrawer";
 import RecordedSettlementDialog from "@/components/payroll/RecordedSettlement";
 import { AddEmployeeModal } from "@/components/payroll/AddEmployeeModal";
 import ApplyStructureModal from "@/components/payroll/ApplyStructureModal";
-import { usePermissions } from "@/lib/auth/AuthContext";
+import { useAuth, usePermissions } from "@/lib/auth/AuthContext";
+import { StaffLinksPanel } from "@/components/payroll/StaffLinksPanel";
+import { useStaffLinks } from "@/lib/payroll/useStaffLinks";
 import { MetricCardSkeleton, StatementSkeleton, TransactionListSkeleton, TableSkeleton, CardGridSkeleton, Skeleton, LoadingRegion } from "@/components/ui/skeleton";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 import StatutoryHandoff from "@/components/payroll/StatutoryHandoff";
@@ -153,6 +155,8 @@ function fmt(paise: number) {
 interface Employee {
   id: string;
   name: string;
+  /** The team sign-in this employee of the firm's OWN payroll is linked to (POST-A-540); null or absent = none. */
+  staff_user_id?: string | null;
   pan?: string;
   aadhaar_last4?: string;
   designation?: string;
@@ -388,6 +392,15 @@ function EmployeesTab({ clientId }: { clientId: string }) {
   // The skeleton for the first read of this client only (POST-A-400): the employee drawer records a change (a settlement,
   // a status) and asks for this read again (`onChanged={load}`), and a read that replaced the tab unmounted the drawer.
   const { loading, reader: firstRead } = useFirstRead(clientId);
+  // POST-A-540. On the practice's OWN payroll, a Partner is shown each employee beside their team sign-in (the two are linked,
+  // never merged). `client.is_internal` is the shell's answer for the client that is open; the server refuses the reads to
+  // anybody who is not a Partner whatever this tab does.
+  const { client: openClient } = useClientNav();
+  const { userRole } = useAuth();
+  const { links: staffLinks, reload: reloadStaffLinks } = useStaffLinks(openClient?.is_internal === true && userRole === "Partner");
+  /** The name on the team sign-in an employee is linked to, where the list of sign-ins was read and holds them. */
+  const teamSignIn = (staffUserId?: string | null): string | null =>
+    (staffUserId && staffLinks.state === "ready" ? staffLinks.members.find((m) => m.id === staffUserId)?.full_name : null) ?? null;
   const [showAdd, setShowAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
   // AddEmployeeModal shows the client as a fixed label when `lockedClientId`
@@ -526,9 +539,11 @@ function EmployeesTab({ clientId }: { clientId: string }) {
           clients={clientsForModal}
           lockedClientId={clientId}
           onClose={() => setShowAdd(false)}
-          onSaved={() => { setShowAdd(false); load(); }}
+          onSaved={() => { setShowAdd(false); load(); reloadStaffLinks(); }}
         />
       )}
+
+      <StaffLinksPanel links={staffLinks} side="payroll" onChanged={() => { void load(); reloadStaffLinks(); }} />
 
       <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
         <table className="w-full text-sm">
@@ -559,7 +574,12 @@ function EmployeesTab({ clientId }: { clientId: string }) {
               </td></tr>
             ) : employees.map(e => (
               <tr key={e.id} className="hover:bg-ps-bg transition-colors">
-                <td className="px-4 py-3 font-medium text-ps-ink">{e.name}</td>
+                <td className="px-4 py-3 font-medium text-ps-ink">
+                  {e.name}
+                  {teamSignIn(e.staff_user_id) && (
+                    <span data-team-sign-in className="block text-2xs font-normal text-ps-hint">Team sign-in: {teamSignIn(e.staff_user_id)}</span>
+                  )}
+                </td>
                 <td className="px-4 py-3 text-ps-label">{e.designation || "—"}</td>
                 <td className="px-4 py-3 text-ps-label">{e.department || "—"}</td>
                 <td className="px-4 py-3 font-mono text-ps-ink">{fmt(e.basic_paise)}</td>

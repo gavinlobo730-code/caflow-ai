@@ -190,6 +190,10 @@ IMMUTABLE_ON_UPDATE: dict[tuple[str, str], str] = {
     # and no screen set any of them). It is closed — AccountUpdateIn carries all
     # three and routers/accounting writes them — so the entry is gone rather
     # than reworded, which is what closing a gap named here looks like.
+    # POST-A-540. The link between an employee of the firm's own payroll and a team member is written through a door of its own
+    # (`PUT /api/payroll/employees/{id}/staff-link`), which asks the three rules of a link (the member is the firm's, the payroll is
+    # the firm's own, one person is one employee) and records the change. An edit that carried it would be a second way in.
+    ("EmployeeUpdateIn", "staff_user_id"): "the link to a team member is written and removed through its own door, which asks whose both are",
 }
 
 

@@ -79,6 +79,7 @@ ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
     ("epfo_ecr_filings", "return_file_id"): "migration 769 (POST-A-518): the Return File ID the portal gives an EPFO return when its file passes the checks; NULL = not recorded",
     ("payroll_employees", "fixed_term_employment"): "migration 770 (POST-A-526): an employee recorded as on fixed-term employment, and the contract's end date; NULL = not recorded",
     ("payroll_employees", "fixed_term_end_date"): "migration 770 (POST-A-526): an employee recorded as on fixed-term employment, and the contract's end date; NULL = not recorded",
+    ("payroll_employees", "staff_user_id"): "migration 776 (POST-A-540): the team member (users.id) an employee of the firm's own payroll is; NULL = not linked",
 }
 
 

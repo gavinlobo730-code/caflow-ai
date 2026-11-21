@@ -371,6 +371,27 @@ has (POST-A-532). The cap is lifted, and what stands at the payroll doors is G1.
   spelled one way, so a list with no narrowing passed it; the rule is now over the ROUTE: a
   payroll route that can be called without naming a client, a run or an employee must go
   through the narrowing helper, or be on a short named list with the reason it lists nobody.
+- **A member of staff is two records, and one column says they are one person (POST-A-540,
+  22-11-2026).** A sign-in on Team is a row of `users`; an employee the firm pays here is a
+  row of `payroll_employees` on the practice client. `payroll_employees.staff_user_id`
+  (migration 776) links them. A LINK, NEVER A MERGE: neither record is written from the
+  other, a name may be spelt differently on each (the list says so and changes neither),
+  and removing the link removes neither. The column is on the payroll side on purpose: the
+  Team list is a Manager's too and never carries it, so only somebody who may read the
+  firm's own payroll can read who is on it. Three rules, each said in a sentence by
+  `apps/api/services/practice_staff_link_service.py` before anything is written and each
+  also held by the database: the member is this firm's, the employee is in the firm's OWN
+  payroll (a client's employee is nobody on the Team screen), and one member is at most one
+  employee. Two routes: `GET /api/payroll/practice-staff` (the roster with its links and
+  nothing of pay, a Partner's alone and 404 to anybody else) and
+  `PUT /api/payroll/employees/{employee_id}/staff-link` (write or clear one link). An
+  employee can also be created linked (`POST /api/payroll/employees` with the member named).
+  One panel shows both records side by side, on Team and on the practice's Payroll page, and
+  offers each from the other. It is NOT the employee portal's sign-in
+  (`payroll_employees.auth_user_id`, a different principal with no `users` row); whether one
+  sign-in may be both is open (POST-A-549). Held by
+  `test_a_team_member_and_their_payroll_record_are_linked_and_never_merged.py` and
+  `test_776_an_employee_of_the_firms_own_payroll_names_the_team_member_they_are_pg.py`.
 - Held by `test_the_practices_own_payroll_is_the_partners_alone.py` (the rule over every
   door; a door driven as a Manager and as a Partner with the other two layers taken away;
   the lists across clients; the attendance sheet named and not named) and

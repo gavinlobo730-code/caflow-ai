@@ -152,6 +152,8 @@ NOT_A_LIST_ACROSS_CLIENTS: dict[str, str] = {
     "get_statutory_values": "the firm's own recorded statutory values (rates and slabs), which belong to no client",
     "delete_pt_slabs": "the firm's own recorded professional-tax slabs, which belong to no client",
     "one_time_earning_defaults": "the product's default kinds of one-time earning, no row of anybody's",
+    "practice_staff": "ONE client's roster and not a list across clients: the practice's own, whose id the server reads off the firm "
+                      "(POST-A-540). A Partner's alone (404 to anybody else), and the route asks the practice's two doors itself",
 }
 
 _NAMES_ITS_SUBJECT = ("data", "payload", "body")
