@@ -7715,7 +7715,6 @@ export const api = {
       request(`/api/approvals${status ? `?status=${status}` : ""}`) as Promise<
         ApiResp<{ requests: ApprovalRequest[] }>
       >,
-    get: (id: string) => request(`/api/approvals/${id}`) as Promise<ApiResp<ApprovalRequest>>,
     create: (request_type: string, payload: Record<string, unknown>) =>
       request<ApiResp<ApprovalRequest>>("/api/approvals", { method: "POST", body: JSON.stringify({ request_type, payload }) }),
     approve: (id: string) => request(`/api/approvals/${id}/approve`, { method: "POST" }),

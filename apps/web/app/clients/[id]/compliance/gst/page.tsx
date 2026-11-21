@@ -539,8 +539,10 @@ function GSTDashboard({ clientId }: { clientId: string }) {
 
 function GSTR1Tab({ clientId }: { clientId: string }) {
   // A return's row offers each step only to someone its route admits (POST-A-455): Validate asks `gst` `compute`
-  // (an Executive and above), and CA Approve and Mark as filed ask `gst` `approve` (a Manager or a Partner). This tab has
-  // no Recheck and no Delete on a row. They were drawn to every member and came back refused.
+  // (an Executive and above), and CA Approve and Mark as filed ask `gst` `approve` (a Manager or a Partner). Delete asks
+  // `gst` `compute`, and `gst` `approve` for an approved return, as on the GSTR-3B tab (POST-A-547: the server could always
+  // delete an unfiled GSTR-1 and no row offered it, so a working saved for the wrong month stayed on the list). This tab has
+  // no Recheck. They were drawn to every member and came back refused.
   const { can: canDo, resolved: permissionsRead } = usePermissions();
   const mayCompute = canDo("gst", "compute");
   const mayApprove = canDo("gst", "approve");
@@ -584,6 +586,8 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
   const [filingRow, setFilingRow] = useState<{ id: string; period: string } | null>(null);
   const [markingFiled, setMarkingFiled] = useState(false);
   const [rowError, setRowError] = useState<string | null>(null);
+  // The row a delete is running on: its buttons wait, so a second click cannot ask twice.
+  const [busyRow, setBusyRow] = useState<string | null>(null);
   // What the server said about the compliance obligation when a return was recorded as filed and it was NOT closed:
   // one sentence per return (each names its period), kept until dismissed so a run of back-recorded months does not
   // lose an earlier unresolved one to a later success.
@@ -669,6 +673,22 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
       setRowError(failureSentence(e, "Couldn't update the return.", "write"));
       return false;
     }
+  }
+
+  /** Delete an unfiled GSTR-1's saved working. The server refuses a filed one, and an approved one without the right to approve. */
+  async function deleteReturn(id: string, period: string) {
+    if (!(await confirmDialog({ message: `Delete the GSTR-1 for ${period}?\n\nThis removes the saved working only. ` +
+      `Nothing has been filed, and the underlying invoices and notes are untouched — ` +
+      `you can compute it again at any time.`, danger: true, confirmLabel: "Delete" }))) return;
+    setBusyRow(id);
+    setRowError(null);
+    try {
+      const r = await apiFetch(`/api/gst-workspace/gstr1/${id}`, { method: "DELETE" });
+      if (!r.success) { setRowError(r.error ?? "Couldn't delete this return."); return; }
+      load();
+    } catch (e) {
+      setRowError(failureSentence(e, "Couldn't delete this return.", "write"));
+    } finally { setBusyRow(null); }
   }
 
   /** Record what the CA filed on the portal — the ARN and the real date. */
@@ -996,6 +1016,14 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
                     <span className="text-xs text-ps-label">
                       {(r.arn as string) ? `ARN ${r.arn as string}` : "filed — no ARN recorded"}
                     </span>
+                  )}
+                  {UNFILED.includes(r.status as string) && (r.status === "ca_approved" ? mayApprove : mayCompute) && (
+                    <Button variant="plain" size="none" onClick={() => deleteReturn(r.id as string, r.period as string)}
+                      disabled={busyRow === r.id} data-delete-gstr1=""
+                      title="Delete this saved working. Nothing has been filed."
+                      className="text-xs px-2 py-0.5 border border-state-problem-border rounded hover:bg-state-problem-hover text-state-problem disabled:opacity-40">
+                      {busyRow === r.id ? "Deleting…" : "Delete"}
+                    </Button>
                   )}
                 </td>
               </tr>

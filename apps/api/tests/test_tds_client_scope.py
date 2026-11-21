@@ -162,19 +162,15 @@ def rows(monkeypatch):
                         {"id": "CH-MINE", "client_id": MINE, "total_paise": 100})
     monkeypatch.setitem(tw._MOCK_CHALLANS, "CH-THEIRS",
                         {"id": "CH-THEIRS", "client_id": THEIRS, "total_paise": 999})
-    monkeypatch.setitem(tw._MOCK_FORM26AS, "F-MINE",
-                        {"id": "F-MINE", "client_id": MINE})
-    monkeypatch.setitem(tw._MOCK_FORM26AS, "F-THEIRS",
-                        {"id": "F-THEIRS", "client_id": THEIRS})
     monkeypatch.setitem(tw._MOCK_RETURNS, "R-MINE",
                         {"id": "R-MINE", "client_id": MINE, "status": "ca_approved"})
     monkeypatch.setitem(tw._MOCK_RETURNS, "R-THEIRS",
                         {"id": "R-THEIRS", "client_id": THEIRS, "status": "ca_approved"})
 
 
+# `get_form26as` (read one Form 26AS upload) was deleted on 21-11-2026 (POST-A-547): no screen opened it.
 @pytest.mark.parametrize("fn,rid", [
     ("get_challan", "CH-THEIRS"),
-    ("get_form26as", "F-THEIRS"),
 ])
 def test_a_row_belonging_to_another_client_reads_as_not_found(fn, rid, rows, deny):
     out = getattr(tw, fn)(rid, current_user=USER)
@@ -184,7 +180,6 @@ def test_a_row_belonging_to_another_client_reads_as_not_found(fn, rid, rows, den
 
 @pytest.mark.parametrize("fn,mine,missing", [
     ("get_challan", "CH-MINE", "CH-NOPE"),
-    ("get_form26as", "F-MINE", "F-NOPE"),
 ])
 def test_forbidden_and_nonexistent_are_byte_for_byte_identical(fn, mine, missing,
                                                                rows, deny):
@@ -196,7 +191,6 @@ def test_forbidden_and_nonexistent_are_byte_for_byte_identical(fn, mine, missing
 
 @pytest.mark.parametrize("fn,rid", [
     ("get_challan", "CH-MINE"),
-    ("get_form26as", "F-MINE"),
 ])
 def test_your_own_row_still_reads(fn, rid, rows, deny):
     out = getattr(tw, fn)(rid, current_user=USER)

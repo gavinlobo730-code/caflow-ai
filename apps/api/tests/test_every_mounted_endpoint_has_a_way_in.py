@@ -204,12 +204,12 @@ BUDGET: dict[str, int] = {
     "/api/identity": 2, "/api/insights": 2, "/api/notifications": 1,
     "/api/public": 2, "/api/sales-cycle": 3,
     "/api/scheduler": 2, "/api/settings": 2, "/api/vendors": 1,
-    "/api/approvals": 2,
-    "/api/document-intelligence-v2": 2, "/api/documents": 1,
+    "/api/approvals": 1,
+    "/api/document-intelligence-v2": 1, "/api/documents": 1,
     "/api/knowledge": 1,
     "/api/purchase-bills": 1,
     "/api/rcm-documents": 1,
-    "/api/tds-workspace": 2,
+    "/api/tds-workspace": 1,
     # SEVEN RAISED ON 21-11-2026, AND NOT ONE OF THEM IS A NEW ROUTE (POST-A-547). `_literal_siblings` asked only for static siblings of the
     # SAME verb, and a URL in the source carries no verb, so a read, an edit or a delete of one record was counted as called wherever a
     # static route of ANOTHER verb sat beside it (`POST /gstr2b/upload` beside `GET /gstr2b/{upload_id}`). It was met when
@@ -221,7 +221,13 @@ BUDGET: dict[str, int] = {
     #   /api/risks                     3 -> 4  PATCH /{risk_id}
     #   /api/tds-workspace             1 -> 2  GET /form26as/{upload_id}
     # `/api/approvals` stays at 2 (`GET /{request_id}` is still owed). Each is to be wired or deleted under POST-A-547, lowering its line.
-    "/api/gst-workspace": 2,
+    # DONE THE SAME DAY FOR FIVE OF THE EIGHT (POST-A-547 closed): `DELETE /gstr1/{return_id}` got its button (an unfiled GSTR-1's row offers
+    # Delete, as a GSTR-3B's always did), and four reads of one record that no screen opens were DELETED with their tests:
+    # `GET /notices/{notice_id}`, `GET /gstr2b/{upload_id}`, `GET /form26as/{upload_id}` and `GET /api/approvals/{request_id}`. So
+    # /api/document-intelligence-v2 2 -> 1, /api/gst-workspace 2 -> 0 (its line is gone), /api/tds-workspace 2 -> 1, /api/approvals 2 -> 1.
+    # STILL OWED, each on a line that says why: `PATCH /api/risks/{risk_id}` is one of five document-risk routes with no screen, and a
+    # screen for them or their retirement is one decision (POST-A-548); `GET` and `DELETE /api/invoices/{invoice_id}` are the earlier fee
+    # engine's, whose routes are retired together under POST-B-193.
     # /api/gst-workspace and /api/workload 1 -> 0 on 7-11-2026 (POST-A-374): the two routes that had raised them from 0 to 1 on 2-11-2026 were
     # DELETED, not wired. `GET /gstr1/{return_id}` (read one return) and `GET /api/workload/{user_id}` (read one member's workload) had no
     # screen that called them (their static siblings `/gstr1/advances`, `/gstr1/exceptions`, `/gstr1/amendments`; `/capacity`,
@@ -332,7 +338,8 @@ NOT_REACHED_BY_A_SCREEN: dict[tuple[str, str], str] = {
 # `_literal_siblings` and the note in BUDGET), and seven routes that had been reading as called are counted. A raise with a reason: the debt
 # was there and the number could not see it.
 # 194 -> 193 on 21-11-2026 (POST-B-194): `POST /api/invoices/from-time/{engagement_id}` deleted, and `/api/invoices` fell 4 -> 3.
-TOTAL_BUDGET = 193
+# 193 -> 188 on 21-11-2026 (POST-A-547 closed): one route wired and four deleted, as the note in BUDGET says.
+TOTAL_BUDGET = 188
 
 
 # ---------------------------------------------------------------------------

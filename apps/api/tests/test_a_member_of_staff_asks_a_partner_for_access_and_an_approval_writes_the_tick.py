@@ -304,12 +304,20 @@ def test_a_reviewer_reaches_the_door_of_this_request_and_not_the_general_one(wor
     assert _client(reviewer).post("/api/approvals", json={"request_type": "access_request", "payload": {"resource": "gst", "action": "compute"}}).status_code == 403
 
 
-def test_the_two_doors_are_mounted_ahead_of_the_request_by_id_routes_and_ask_every_member_of_staffs_pair():
+def test_no_request_by_id_route_can_answer_for_the_two_doors_and_they_ask_every_member_of_staffs_pair():
+    """The two doors were declared ahead of `GET /api/approvals/{request_id}` so that it could not answer for their addresses. That read was
+    deleted on 21-11-2026 (POST-A-547: no screen opened it), so the rule is restated as what it protects: any route under the prefix whose
+    address is one parameter, of the same verb as a door, is mounted after that door."""
     paths = [(sorted(getattr(r, "methods", []) or []), getattr(r, "path", "")) for r in main.app.routes]
     post = paths.index((["POST"], "/api/approvals/access-requests"))
     mine = paths.index((["GET"], "/api/approvals/access-requests/mine"))
-    by_id = paths.index((["GET"], "/api/approvals/{request_id}"))
-    assert post < by_id and mine < by_id, "the request-by-id route would answer for the new addresses"
+    for at, (methods, path) in enumerate(paths):
+        if path == "/api/approvals/{request_id}":
+            if "POST" in methods:
+                assert post < at, "a POST request-by-id route would answer for the access-request door"
+        if path.startswith("/api/approvals/{request_id}/") and path.count("/") == 4 and "GET" in methods:
+            assert mine < at, "a GET route of two segments under a request id would answer for the asker's own list"
+    assert (["GET"], "/api/approvals/{request_id}") not in paths, "the read of one request is back: give it a screen or delete it"
 
     def pairs(path, method):
         route = next(r for r in main.app.routes if getattr(r, "path", "") == path and method in (getattr(r, "methods", set()) or set()))

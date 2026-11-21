@@ -1493,8 +1493,6 @@ EXEMPT: dict[str, str] = {
         "and nobody else's.",
     "/api/approvals/types":
         "the static REQUEST_TYPES tuple. No stored data read at all.",
-    "/api/approvals/{request_id}":
-        "same table, addressed by id (get_approval).",
     "/api/approvals/{request_id}/approve":
         "same table, the approve transition (Partner-only, MFA-guarded).",
     "/api/approvals/{request_id}/reject":
@@ -1845,7 +1843,7 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/service-catalogue": 6, "/api/time-entries": 10,
               "/api/dsc": 5, "/api/firm-hsn-library": 7, "/api/settings": 14,
               "/api/identity": 18, "/api/tally-migration": 7, "/api/reports": 2,
-              "/api/accounting": 21, "/api/approvals": 9, "/api/xbrl": 7,
+              "/api/accounting": 21, "/api/approvals": 8, "/api/xbrl": 7,
               "/api/income-tax": 11, "/api/compliance": 12,
               "/api/ai-insights": 5, "/api/eway-bill": 6, "/api/inventory": 6,
               "/api/public/engagement-letters": 3,

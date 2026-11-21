@@ -2634,20 +2634,5 @@ def upload_form26as(
         return _could_not(e, "reconcile the Form 26AS upload")
 
 
-@router.get("/form26as/{upload_id}")
-def get_form26as(upload_id: str, current_user: dict = Depends(rbac("tds", "read"))):
-    """Get Form 26AS reconciliation result."""
-    try:
-        firm_id = current_user["firm_id"]
-        if _USE_MOCK:
-            rec = _MOCK_FORM26AS.get(upload_id)
-        else:
-            from core.supabase_client import get_supabase
-            rows = get_supabase().table("form_26as_uploads").select("*").eq("id", upload_id).eq("firm_id", firm_id).execute().data
-            rec = rows[0] if rows else None
-        rec = _visible_or_none(current_user, rec)
-        if not rec:
-            return api_response(False, None, "Not found")
-        return api_response(True, rec)
-    except Exception as e:
-        return _could_not(e, "read the Form 26AS reconciliation")
+# `GET /form26as/{upload_id}` (read one Form 26AS upload) was deleted on 21-11-2026 (POST-A-547): no screen opened it. An upload answers
+# with its own reconciliation when it is made, which is what the TDS screen shows.
