@@ -3313,17 +3313,24 @@ def get_run_summaries(
     if not db:
         return api_response(True, {"runs": []})
 
-    q = (db.table("payroll_runs")
-         .select("id, client_id, month, status")
-         .eq("firm_id", current_user["firm_id"]))
-    if client_id:
-        q = q.eq("client_id", client_id)
-    if financial_year:
-        # payroll_runs has NO financial_year column — it carries `month`, and
-        # the year is derived from it. April to March, so January to March
-        # belong to the year that started the previous April.
-        q = q.in_("month", payroll_report_service.months_of_fy(financial_year))
-    runs = q.order("month", desc=True).execute().data or []
+    def _runs():
+        q = (db.table("payroll_runs")
+             .select("id, client_id, month, status")
+             .eq("firm_id", current_user["firm_id"]))
+        if client_id:
+            q = q.eq("client_id", client_id)
+        if financial_year:
+            # payroll_runs has NO financial_year column — it carries `month`, and
+            # the year is derived from it. April to March, so January to March
+            # belong to the year that started the previous April.
+            q = q.in_("month", payroll_report_service.months_of_fy(financial_year))
+        return q
+
+    # Paged (POST-A-535): with no client and no year named this is every run the firm has, and one request answers at
+    # most a thousand rows, so the oldest months dropped off the table with no word. The pager walks on `id`; the
+    # newest-month-first order the table shows is put back here.
+    runs = sorted(fetch_all(_runs, label="payroll.run_summaries", strict=True),
+                  key=lambda r: (str(r.get("month") or ""), str(r.get("id") or "")), reverse=True)
     if not client_id:
         runs = _the_firms_clients_only(current_user, runs)
 
