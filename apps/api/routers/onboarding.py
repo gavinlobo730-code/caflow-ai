@@ -175,7 +175,9 @@ def onboarding_status(
         raise HTTPException(status_code=404, detail="Firm not found")
 
     from services import first_run_service
-    first_run = first_run_service.first_run(firm_id, current_user.get("id"))
+    # The firm's own practice is the Partner's alone (guardrail G1): its steps are read and sent for a Partner only.
+    first_run = first_run_service.first_run(firm_id, current_user.get("id"),
+                                            for_partner=current_user.get("role") == "Partner")
     done = {s["id"]: s["done"] is True for s in first_run["steps"]}
 
     checks = {
