@@ -35,6 +35,9 @@ holds the sentence, the long form, the forbidden words, the ids this file cites 
 4. The AI. Press **Check now** for Groq and for Gemini on Settings, AI status, once before anyone arrives.
    Both answered on 16 Nov 2026; the press proves they still answer that morning, and the assistant and the
    invoice reader depend on it. If either fails, take the assistant and the invoice reader off the run.
+   Then press Where is…? on the top bar and ask it one question. It asks the same provider as the assistant
+   (Groq), and it has been driven in a browser against a stand-in server only, never against the real one:
+   if the answer is not a screen that fits the question, do not offer it on the day.
 5. Mail. Mail leaves from a verified sending address on a temporary demo domain: a staff invitation, an
    invoice and an engagement letter each reached an outside inbox on 15 and 16 Nov 2026. Send live only to an
    address you hold. The website's Book a demo form takes no requests until a business mailbox exists.
@@ -116,6 +119,24 @@ the product's source. Cut from the bottom if time is short: first the Schedule I
 - "Can it connect to our bank?" "A statement comes in as an uploaded file, and the machine proposes the
   coding. There is no live bank feed."
 - "Does it replace Tally?" "It runs alongside Tally on one ledger. Keep both as long as you like."
+- "Can I decide what each of my staff sees?" "Yes. On the Team screen (`/team`) a Partner opens a person and
+  ticks what they may open, laid out under the menu's own names, and the screen shows that person's menu
+  before anything is saved. A role only sets where the ticks start. Somebody who opens a screen they were not
+  given is told that it «is not part of your access» and can ask for it from that notice; the request goes to
+  the Partners on Approvals (`/approvals`), and nobody decides their own. My practice is a Partner's alone
+  and no tick opens it." Shown with stand-in data only so far: walk it once on the seeded firm, signed in as a
+  second member of staff, before showing it.
+- "Where do I find something?" "Where is…? on the top bar. Ask in your own words and it names the screen and
+  opens it. It offers only the screens that person may open." See step 4 of section 1 before relying on it.
+- "Can it raise our own fee bills, and bill our time?" "The practice's own billing is in My practice: a
+  billing schedule prepares a draft bill in the firm's own books. Time recorded as billable is listed under
+  Unbilled work on the Time screen (`/time`); a Partner presses Bill this time on a client's row, ticks the
+  entries, names the practice's service and the rate of GST, and a draft invoice is made for a Partner to
+  review and issue. Nothing is issued or sent by itself, and no rate of GST is assumed." The seeded firm's
+  hours are not billable (it bills a fixed fee), so that list is empty on it: record one billable entry
+  before the day if you mean to show this.
+- "Our fee is quoted inclusive of GST." "On an invoice line, the calculator beside the rate takes a price that
+  includes GST, and the taxable rate is worked back by the server, not by the screen."
 
 ## 6. Avoid or explain
 
