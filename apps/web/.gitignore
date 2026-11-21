@@ -44,3 +44,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 package-lock.json
+
+# scripts/write-build-version.mjs: the id of the build, written before every build and served by the live site so an
+# open tab can learn that a newer build is live (POST-A-529). Generated, and different for every build.
+/public/version.json

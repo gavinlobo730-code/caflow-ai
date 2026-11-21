@@ -241,6 +241,7 @@ const CHROME: Record<string, { file: string; anchor: string }> = {
   SecureAccountBanner: { file: "components/shell/SecureAccountBanner.tsx", anchor: "px-4 pt-3" },
   SkipToContent: { file: "components/shell/SkipToContent.tsx", anchor: "sr-only" },
   SearchModal: { file: "components/SearchModal.tsx", anchor: "fixed inset-0 z-50" },
+  NewVersionNotice: { file: "components/shell/NewVersionNotice.tsx", anchor: "fixed bottom-4 left-4 z-[45]" },
   // Toaster renders only a viewport; the class list that places it is in the primitive.
   Toaster: { file: "components/ui/toast.tsx", anchor: "fixed top-0 z-[100]" },
   ConfirmDialogHost: { file: "components/ui/confirm-dialog.tsx", anchor: "fixed inset-0 z-[80]" },

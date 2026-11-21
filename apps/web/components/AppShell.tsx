@@ -9,6 +9,7 @@ import { ClientShell } from "@/components/shell/ClientShell";
 import { SearchModal } from "@/components/SearchModal";
 import { SecureAccountBanner } from "@/components/shell/SecureAccountBanner";
 import { SkipToContent } from "@/components/shell/SkipToContent";
+import { NewVersionNotice } from "@/components/shell/NewVersionNotice";
 import { isClientWorkspacePath } from "@/lib/workspace/clientPath";
 import { isPracticePath } from "@/lib/workspace/practiceWorkspace";
 import { GuidedTipsProvider } from "@/lib/tips/GuidedTipsContext";
@@ -149,6 +150,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <GuidedTipsProvider>
           <GuidedTip pathname={realPathname} />
           <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
+          {/* A tab opened before the site was republished is told, and loads the new build at its next move (POST-A-529). */}
+          <NewVersionNotice pathname={realPathname} />
           {isClientWorkspace || isPractice ? (
             <ClientShell onOpenSearch={() => setSearchOpen(true)} practicePath={isPractice}>{content}</ClientShell>
           ) : (
