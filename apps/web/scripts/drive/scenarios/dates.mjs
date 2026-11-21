@@ -1656,41 +1656,6 @@ const onAShortScreen = (open) => async (env) => {
   await open(env);
 };
 
-/** The Billing screen for a person who may write on it, with one fee invoice that is owed (so a receipt can be recorded against it). */
-async function atBilling(env) {
-  const { page, stub } = env;
-  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { billing: ["read", "write"] } }) });
-  stub.route({ method: "GET", re: /api\/engagements(\?|$)/, reply: () => ok({ engagements: [], total: 0 }) });
-  stub.setTable("fee_invoices", [{
-    id: "fi-1", firm_id: "f1", client_id: CLIENT_ID, invoice_no: "FEE-0001", invoice_date: "2026-09-01",
-    amount_paise: 1000000, gst_paise: 180000, total_paise: 1180000, status: "Issued",
-  }]);
-  stub.setTable("fee_receipts", []);
-  await page.goto(`${env.base}/billing/`, { waitUntil: "networkidle" });
-}
-
-/** "Add Fee Engagement" with the client chosen by default, the fee typed and everything else as it opens. */
-async function openFeeEngagement(env) {
-  const { page, stub } = env;
-  stub.route({ method: "POST", re: /api\/engagements$/, reply: () => ok({ engagement: { id: "en-1", client_id: CLIENT_ID, service_type: "GST Filing", fee_paise: 500000, billing_cycle: "Monthly", start_date: "2026-07-15", status: "Active" } }) });
-  await atBilling(env);
-  await page.getByRole("button", { name: "Engagements", exact: true }).first().click();
-  await page.getByRole("button", { name: "Add Engagement" }).first().click();
-  await page.getByRole("heading", { name: "Add Fee Engagement" }).waitFor();
-  await page.getByLabel("Fee (₹)").fill("5000");
-}
-
-/** "Record Receipt" against the owed fee invoice, with the amount typed. */
-async function openFeeReceipt(env) {
-  const { page, stub } = env;
-  stub.route({ method: "POST", re: /billing\/fee-invoices\/fi-1\/receipts$/, reply: () => ok({ id: "fr-1", invoice_id: "fi-1", receipt_date: "2026-07-15", amount_paise: 100000, payment_mode: "NEFT", reference_no: "" }) });
-  await atBilling(env);
-  await page.getByRole("button", { name: "Receipts", exact: true }).first().click();
-  await page.getByRole("button", { name: "Record Receipt" }).first().click();
-  await page.getByRole("heading", { name: "Record Receipt" }).waitFor();
-  await page.getByLabel("Amount (₹)").fill("1000");
-}
-
 /**
  * The Deadlines screen with one obligation that is ready to file and the "Mark as Filed" prompt open on it. The prompt is the
  * one shared by Deadlines (single and bulk), a client's Compliance tab and Practice → Compliance, so this one row drives all of them.
@@ -2075,16 +2040,10 @@ const EDITORS = [
     fields: [{ box: (p) => modalOf(p).locator("#mark-filed-date"), label: "Filed on", key: "filed_date", full: "05/10/2026", iso: "2026-10-05" }],
     save: (p) => modalOf(p).getByRole("button", { name: "Confirm Filed", exact: true }), write: /compliance\/obligations\/ob-1\/mark-filed$/,
   },
-  {
-    id: "fee-engagement", title: "fee engagement form (Billing)", open: openFeeEngagement,
-    fields: [{ box: (p) => p.locator("#engagement-start"), label: "Start date", key: "start_date", full: "15/07/2026", iso: "2026-07-15" }],
-    save: (p) => p.getByRole("button", { name: "Save Engagement", exact: true }), write: /api\/engagements$/,
-  },
-  {
-    id: "fee-receipt", title: "fee receipt form (Billing)", open: openFeeReceipt,
-    fields: [{ box: (p) => p.locator("#fee-receipt-date"), label: "Receipt date", key: "receipt_date", full: "15/07/2026", iso: "2026-07-15" }],
-    save: (p) => p.getByRole("button", { name: "Record Receipt", exact: true }).last(), write: /billing\/fee-invoices\/fi-1\/receipts$/,
-  },
+  // THE TWO FEE FORMS ARE NOT DRIVEN SINCE 21-11-2026. The fee engagement and fee receipt forms were on the earlier Fee Billing
+  // screen, which became a record that day (POST-B-193: the firm bills from My practice, and every control that writes on the
+  // earlier screen is withheld from everybody). Nobody can open either form, so the two rows that opened them failed in every
+  // zone. Their date boxes are named as not driven, with this reason, in `the-money-editors-are-driven-in-a-browser.test.ts`.
   {
     id: "add-asset", title: "Add Asset drawer (purchase date)", open: openAddAsset,
     fields: [{ box: (p) => p.getByLabel("Purchase date"), label: "Purchase date", key: "purchase_date", full: "15/07/2026", iso: "2026-07-15" }],
