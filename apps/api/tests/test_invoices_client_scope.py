@@ -232,15 +232,9 @@ def test_generating_from_your_own_engagement_still_works(deny, monkeypatch):
     assert out["data"]["invoice"]["id"] == "INV-NEW"
 
 
-def test_generating_from_time_entries_on_another_clients_engagement_is_refused(deny, monkeypatch):
-    _fake_engagement_repo(monkeypatch)
-    reached = []
-    monkeypatch.setattr("services.invoice_generation_service.generate_invoice_from_time_entries",
-                        lambda *a, **k: reached.append(a) or "INV-NEW")
-    with pytest.raises(HTTPException):
-        iv.generate_from_time_entries("ENG-THEIRS", invoice_month=None,
-                                      billable_only=True, current_user=USER)
-    assert reached == [], "an invoice was generated despite the refusal"
+# The route that generated a fee invoice from time entries (`POST /api/invoices/from-time/{engagement_id}`) was removed on
+# 21-11-2026 (POST-B-194): time is billed through the sales engine by `POST /api/billing/time-invoices`, whose own client
+# scope is held by `test_a_clients_unbilled_time_becomes_one_draft_invoice_and_is_billed_once.py` and the router sweep.
 
 
 # ══════════════════════════════════════════════════════════════════════════════

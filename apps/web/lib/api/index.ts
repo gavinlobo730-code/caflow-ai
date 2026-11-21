@@ -7457,6 +7457,17 @@ export const api = {
     unbilledWork: (clientId?: string) =>
       request<ApiResp<unknown>>(
         `/api/billing/unbilled-work${clientId ? `?client_id=${clientId}` : ""}`),
+    /** Hourly billing (POST-B-194). One client's unbilled time entry by entry, each priced by the server and each saying
+     *  why it cannot be billed yet when it cannot. Read through `lib/billing/timeInvoice.readUnbilledEntries`. */
+    unbilledEntries: (clientId: string) =>
+      request<ApiResp<unknown>>(`/api/billing/unbilled-work/entries?client_id=${encodeURIComponent(clientId)}`),
+    /** The lines a draft would carry for the chosen entries. Writes nothing. */
+    previewTimeInvoice: (body: { client_id: string; entry_ids: string[]; group_by: string }) =>
+      request<ApiResp<unknown>>("/api/billing/time-invoices/preview", { method: "POST", body: JSON.stringify(body) }),
+    /** Make ONE draft sales invoice in the practice's own books for the chosen entries and mark them billed by it. The
+     *  rate of GST and the practice's service are stated here; the server holds no default for either. */
+    createTimeInvoice: (body: { client_id: string; entry_ids: string[]; group_by: string; service_id: string; gst_rate_percent: number }) =>
+      request<ApiResp<unknown>>("/api/billing/time-invoices", { method: "POST", body: JSON.stringify(body) }),
     // What an hour of each PERSON bills at (practice_management-11) — not
     // `cost_rate_paise`, which is what the hour costs the firm. null clears it.
     listBillableRates: () =>

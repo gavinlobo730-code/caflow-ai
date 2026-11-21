@@ -192,7 +192,9 @@ BUDGET: dict[str, int] = {
     # /api/invoices 3 -> 2 on 28-09-2026: the engagement screen's Raise
     # Invoice now asks POST /from-engagement/{id}, which carries the
     # once-per-billing-period refusal a hand-built invoice never did.
-    "/api/ai-copilot": 3, "/api/invoices": 4, "/api/purchase-cycle": 4,
+    # /api/invoices 4 -> 3 on 21-11-2026 (POST-B-194): `POST /from-time/{engagement_id}` DELETED. It billed time on the earlier fee tables, no
+    # screen called it, and time is billed through the sales engine now (`POST /api/billing/time-invoices`, which has its screen).
+    "/api/ai-copilot": 3, "/api/invoices": 3, "/api/purchase-cycle": 4,
     # /api/accounting 2 -> 1 on 25-09-2026 (Phase 3a-3): the client
     # Reports tab renders `GET /statement-analysis`, whose method
     # `lib/api.accounting.statementAnalysis` had carried with no caller
@@ -329,7 +331,8 @@ NOT_REACHED_BY_A_SCREEN: dict[tuple[str, str], str] = {
 # 187 -> 194 on 21-11-2026 (POST-A-547): no route was added that reaches no screen. The scan's sibling rule was corrected to ignore the verb (see
 # `_literal_siblings` and the note in BUDGET), and seven routes that had been reading as called are counted. A raise with a reason: the debt
 # was there and the number could not see it.
-TOTAL_BUDGET = 194
+# 194 -> 193 on 21-11-2026 (POST-B-194): `POST /api/invoices/from-time/{engagement_id}` deleted, and `/api/invoices` fell 4 -> 3.
+TOTAL_BUDGET = 193
 
 
 # ---------------------------------------------------------------------------

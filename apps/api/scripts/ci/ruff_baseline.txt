@@ -271,7 +271,6 @@ routers/inventory.py :: B904 :: expiry_report :: 1
 routers/inventory.py :: B904 :: position_detail :: 1
 routers/inventory.py :: F401 :: <module> :: 1
 routers/invoices.py :: B904 :: generate_from_engagement :: 2
-routers/invoices.py :: B904 :: generate_from_time_entries :: 1
 routers/itr_workspace.py :: B904 :: create_bf_loss :: 1
 routers/itr_workspace.py :: B904 :: create_deduction :: 1
 routers/itr_workspace.py :: B904 :: create_disallowance :: 1

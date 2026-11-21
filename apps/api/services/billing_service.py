@@ -603,18 +603,9 @@ def set_staff_cost_rate(firm_id: str, user_id: str, cost_rate_paise: Optional[in
     return {"user_id": user_id, "cost_rate_paise": row.data[0].get("cost_rate_paise")}
 
 
-def mark_time_entries_billed(firm_id: str, entry_ids: list[str], invoice_id: str) -> dict:
-    """System-controlled billed linkage for future time-based billing. Sets
-    billed_invoice_id (authoritative); is_billed derives automatically (generated
-    column). Not exposed for manual editing."""
-    if _USE_MOCK or not entry_ids:
-        return {"marked": 0}
-    db = _db()
-    count = 0
-    for eid in entry_ids:
-        db.table("time_entries").update({"billed_invoice_id": invoice_id}).eq("id", eid).eq("firm_id", firm_id).execute()
-        count += 1
-    return {"marked": count}
+# `mark_time_entries_billed` WAS HERE AND IS GONE (POST-B-194). Nothing called it, it marked an entry whether or not it was
+# already billed, and it counted its attempts as rows. Marking is `time_billing_service._claim` now: one statement that
+# takes only entries still unbilled, compared with what was asked for.
 
 
 def run_due(firm_id: str, current_user: dict, as_of: Optional[str] = None) -> dict:

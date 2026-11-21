@@ -327,6 +327,11 @@ def delete_entry(entry_id: str, current_user: dict = Depends(rbac("time_entry", 
     firm_id = current_user.get("firm_id")
     entry = time_tracking_repo.find_by_id(entry_id, firm_id=firm_id)
     _assert_entry_scope(current_user, entry)
+    if (entry or {}).get("billed_invoice_id"):
+        # The invoice that bills this time adds up to its entries (POST-B-194). Deleting one would leave an invoice that
+        # bills time nobody recorded, the same reason its rate cannot be changed once billed.
+        raise HTTPException(status_code=409, detail="This time is on an invoice and cannot be deleted. Delete the draft "
+                                                    "invoice, or cancel the issued one, to release it first.")
     time_tracking_repo.delete(entry_id, firm_id=firm_id)
     return api_response(True, {"deleted": True})
 

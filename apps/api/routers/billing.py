@@ -20,6 +20,7 @@ from core.authz import assert_client_access, can_access_client, filter_by_client
 from core.permissions import rbac
 from core.query_day import query_day
 from services import billing_service
+from services import time_billing_service
 from services import collections_service
 from services import fee_billing_service
 from services.audit_service import log_event
@@ -362,6 +363,57 @@ def unbilled_work(client_id: Optional[str] = Query(None),
     # query — a foreign id would silently yield zero rows without this guard.
     assert_client_access(current_user, client_id)
     return api_response(True, billing_service.unbilled_work(current_user["firm_id"], client_id))
+
+
+# ── Hourly billing (POST-B-194): a client's unbilled time becomes one DRAFT invoice in the practice's own books ──────────
+# Partner-only, like the rest of the practice's billing (`billing` is a Partner's by default). The service says what an
+# hour is worth (the one pricing rule), which entries may be billed, and that an entry is billed once.
+
+class TimeInvoiceIn(BaseModel):
+    client_id: str
+    entry_ids: list[str]
+    #: How the time is shown on the invoice: "single", "by_task", "by_person" or "by_entry".
+    group_by: str = "by_task"
+
+
+class TimeInvoiceCreateIn(TimeInvoiceIn):
+    #: One of the practice's OWN services (`GET /api/billing/service-options`), which every line of the draft names.
+    service_id: str
+    #: The rate of GST on the practice's fee, as a percentage. Stated by the Partner on the request, as it is stated on a
+    #: billing schedule: this route holds no default for a statutory rate. The draft can still be edited before it is issued.
+    gst_rate_percent: float
+
+    @field_validator("gst_rate_percent")
+    @classmethod
+    def a_rate_is_a_percentage(cls, v: float) -> float:
+        if isinstance(v, bool) or not (0 <= float(v) <= 100):
+            raise ValueError("Enter the rate of GST as a percentage between 0 and 100.")
+        return float(v)
+
+
+@router.get("/unbilled-work/entries")
+def unbilled_time_entries(client_id: str = Query(...), current_user: dict = Depends(rbac("billing", "read"))):
+    """One client's unbilled billable time, entry by entry, each priced by the one rule and each saying why it cannot be
+    billed yet when it cannot."""
+    assert_client_access(current_user, client_id)
+    return api_response(True, time_billing_service.unbilled_entries(current_user["firm_id"], client_id))
+
+
+@router.post("/time-invoices/preview")
+def preview_time_invoice(body: TimeInvoiceIn, current_user: dict = Depends(rbac("billing", "read"))):
+    """The lines a draft would carry for the chosen entries, and what they add up to before tax. Writes nothing."""
+    assert_client_access(current_user, body.client_id)
+    return api_response(True, time_billing_service.preview(current_user["firm_id"], body.client_id, body.entry_ids, body.group_by))
+
+
+@router.post("/time-invoices")
+def create_time_invoice(body: TimeInvoiceCreateIn, current_user: dict = Depends(rbac("billing", "write"))):
+    """Make ONE draft sales invoice in the practice's own books for the chosen entries and mark them billed by it. The
+    draft is not issued: a Partner reviews it, gives it its number and issues it from the practice's invoices."""
+    assert_client_access(current_user, body.client_id)
+    return api_response(True, time_billing_service.create_draft(
+        current_user["firm_id"], body.client_id, body.entry_ids, body.group_by, body.service_id, body.gst_rate_percent,
+        current_user))
 
 
 @router.get("/staff-cost-rates")

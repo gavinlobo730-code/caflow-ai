@@ -499,8 +499,24 @@ not zero**. The answer is stored on the entry so a later rate change does not re
 logged work. `GET /api/billing/unbilled-work` aggregates in SQL (`unbilled_time_summary`)
 and lists work with no rate apart from work worth a stated amount.
 
-**Nothing bills time yet.** `billing_service.mark_time_entries_billed()` is the intended
-way to set the link and has no production caller; a schedule bills a fixed fee (POST-B-194).
+**Time is billed through the sales engine** (POST-B-194, 21-11-2026). A Partner picks a
+client's unbilled entries (`GET /api/billing/unbilled-work/entries`), sees the lines a draft
+would carry (`POST /api/billing/time-invoices/preview`) and makes ONE draft sales invoice in
+the practice's own books (`POST /api/billing/time-invoices`). `time_billing_service.create_draft()`
+resolves the client's customer the way a schedule does (`billing_service.ensure_customer_link()`),
+creates the draft with the sales engine's own create function under SAC 998211, and then marks
+the entries in a claim that takes only entries still unbilled; if the claim took fewer than
+were asked for, the draft is deleted (which releases what was taken: the link is `ON DELETE
+SET NULL`) and the request is refused, so an hour is billed once. A line is the SUM of its
+entries' worths at a quantity of one, with the hours in its words, so the draft adds up to
+what the Unbilled Work panel showed; a line written as hours times a rate would not (a
+quantity holds three decimals). The rate of GST and the practice's service are stated on the
+request; the route holds no default. Deleting the draft releases its time (the database does
+it), cancelling an issued time invoice releases it too (`time_billing_service.release_for_invoice()`,
+called by the cancel route), and time on an invoice cannot be deleted or re-priced. The legacy
+`from-time` route on the earlier fee tables, which no screen called, is removed. **Not done:**
+a signed-in session can still write the link column straight to the database (the table's
+grants are the firm's; POST-A-546).
 
 ## 7. The knowledge base
 
