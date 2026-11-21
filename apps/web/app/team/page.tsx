@@ -766,12 +766,19 @@ export default function TeamPage() {
   // decides whether to offer it. approval:approve is held by Partners alone.
   const { can } = usePermissions();
   const canResetAuthenticators = can("approval", "approve");
+  // Inviting is team:write, a Partner's. The header's button was drawn for everybody, so a Manager (who reads this screen
+  // and cannot invite) was offered a form the server refuses. `can()` answers false until the permissions are known.
+  const canInvite = can("team", "write");
+  // True when the list of members could not be read. Kept apart from an empty list: "No team members yet" and four tiles
+  // reading 0 are statements about the firm, and after a failed read nothing is known about the firm.
+  const [listUnread, setListUnread] = useState(false);
   const [activeTab, setActiveTab] = useState<"members" | "permissions">("members");
 
   const loadTeam = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
+      setListUnread(false);
       const supabase = getSupabaseClient();
 
       // Get current session
@@ -843,6 +850,7 @@ export default function TeamPage() {
         firm_id: r.firm_id,
       })));
     } catch (e) {
+      setListUnread(true);
       setError(e instanceof Error ? e.message : "Failed to load team");
     } finally {
       setLoading(false);
@@ -919,7 +927,8 @@ export default function TeamPage() {
       value: members.length,
       icon: Users,
       gradient: "bg-gradient-to-br from-blue-600 to-blue-500",
-      sub: `${activeMembers.length} active`,
+      // A count is a statement about the firm: while the list is being read, or could not be, it is not made.
+      sub: loading || listUnread ? "Active members" : `${activeMembers.length} active`,
     },
     {
       label: "Partners",
@@ -950,7 +959,7 @@ export default function TeamPage() {
       <PageHeader
         title="Team"
         subtitle="Manage your firm&apos;s team members and their roles"
-        actions={
+        actions={canInvite ? (
           <button
             onClick={() => setShowInvite(true)}
             className="flex items-center gap-1.5 bg-brand text-white text-sm px-3 py-2 rounded-lg hover:bg-brand-dark"
@@ -958,7 +967,7 @@ export default function TeamPage() {
             <UserPlus className="w-4 h-4" />
             Invite Member
           </button>
-        }
+        ) : undefined}
       />
 
       {error && (
@@ -988,7 +997,7 @@ export default function TeamPage() {
               </div>
               <span className="text-xs text-ps-label">{card.label}</span>
             </div>
-            <p className="text-lg font-semibold text-ps-ink">{loading ? "—" : card.value}</p>
+            <p className="text-lg font-semibold text-ps-ink">{loading || listUnread ? "—" : card.value}</p>
             <p className="text-xs text-ps-hint mt-0.5">{card.sub}</p>
           </div>
         ))}
@@ -1029,6 +1038,14 @@ export default function TeamPage() {
 
           {loading ? (
             <SectionPlaceholder label="Loading team members" shape="list" className="p-4" />
+          ) : listUnread ? (
+            <div className="px-5 py-8 text-sm text-ps-body" data-team-unread="">
+              <p>The list of team members could not be read, so nothing is shown here. That is not the same as there being no team members.</p>
+              <button type="button" onClick={() => void loadTeam()}
+                className="mt-3 rounded-lg border border-ps-border px-3 py-1.5 text-sm font-medium text-ps-ink hover:border-brand focus:outline-none focus-visible:ring-2 focus-visible:ring-brand">
+                Try again
+              </button>
+            </div>
           ) : members.length === 0 ? (
             <EmptyState
               icon={<Users size={32} />}
