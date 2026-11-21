@@ -237,6 +237,7 @@ Restoring into a **new** project and comparing is safer than restoring in place,
 | the nightly screen walk | `.github/workflows/smoke-walk.yml`; not a required check | [FILL IN] |
 | the live redirect check | `.github/workflows/live-redirects.yml`, every six hours | [FILL IN] |
 | the scheduler wake | `.github/workflows/wake-before-scheduler.yml` | nobody: it only pings |
+| which commit the live API and the live site are running | `.github/workflows/live-build.yml`, on demand only (Actions, Live build, Run workflow); it prints both and decides nothing | whoever asked |
 | a failed Render deploy | Render can notify; **whether it is set is not recorded** | [FILL IN] |
 | a failed Cloudflare Pages build | Cloudflare can notify; not recorded | [FILL IN] |
 | Supabase advisors, usage and disk | the monthly routine in `docs/operations/database-monitoring.md`; the alerts in its §5 are **not set** | [FILL IN] |
