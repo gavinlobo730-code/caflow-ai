@@ -39,7 +39,9 @@ import Link from "next/link";
 import { ArrowRight, CheckCircle2, ChevronDown, ChevronUp, Circle, HelpCircle } from "lucide-react";
 import { api } from "@/lib/api";
 import { objectOrNull } from "@/lib/api/shape";
-import { hrefFor, readFirstRun, shouldShow, type FirstRunChecklist, type FirstRunStep } from "@/lib/onboarding/firstRun";
+import {
+  hrefFor, practiceHrefFor, progressOf, readFirstRun, shouldShow, startHere, type FirstRunChecklist, type FirstRunStep,
+} from "@/lib/onboarding/firstRun";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -55,8 +57,7 @@ function stateWord(done: boolean | null): string {
   return done === true ? "Done" : done === null ? "Could not be checked" : "Not done yet";
 }
 
-function Row({ step, isNext }: { step: FirstRunStep; isNext: boolean }) {
-  const href = hrefFor(step.id);
+function Row({ step, isNext, href }: { step: FirstRunStep; isNext: boolean; href: string | null }) {
   return (
     <li
       data-step={step.id}
@@ -153,7 +154,11 @@ export function FirstRunChecklist() {
 
   if (gone || !shouldShow(checklist)) return null;
 
-  const pct = checklist.total > 0 ? Math.round((checklist.done_count / checklist.total) * 100) : 0;
+  // Both lists for a Partner (the firm's own practice is a second list, POST-A-533); the four steps for everybody else.
+  const progress = progressOf(checklist);
+  const next = startHere(checklist);
+  const practice = checklist.practice;
+  const pct = progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0;
 
   return (
     <section
@@ -167,7 +172,7 @@ export function FirstRunChecklist() {
             Getting started with PracticeSync
           </h2>
           <p className="mt-0.5 text-xs text-ps-hint">
-            {checklist.done_count} of {checklist.total} done. Each step ticks itself when it happens.
+            {progress.done} of {progress.total} done. Each step ticks itself when it happens.
           </p>
         </div>
         <button
@@ -185,26 +190,41 @@ export function FirstRunChecklist() {
         className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-ps-muted"
         role="progressbar"
         aria-valuemin={0}
-        aria-valuemax={checklist.total}
-        aria-valuenow={checklist.done_count}
+        aria-valuemax={progress.total}
+        aria-valuenow={progress.done}
         aria-label="Setup progress"
       >
         <div className="h-full rounded-full bg-brand transition-all" style={{ width: `${pct}%` }} />
       </div>
 
       {!collapsed ? (
-        <ol id="first-run-steps" className="mt-3 space-y-1">
-          {checklist.steps.map((step) => (
-            <Row key={step.id} step={step} isNext={step.id === checklist.next_step} />
-          ))}
-        </ol>
+        <div id="first-run-steps">
+          <ol className="mt-3 space-y-1">
+            {checklist.steps.map((step) => (
+              <Row key={step.id} step={step} isNext={step.id === next} href={hrefFor(step.id)} />
+            ))}
+          </ol>
+          {practice ? (
+            <div data-first-run-practice="true">
+              <h3 className="mt-4 text-sm font-semibold text-ps-ink">Your own firm</h3>
+              <p className="mt-0.5 text-xs text-ps-hint">
+                Your firm is kept as a client of itself, in My practice. Only a Partner sees these.
+              </p>
+              <ol className="mt-2 space-y-1">
+                {practice.steps.map((step) => (
+                  <Row key={step.id} step={step} isNext={step.id === next} href={practiceHrefFor(step.id, practice.client_id)} />
+                ))}
+              </ol>
+            </div>
+          ) : null}
+        </div>
       ) : null}
 
       <div className="mt-3 border-t border-ps-border pt-3 text-xs text-ps-hint">
         {asking ? (
           <div role="group" aria-label="Dismiss the checklist for good" className="flex flex-wrap items-center gap-2">
             <p className="min-w-0 flex-1">
-              This hides the checklist for you, on every device. The steps stay where they live: Clients, Sales, Banking and Team.
+              This hides the checklist for you, on every device. The steps stay where they live: Clients, Sales, Banking, Team and My practice.
               It does not come back.
             </p>
             <Button variant="plain" size="none" onClick={dismissForGood}

@@ -2,7 +2,7 @@
 //   node --experimental-strip-types --test lib/onboarding/firstRun.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { STEP_ROUTES, hrefFor, readFirstRun, shouldShow } from "./firstRun.ts";
+import { PRACTICE_STEP_ROUTES, STEP_ROUTES, hrefFor, practiceHrefFor, progressOf, readFirstRun, shouldShow, startHere } from "./firstRun.ts";
 
 const step = (id: string, done: unknown, extra: Record<string, unknown> = {}) =>
   ({ id, title: `Do ${id}`, why: "because", done, done_at: null, ...extra });
@@ -103,3 +103,49 @@ test("a card the server says is not visible stays hidden whatever else it says",
   assert.equal(shouldShow(readFirstRun(payload({ visible: true, dismissed: false }))), true);
   assert.equal(shouldShow(readFirstRun(payload({ visible: true, dismissed: null }))), true, "an unreadable dismissal leaves the card");
 });
+
+// ── the firm's own practice: a second list, in a Partner's answer only (POST-A-533) ─────────────────────────────────────────
+
+const practice = (over: Record<string, unknown> = {}) => ({
+  steps: [step("practice_identity", true), step("practice_books", false), step("practice_statement", null), step("practice_fee_bill", false)],
+  total: 4, done_count: 1, complete: false, next_step: "practice_books", unreadable: ["practice_statement"], client_id: "p-1", ...over,
+});
+
+test("the practice's list is read when the server sends one, and is absent for everybody else", () => {
+  assert.equal(readFirstRun(payload())!.practice, null, "a payload with no practice list invented one");
+  assert.equal(readFirstRun(payload({ practice: null }))!.practice, null);
+  for (const bad of ["yes", 1, [], {}, { steps: [] }, { steps: "four" }]) {
+    assert.equal(readFirstRun(payload({ practice: bad }))!.practice, null, JSON.stringify(bad));
+  }
+  const p = readFirstRun(payload({ practice: practice() }))!.practice!;
+  assert.deepEqual(p.steps.map((s) => s.done), [true, false, null, false]);
+  assert.equal(p.client_id, "p-1");
+  assert.equal(readFirstRun(payload({ practice: practice({ client_id: "" }) }))!.practice!.client_id, null, "an empty id is not an id");
+});
+
+test("the card counts both lists for a Partner and the four steps for everybody else", () => {
+  assert.deepEqual(progressOf(readFirstRun(payload())!), { done: 1, total: 4 });
+  assert.deepEqual(progressOf(readFirstRun(payload({ practice: practice() }))!), { done: 2, total: 8 });
+});
+
+test("one step is marked to start with: the clients' next, and the practice's only when the clients have none", () => {
+  assert.equal(startHere(readFirstRun(payload({ practice: practice() }))!), "first_invoice");
+  assert.equal(startHere(readFirstRun(payload({ next_step: null, practice: practice() }))!), "practice_books");
+  assert.equal(startHere(readFirstRun(payload({ next_step: null }))!), null);
+});
+
+test("a practice step opens a screen of My practice, and Practice home while the practice is not set up", () => {
+  assert.equal(practiceHrefFor("practice_identity", "p-1"), "/practice");
+  assert.equal(practiceHrefFor("practice_books", "p-1"), "/clients/p-1/accounting?tab=opening-balances");
+  assert.equal(practiceHrefFor("practice_statement", "p-1"), "/clients/p-1/bank");
+  assert.equal(practiceHrefFor("practice_fee_bill", "p-1"), "/practice/billing");
+  for (const id of Object.keys(PRACTICE_STEP_ROUTES)) {
+    const href = practiceHrefFor(id, null)!;
+    assert.ok(href === "/practice" || href.startsWith("/practice/"), `${id} leads into a workspace that does not exist: ${href}`);
+    assert.doesNotMatch(href, /null|undefined/);
+  }
+  assert.equal(practiceHrefFor("something_else", "p-1"), null);
+  assert.equal(hrefFor("practice_books"), null, "a practice step is routed as a client step");
+  assert.ok(Object.keys(STEP_ROUTES).every((id) => !id.startsWith("practice_")));
+});
+

@@ -31,6 +31,18 @@ export interface FirstRunStep {
   done_at: string | null;
 }
 
+/** The firm's own practice: a second list, in a Partner's answer only (POST-A-533). */
+export interface PracticeChecklist {
+  steps: FirstRunStep[];
+  total: number;
+  done_count: number;
+  complete: boolean;
+  next_step: string | null;
+  unreadable: string[];
+  /** The practice's own record, for the links; `null` while the practice is not set up. */
+  client_id: string | null;
+}
+
 export interface FirstRunChecklist {
   steps: FirstRunStep[];
   total: number;
@@ -42,6 +54,8 @@ export interface FirstRunChecklist {
   /** Whether THIS person dismissed the card for good (POST-A-002). `null` = the server could not read it, which is not a dismissal. */
   dismissed: boolean | null;
   minutes_to_first_invoice: number | null;
+  /** `null` for everybody but a Partner, and when the server sent no usable list. */
+  practice: PracticeChecklist | null;
 }
 
 /**
@@ -58,6 +72,23 @@ export const STEP_ROUTES: Record<string, string> = {
 
 export function hrefFor(stepId: string): string | null {
   return Object.prototype.hasOwnProperty.call(STEP_ROUTES, stepId) ? STEP_ROUTES[stepId] : null;
+}
+
+/**
+ * The screen each step of the firm's own practice opens (POST-A-533). They are screens of My practice: the fixed practice
+ * screens, and the practice's own client workspace, whose address needs the practice's record id. While the practice is
+ * not set up there is no workspace to open, and every step leads to Practice home, which is where it is set up.
+ * `tests/test_a_partner_is_walked_through_the_firms_own_practice.py` holds the keys equal to Python's step ids.
+ */
+export const PRACTICE_STEP_ROUTES: Record<string, (practiceId: string | null) => string> = {
+  practice_identity: () => "/practice",
+  practice_books: (practiceId) => (practiceId ? `/clients/${practiceId}/accounting?tab=opening-balances` : "/practice"),
+  practice_statement: (practiceId) => (practiceId ? `/clients/${practiceId}/bank` : "/practice"),
+  practice_fee_bill: () => "/practice/billing",
+};
+
+export function practiceHrefFor(stepId: string, practiceId: string | null): string | null {
+  return Object.prototype.hasOwnProperty.call(PRACTICE_STEP_ROUTES, stepId) ? PRACTICE_STEP_ROUTES[stepId](practiceId) : null;
 }
 
 function stepOf(raw: unknown): FirstRunStep | null {
@@ -79,6 +110,23 @@ function stepOf(raw: unknown): FirstRunStep | null {
  * is NO DATA, not a crash (`lib/api/shape.ts`), and `{}` is not a checklist: `steps` is a
  * list the card maps over, so it is made one here rather than trusted.
  */
+/** The practice's list out of `first_run.practice`, or `null` when it is absent, not an object or has no steps. */
+function practiceOf(raw: unknown): PracticeChecklist | null {
+  const o = objectOrNull<Record<string, unknown>>(raw);
+  if (!o) return null;
+  const steps = arrayOrEmpty<unknown>(o.steps).map(stepOf).filter((s): s is FirstRunStep => s !== null);
+  if (steps.length === 0) return null;
+  return {
+    steps,
+    total: typeof o.total === "number" ? o.total : steps.length,
+    done_count: typeof o.done_count === "number" ? o.done_count : steps.filter((s) => s.done === true).length,
+    complete: o.complete === true,
+    next_step: typeof o.next_step === "string" ? o.next_step : null,
+    unreadable: arrayOrEmpty<unknown>(o.unreadable).filter((x): x is string => typeof x === "string"),
+    client_id: typeof o.client_id === "string" && o.client_id !== "" ? o.client_id : null,
+  };
+}
+
 export function readFirstRun(data: unknown): FirstRunChecklist | null {
   const root = objectOrNull<Record<string, unknown>>(data);
   const fr = root ? objectOrNull<Record<string, unknown>>(root.first_run) : null;
@@ -100,7 +148,19 @@ export function readFirstRun(data: unknown): FirstRunChecklist | null {
     dismissed: fr.dismissed === true ? true : fr.dismissed === false ? false : null,
     minutes_to_first_invoice:
       typeof fr.minutes_to_first_invoice === "number" ? fr.minutes_to_first_invoice : null,
+    practice: practiceOf(fr.practice),
   };
+}
+
+/** What the card counts: both lists for a Partner, the four steps for everybody else. */
+export function progressOf(checklist: FirstRunChecklist): { done: number; total: number } {
+  const p = checklist.practice;
+  return { done: checklist.done_count + (p ? p.done_count : 0), total: checklist.total + (p ? p.total : 0) };
+}
+
+/** The one step marked "Start here": the clients' next step, and the practice's only when the clients' list has none. */
+export function startHere(checklist: FirstRunChecklist): string | null {
+  return checklist.next_step ?? checklist.practice?.next_step ?? null;
 }
 
 /** Whether the card shows at all: the server said so and there is something to list. */

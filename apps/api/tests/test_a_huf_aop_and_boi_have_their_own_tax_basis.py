@@ -495,8 +495,14 @@ ALL_TYPES = [e.value for e in EntityType]
 
 
 def test_the_client_form_offers_exactly_the_models_values():
-    got = _quoted_run_after(WEB / "components" / "ClientFormModal.tsx", "const ENTITY_TYPES = [")
+    # The list moved out of the client form when sign-up began to ask the firm's own legal form (POST-A-533): one list,
+    # read by both forms, so the question asked in a second place is not a second copy.
+    got = _quoted_run_after(WEB / "lib" / "clients" / "entityTypes.ts", "export const ENTITY_TYPES = [")
     assert sorted(got) == sorted(ALL_TYPES)
+    for form in ("components/ClientFormModal.tsx", "app/onboarding/page.tsx"):
+        src = (WEB / form).read_text(encoding="utf-8")
+        assert 'import { ENTITY_TYPES } from "@/lib/clients/entityTypes";' in src, f"{form} does not read the one list"
+        assert "const ENTITY_TYPES = [" not in src, f"{form} holds a copy of the list"
 
 
 def test_the_bulk_importer_and_the_pipeline_accept_exactly_the_models_values():
