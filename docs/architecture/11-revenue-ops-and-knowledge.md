@@ -119,17 +119,23 @@ client's knowledge and instructions).
   not to the client list, and offers no client switcher and no health badge (the practice is
   in neither population, G2). It is not a second bar because the menu's backdrop is a
   hand-built full-window layer, and the overlay guard refuses a second copy of one.
-- **The grid is two groups** (`apps/web/components/client/PracticeModuleGrid.tsx`): "Your
-  firm's books", the client workspace's sections opened on the practice's own client, and
-  "Running the practice", the fixed screens. On a fixed address the practice's client id is
-  the server's to give (`GET /api/practice`, read by
+- **The grid is three groups** (`apps/web/components/client/PracticeModuleGrid.tsx`): "Your
+  firm's books", the client workspace's sections opened on the practice's own client;
+  "Running the practice", the fixed screens; and "People". On a fixed address the practice's
+  client id is the server's to give (`GET /api/practice`, read by
   `apps/web/lib/workspace/usePracticeClient.ts`), and four answers are kept apart: ready, not
   set up (only the server's own "not provisioned"), unavailable (a read that failed or was
   refused) and still reading. A practice that is not set up is pointed at Practice home; a
-  failed read says so; neither draws a tile that leads nowhere. A third, short group, "Your
-  team and its hours", POINTS AT the Team, Workload and Time Tracking screens and does not
-  hold them: a Manager reaches those too, so they stay in the firm's own menus and frame, and
-  the group says that they open there.
+  failed read says so; neither draws a tile that leads nowhere.
+- **People is one list of screens with two doors** (the owner's decision of 21-11-2026;
+  `apps/web/lib/workspace/practiceWorkspace.ts`). Team, Assignments, Approvals, Workload and
+  Login History keep their addresses. Somebody who may open My practice (a Partner) finds
+  them in its People group and is drawn them in the My practice frame, and has no separate
+  Team entry on the firm menu (`apps/web/lib/workspace/outerMenu.ts`); a Manager, who runs
+  the team day to day and has no My practice, reaches the same screens from the firm menu's
+  Team entry, in the firm's frame. The first build pointed a Partner out to the firm's menus
+  instead, which the owner met as being thrown out of My practice. Time Tracking is in Work,
+  where every member of staff records hours, and is not listed here.
 - **The firm menu says "My practice"** where it said "Practice" (same entry, same route, a
   Partner alone), and its panel opens with "Your firm's books".
 - **Driven in a browser** (`apps/web/scripts/drive/weekly/myPractice.mjs`, four scenarios in

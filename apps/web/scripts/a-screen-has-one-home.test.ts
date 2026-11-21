@@ -82,6 +82,21 @@ const LISTED_TWICE: Record<string, string> = {
     "this codebase records at /accounting/retainer and /gst/reconciliation. " +
     "PayrollPanel draws it with an outbound mark so the rail icon changing " +
     "is not a surprise",
+  // THE PEOPLE SCREENS: ONE LIST, TWO DOORS, AND A PERSON SEES ONLY ONE OF THEM (the owner's decision of 21-11-2026).
+  // TeamPanel owns all five and is the door of somebody with no My practice (a Manager, who runs the team). PracticePanel
+  // lists the same five under "People" for somebody who has My practice (a Partner), who is given no Team entry on the
+  // outer menu (`lib/workspace/outerMenu.ts`), so no one person is shown the screen under two headings, which is the defect
+  // this rule exists for. `practiceWorkspace.test.ts` holds the two panels to one list, word for word.
+  "/team":
+    "owned by TeamPanel; PracticePanel lists it under People for whoever has My practice, who has no Team entry",
+  "/team/assignments":
+    "owned by TeamPanel; PracticePanel lists it under People for whoever has My practice, who has no Team entry",
+  "/approvals":
+    "owned by TeamPanel; PracticePanel lists it under People for whoever has My practice, who has no Team entry",
+  "/team/workload":
+    "owned by TeamPanel; PracticePanel lists it under People for whoever has My practice, who has no Team entry",
+  "/team/login-history":
+    "owned by TeamPanel; PracticePanel lists it under People for whoever has My practice, who has no Team entry",
 };
 
 /**
