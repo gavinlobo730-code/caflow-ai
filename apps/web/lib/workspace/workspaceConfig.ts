@@ -45,43 +45,9 @@ export interface WorkspaceConfig {
   description: string;
   defaultRoute: string;
   icon: LucideIcon;
-  /**
-   * The backend permission EVERY screen in this workspace needs, read off the
-   * endpoints — the same `requires` convention the panels use, at workspace
-   * granularity. Set only where one `rbac(...)` pair governs the whole module,
-   * so a rail tile for it would open a panel with every entry filtered out.
-   *
-   * ⚠️ IT IS NOT A SECURITY BOUNDARY — `rbac()` is, on the server. This stops
-   * the rail offering a destination that can only be empty.
-   *
-   * Used once, on Payroll: `core/permissions.PERMISSIONS["payroll"]["read"]`
-   * is Partner and Manager, and all six payroll screens call
-   * `routers/payroll.py`. Before PAY-28 those screens lived under Accounting,
-   * whose panel has fourteen other entries, so an Executive simply saw the
-   * panel without them; a workspace of their own has nothing else to show.
-   *
-   * It is resolved against the map the BACKEND serves
-   * (`GET /api/identity/permissions`) rather than a role list here, because a
-   * second copy of the matrix in TypeScript drifts silently and already had —
-   * see `lib/auth/permissions.ts`. `canAccessWorkspace`'s role sets stay as
-   * they are: they answer a different question (Practice exposes fee
-   * economics; Deadlines and Work are hidden from delivery staff by product
-   * decision, not by an rbac pair).
-   */
-  requires?: [resource: string, action: string];
-  /**
-   * For a workspace whose screens each ask a DIFFERENT pair: the tile is shown
-   * when ANY of them admits the caller, so it never opens a panel with every
-   * entry filtered out (POST-A-447). Used once, on Team, whose five screens ask
-   * `team`, `assignment`, `approval` and `workload` `read`, all Manager and
-   * above today, so an Executive and a Reviewer were shown a Team tile that
-   * opened on nothing. It is a list rather than a single pair because those
-   * four are separate rows of the matrix and a per-person grant can give one
-   * without the others. `lib/workspace/tileOffered.test.ts`
-   * holds it equal to the set of pairs `TeamPanel` filters on, and asserts
-   * every Team entry carries one.
-   */
-  requiresAnyOf?: ReadonlyArray<readonly [resource: string, action: string]>;
+  // WHO IS OFFERED AN AREA IS NOT DECIDED HERE. Since POST-A-543 it is one table, `lib/access/screenAccess.ts`
+  // (`AREA_RULES`): the permission pairs a Partner ticked for the person, and the Partner-only rule for My practice. The
+  // `requires` and `requiresAnyOf` fields that three areas carried here went with the role lists they sat beside.
 }
 
 
@@ -120,8 +86,6 @@ export const WORKSPACE_CONFIGS: WorkspaceConfig[] = [
     description: "Staff & tasks",
     defaultRoute: "/team",
     icon: UserCheck,
-    // TeamPanel's entries: identity (team), assignments, approvals, workload.
-    requiresAnyOf: [["team", "read"], ["assignment", "read"], ["approval", "read"], ["workload", "read"]],
   },
   {
     id: "ai",
@@ -147,8 +111,6 @@ export const WORKSPACE_CONFIGS: WorkspaceConfig[] = [
     description: "Payroll across every client",
     defaultRoute: "/payroll",
     icon: Briefcase,
-    // payroll.py: every endpoint every payroll screen calls is rbac("payroll", …).
-    requires: ["payroll", "read"],
   },
   {
     id: "relationships",
@@ -190,8 +152,6 @@ export const WORKSPACE_CONFIGS: WorkspaceConfig[] = [
     description: "Engagement letters & agreements",
     defaultRoute: "/engagements",
     icon: FileText,
-    // The letters are read with engagement:read since POST-A-543 (they carry fees): Manager and above by default.
-    requires: ["engagement", "read"],
   },
 ];
 

@@ -9,7 +9,7 @@ import {
   isPracticePath, peopleSectionsOffered, practiceSectionAt, readPracticeLookup, wearsThePracticeFrame, peopleSectionAt,
 } from "./practiceWorkspace.ts";
 import { rememberPracticeAccess, rememberedPracticeAccess } from "./practiceAccessMemory.ts";
-import { canAccessWorkspace, type UserRole } from "../auth/permissions.ts";
+import { isPartnerOnlyAllowed, type UserRole } from "../auth/permissions.ts";
 
 const web = path.join(import.meta.dirname, "..", "..");
 const read = (rel: string) => fs.readFileSync(path.join(web, rel), "utf8");
@@ -82,7 +82,7 @@ test("every People screen is a page that exists, under a People address, and is 
 test("a People screen wears the My practice frame for somebody who may open My practice, and the firm's frame for everybody else", () => {
   const roles: UserRole[] = ["Partner", "Manager", "Executive", "Reviewer", "Client"];
   for (const role of roles) {
-    const may = canAccessWorkspace("practice", role);
+    const may = isPartnerOnlyAllowed(role);
     for (const s of PRACTICE_PEOPLE_SECTIONS) {
       assert.equal(wearsThePracticeFrame(s.href, may), role === "Partner", `${role} on ${s.href}`);
     }
@@ -92,7 +92,7 @@ test("a People screen wears the My practice frame for somebody who may open My p
     for (const p of ["/", "/clients/", "/work/", "/time/", "/payroll/", "/settings/", "/tasks/"]) assert.equal(wearsThePracticeFrame(p, may), false, `${role} on ${p}`);
   }
   // Nobody signed in, or a role that has not been read: the firm's frame.
-  assert.equal(wearsThePracticeFrame("/team/", canAccessWorkspace("practice", null)), false);
+  assert.equal(wearsThePracticeFrame("/team/", isPartnerOnlyAllowed(null)), false);
 });
 
 test("the open People screen is named on the bar, and the longer address wins", () => {
@@ -115,8 +115,8 @@ test("a People entry is offered to whoever may read it, and nothing is withheld 
 test("the shell asks who is looking, and stands on the last answer only until the role has been read", () => {
   const shell = read("components/AppShell.tsx");
   assert.match(shell, /wearsThePracticeFrame\(realPathname, mayOpenPractice\)/);
-  assert.match(shell, /const mayOpenPractice = roleLoading \? remembered : canAccessWorkspace\("practice", userRole\);/);
-  assert.match(shell, /if \(!roleLoading\) rememberPracticeAccess\(canAccessWorkspace\("practice", userRole\)\);/);
+  assert.match(shell, /const mayOpenPractice = roleLoading \? remembered : isPartnerOnlyAllowed\(userRole\);/);
+  assert.match(shell, /if \(!roleLoading\) rememberPracticeAccess\(isPartnerOnlyAllowed\(userRole\)\);/);
 });
 
 test("the remembered answer is a convenience: empty or blocked storage answers no, and writing to it never throws", () => {

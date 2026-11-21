@@ -14,7 +14,8 @@ import { isClientWorkspacePath } from "@/lib/workspace/clientPath";
 import { wearsThePracticeFrame } from "@/lib/workspace/practiceWorkspace";
 import { rememberPracticeAccess, rememberedPracticeAccess } from "@/lib/workspace/practiceAccessMemory";
 import { useAuth } from "@/lib/auth/AuthContext";
-import { canAccessWorkspace } from "@/lib/auth/permissions";
+import { isPartnerOnlyAllowed } from "@/lib/auth/permissions";
+import ScreenAccessGate from "@/components/auth/ScreenAccessGate";
 import { WhereIsGuide } from "@/components/guide/WhereIsGuide";
 
 // usePathname() reflects the App Router's FlightRouterState, which under
@@ -114,9 +115,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // (`practiceAccessMemory.ts`), so a Partner's reload of the Team screen does not start in one frame and change to the other.
   const { userRole, roleLoading } = useAuth();
   const [remembered] = useState<boolean>(() => rememberedPracticeAccess());
-  const mayOpenPractice = roleLoading ? remembered : canAccessWorkspace("practice", userRole);
+  const mayOpenPractice = roleLoading ? remembered : isPartnerOnlyAllowed(userRole);
   useEffect(() => {
-    if (!roleLoading) rememberPracticeAccess(canAccessWorkspace("practice", userRole));
+    if (!roleLoading) rememberPracticeAccess(isPartnerOnlyAllowed(userRole));
   }, [roleLoading, userRole]);
   const isPractice = wearsThePracticeFrame(realPathname, mayOpenPractice);
 
@@ -149,7 +150,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const content = (
     <>
       <SecureAccountBanner pathname={realPathname} />
-      {children}
+      {/* The one gate on every firm screen (POST-A-543): an address the person holds no tick for says so in words. */}
+      <ScreenAccessGate pathname={realPathname}>{children}</ScreenAccessGate>
     </>
   );
   return (

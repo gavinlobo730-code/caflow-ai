@@ -14,6 +14,7 @@ import {
 import { cn } from "@/lib/utils";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import { ADD_CLIENT_HREF, ADD_CLIENT_LABEL } from "@/lib/clients/addClient";
+import { useScreenAccess } from "@/lib/access/useScreenAccess";
 
 const CLIENTS_ITEMS = [
   { href: "/clients", label: "All Clients", icon: Users },
@@ -45,7 +46,8 @@ export function ClientsPanel({ onOpenSearch }: ClientsPanelProps) {
   const canAdd = can("client", "write");
   // The pipeline is every lead of the firm and is read with pipeline:read (POST-A-543): the entry is offered to whoever holds
   // it. `can()` answers false until the permissions are known, so the entry appears once they are and never flashes away.
-  const items = CLIENTS_ITEMS.filter((item) => item.href !== "/pipeline" || can("pipeline", "read"));
+  const { offered } = useScreenAccess();
+  const items = CLIENTS_ITEMS.filter((item) => offered(item.href) && (item.href !== "/pipeline" || can("pipeline", "read")));
 
   return (
     <div className="flex flex-col h-full">

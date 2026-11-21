@@ -6,31 +6,19 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { MAIN_AREAS, MORE_AREAS, MORE_ID, areaShown, outerMenu } from "./outerMenu.ts";
-import { workspaceTileOffered } from "./tileOffered.ts";
+import { AREA_RULES, areaOffered } from "../access/screenAccess.ts";
 import { PRACTICE_PEOPLE_SECTIONS } from "./practiceWorkspace.ts";
-import { canAccessWorkspace, type UserRole } from "../auth/permissions.ts";
+import type { UserRole } from "../auth/permissions.ts";
 
 const WEB = join(import.meta.dirname, "..", "..");
 const API = join(WEB, "..", "api");
 const read = (rel: string) => readFileSync(join(WEB, rel), "utf8");
 
-type Pair = readonly [string, string];
-interface Area { id: string; defaultRoute: string; requires?: Pair; requiresAnyOf?: Pair[] }
-
-/** The areas of WORKSPACE_CONFIGS, read from the source (the file imports icons node cannot load). */
-function areas(): Area[] {
+/** The ids of the areas of WORKSPACE_CONFIGS, in its order, read from the source (the file imports icons node cannot load). */
+function areas(): string[] {
   const src = read("lib/workspace/workspaceConfig.ts");
   const list = src.slice(src.indexOf("export const WORKSPACE_CONFIGS"), src.indexOf("export const DEFAULT_WORKSPACE_ROUTES"));
-  const pairs = (text: string): Pair[] => [...text.matchAll(/\["([a-z_]+)",\s*"([a-z_]+)"\]/g)].map((m) => [m[1], m[2]] as const);
-  const out: Area[] = [];
-  for (const block of list.split(/\n  \{\n/).slice(1)) {
-    const id = block.match(/\bid: "([a-z]+)"/)?.[1];
-    const route = block.match(/defaultRoute: "([^"]+)"/)?.[1];
-    assert.ok(id && route, `an area of WORKSPACE_CONFIGS could not be read:\n${block.slice(0, 200)}`);
-    const one = block.match(/requires:\s*(\[[^\]]*\])/)?.[1];
-    const any = block.match(/requiresAnyOf:\s*\[(.*)\],?\s*$/m)?.[1];
-    out.push({ id, defaultRoute: route, requires: one ? pairs(one)[0] : undefined, requiresAnyOf: any ? pairs(any) : undefined });
-  }
+  const out = [...list.matchAll(/\n    id: "([a-z]+)",/g)].map((m) => m[1]);
   assert.ok(out.length >= 13, `only ${out.length} areas read: workspaceConfig.ts has moved`);
   return out;
 }
@@ -55,11 +43,15 @@ function canFor(role: UserRole): (resource: string, action: string) => boolean {
   };
 }
 
-/** The ids of the areas a role is offered: the product's role rule and the tile rule, as the menu asks them. */
+/** The ids of the areas a role is offered, as the menu asks: the one table, with the role's own default permissions. */
 function offeredTo(role: UserRole): string[] {
-  const can = canFor(role);
-  return areas().filter((a) => canAccessWorkspace(a.id as never, role) && workspaceTileOffered(a, can, true)).map((a) => a.id);
+  const who = { can: canFor(role), isPartner: role === "Partner" };
+  return areas().filter((id) => areaOffered(id, who));
 }
+
+test("every area of the menu has a rule in the one table, and the table names no area the menu lacks", () => {
+  assert.deepEqual(Object.keys(AREA_RULES).sort(), [...areas()].sort());
+});
 
 test("a Partner's list: the daily areas, My practice with no separate Team entry, and the rest under More", () => {
   assert.deepEqual(outerMenu(offeredTo("Partner")), {
@@ -75,15 +67,31 @@ test("a Manager's list: Team where it was, no My practice, and the same More", (
   });
 });
 
-test("an Executive's and a Reviewer's list: no Team, no My practice, no Payroll, no Engagements, and More holds the rest", () => {
-  // Engagements left their list on 21-11-2026 (POST-A-543): the letters carry fees and are read with engagement:read, a
-  // Partner's and a Manager's by default, so the area is offered to whoever holds that pair and to nobody else.
-  for (const role of ["Executive", "Reviewer"] as UserRole[]) {
-    assert.deepEqual(outerMenu(offeredTo(role)), {
-      main: ["home", "clients", "ai"],
-      more: ["accounting", "relationships", "health", "knowledge"],
-    }, role);
-  }
+test("an Executive's list: Deadlines and Work are theirs, with Accounting under More; no Team, My practice, Payroll or Engagements", () => {
+  // POST-A-543 (the owner's decision of 21-11-2026): the menu follows the permissions a person holds. An Executive holds the
+  // compliance, tax and task permissions (they need them inside a client), so Deadlines and Work are on their menu, each list
+  // limited by the server to the clients they are assigned to. Engagements needs engagement:read, a Manager's by default.
+  assert.deepEqual(outerMenu(offeredTo("Executive")), {
+    main: ["home", "clients", "deadlines", "work", "ai"],
+    more: ["accounting", "relationships", "health", "knowledge"],
+  });
+});
+
+test("a Reviewer's list: the same without Accounting, which needs a permission a Reviewer does not start with", () => {
+  assert.deepEqual(outerMenu(offeredTo("Reviewer")), {
+    main: ["home", "clients", "deadlines", "work", "ai"],
+    more: ["relationships", "health", "knowledge"],
+  });
+});
+
+test("a tick moves the menu: an area appears for one person a Partner ticked, and goes for one a Partner blocked", () => {
+  const base = canFor("Reviewer");
+  const ticked = { can: (r: string, a: string) => (r === "accounting" && a === "read") || base(r, a), isPartner: false };
+  assert.ok(areas().filter((id) => areaOffered(id, ticked)).includes("accounting"));
+  const blocked = { can: (r: string, a: string) => !(r === "knowledge") && base(r, a), isPartner: false };
+  assert.ok(!areas().filter((id) => areaOffered(id, blocked)).includes("knowledge"));
+  // My practice is not a tick: no permission opens it for somebody who is not a Partner.
+  assert.ok(!areas().filter((id) => areaOffered(id, { can: () => true, isPartner: false })).includes("practice"));
 });
 
 test("nothing a role was offered has gone: every area is on the list or under More, and a Partner's Team screens are in My practice", () => {
@@ -97,9 +105,8 @@ test("nothing a role was offered has gone: every area is on the list or under Mo
       // The one area a Partner's list leaves out, and every screen of it is offered inside My practice by the same pairs.
       assert.deepEqual(dropped, ["team"]);
       const can = canFor(role);
-      const team = areas().find((a) => a.id === "team")!;
       const peoplePairs = PRACTICE_PEOPLE_SECTIONS.map((s) => s.requires.join(":"));
-      for (const pair of team.requiresAnyOf ?? []) assert.ok(peoplePairs.includes(pair.join(":")), `no People screen asks ${pair.join(":")}`);
+      for (const pair of AREA_RULES.team.any ?? []) assert.ok(peoplePairs.includes(pair.join(":")), `no People screen asks ${pair.join(":")}`);
       for (const s of PRACTICE_PEOPLE_SECTIONS) assert.ok(can(s.requires[0], s.requires[1]), `a Partner is not offered ${s.href}`);
     } else {
       assert.deepEqual(dropped, [], `${role} lost ${dropped.join(", ")}`);
@@ -109,7 +116,7 @@ test("nothing a role was offered has gone: every area is on the list or under Mo
 });
 
 test("every area of the firm menu is placed on exactly one of the two lists", () => {
-  const ids = areas().map((a) => a.id).sort();
+  const ids = [...areas()].sort();
   assert.deepEqual([...MAIN_AREAS, ...MORE_AREAS].sort(), ids);
   assert.equal(new Set([...MAIN_AREAS, ...MORE_AREAS]).size, MAIN_AREAS.length + MORE_AREAS.length);
 });

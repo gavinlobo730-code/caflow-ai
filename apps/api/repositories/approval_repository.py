@@ -73,6 +73,19 @@ class ApprovalRepository:
                .order("created_at", desc=True).limit(limit).execute())
         return res.data or []
 
+    def by_requester(self, firm_id: str, request_type: str, requested_by, limit: int = 50) -> "list[dict]":
+        """One person's own requests of one type, newest first, asked of the database by the person (not read out of
+        the firm's latest hundred). An id that names nobody is never put to the database."""
+        if not isinstance(requested_by, str) or not requested_by.strip():
+            return []
+        if _USE_MOCK:
+            rows = [r for r in _MOCK_REQUESTS if r["firm_id"] == firm_id and r["request_type"] == request_type
+                    and r.get("requested_by") == requested_by]
+            return sorted(rows, key=lambda r: r["created_at"], reverse=True)[:limit]
+        res = (_db().table("approval_requests").select("*").eq("firm_id", firm_id).eq("request_type", request_type)
+               .eq("requested_by", requested_by).order("created_at", desc=True).limit(limit).execute())
+        return res.data or []
+
     def update(self, firm_id: str, request_id: str, data: dict) -> Optional[dict]:
         if _USE_MOCK:
             row = self.get(firm_id, request_id)

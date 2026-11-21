@@ -11,6 +11,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { cn, isExactPath } from "@/lib/utils";
+import { useScreenAccess } from "@/lib/access/useScreenAccess";
 
 const NAV_ITEMS = [
   { label: "Entity Registry",        href: "/relationships",                     icon: BookUser },
@@ -22,6 +23,9 @@ const NAV_ITEMS = [
 
 export function RelationshipsPanel() {
   const pathname = usePathname();
+  // Each entry is offered by the one table the menu and the page gate ask (POST-A-543).
+  const { offered } = useScreenAccess();
+  const items = NAV_ITEMS.filter((i) => offered(i.href));
 
   return (
     <div className="flex flex-col h-full text-brand">
@@ -38,7 +42,7 @@ export function RelationshipsPanel() {
 
       {/* Nav items */}
       <nav className="flex-1 overflow-y-auto py-2 px-2">
-        {NAV_ITEMS.map(({ label, href, icon: Icon }) => {
+        {items.map(({ label, href, icon: Icon }) => {
           const isActive =
             href === "/relationships"
               ? isExactPath(pathname, "/relationships")

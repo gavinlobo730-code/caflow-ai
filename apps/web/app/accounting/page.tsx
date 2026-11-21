@@ -8,6 +8,7 @@ import { api } from "@/lib/api";
 import { NAV_GROUPS } from "@/components/panels/AccountingPanel";
 import { usePermissions, useAuth } from "@/lib/auth/AuthContext";
 import { PageHeader } from "@/components/ui/page-header";
+import { useScreenAccess } from "@/lib/access/useScreenAccess";
 
 // Phase 3 consolidation: this is the firm ADMINISTRATION hub only. Day-to-day
 // accounting — journals, ledger, trial balance, P&L, balance sheet, cash flow,
@@ -70,6 +71,7 @@ export default function AccountingHubPage() {
   const [practiceId, setPracticeId] = useState<string | null>(null);
   const { can } = usePermissions();
   const { userRole } = useAuth();
+  const { offered } = useScreenAccess();
 
   // Same filter AccountingPanel applies to the same NAV_GROUPS, so a card
   // never offers a link its own sidebar would have hidden.
@@ -79,19 +81,22 @@ export default function AccountingHubPage() {
     heading: g.heading as string,
     items: g.items.filter(
       (i) =>
-        (!i.requires || can(i.requires[0], i.requires[1])) &&
-        (!i.partnerOnly || userRole === "Partner"),
+        offered(i.href) && (!i.requires || can(i.requires[0], i.requires[1])),
     ),
   })).filter((g) => g.items.length > 0);
 
+  // The practice's own client is a Partner's alone (the server reads `practice` `read` and then asks the role), so nobody
+  // else asks for it: the request used to be made by every member of staff and refused for all but one of them.
+  const mayReadPractice = userRole === "Partner";
   useEffect(() => {
+    if (!mayReadPractice) return;
     api.practice.get()
       .then((r) => {
         const res = r as { success: boolean; data: { internal_client_id: string | null } };
         if (res.success) setPracticeId(res.data?.internal_client_id ?? null);
       })
-      .catch(() => { /* practice not provisioned / no access — silently degrade */ });
-  }, []);
+      .catch(() => { /* practice not provisioned: the card below is not drawn */ });
+  }, [mayReadPractice]);
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">

@@ -231,6 +231,7 @@ const NOT_CHROME: Record<string, string> = {
   ClientShell: "the frame: held by the class-list rule above",
   PrintHeader: "print-only on purpose: held by the PrintHeader test below",
   WhereIsGuide: "a dialog the person opens (POST-A-538): it draws nothing while closed, and open it is the shared Modal every dialog is",
+  ScreenAccessGate: "the page itself or, for somebody who holds no tick for it, the sentence that stands in the page's place (POST-A-543): content, so it prints",
 };
 
 /** Chrome, and where its root class list is, with a token that identifies that list. The proof is that the

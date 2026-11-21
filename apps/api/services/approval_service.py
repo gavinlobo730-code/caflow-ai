@@ -7,7 +7,8 @@ mutation via existing repositories/services (no duplicated business logic). Ever
 transition is mirrored to the immutable audit_log.
 
 Request types (handlers execute against existing server paths):
-  mfa_reset   -> services.mfa_reset_service (a lost authenticator, POST-A-006)
+  mfa_reset       -> services.mfa_reset_service (a lost authenticator, POST-A-006)
+  access_request  -> services.access_request_service (a member of staff asks for a permission, POST-A-543)
 
 Two sets of types were RETIRED, each because its handler reported a success it had not earned:
 
@@ -30,7 +31,7 @@ from typing import Optional
 from fastapi import HTTPException
 
 from repositories.approval_repository import approval_repo
-from services import mfa_reset_service
+from services import access_request_service, mfa_reset_service
 from services.audit_service import log_event
 
 logger = logging.getLogger(__name__)
@@ -41,6 +42,11 @@ logger = logging.getLogger(__name__)
 #   check_decider(firm_id, req, decider)          refuses a decision BEFORE it is claimed (raises HTTPException)
 #   audit_extra(req, result, decider) -> dict     extra metadata on the "approved" audit entry
 #   after_approval(firm_id, req, result, decider) a second record the type owes once its action has run
+#   handler_takes_decider: True                   the handler is called (firm_id, payload, decider): its act records who
+#                                                 decided it (a permission is stored with who granted it)
+#   after_create(firm_id, req, actor)             once the request is stored (telling whoever decides it)
+#   after_rejection(firm_id, req, decider, reason) once a rejection is stored (telling whoever asked)
+# The three `after_` hooks never undo what they follow: one that raises is logged and the request or decision stands.
 _SPECS: dict[str, dict] = {
     "mfa_reset":         {"required": [],
                            "summary": mfa_reset_service.summary,
@@ -49,6 +55,16 @@ _SPECS: dict[str, dict] = {
                            "check_decider": mfa_reset_service.check_decider,
                            "audit_extra": mfa_reset_service.audit_extra,
                            "after_approval": mfa_reset_service.after_approval},
+    "access_request":    {"required": ["resource", "action"],
+                           "summary": access_request_service.summary,
+                           "handler": access_request_service.execute,
+                           "handler_takes_decider": True,
+                           "prepare": access_request_service.prepare,
+                           "check_decider": access_request_service.check_decider,
+                           "audit_extra": access_request_service.audit_extra,
+                           "after_create": access_request_service.after_create,
+                           "after_approval": access_request_service.after_approval,
+                           "after_rejection": access_request_service.after_rejection},
 }
 
 REQUEST_TYPES = tuple(_SPECS.keys())
@@ -94,7 +110,19 @@ def create_request(firm_id: str, request_type: str, payload: dict, actor: dict) 
         "requested_by": actor.get("id"), "requested_by_email": actor.get("email"),
     })
     _audit(firm_id, row, "request_created", actor, summary=row.get("summary"))
+    _after(spec, "after_create", row, firm_id, row, actor)
     return row
+
+
+def _after(spec: dict, hook: str, req: dict, *args) -> None:
+    """Run a type's `after_create` or `after_rejection` hook. The request is already stored, or the rejection already
+    made, so a hook that fails is logged and does not turn a done thing into an error the caller would retry."""
+    if not spec or not spec.get(hook):
+        return
+    try:
+        spec[hook](*args)
+    except Exception:  # noqa: BLE001 - logged; what the hook follows has happened and stands
+        logger.error("approval %s: its %s hook failed", req.get("id"), hook, exc_info=True)
 
 
 def _load_pending(firm_id: str, request_id: str) -> dict:
@@ -133,7 +161,11 @@ def approve(firm_id: str, request_id: str, approver: dict) -> dict:
     if claimed is None:
         raise _lost_the_race()
     try:
-        result = spec["handler"](firm_id, req["payload"])  # executes the real mutation
+        # executes the real mutation
+        if spec.get("handler_takes_decider"):
+            result = spec["handler"](firm_id, req["payload"], approver)
+        else:
+            result = spec["handler"](firm_id, req["payload"])
     except Exception:
         # The action raised, so the request is not decided: put it back for the next try. A handler is one repository
         # call or two (the same as before the claim existed, when a failure also left the request pending), so the
@@ -165,6 +197,7 @@ def reject(firm_id: str, request_id: str, approver: dict, reason: Optional[str] 
     if updated is None:
         raise _lost_the_race()
     _audit(firm_id, req, "rejected", approver, reason=reason)
+    _after(_SPECS.get(req["request_type"]) or {}, "after_rejection", req, firm_id, req, approver, reason)
     return updated
 
 

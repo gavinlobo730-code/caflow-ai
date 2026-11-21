@@ -129,7 +129,7 @@ export const scenarios = [
   },
   ...["Executive", "Reviewer"].map((role) => ({
     id: `${role.toLowerCase()}-is-told-a-people-screen-is-withheld`,
-    title: `${role}: the firm menu offers neither Team nor My practice, and a People address typed in says the screen is withheld`,
+    title: `${role}: the firm menu follows their permissions (Deadlines and Work, no Team, no My practice), and a People address typed in says Team is not part of their access`,
     async run(env) {
       const { page } = env;
       env.stub.signInAs(role);
@@ -138,16 +138,19 @@ export const scenarios = [
       await page.goto(`${env.base}/clients/`, { waitUntil: "networkidle" });
       await firmMenuButton(page).click();
       await areas(page).waitFor();
-      await until(async () => !(await areaNames(page)).includes("Deadlines"), "the menu to settle on the role's own areas");
-      assert.deepEqual(await areaNames(page), ["Home", "Clients", "AI", "More"]);
+      // The menu follows the permissions the person holds (POST-A-543): both roles hold the compliance and task permissions,
+      // so Deadlines and Work are theirs; neither holds a People permission, and My practice is a Partner's alone.
+      await until(async () => !(await areaNames(page)).includes("Team") && (await areaNames(page)).includes("More"), "the menu to settle on the person's own areas");
+      assert.deepEqual(await areaNames(page), ["Home", "Clients", "Deadlines", "Work", "AI", "More"]);
       await page.keyboard.press("Escape");
 
-      for (const [address, name] of [["/team/", "Team"], ["/team/assignments/", "Assignments"], ["/team/workload/", "Workload"], ["/approvals/", "Approvals"], ["/team/login-history/", "Login History"]]) {
+      for (const address of ["/team/", "/team/assignments/", "/team/workload/", "/approvals/", "/team/login-history/"]) {
         await page.goto(`${env.base}${address}`, { waitUntil: "networkidle" });
-        const gate = page.locator("[data-people-gate]");
+        // The one gate on every firm screen answers: the whole Team area is not theirs, so it names the area.
+        const gate = page.locator("[data-tick-gate]");
         await gate.waitFor();
-        assert.match(await gate.innerText(), new RegExp(`You do not have access to ${name}`), address);
-        assert.match(await gate.innerText(), /that is not the same as there being nothing or nobody/);
+        assert.match(await gate.innerText(), /Team is not part of your access/, address);
+        assert.match(await gate.innerText(), /that is not the same as there being nothing/);
         assert.equal(await page.getByRole("button", { name: /Invite Member/ }).count(), 0, `${address}: an Invite button is offered`);
         assert.equal(await page.getByText("No team members yet").count(), 0, `${address}: an empty list is claimed`);
         assert.equal(await page.locator("[data-my-practice]").count(), 0, `${address}: drawn in the My practice frame`);
@@ -164,7 +167,7 @@ export const scenarios = [
       await page.goto(`${env.base}/team/`, { waitUntil: "networkidle" });
       await page.getByRole("heading", { name: "Team", exact: true }).waitFor();
       await page.getByText("asha@firm.example").waitFor();
-      assert.equal(await page.locator("[data-people-gate]").count(), 0, "a Manager is told Team is withheld");
+      assert.equal(await page.locator("[data-tick-gate], [data-people-gate]").count(), 0, "a Manager is told Team is withheld");
       assert.equal(await page.getByRole("button", { name: /Invite Member/ }).count(), 0, "a Manager is offered Invite Member, which the server refuses");
     },
   },
