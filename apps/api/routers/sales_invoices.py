@@ -9,7 +9,7 @@ import uuid
 import logging
 from datetime import datetime, timezone, date, timedelta
 from decimal import Decimal
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ValidationError as PydanticValidationError
@@ -18,6 +18,7 @@ from models.common import api_response
 from models.invoices import SalesInvoiceIn, SalesInvoiceUpdateIn
 from domain.gst import discount as gst_discount
 from domain.sales.line_tax import compute_line_gst
+from domain.sales import inclusive_price
 from domain.sales import credit_limit
 from domain.accounting import journal_figures, journal_source as JS, opening_documents
 from domain.inventory import stock_effect as stock_effects
@@ -1354,6 +1355,45 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
 
 class _BulkInvoicesIn(BaseModel):
     invoices: list[dict]
+
+
+class InclusiveRateIn(BaseModel):
+    """What a person typed to have a GST-inclusive price worked back (POST-A-490). Paise and basis points, as everywhere."""
+    client_id: str
+    #: The figure typed, including GST: the price of one unit, or of the whole line, per `basis`.
+    inclusive_paise: int
+    basis: Literal["unit", "line"]
+    quantity: float = 1.0
+    gst_rate_bps: int
+    #: The line's own discount as typed on the line, if it has one (the same two fields a line carries).
+    discount_percent_bps: Optional[int] = None
+    discount_paise: Optional[int] = None
+    #: Whether the line carries compensation cess. Such a line is refused in words, not answered without the cess.
+    has_cess: bool = False
+
+
+@router.post("/inclusive-rate")
+def inclusive_rate(
+    data: InclusiveRateIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """The unit rate before GST that a GST-inclusive figure stands for, with the line it gives, as the invoice will
+    compute it (`domain/sales/inclusive_price` has the whole account, and why an exact rate does not always exist).
+
+    IT COMPUTES AND WRITES NOTHING. The person reads the answer and, if they accept it, the rate goes into the line's
+    rate box and the line is saved like any other, so CGST s.15's value of supply, the tax, the journal and GSTR-1 are
+    untouched by this route. It asks `accounting:write` because it is a tool of the invoice editor and of nobody who
+    cannot raise an invoice, and it asserts the client the caller named, as every route in this router does.
+    """
+    assert_client_access(current_user, data.client_id)
+    try:
+        answer = inclusive_price.rate_for_inclusive(
+            inclusive_paise=data.inclusive_paise, basis=data.basis, quantity=data.quantity,
+            gst_rate_bps=data.gst_rate_bps, discount_percent_bps=data.discount_percent_bps,
+            discount_paise=data.discount_paise, has_cess=data.has_cess)
+    except inclusive_price.CannotWorkBack as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    return api_response(True, answer.as_dict())
 
 
 @router.post("/bulk")

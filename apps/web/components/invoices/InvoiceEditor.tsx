@@ -11,7 +11,8 @@
  * authoritative), and Save & Issue / Save & Send chain the existing endpoints.
  */
 import { useState, useEffect, useRef, useMemo } from "react";
-import { Trash2, CheckCircle, Send, AlertCircle, Plus } from "lucide-react";
+import { Trash2, CheckCircle, Send, AlertCircle, Plus, Calculator } from "lucide-react";
+import { InclusivePriceDialog } from "@/components/invoices/InclusivePriceDialog";
 import { InvoiceWorkspaceLayout } from "@/components/invoices/InvoiceWorkspaceLayout";
 import { HsnLookup } from "@/components/lookups/HsnLookup";
 import { ServiceCataloguePicker } from "@/components/lookups/ServiceCataloguePicker";
@@ -297,6 +298,9 @@ export function InvoiceEditor({
   });
   const [notes, setNotes] = useState(existing?.notes ?? duplicateSeed?.notes ?? "");
   const [lines, setLines] = useState<EditorLine[]>(initialLines);
+  // The line (by its key) whose "price including GST" box is open, or null. The key and not the position, so a line added
+  // or removed while the box is open cannot make the answer land on a different line.
+  const [inclusiveFor, setInclusiveFor] = useState<number | null>(null);
   // Compensation cess reaches a handful of trades — aerated waters, pan
   // masala, tobacco, coal, motor vehicles — so its two columns are revealed
   // rather than always shown; six extra cells on every line of every invoice
@@ -1579,9 +1583,21 @@ export function InvoiceEditor({
                         )}
                       </td>
                       <td className="py-1.5 pr-2">
-                        <input type="number" min="0" step="0.01" value={line.rate} onChange={(e) => setLine(idx, { rate: e.target.value })}
-                          onKeyDown={(e) => onLineKeyDown(e, idx)} disabled={isLocked} placeholder="0.00" aria-label={`Line ${idx + 1} rate`}
-                          className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand text-right text-xs disabled:bg-ps-bg disabled:text-ps-hint" />
+                        <div className="flex items-center gap-1">
+                          <input type="number" min="0" step="0.01" value={line.rate} onChange={(e) => setLine(idx, { rate: e.target.value })}
+                            onKeyDown={(e) => onLineKeyDown(e, idx)} disabled={isLocked} placeholder="0.00" aria-label={`Line ${idx + 1} rate`}
+                            className="w-full min-w-0 px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand text-right text-xs disabled:bg-ps-bg disabled:text-ps-hint" />
+                          {/* A price that includes GST, worked back by the server (POST-A-490). Not offered on a locked invoice, nor
+                              on a foreign-currency one: an export carries no GST to be included, and the rate there is not in rupees. */}
+                          {!isLocked && !isForeign && (
+                            <button type="button" onClick={() => setInclusiveFor(line._k)} tabIndex={-1}
+                              aria-label={`Line ${idx + 1}: work out the rate from a price including GST`}
+                              title="Work out the rate from a price including GST" data-inclusive-open=""
+                              className="shrink-0 rounded p-1 text-ps-hint hover:bg-ps-bg hover:text-brand focus:outline-none focus-visible:ring-2 focus-visible:ring-brand">
+                              <Calculator size={13} aria-hidden />
+                            </button>
+                          )}
+                        </div>
                       </td>
                       <td className="py-1.5 pr-2">
                         {/* Last editable column: spreadsheet-style Tab here
@@ -1676,6 +1692,21 @@ export function InvoiceEditor({
         {shippingBillRefusal.shown && <div ref={shippingBillRefusalRef}><Callout tone="problem">{shippingBillRefusal.shown}</Callout></div>}
         {dueDateRefusal.shown && <div ref={dueDateRefusalRef}><Callout tone="problem">{dueDateRefusal.shown}</Callout></div>}
       </div>
+      {(() => {
+        const at = inclusiveFor === null ? -1 : lines.findIndex((l) => l._k === inclusiveFor);
+        if (at < 0) return null;
+        const line = lines[at];
+        return (
+          <InclusivePriceDialog
+            clientId={clientId}
+            lineNumber={at + 1}
+            line={{ qty: line.qty, gstRatePercent: line.gst_rate, discountPercent: line.discountPercent,
+              cessPercent: line.cessPercent, cessPerUnit: line.cessPerUnit }}
+            onUse={(rate) => setLine(at, { rate })}
+            onClose={() => setInclusiveFor(null)}
+          />
+        );
+      })()}
     </InvoiceWorkspaceLayout>
   );
 }
