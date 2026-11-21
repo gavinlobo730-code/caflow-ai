@@ -20,6 +20,22 @@ The owner's plan, set on 19 November 2026 at about 17:20 IST: **one question at 
 
 Findings made while walking the questions are not part of the walkthrough: those on Claude's side are in the Claude-only list (POST-A-511 to 515, of which 511 turned out to be moot once the server kept the sign-up link, and 516 to 526 from the EPFO documents, the Code's text, the 2026 schemes and the Central Rules); those on the owner's side are told to him on the spot (so far: the Render screenshot for POST-A-514, still unsent).
 
+## 0d. THE SESSION RECORD: 21 November 2026 (about 11:00 to 12:30 IST), your review of the live Test Firm
+
+**What had gone live that morning.** Phase 1 (the page frame and loading screens, the guided tips, My practice with the firm's own payroll and the fee-billing move) and Phase 2 (the notice when a new version is live, and the first-day steps for the firm's own practice with the legal form asked at sign-up). You let this session read the live site's public pages, and it confirmed the new-version file is being served.
+
+**What you found, and what was decided.**
+
+1. **Team inside My practice.** Clicking Team threw you out into the firm's dark-blue frame. That was my choice in the first build and it was wrong. Decided: the firm is three rooms, Clients, My practice (the firm's money, yours alone) and People. For a Partner the people screens (Team, Assignments, Approvals, Workload, Login History) are a group inside My practice and stay in its frame, and there is no separate Team entry on the outer menu. A Manager keeps Team on the outer menu, because in the firms you know the Partner delegates to the Manager and the Manager to the team. **A Manager does not chase fees and never sees collections or the firm's profit.** (POST-A-537: DONE on 21-11-2026.)
+2. **The outer menu shows less.** Home, Clients, Deadlines, Work, My practice (or Team for a Manager) and AI stay; Accounting, Payroll, Relationships, Health, Knowledge and Engagements go under "More". Nothing is removed. A click on an area now opens it. (Part of POST-A-537.)
+3. **The statutory values page in Settings.** It is needed: it is the only way a firm can make payroll deduct professional tax in a state that is not built in. Its wording will say that plainly and stop stating two things nobody has confirmed. The two questions for a practising CA go under S9 below. (POST-A-539.)
+4. **An AI guide instead of the tips.** You ask where something is and are told in a sentence, with a button that opens the screen. It answers only from the real screens your role can open, falls back to a plain search when the AI is off, and the tips are removed in the same change. (POST-A-538.)
+5. **My own sign-in on the live site: no.** A sign-up there would create a firm in the live database, I cannot receive the confirmation email, and there is no safe way to hand me a password. Instead I run a full copy of the product here and walk it as a Partner, a Manager, an Executive and a Reviewer, and send you the pictures. On the live site I read public pages only.
+6. **Two test entries you may delete** on the Test Firm's statutory values page: Gujarat with the reference "PROBE-REF-1" and the Maharashtra one. While the Gujarat entry stays, payroll in that firm would deduct Rs 200 from every Gujarat employee.
+7. **For later, recorded:** a team member's sign-in and their payroll record are two separate records (POST-A-540).
+
+**The order of work now.** The three pieces above, one at a time, then the walk as each role; you are told when all three are merged.
+
 ## 0c. THE SESSION RECORD: 20 November 2026 (afternoon and evening IST), and the plan it set
 
 **What you decided, in the order you decided it.**

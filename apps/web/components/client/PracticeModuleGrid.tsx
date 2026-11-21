@@ -7,7 +7,10 @@
  * looks for by different words: "my books" (the ledger, sales, purchases, the bank, tax: the client workspace's own
  * sections, opened on the practice's own client) and "my practice" (what it bills, what it is owed, what it earns: the
  * fixed `/practice/…` screens). `lib/workspace/practiceWorkspace.ts` says which sections each group holds and why some
- * client sections are left out. A third, short group points at the team and its hours, which stay in the firm's own menus.
+ * client sections are left out. A third group is the firm's PEOPLE (the team, who handles which client, approvals, workload,
+ * sign-ins): the same screens a Manager reaches from the firm's Team menu, opened here in this frame, because to whoever has
+ * My practice the people are part of it (the owner's decision of 21-11-2026; `practiceWorkspace.ts` has the account). They
+ * do not need the practice's client id, so they are listed whatever became of the books above.
  *
  * THE BOOKS NEED THE PRACTICE'S CLIENT ID, AND FOUR ANSWERS ARE KEPT APART. While it is being read the group waits with
  * placeholders; a practice that is not set up says so and points at the screen that sets it up; a read that failed says
@@ -15,12 +18,12 @@
  */
 import Link from "next/link";
 import {
-  BarChart3, Building2, ClipboardList, Clock, FileText, Gauge, History, IndianRupee, Receipt, ShieldCheck, StickyNote, TrendingUp,
+  BarChart3, Building2, ClipboardList, FileText, Gauge, History, IndianRupee, Link2, Receipt, ShieldCheck, StickyNote, TrendingUp,
   UserCheck, Wallet,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { sectionsOffered } from "@/lib/workspace/ClientNavContext";
-import { PRACTICE_SECTIONS, PRACTICE_TEAM_SECTIONS, booksSectionsFor } from "@/lib/workspace/practiceWorkspace";
+import { PRACTICE_SECTIONS, booksSectionsFor, peopleSectionsOffered } from "@/lib/workspace/practiceWorkspace";
 import type { PracticeLookup } from "@/lib/workspace/usePracticeClient";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import { SECTION_ICONS, type GridVariant } from "@/components/client/ClientModuleGrid";
@@ -38,9 +41,14 @@ const PRACTICE_ICONS: Record<string, React.ElementType> = {
   instructions: StickyNote,
   "earlier-bills": History,
   "earlier-receivables": ClipboardList,
+};
+
+const PEOPLE_ICONS: Record<string, React.ElementType> = {
   team: UserCheck,
+  assignments: Link2,
+  approvals: ShieldCheck,
   workload: Gauge,
-  time: Clock,
+  "login-history": History,
 };
 
 function Tile({ href, label, icon: Icon, active, onNavigate }: {
@@ -80,6 +88,7 @@ export function PracticeModuleGrid({
   const compact = variant === "overlay";
   const { can, resolved } = usePermissions();
   const books = booksSectionsFor(sectionsOffered(can, resolved));
+  const people = peopleSectionsOffered(can, resolved);
   const grid = cn("grid gap-2.5", compact ? "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4");
   const heading = "mb-2 text-2xs font-semibold uppercase tracking-wide text-ps-label";
 
@@ -119,16 +128,17 @@ export function PracticeModuleGrid({
           ))}
         </div>
       </section>
-      <section aria-labelledby="practice-team-heading">
-        <h2 id="practice-team-heading" className={heading}>Your team and its hours</h2>
-        <p className="mb-2 text-xs text-ps-body">These open in the firm&apos;s Team and Work menus.</p>
-        <div className={grid}>
-          {PRACTICE_TEAM_SECTIONS.map((s) => (
-            <Tile key={s.id} href={s.href} label={s.label} icon={PRACTICE_ICONS[s.id] ?? FileText}
-              active={false} onNavigate={onNavigate} />
-          ))}
-        </div>
-      </section>
+      {people.length > 0 && (
+        <section aria-labelledby="practice-people-heading">
+          <h2 id="practice-people-heading" className={heading}>People</h2>
+          <div className={grid}>
+            {people.map((s) => (
+              <Tile key={s.id} href={s.href} label={s.label} icon={PEOPLE_ICONS[s.id] ?? FileText}
+                active={activeId === `practice:${s.id}`} onNavigate={onNavigate} />
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

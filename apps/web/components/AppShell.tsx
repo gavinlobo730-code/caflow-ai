@@ -11,7 +11,10 @@ import { SecureAccountBanner } from "@/components/shell/SecureAccountBanner";
 import { SkipToContent } from "@/components/shell/SkipToContent";
 import { NewVersionNotice } from "@/components/shell/NewVersionNotice";
 import { isClientWorkspacePath } from "@/lib/workspace/clientPath";
-import { isPracticePath } from "@/lib/workspace/practiceWorkspace";
+import { wearsThePracticeFrame } from "@/lib/workspace/practiceWorkspace";
+import { rememberPracticeAccess, rememberedPracticeAccess } from "@/lib/workspace/practiceAccessMemory";
+import { useAuth } from "@/lib/auth/AuthContext";
+import { canAccessWorkspace } from "@/lib/auth/permissions";
 import { GuidedTipsProvider } from "@/lib/tips/GuidedTipsContext";
 import { GuidedTip } from "@/components/tips/GuidedTip";
 
@@ -103,7 +106,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // My practice (POST-A-532): the firm's own screens at fixed addresses wear the client workspace's shell, because the
   // practice IS a client of itself and its books are that workspace. A wrong answer here still draws a shell with search,
   // Settings and sign-out, as the comment above getRealPathname requires.
-  const isPractice = isPracticePath(realPathname);
+  //
+  // THE PEOPLE SCREENS FOLLOW THE PERSON (21-11-2026). Team, Assignments, Approvals, Workload and Login History are part of
+  // My practice for somebody who may open it and firm screens for everybody else (`practiceWorkspace.ts` has the account), so
+  // which shell they wear is asked of the role. Until the role has been read, the last answer this browser saw stands in
+  // (`practiceAccessMemory.ts`), so a Partner's reload of the Team screen does not start in one frame and change to the other.
+  const { userRole, roleLoading } = useAuth();
+  const [remembered] = useState<boolean>(() => rememberedPracticeAccess());
+  const mayOpenPractice = roleLoading ? remembered : canAccessWorkspace("practice", userRole);
+  useEffect(() => {
+    if (!roleLoading) rememberPracticeAccess(canAccessWorkspace("practice", userRole));
+  }, [roleLoading, userRole]);
+  const isPractice = wearsThePracticeFrame(realPathname, mayOpenPractice);
 
   // Global ⌘K / Ctrl+K listener — opens the command palette from anywhere
   useEffect(() => {

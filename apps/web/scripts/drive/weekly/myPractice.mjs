@@ -6,8 +6,8 @@
  *
  *   1. a fixed practice screen (Billing Schedules) is drawn in the workspace frame and not the firm's: the bar says "My
  *      practice", the way out is the dashboard and not the client list, there is no client switcher, and the module grid
- *      lists the firm's books (each tile opening the practice's own client workspace) beside the practice's screens, with
- *      the open screen marked and without the sections the practice does not have;
+ *      lists the firm's books (each tile opening the practice's own client workspace) beside the practice's screens and
+ *      the firm's people, with the open screen marked and without the sections the practice does not have;
  *   2. the practice's own client workspace says "My practice" too, opens on the same grid, and asks for no health score;
  *   3. a practice that is not set up says so in the books group and points at Practice home, and a read that failed says
  *      the books could not be read; neither draws a tile that leads nowhere, and the practice's screens stay listed;
@@ -69,10 +69,12 @@ export const scenarios = [
       assert.equal(await here.getAttribute("aria-current"), "page", "the open screen is not marked");
       assert.equal(await running.getByRole("link", { name: "Collections", exact: true }).getAttribute("href"), "/practice/collections/");
       assert.equal(await running.getByRole("link").count(), 11);
-      // The team and its hours are pointed at, last, and lead out to the firm's own menus.
-      const team = grid(page).getByRole("region", { name: "Your team and its hours" });
-      assert.deepEqual(await team.getByRole("link").allInnerTexts(), ["Team", "Workload", "Time Tracking"]);
-      assert.equal(await team.getByRole("link", { name: "Time Tracking" }).getAttribute("href"), "/time/");
+      // The firm's people are a group of My practice (the owner's decision of 21-11-2026): the screens a Manager reaches from
+      // the firm's Team menu, opened in this frame. Hours are recorded by everybody, in Work, and are not listed here.
+      const people = grid(page).getByRole("region", { name: "People" });
+      assert.deepEqual(await people.getByRole("link").allInnerTexts(), ["Team", "Assignments", "Approvals", "Workload", "Login History"]);
+      assert.equal(await people.getByRole("link", { name: "Team", exact: true }).getAttribute("href"), "/team/");
+      assert.equal(await grid(page).getByRole("link", { name: "Time Tracking" }).count(), 0);
     },
   },
   {

@@ -97,7 +97,7 @@ export function WorkspaceTopBar({ onOpenSearch }: { onOpenSearch: () => void }) 
             aria-label="Workspace menu"
             className="absolute inset-x-0 top-full z-40 max-h-[calc(100vh-3rem)] overflow-hidden border-b border-ps-border bg-white shadow-xl"
           >
-            <WorkspaceMegaMenu onOpenSearch={() => { setMenuOpen(false); onOpenSearch(); }} />
+            <WorkspaceMegaMenu onOpenSearch={() => { setMenuOpen(false); onOpenSearch(); }} onNavigate={() => setMenuOpen(false)} />
           </div>
         </>
       )}
