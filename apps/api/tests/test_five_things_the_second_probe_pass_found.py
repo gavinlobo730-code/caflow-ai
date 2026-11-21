@@ -280,7 +280,8 @@ def test_a_blank_state_IS_a_gap_once_the_ca_has_ticked_pt():
     result = classify_for_employee(True, "")
     assert result.is_gap is True
     assert result.amount_paise == 0
-    assert "no state is recorded" in result.note and "276" in result.note
+    # The note says what happened and where the answer lies (the state), and cites no provision nobody has read (POST-A-539).
+    assert "no state is recorded" in result.note and "set by each STATE" in result.note
 
 
 def test_an_employee_with_no_pt_is_never_a_gap_whatever_the_state_says():
