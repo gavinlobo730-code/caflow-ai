@@ -7486,6 +7486,12 @@ export const api = {
     list: (clientId: string, params?: Record<string, string>) =>
       request(`/api/sales-invoices/?client_id=${clientId}${params ? "&" + new URLSearchParams(params) : ""}`),
     get: (id: string) => request(`/api/sales-invoices/${id}`),
+    /** The unit rate before GST that a GST-inclusive price stands for, as the invoice will compute the line (POST-A-490).
+     *  Computes and writes nothing; a figure it cannot work back is refused in a sentence. */
+    inclusiveRate: (question: {
+      client_id: string; inclusive_paise: number; basis: "unit" | "line"; quantity: number; gst_rate_bps: number;
+      discount_percent_bps: number | null; has_cess: boolean;
+    }) => request<ApiResp<unknown>>("/api/sales-invoices/inclusive-rate", { method: "POST", body: JSON.stringify(question) }),
     /** Everything that would stop `issue` right now, as the server lists it (POST-A-125). Reads and writes nothing. */
     issuePreflight: (id: string) =>
       request<ApiResp<IssuePreflight>>(`/api/sales-invoices/${id}/issue-preflight`),
