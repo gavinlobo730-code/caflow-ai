@@ -47,16 +47,22 @@ const ROLE_PERMISSIONS = JSON.parse(fs.readFileSync(new URL("./role-permissions.
  * wrote it (that is what it is testing, an empty list included), and every resource it does not name is the role's own, read
  * from the file the server's permission table writes. `signInAs` serves a whole map of its own and is left alone (`whole`), and
  * so is a scenario that says `whole: true` on its route because the absence is what it is about.
+ *
+ * AN ANSWER THAT NAMES NO ROLE is completed from the role of the person signed in (`signedInRole`, the scenario's own `users`
+ * row): a scenario that wrote `{ permissions: { client: [...] } }` and nothing else was left partial by the first version of
+ * this, and its person lost the Pipeline link (found by running the night's own set, 21-11-2026). A role that IS named and that
+ * the file does not hold is still left alone: that is a scenario about somebody else.
  */
-export function wholeMapFor(answer) {
+export function wholeMapFor(answer, signedInRole) {
   const data = answer?.data;
   if (!answer?.success || !data || typeof data.permissions !== "object" || data.permissions === null) return answer;
-  const own = ROLE_PERMISSIONS[data.role];
+  const own = ROLE_PERMISSIONS[data.role === undefined ? signedInRole : data.role];
   if (!own) return answer;
   const permissions = { ...structuredClone(own), ...data.permissions };
   return { ...answer, data: { ...data, permissions } };
 }
 const IS_PERMISSIONS = /\/api\/identity\/permissions$/;
+const IS_SESSION_REPORT = /\/api\/identity\/session-seen$/;
 
 const unroutedGet = (pathname) =>
   /\/api\/identity\/permissions$/.test(pathname)
@@ -197,7 +203,13 @@ export function createStub({ root, port, headerRules, resolveBuilt }) {
         const isWrite = req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS";
         const born = generation;
         if (isWrite) {
-          writes.push({ t: Date.now(), via: "api", method: req.method, path: pathname, search: url.search, body, bytes: Buffer.concat(chunks) });
+          // THE SHELL'S OWN REPORT THAT THE SESSION IS IN USE IS NOT A WRITE A SCENARIO MADE (POST-A-486's `POST /api/identity/session-seen`,
+          // sent once when a sign-in is complete). It is kept out of the log a scenario reads, as the keep-alive's `/health` is never held:
+          // "the screen wrote nothing" is a claim about the screen, and the e-invoice records scenario failed on this request every time.
+          // It still counts as in flight, so `quiet()` waits for it.
+          if (!IS_SESSION_REPORT.test(pathname)) {
+            writes.push({ t: Date.now(), via: "api", method: req.method, path: pathname, search: url.search, body, bytes: Buffer.concat(chunks) });
+          }
           inFlight += 1;
           touch();
         }
@@ -205,7 +217,8 @@ export function createStub({ root, port, headerRules, resolveBuilt }) {
           ? route.reply(req, body, url)
           // A route's `status` may be a function of the request, for a door that answers 422 for some bodies and 200 for others (a date before the period ended).
           : (req.method === "GET" ? unroutedGet(pathname) : ok({ id: "new-1" }));
-        const out = route && !route.whole && req.method === "GET" && IS_PERMISSIONS.test(pathname) ? wholeMapFor(answered) : answered;
+        const out = route && !route.whole && req.method === "GET" && IS_PERMISSIONS.test(pathname)
+          ? wholeMapFor(answered, tables.users?.[0]?.role) : answered;
         const status = typeof route?.status === "function" ? route.status(req, body, url) : (route?.status ?? 200);
         const delay = !isWrite ? (route?.delay ?? 0) : (route?.delay ?? writeDelayMs);
         // /health is the keep-alive's own ping and never waits.

@@ -51,8 +51,28 @@ test("nothing else about the answer moves, and an answer that is not a map is le
   assert.deepEqual(wholeMapFor(ok([])), ok([]));
 });
 
+test("an answer that names no role is completed from the role of the person signed in", () => {
+  const bare = ok({ permissions: { client: ["read", "write", "delete"] } });
+  const asPartner = wholeMapFor(bare, "Partner");
+  assert.deepEqual(asPartner.data.permissions.client, ["read", "write", "delete"], "the scenario's own `client` was changed");
+  assert.deepEqual(asPartner.data.permissions.pipeline, ROLES.Partner.pipeline, "a Partner whose answer names no role lost the pipeline");
+  const asReviewer = wholeMapFor(bare, "Reviewer");
+  assert.deepEqual(asReviewer.data.permissions.pipeline, ROLES.Reviewer.pipeline, "the completion did not follow the signed-in role");
+  assert.equal(wholeMapFor(bare, undefined), bare, "with nobody signed in there is no role to complete from");
+  assert.equal(wholeMapFor(bare, "Auditor"), bare);
+  // A role that IS named wins over the signed-in one: the scenario is about that person.
+  assert.deepEqual(wholeMapFor(ok({ role: "Reviewer", permissions: {} }), "Partner").data.permissions.pipeline, ROLES.Reviewer.pipeline);
+});
+
+test("the shell's own report that a session is in use is kept out of the log of writes a scenario reads", () => {
+  assert.match(stub, /const IS_SESSION_REPORT = \/\\\/api\\\/identity\\\/session-seen\$\/;/, "the session report is no longer named");
+  assert.match(stub, /if \(!IS_SESSION_REPORT\.test\(pathname\)\) \{\s*writes\.push\(/, "the session report is logged as a write a scenario made");
+  const at = stub.indexOf("if (!IS_SESSION_REPORT.test(pathname))");
+  assert.match(stub.slice(at, at + 500), /\}\s*inFlight \+= 1;/, "the session report no longer counts as in flight, so quiet() would not wait for it");
+});
+
 test("the server completes a routed answer only, and the two ways out are in its source", () => {
-  assert.match(stub, /route && !route\.whole && req\.method === "GET" && IS_PERMISSIONS\.test\(pathname\) \? wholeMapFor\(answered\) : answered/,
+  assert.match(stub, /route && !route\.whole && req\.method === "GET" && IS_PERMISSIONS\.test\(pathname\)\s*\? wholeMapFor\(answered, tables\.users\?\.\[0\]\?\.role\) : answered/,
     "the completion is not applied where a routed permissions answer is sent");
   const signIn = stub.slice(stub.indexOf("signInAs(role"), stub.indexOf("answerInserts(name"));
   assert.match(signIn, /whole: true,/, "signInAs serves a whole map of its own and must not be completed over (a blocked pair would come back)");
