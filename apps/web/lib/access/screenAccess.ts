@@ -21,9 +21,11 @@
  *
  * NOT A SECURITY BOUNDARY. `rbac()` on the server is. This decides what is OFFERED and what a typed address SAYS.
  *
- * NOT COVERED, AND SAID. The Settings pages keep their own rule (the roles each page's guard names,
- * `lib/settings/groups.ts`), and the screens inside a client keep theirs (`ClientNavContext`). Moving those to pairs is
- * recorded on the ledger and is not done here.
+ * THE SETTINGS PAGES ARE IN THE TABLE TOO (POST-A-545). They used to be opened by a role (a guard on each page naming
+ * Partner, or Partner and Manager) while the server asked a pair, so a Partner's tick moved the server and not the screen.
+ * Each is now a screen rule here, and the Settings links read it (`lib/settings/groups.ts`).
+ *
+ * NOT COVERED, AND SAID. The screens inside a client keep their own rule (`ClientNavContext`).
  *
  * Pure: it imports only the route-ownership chain, which has no imports, so a test can load it.
  */
@@ -113,6 +115,21 @@ export const SCREEN_RULES: ReadonlyArray<readonly [prefix: string, rule: AccessR
   ["/accounting/purchases", { all: [read("client")] }],
   ["/accounting/fixed-assets", { all: [read("client")] }],
   ["/accounting/year-end", { all: [read("client")] }],
+  // Settings (POST-A-545): no area owns these addresses, so each page is opened by its own rule alone. The pair is the one the
+  // page's own READ asks on the server; what CHANGES the page is a second pair, and a person who holds only the first is
+  // shown the page with its controls switched off (`components/settings/ChangePart.tsx`). The Settings home, the security
+  // page, the scheduled reports and the signature tracker are every member's and are not named here.
+  ["/settings/ai", { all: [["firm", "admin"]] }],
+  ["/settings/audit-log", { all: [["accounting", "approve"]] }],
+  ["/settings/branding", { all: [read("branding")] }],
+  ["/settings/email-templates", { all: [read("branding")] }],
+  ["/settings/invoice-settings", { all: [read("branding")] }],
+  ["/settings/invoice-templates", { all: [read("branding")] }],
+  ["/settings/firm-hsn-library", { all: [read("accounting")] }],
+  ["/settings/journal-approval", { all: [read("accounting")] }],
+  ["/settings/multi-currency", { all: [read("settings")] }],
+  ["/settings/statutory-values", { all: [read("payroll")] }],
+  ["/settings/treaty-rates", { all: [read("tds")] }],
 ];
 
 export interface Asker {
@@ -176,8 +193,8 @@ export interface Verdict {
 }
 
 /**
- * Whether this person may open this firm address, by the area's rule and then the screen's own. Settings and the inside of a
- * client are not this table's (see the header) and are answered `allowed` here.
+ * Whether this person may open this firm address, by the area's rule and then the screen's own. The inside of a client is
+ * not this table's (see the header) and is answered `allowed` here once the Clients area is held.
  */
 export function mayOpen(href: string, who: Asker): Verdict {
   const path = bare(href);

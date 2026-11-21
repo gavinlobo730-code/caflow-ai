@@ -40,7 +40,7 @@
  */
 import { useState, useEffect, useCallback } from "react";
 import { Plus, Trash2, Scale, X, AlertTriangle } from "lucide-react";
-import { RoleGuard } from "@/components/RoleGuard";
+import { ReadOnlyNotice, useMayChange } from "@/components/settings/ChangePart";
 import { api, type PTSlabRow } from "@/lib/api/index";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
@@ -68,6 +68,8 @@ const REQUIRED_SENTENCE =
   + "screen exists to replace.";
 
 export default function StatutoryValuesPage() {
+  // Who may record or remove a set of slabs: the pair the server asks for those writes (POST-A-545).
+  const mayChange = useMayChange("payroll", "write");
   const [rows, setRows] = useState<PTSlabRow[]>([]);
   const [levying, setLevying] = useState<Record<string, string>>({});
   const [modelled, setModelled] = useState<string[]>([]);
@@ -235,10 +237,10 @@ export default function StatutoryValuesPage() {
   const stillMissing = levyingCodes.filter(
     c => !modelled.includes(c) && !recorded.includes(c));
 
-  // payroll:read is Manager+ (core/permissions.py), and recording one of these
-  // deducts from every client of the firm with staff in that state.
+  // The page opens on `payroll` `read` (the one table, lib/access/screenAccess.ts) and its two writes ask `payroll`
+  // `write`: recording one of these deducts from every client of the firm with staff in that state.
   return (
-    <RoleGuard allowed={["Partner", "Manager"]}>
+    <>
       <div className="p-6 max-w-ps-data mx-auto">
         <PageHeader
           back={{ href: "/settings", label: "Settings" }}
@@ -253,16 +255,18 @@ export default function StatutoryValuesPage() {
               every client of your firm with staff in that state.
             </>
           }
-          actions={
+          actions={mayChange ? (
             <button
               onClick={() => { if (showForm) return; reset(); refusal.clear(); setShowForm(true); }}
               className="inline-flex items-center gap-1.5 px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark"
             >
               <Plus size={15} />Record a notification
             </button>
-          }
+          ) : undefined}
           className="mb-5"
         />
+
+        <ReadOnlyNotice resource="payroll" action="write" page="Statutory values" className="mb-4" />
 
         {msg && (
           <div className={`mb-4 px-3 py-2 rounded-lg text-sm ${
@@ -322,11 +326,13 @@ export default function StatutoryValuesPage() {
                           </p>
                           {first.note && <p className="text-xs text-ps-hint mt-0.5">{first.note}</p>}
                         </div>
-                        <button disabled={actionInFlight} onClick={() => remove(first)}
-                          className="text-ps-hint hover:text-red-600 shrink-0"
-                          aria-label="Remove this version">
-                          <Trash2 size={15} />
-                        </button>
+                        {mayChange && (
+                          <button disabled={actionInFlight} onClick={() => remove(first)}
+                            className="text-ps-hint hover:text-red-600 shrink-0"
+                            aria-label="Remove this version">
+                            <Trash2 size={15} />
+                          </button>
+                        )}
                       </div>
                       <table className="w-full text-sm">
                         <thead>
@@ -490,7 +496,7 @@ export default function StatutoryValuesPage() {
           </div>
         )}
       </div>
-    </RoleGuard>
+    </>
   );
 }
 

@@ -23,6 +23,7 @@
  *   node --experimental-strip-types --test scripts/the-ai-status-screen-renders-the-servers-answer-and-decides-nothing.test.ts
  */
 import { test } from "node:test";
+import { screenRule } from "../lib/access/screenAccess.ts";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -38,8 +39,11 @@ const PAGE = read("app", "settings", "ai", "page.tsx");
  *  needs: the rules below look for tokens, and the header comment names them. */
 const CODE = PAGE.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
-test("the page is Partner-only", () => {
-  assert.match(CODE, /<RoleGuard allowed=\{\["Partner"\]\}>/);
+test("the page opens on firm admin, the pair every one of its routes asks, and keeps no gate of its own", () => {
+  // It was a role guard naming Partner until the Settings pages joined the one access table (POST-A-545). `firm` `admin` is a
+  // Partner's unless a Partner gives it to somebody, and then the server serves that person too.
+  assert.deepEqual(screenRule("/settings/ai"), { all: [["firm", "admin"]] });
+  assert.doesNotMatch(CODE, /RoleGuard/);
 });
 
 test("the page holds no status label table, no tone table and no failure sentence", () => {

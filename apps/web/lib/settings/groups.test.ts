@@ -1,6 +1,6 @@
 // PRE-A-023. Settings is grouped into tabs from one list, lib/settings/groups.ts, and these are its rules: every
-// Settings screen is reachable from a tab, a page lights the tab that holds it, a link is offered only to the roles its
-// page's own guard admits (POST-A-447), and a tab with nothing for the person is not shown.
+// Settings screen is reachable from a tab, a page lights the tab that holds it, a link is listed exactly when the one
+// access table opens its page (POST-A-545; it used to repeat the roles each page's own guard admitted, POST-A-447), and a tab with nothing for the person is not shown.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync, existsSync } from "node:fs";
@@ -10,12 +10,14 @@ import {
   everySettingsPage,
   groupForPage,
   groupFromTab,
+  firmProfileShown,
   groupHasContent,
   linkShownTo,
   settingsTabHref,
   visibleLinks,
+  type SettingsAsker,
 } from "./groups.ts";
-import type { UserRole } from "../auth/permissions.ts";
+import { mayOpen, screenRule } from "../access/screenAccess.ts";
 
 const WEB = join(import.meta.dirname, "..", "..");
 
@@ -83,60 +85,74 @@ test("each Settings page lights the tab that holds it", () => {
   assert.equal(groupForPage("/settings/no-such-page", null), null);
 });
 
-test("each link names the roles its page's own guard admits, so the panel, the tabs and the home never offer a page that sends the person back (POST-A-447)", () => {
-  // The rule, read off the pages: a Settings page whose outermost guard is `<RoleGuard allowed={[...]}>` (not the
-  // in-page `redirect={false}` kind, which guards one section) admits exactly those roles, and its link says so.
-  const guardOf = (href: string): string[] | null => {
-    const file = join(WEB, "app", href.split("#")[0], "page.tsx");
-    if (!existsSync(file)) return null;
-    const m = readFileSync(file, "utf8").match(/<RoleGuard allowed=\{\[([^\]]*)\]\}>/);
-    return m ? m[1].split(",").map((r) => r.trim().replace(/"/g, "")).filter(Boolean).sort() : null;
-  };
-  const problems: string[] = [];
-  for (const g of SETTINGS_GROUPS) {
-    for (const l of g.links) {
-      if (l.href.includes("#")) continue;                       // a fragment opens a card, guarded inside the page
-      const guard = guardOf(l.href);
-      const named = l.roles ? [...l.roles].sort() : null;
-      if (JSON.stringify(guard) !== JSON.stringify(named)) {
-        problems.push(`${l.href}: the page admits ${guard ? guard.join(", ") : "every role"}; the link names ${named ? named.join(", ") : "none"}`);
+// What each role holds to start with, written from the server's own table (a Python test holds the file to it).
+const MAPS = JSON.parse(readFileSync(join(WEB, "scripts", "drive", "role-permissions.json"), "utf8")) as Record<string, Record<string, string[]>>;
+const person = (role: string, map: Record<string, string[]> = MAPS[role]): SettingsAsker => ({
+  who: { can: (r, a) => (map[r] ?? []).includes(a), isPartner: role === "Partner" },
+  resolved: true,
+});
+const offered = (role: string) => SETTINGS_GROUPS.flatMap((g) => visibleLinks(g, person(role)).map((l) => l.href));
+
+test("a Settings link is listed exactly when the one table opens its page, for every role (POST-A-545)", () => {
+  // The RULE: the link, the page gate and the guide ask one table, so a page cannot be offered and then refused, or open and
+  // unlisted. A link to a card on a page also asks the card's own pair.
+  for (const role of ["Partner", "Manager", "Executive", "Reviewer"]) {
+    const access = person(role);
+    for (const g of SETTINGS_GROUPS) {
+      for (const l of g.links) {
+        const cardHeld = !l.requires || access.who.can(l.requires[0], l.requires[1]);
+        assert.equal(linkShownTo(l, access), cardHeld && mayOpen(l.href, access.who).allowed, `${role}: ${l.href} is listed and refused, or open and unlisted`);
       }
     }
   }
-  assert.deepEqual(problems, []);
-  // The deployment card is shown to whoever may administer the firm, a Partner.
   const deployment = SETTINGS_GROUPS.flatMap((g) => g.links).find((l) => l.href === "/settings/security#deployment");
-  assert.deepEqual(deployment?.roles, ["Partner"]);
+  assert.deepEqual(deployment?.requires, ["firm", "admin"], "the deployment card is shown on firm admin, and its link does not say so");
+  assert.ok(SETTINGS_GROUPS.flatMap((g) => g.links).every((l) => !l.requires || l.href.includes("#")), "a link to a PAGE names a pair of its own: the table answers for pages");
 });
 
-test("each role sees exactly the links its role is admitted to: a Partner every link, a Manager the three statutory screens too, an Executive and a Reviewer none of the guarded ones", () => {
-  const shown = (role: UserRole) => SETTINGS_GROUPS.flatMap((g) => visibleLinks(g, role).map((l) => l.href));
-  for (const g of SETTINGS_GROUPS) assert.deepEqual(visibleLinks(g, "Partner"), g.links, `${g.label}: a Partner sees every link`);
-  const manager = shown("Manager");
-  for (const href of ["/settings/statutory-values", "/settings/treaty-rates", "/settings/firm-hsn-library"]) {
-    assert.ok(manager.includes(href), `a Manager may open ${href} and was not offered it`);
+test("no Settings page keeps a gate of its own, and every page is in the table or is named as every member's", () => {
+  /** Open to every member of staff: nothing on these asks more than being signed in. Read on 22-11-2026. */
+  const EVERY_MEMBERS = new Set(["/settings/security", "/settings/scheduled-reports", "/settings/dsc-tracker"]);
+  for (const href of settingsPagesOnDisk()) {
+    const source = readFileSync(join(WEB, "app", href, "page.tsx"), "utf8");
+    assert.doesNotMatch(source, /RoleGuard|hasRole\(/, `${href} asks a role where it should follow the permissions a Partner ticked`);
+    const rule = screenRule(href);
+    assert.equal(rule !== null, !EVERY_MEMBERS.has(href), `${href} is ${rule ? "in the table and also named as every member's" : "in neither the table nor the named list"}`);
   }
-  for (const href of ["/settings/branding", "/settings/audit-log", "/settings/ai", "/settings/multi-currency"]) {
-    assert.ok(!manager.includes(href), `a Manager was offered ${href}, which sends them back to the home page`);
-  }
-  for (const role of ["Executive", "Reviewer"] as const) {
-    const links = SETTINGS_GROUPS.flatMap((g) => visibleLinks(g, role));
-    assert.ok(links.every((l) => !l.roles), `${role} was offered a guarded page: ${links.filter((l) => l.roles).map((l) => l.href).join(", ")}`);
-    assert.ok(links.length > 0, `${role} sees nothing at all`);
-  }
-  // An unknown role sees only what every role sees.
-  assert.ok(SETTINGS_GROUPS.flatMap((g) => visibleLinks(g, null)).every((l) => !l.roles));
+  assert.equal(existsSync(join(WEB, "components", "RoleGuard.tsx")), false, "the role guard is back");
 });
 
-test("negative control: a link that drops its page's guard is named", () => {
+test("what each role is offered to start with: a Partner everything, a Manager all but the audit log and the AI page, an Executive and a Reviewer the reference tables their work reads", () => {
+  for (const g of SETTINGS_GROUPS) assert.deepEqual(visibleLinks(g, person("Partner")), g.links, `${g.label}: a Partner sees every link`);
+  const guarded = (role: string) => offered(role).filter((h) => h.startsWith("/settings/") && (screenRule(h) !== null || h.includes("#"))).sort();
+  assert.deepEqual(guarded("Manager"), [
+    "/settings/branding", "/settings/email-templates", "/settings/firm-hsn-library", "/settings/invoice-settings",
+    "/settings/invoice-templates", "/settings/journal-approval", "/settings/multi-currency", "/settings/statutory-values",
+    "/settings/treaty-rates"]);
+  assert.deepEqual(guarded("Executive"), ["/settings/firm-hsn-library", "/settings/journal-approval", "/settings/treaty-rates"]);
+  assert.deepEqual(guarded("Reviewer"), ["/settings/treaty-rates"]);
+  for (const role of ["Executive", "Reviewer"]) assert.ok(offered(role).includes("/settings/security"), `${role} is not offered their own password and authenticator`);
+});
+
+test("negative control: the tick decides, in both directions", () => {
   const branding = SETTINGS_GROUPS.flatMap((g) => g.links).find((l) => l.href === "/settings/branding")!;
-  assert.ok(linkShownTo(branding, "Partner") && !linkShownTo(branding, "Manager"));
-  assert.ok(linkShownTo({ ...branding, roles: undefined }, "Manager"), "premise: a link with no roles is shown to anyone");
+  assert.ok(linkShownTo(branding, person("Manager")), "premise: a Manager holds branding read");
+  assert.ok(!linkShownTo(branding, person("Manager", { ...MAPS.Manager, branding: [] })), "a Manager with the tick taken away is still offered the page");
+  assert.ok(!linkShownTo(branding, person("Executive")), "premise: an Executive does not hold branding read");
+  assert.ok(linkShownTo(branding, person("Executive", { ...MAPS.Executive, branding: ["read"] })), "an Executive given the tick is not offered the page");
 });
 
-test("a tab with nothing for the person is not shown: a Manager has no AI tab, a Partner has all six", () => {
-  assert.deepEqual(SETTINGS_GROUPS.filter((g) => groupHasContent(g, "Partner")).map((g) => g.id),
-    ["profile", "firm", "security", "documents", "statutory", "ai"]);
-  assert.deepEqual(SETTINGS_GROUPS.filter((g) => groupHasContent(g, "Manager")).map((g) => g.id),
-    ["profile", "firm", "security", "documents", "statutory"]);
+test("until the permissions are known nothing is withheld on a pair, as on every menu", () => {
+  const unknown: SettingsAsker = { who: { can: () => false, isPartner: false }, resolved: false };
+  for (const g of SETTINGS_GROUPS) assert.deepEqual(visibleLinks(g, unknown), g.links);
+  assert.ok(firmProfileShown(unknown));
+});
+
+test("the Firm Profile card is drawn on firm read, and a tab with nothing for the person is not shown", () => {
+  assert.ok(firmProfileShown(person("Partner")) && firmProfileShown(person("Manager")));
+  assert.ok(!firmProfileShown(person("Executive")) && !firmProfileShown(person("Reviewer")));
+  const tabs = (role: string) => SETTINGS_GROUPS.filter((g) => groupHasContent(g, person(role))).map((g) => g.id);
+  assert.deepEqual(tabs("Partner"), ["profile", "firm", "security", "documents", "statutory", "ai"]);
+  assert.deepEqual(tabs("Manager"), ["profile", "firm", "security", "documents", "statutory"]);
+  assert.ok(!tabs("Reviewer").includes("ai") && tabs("Reviewer").includes("profile"));
 });

@@ -32,7 +32,6 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { Cpu, Loader2, RefreshCw } from "lucide-react";
-import { RoleGuard } from "@/components/RoleGuard";
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
 import { TableSkeleton } from "@/components/ui/skeleton";
@@ -242,7 +241,7 @@ export default function AiStatusPage() {
   const anyBusy = Object.values(busy).some(Boolean);
 
   return (
-    <RoleGuard allowed={["Partner"]}>
+    <>
       <div className="mx-auto max-w-ps-data space-y-4 p-6">
         <PageHeader
           back={{ href: "/settings", label: "Settings" }}
@@ -290,6 +289,6 @@ export default function AiStatusPage() {
 
         <AiUsagePanel />
       </div>
-    </RoleGuard>
+    </>
   );
 }

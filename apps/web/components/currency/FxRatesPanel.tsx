@@ -34,6 +34,7 @@ import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { formatDate } from "@/lib/dates/format";
+import { useMayChange } from "@/components/settings/ChangePart";
 
 /** A plain decimal, and nothing else. Not a parser — it never converts, so
  *  what is sent is exactly what was typed. */
@@ -56,6 +57,9 @@ export function FxRatesPanel() {
   const [rate, setRate] = useState("");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  // Recording a rate asks `settings` `write` on the server (POST-A-545). The currency, the kind of rate and the date also choose
+  // which rates are LISTED, so they stay live for a person who may only read; only the figure and its button are switched off.
+  const mayRecord = useMayChange("settings", "write");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -130,7 +134,7 @@ export function FxRatesPanel() {
       <p className="mt-1 text-xs text-ps-label max-w-2xl">
         A rate is a fact about the world, so these are shared across the whole
         platform — every firm sees the same {base}/{quote} rate for a date, and
-        only a Partner can record one. Nothing is fetched automatically.
+        recording one needs the permission to change settings. Nothing is fetched automatically.
       </p>
 
       <div className="mt-3 flex flex-wrap items-end gap-3">
@@ -156,11 +160,11 @@ export function FxRatesPanel() {
         </div>
         <div>
           <label htmlFor="fx-rate" className="block text-2xs font-medium text-ps-label mb-1">Rate</label>
-          <input id="fx-rate" value={rate} inputMode="decimal" placeholder="83.4200"
+          <input id="fx-rate" value={rate} inputMode="decimal" placeholder="83.4200" disabled={!mayRecord}
             onChange={(e) => setRate(e.target.value)}
             className="w-32 text-xs px-2 py-1.5 border border-ps-border rounded-lg font-mono text-right" />
         </div>
-        <Button variant="plain" size="none" onClick={save} disabled={saving}
+        <Button variant="plain" size="none" onClick={save} disabled={saving || !mayRecord}
           className="text-xs px-4 py-2 bg-brand text-white rounded-lg disabled:opacity-50">
           {saving ? "Saving…" : "Record rate"}
         </Button>

@@ -25,6 +25,7 @@
  *   node --experimental-strip-types --test scripts/the-ai-usage-panel-shows-the-servers-figures-and-judges-no-limit.test.ts
  */
 import { test } from "node:test";
+import { screenRule } from "../lib/access/screenAccess.ts";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -38,10 +39,10 @@ const PANEL = read("components", "settings", "AiUsagePanel.tsx");
 const CODE = PANEL.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 const API = read("lib", "api", "index.ts");
 
-test("the panel is mounted on the AI status page, which is Partner-only", () => {
+test("the panel is mounted on the AI status page, which opens on firm admin (the pair the panel's own routes ask)", () => {
   const page = read("app", "settings", "ai", "page.tsx");
   assert.match(page, /<AiUsagePanel \/>/);
-  assert.match(page, /<RoleGuard allowed=\{\["Partner"\]\}>/);
+  assert.deepEqual(screenRule("/settings/ai"), { all: [["firm", "admin"]] });
 });
 
 test("a blank box is no limit (null) and anything that is not a whole number is not sent", () => {

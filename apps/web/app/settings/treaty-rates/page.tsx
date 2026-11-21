@@ -23,7 +23,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { ChevronLeft, Plus, Trash2, Globe2, X } from "lucide-react";
-import { RoleGuard } from "@/components/RoleGuard";
+import { ReadOnlyNotice, useMayChange } from "@/components/settings/ChangePart";
 import { api, type TreatyRateRow } from "@/lib/api/index";
 import { bpsFromPercentInput } from "@/lib/money/rupeeInput";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
@@ -47,6 +47,8 @@ const NATURE_LABELS: Record<string, string> = {
 };
 
 export default function TreatyRatesPage() {
+  // Who may record or remove a reading: the pair the server asks for those writes (POST-A-545).
+  const mayChange = useMayChange("tds", "write");
   const [rows, setRows] = useState<TreatyRateRow[]>([]);
   const [natures, setNatures] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -146,7 +148,7 @@ export default function TreatyRatesPage() {
   }
 
   return (
-    <RoleGuard allowed={["Partner", "Manager"]}>
+    <>
       <div className="p-6 max-w-ps-data mx-auto space-y-5">
         <Link href="/settings" className="inline-flex items-center gap-1 text-xs text-ps-label hover:text-ps-ink">
           <ChevronLeft size={14} /> Settings
@@ -156,15 +158,17 @@ export default function TreatyRatesPage() {
           icon={<Globe2 size={18} className="text-sky-500" />}
           title="DTAA Treaty Rates"
           subtitle="Your firm&apos;s reading of the agreements it withholds under, one row per country and nature of income. Nothing is shipped or suggested here: India has agreements with over ninety countries, MFN clauses need their own §90(1) notification, and a wrong rate too low disallows the whole expenditure under §40(a)(i). §90(2) then applies whichever comes to LESS IN TOTAL. Your treaty rate is a ceiling on the whole tax, so it carries no surcharge and no cess; the Act rate does. A treaty rate equal to the Act rate is therefore still the cheaper of the two."
-          actions={
+          actions={mayChange ? (
             <button
               onClick={() => { reset(); setShowForm(true); }}
               className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand text-white text-sm rounded-lg hover:bg-brand-dark"
             >
               <Plus size={14} /> Add reading
             </button>
-          }
+          ) : undefined}
         />
+
+        <ReadOnlyNotice resource="tds" action="write" page="DTAA Treaty Rates" />
 
         {msg && (
           <div className={`text-xs px-3 py-2 rounded-lg ${msg.type === "ok" ? "bg-green-50 text-green-700" : "bg-state-problem-surface text-state-problem"}`}>
@@ -268,8 +272,10 @@ export default function TreatyRatesPage() {
                     <td className="px-4 py-2 text-xs text-ps-label">{r.article_ref ?? "—"}</td>
                     <td className="px-4 py-2 text-xs text-ps-hint">{formatDate(r.verified_on)}</td>
                     <td className="px-4 py-2 text-right">
-                      <button disabled={actionInFlight} onClick={() => remove(r)} aria-label={`Remove ${r.country_code} ${r.nature}`}
-                        className="text-ps-hint hover:text-red-600"><Trash2 size={14} /></button>
+                      {mayChange && (
+                        <button disabled={actionInFlight} onClick={() => remove(r)} aria-label={`Remove ${r.country_code} ${r.nature}`}
+                          className="text-ps-hint hover:text-red-600"><Trash2 size={14} /></button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -278,6 +284,6 @@ export default function TreatyRatesPage() {
           </div>
         )}
       </div>
-    </RoleGuard>
+    </>
   );
 }

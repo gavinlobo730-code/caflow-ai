@@ -54,20 +54,21 @@ export interface Who {
  * Whether this person is offered this screen, by the rules the menus ask.
  *
  * A firm screen is asked of the one table (`lib/access/screenAccess.ts`, POST-A-543): its area's rule and its own. The guide
- * therefore names exactly what the menu lists and what the page gate opens. Two families keep their own rule and are asked
- * first: a Settings page (the roles its own link names) and a screen inside a client (the sections that client offers).
+ * therefore names exactly what the menu lists and what the page gate opens. A Settings page is asked of the same table
+ * through its link (POST-A-545). One family keeps its own rule and is asked first: a screen inside a client (the sections
+ * that client offers).
  */
 export function offeredTo(s: Screen, who: Who): boolean {
   if (s.scope === "client") return who.clientSectionOffered(s.href.split("/")[0]);
   const href = s.href;
+  const isPartner = who.role === "Partner";
   if (href === "/settings" || href.startsWith("/settings/")) {
+    // A Settings screen is listed by its link, which asks the same table (and, for a card on a page, the card's own pair).
     for (const group of SETTINGS_GROUPS) {
       const link = group.links.find((l) => l.href.split(/[?#]/)[0] === href);
-      if (link) return linkShownTo(link, who.role);
+      if (link) return linkShownTo(link, { who: { can: who.can, isPartner }, resolved: who.resolved });
     }
-    return true;
   }
-  const isPartner = who.role === "Partner";
   // Until the permissions are known nothing is withheld on a pair; the Partner-only rule is asked of the role and stands.
   const asker = who.resolved ? { can: who.can, isPartner } : { can: () => true, isPartner };
   return mayOpen(href, asker).allowed;

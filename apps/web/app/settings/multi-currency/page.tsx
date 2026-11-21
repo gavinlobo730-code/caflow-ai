@@ -27,7 +27,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, Globe, Check } from "lucide-react";
-import { RoleGuard } from "@/components/RoleGuard";
+import { ChangePart, ReadOnlyNotice } from "@/components/settings/ChangePart";
 import { api, type CurrencyPolicy } from "@/lib/api/index";
 import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 import { TableSkeleton } from "@/components/ui/skeleton";
@@ -126,7 +126,7 @@ export default function MultiCurrencyPage() {
   }
 
   return (
-    <RoleGuard allowed={["Partner"]}>
+    <>
       <div className="max-w-ps-data mx-auto space-y-4 p-6">
         <Link href="/settings" className="inline-flex items-center gap-1 text-xs text-ps-label hover:text-ps-body">
           <ChevronLeft size={13} /> Settings
@@ -137,6 +137,8 @@ export default function MultiCurrencyPage() {
           title="Multi-currency"
           subtitle="Lets a client raise invoices, receive payments and hold bank accounts in a foreign currency, with the realized and unrealized exchange difference computed and posted. The books stay in rupees."
         />
+
+        <ReadOnlyNotice resource="settings" action="write" page="Foreign currency" />
 
         {error && <Callout tone="problem">{error}</Callout>}
 
@@ -153,6 +155,7 @@ export default function MultiCurrencyPage() {
               </div>
             )}
 
+            <ChangePart resource="settings" action="write" className="space-y-4">
             {/* L2 — the firm. */}
             {/* The CLIENTS table below is the data and takes the page's width;
                 these two are a notice and a single switch, so they keep the
@@ -244,6 +247,7 @@ export default function MultiCurrencyPage() {
                 </table>
               )}
             </div>
+            </ChangePart>
             {/* The rate the whole feature runs on. `fx_rates` was read by the
                 booking path and written by nothing, so switching the gates on
                 above left a Partner with no way to record one. */}
@@ -251,6 +255,6 @@ export default function MultiCurrencyPage() {
           </>
         )}
       </div>
-    </RoleGuard>
+    </>
   );
 }

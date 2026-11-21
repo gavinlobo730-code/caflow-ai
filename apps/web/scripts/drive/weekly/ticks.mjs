@@ -249,7 +249,12 @@ export const scenarios = [
 
       // The groups are the menu's areas, in the menu's order, and a permission is in a person's words with what it opens.
       const groups = await drawer.locator("[data-menu-group]").evaluateAll((els) => els.map((el) => el.getAttribute("data-menu-group")));
-      assert.deepEqual(groups, ["clients", "deadlines", "work", "team", "ai", "accounting", "payroll", "relationships", "health", "knowledge", "engagements"]);
+      // After the areas, Settings: not an area of the menu (everybody has it), but each of its pages is opened by a tick (POST-A-545).
+      assert.deepEqual(groups, ["clients", "deadlines", "work", "team", "ai", "accounting", "payroll", "relationships", "health", "knowledge", "engagements", "settings"]);
+      const brandingTick = drawer.locator('[data-menu-group="settings"] [data-permission="branding:read"]');
+      assert.match(await brandingTick.innerText(), /Opens: Branding, Email templates, Invoice numbering, Invoice templates\./);
+      assert.doesNotMatch(await drawer.locator('[data-menu-group="settings"]').innerText(), /Puts Settings on the menu/);
+      assert.match(await drawer.locator('[data-menu-group="settings"]').innerText(), /Settings is on everybody's menu/);
       const gst = drawer.locator('[data-menu-group="deadlines"] [data-permission="gst:read"]');
       assert.match(await gst.innerText(), /See the GST desk/);
       assert.match(await gst.innerText(), /Puts Deadlines on the menu/);

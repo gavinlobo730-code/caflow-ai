@@ -23,6 +23,7 @@
 //         reason a hand-entered figure may drive a statutory deduction is that
 //         a named person read a named notification on a named date.
 import { test } from "node:test";
+import { screenRule } from "../lib/access/screenAccess.ts";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -105,8 +106,14 @@ test("the api client exposes the firm-scoped calls", () => {
   assert.match(api, /method: "PUT", body: JSON\.stringify\(body\) \}\),/);
 });
 
-test("only Partner and Manager reach the screen", () => {
-  // payroll:write is Manager+, and one recorded slab deducts from every client
-  // of the firm in that state.
-  assert.match(code, /<RoleGuard allowed=\{\["Partner", "Manager"\]\}>/);
+test("the screen opens on payroll read, and recording or removing a set is offered only on payroll write", () => {
+  // The page used to be opened by a role (Partner and Manager). It follows the permissions a Partner ticks now (POST-A-545):
+  // the one access table opens it on the pair its read asks, and one recorded slab deducts from every client of the firm in
+  // that state, so the two writes are offered only to somebody who holds the pair the server asks for them.
+  assert.deepEqual(screenRule("/settings/statutory-values"), { all: [["payroll", "read"]] });
+  assert.doesNotMatch(code, /RoleGuard/);
+  assert.match(code, /const mayChange = useMayChange\("payroll", "write"\);/);
+  assert.match(code, /actions=\{mayChange \? \(/, "Record a notification is offered to somebody who cannot record one");
+  assert.match(code, /\{mayChange && \(\s*<button disabled=\{actionInFlight\} onClick=\{\(\) => remove\(first\)\}/, "Remove is offered to somebody who cannot remove");
+  assert.match(code, /<ReadOnlyNotice resource="payroll" action="write" page="Statutory values"/);
 });

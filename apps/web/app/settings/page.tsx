@@ -7,8 +7,9 @@ import { Building2, Calendar, User } from "lucide-react";
 import { FormSkeleton } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/AuthContext";
-import { RoleGuard } from "@/components/RoleGuard";
-import { SETTINGS_GROUPS, groupFromTab, visibleLinks } from "@/lib/settings/groups";
+import { ChangePart, ReadOnlyNotice } from "@/components/settings/ChangePart";
+import { useScreenAccess } from "@/lib/access/useScreenAccess";
+import { SETTINGS_GROUPS, firmProfileShown, groupFromTab, visibleLinks } from "@/lib/settings/groups";
 import { api, type FirmProfile } from "@/lib/api";
 import { objectOrNull } from "@/lib/api/shape";
 import { gstinProblem } from "@/lib/gst/gstin";
@@ -211,7 +212,7 @@ function Field({
 
 // ─── Main page ──────────────────────────────────────────────────────────────
 function SettingsHome() {
-  const { user, fullName, refreshUserContext, userRole } = useAuth();
+  const { user, fullName, refreshUserContext } = useAuth();
   const tab = useSearchParams()?.get("tab") ?? null;
   const supabase = getSupabaseClient();
 
@@ -411,7 +412,8 @@ function SettingsHome() {
   // place are shown on the tab that holds them, the links on every tab.
   const group = SETTINGS_GROUPS.find((g) => g.id === groupFromTab(tab)) ?? SETTINGS_GROUPS[0];
   const inline = group.inline ?? [];
-  const links = visibleLinks(group, userRole);
+  const access = useScreenAccess();
+  const links = visibleLinks(group, access);
 
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-5">
@@ -476,8 +478,11 @@ function SettingsHome() {
 
       {inline.includes("firm-profile") && (
         <>
-          {/* ── Firm Profile — Partner only (firm financials) ────────────────── */}
-          <RoleGuard allowed={["Partner"]} redirect={false}>
+          {/* ── Firm Profile: shown on `firm` `read`, the pair its read asks; saved on `firm` `write` (POST-A-545) ── */}
+          {firmProfileShown(access) && (
+          <>
+          <ReadOnlyNotice resource="firm" action="write" page="Firm Profile" />
+          <ChangePart resource="firm" action="write">
           {/* ── Firm Profile ─────────────────────────────────────────────────── */}
           <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
             <div className="flex items-center gap-2.5 px-5 py-4 border-b border-ps-border">
@@ -592,8 +597,9 @@ function SettingsHome() {
             </div>
             )}
           </div>
-
-          </RoleGuard>
+          </ChangePart>
+          </>
+          )}
         </>
       )}
 

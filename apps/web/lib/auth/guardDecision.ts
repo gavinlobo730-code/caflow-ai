@@ -71,32 +71,6 @@ export function shouldBounceFromLogin(state: LoginBounceState): boolean {
   return hasSession && onLogin && mfaPending === false && !isPortalRecovery;
 }
 
-// ── RoleGuard ────────────────────────────────────────────────────────────────
-//
-// The OTHER direction of the same rule. "Unresolved is not permission" keeps
-// the app from rendering too early — but a role that is still resolving is not
-// a REFUSAL either. RoleGuard used to redirect on `!loading && !permitted`, and
-// `loading` clears when the SESSION is known, a round trip before the ROLE is:
-// in between, `userRole` is null, `hasRole` reads that as least privilege, and
-// a Partner opening /settings directly was sent to "/" every time. Waiting
-// renders nothing; only a decided "no" redirects.
-
-export type RoleGuardDecision = "wait" | "allow" | "deny";
-
-export interface RoleGuardState {
-  /** The session is still being restored. */
-  loading: boolean;
-  /** This user's role is still being resolved. */
-  roleLoading: boolean;
-  /** hasRole(userRole, allowed) — meaningless until both of the above are false. */
-  permitted: boolean;
-}
-
-export function roleGuardDecision(state: RoleGuardState): RoleGuardDecision {
-  if (state.loading || state.roleLoading) return "wait";
-  return state.permitted ? "allow" : "deny";
-}
-
 // ── /signup ──────────────────────────────────────────────────────────────────
 //
 // AuthGuard already bounces a fully authenticated /login visitor to "/" (the
