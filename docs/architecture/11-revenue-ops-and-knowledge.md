@@ -157,6 +157,43 @@ and nothing was moved).
   time-rate and compliance readers of `fee_engagements` are as they were. Which screen reads
   which engine is §9's table.
 
+**Profitability counts the fees billed from the firm's own books (POST-B-193, the readers'
+first repoint, 21 November 2026).** Profitability, fee concentration and realization (one
+screen, `apps/web/app/practice/profitability/page.tsx`) read the earlier fee tables alone, so
+a fee billed from My practice was income in the firm's ledger and nothing on the screen that
+judges which client pays.
+
+- `apps/api/services/practice_fee_revenue_service.py` reads both places for a window: the
+  earlier fee bills by the read every revenue figure already used, and the practice's own
+  books as ONE answer per customer from `public.report_party_totals` (migrations 745 and
+  766), asked for the practice's own client. That is the firm Reports page's own function, so
+  "what was billed, before GST, net of credit and debit notes" has one definition, and what
+  crosses the wire is a line per customer and not a row per invoice.
+- `apps/api/domain/practice/fee_sources.py` is the rule. A customer in the practice's books
+  is a client only through its link (G3, `client_firm_customer_links`); a customer with no
+  link is not a client of the firm, so its total is in no client's revenue and is NAMED
+  beside the figures. A client's net can be below nil in a window that holds a credit note
+  and not its invoice, and is carried as it is: profitability draws no margin on it and
+  concentration leaves it out of the shares.
+- Each of the three answers says where its revenue was read from, in the server's words at
+  the end of the sentences the screen already draws, and as figures in `revenue_sources`.
+  The rupee split is made from the rows AFTER the caller's own narrowing, so a member
+  assigned to some clients is told the split of their own book; the unlinked figure belongs
+  to no client and is told to a firm-wide caller only. A firm with no practice client is
+  told that only the earlier bills are counted.
+- A fee bill in the firm's own books names no engagement (a billing schedule is not a fee
+  engagement), so realization, which is judged per engagement, names those fees beside its
+  ratio and leaves them out of it, as it always did for an invoice that names no engagement.
+- **G1 is not widened.** The three routes were already gated on the practice's fee economics
+  (a Partner's permission) and nothing of the practice's books leaves the service but a
+  total per client; the books themselves stay the Partner's alone.
+- Held by `test_the_practices_fee_revenue_is_read_from_both_places.py`, including the rule
+  that no analytics route reads the earlier fee tables directly any more.
+
+**What it does not do.** A fee entered in BOTH places would be counted twice, and the screen
+says so; nothing reconciles the two. Revenue from the practice's books is the window's net
+per client, so the engagement view and realization cannot attribute it to an engagement.
+
 **What the first part does not do.** Payroll for the firm's own staff came with the second part
 (G4 below). A non-Partner who types a `/practice/...` address is drawn the frame for
 the moment before the page's own guard sends them away, with a books group that says it
@@ -553,7 +590,7 @@ None of these is decided here.
 | Rupee-to-paise conversion in the schedule form | goes through `lib/money/rupeeInput.ts` | closed |
 | `billing_schedules.service_id` has no foreign key | mandatory and keyed (migration 206) | closed |
 | Practice Billing and AR link to the invoices | they do not yet | PRE-A-018 |
-| Fee billing: one engine | decided 20-11-2026: the sales engine survives. The `fee_*` screens are a read-only record on My practice (§2); the server's `fee_*` routes and the readers of `fee_engagements` remain | POST-B-193 |
+| Fee billing: one engine | decided 20-11-2026: the sales engine survives. The `fee_*` screens are a read-only record on My practice (§2); profitability, concentration and realization read both places (§2); the server's `fee_*` routes and the readers of `fee_engagements` remain | POST-B-193 |
 | Time is billed | nothing bills it | POST-B-194 |
 | Bridge residue: two rate columns, two provisioners | both columns remain, read by one rule (`time_rate.entry_rate`); one provisioner (migration 610) | closed (POST-A-169) |
 

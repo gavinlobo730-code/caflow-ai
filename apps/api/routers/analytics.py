@@ -10,7 +10,8 @@ from repositories.time_tracking_analytics_repository import time_tracking_analyt
 from domain.practice import profitability as rule_profit
 from domain.practice import realization as rule_real
 from services import billing_service
-from repositories.invoice_repository import invoice_repo
+from services import practice_fee_revenue_service
+from domain.practice import fee_sources
 from repositories.engagement_repository import engagement_repo
 from repositories.user_repository import user_repo
 from repositories.client_repository import client_repo
@@ -134,6 +135,22 @@ def _unrated_people(entries: list[dict], rates: dict, user_map: dict) -> list[di
     ]
 
 
+def _fee_source_sentences(fees, rows: list[dict], eff, view: str) -> list[str]:
+    """Where the revenue behind an answer was read from, in words, made from the rows AFTER the caller's narrowing. A fee
+    billed to a customer that is no client of the firm belongs to nobody's book, so only a firm-wide caller is told of it."""
+    return fee_sources.sentences(
+        rows, fees.books_state, view=view,
+        unlinked_paise=fees.unlinked_paise if eff is None else None,
+        unlinked_customers=fees.unlinked_customers)
+
+
+def _fee_source_summary(fees, rows: list[dict], eff) -> dict:
+    return fee_sources.summary(
+        rows, fees.books_state,
+        unlinked_paise=fees.unlinked_paise if eff is None else None,
+        unlinked_customers=fees.unlinked_customers)
+
+
 @router.get("/profitability")
 def profitability_analytics(
     period: PeriodWord = "month",
@@ -173,7 +190,10 @@ def profitability_analytics(
     engagement_map = engagement_repo.services_by_id(firm_id) if include_by_engagement else {}
 
     # The two reads the answer is built from, each read in full: the issued fee invoices and the ended time entries.
-    invoices = invoice_repo.fee_revenue_rows(firm_id, date_from, date_to)
+    # Both places the firm bills its fees: the earlier fee bills and the fee bills in the practice's own books
+    # (`services/practice_fee_revenue_service`, POST-B-193). Every row carries the client it is revenue of.
+    fees = practice_fee_revenue_service.fee_revenue(firm_id, date_from, date_to)
+    invoices = fees.rows
     entries = time_tracking_analytics_repo.get_cost_entries(firm_id, date_from, date_to)
     rates = billing_service.cost_rates_by_user(firm_id)
 
@@ -235,7 +255,8 @@ def profitability_analytics(
         "period": label,
         "firm_metrics": firm_metrics,
         "cost_rates_missing": _unrated_people(entries, rates, user_map),
-        "not_measured": list(rule_profit.NOT_MEASURED),
+        "not_measured": [*rule_profit.NOT_MEASURED, *_fee_source_sentences(fees, invoices, _eff, fee_sources.FOR_PROFITABILITY)],
+        "revenue_sources": _fee_source_summary(fees, invoices, _eff),
     }
 
     # Client-level profitability
@@ -348,7 +369,10 @@ def fee_concentration(
     date_from, date_to, label = _period_range(period, financial_year, date_from, date_to)
 
     client_map = client_repo.names_by_id(firm_id, include_archived=True)
-    invoices = invoice_repo.fee_revenue_rows(firm_id, date_from, date_to)
+    # Both places the firm bills its fees: the earlier fee bills and the fee bills in the practice's own books
+    # (`services/practice_fee_revenue_service`, POST-B-193). Every row carries the client it is revenue of.
+    fees = practice_fee_revenue_service.fee_revenue(firm_id, date_from, date_to)
+    invoices = fees.rows
     entries = time_tracking_analytics_repo.get_cost_entries(firm_id, date_from, date_to)
     rates = billing_service.cost_rates_by_user(firm_id)
 
@@ -376,6 +400,9 @@ def fee_concentration(
             cost_paise=position_of[cid].cost_paise if position_of[cid].cost_is_known else None,
         )
         for cid, rev in revenue_by_client.items()
+        # A client whose net is nil or below (a credit note in a window that does not hold its invoice) has no share
+        # of the fees: the rule leaves it out, and it may have no position to read a cost from.
+        if int(rev or 0) > 0
     ])
 
     return api_response(True, {
@@ -397,7 +424,8 @@ def fee_concentration(
         "median_revenue_paise": answer.median_revenue_paise,
         "median_margin_bps": answer.median_margin_bps,
         "icai_fee_dependence": answer.icai_fee_dependence,
-        "not_measured": list(answer.not_measured),
+        "not_measured": [*answer.not_measured, *_fee_source_sentences(fees, invoices, _eff, fee_sources.FOR_CONCENTRATION)],
+        "revenue_sources": _fee_source_summary(fees, invoices, _eff),
     })
 
 
@@ -428,7 +456,10 @@ def revenue_vs_effort(
     date_to = query_day(date_to, "date_to")
     date_from, date_to, label = _period_range(period, financial_year, date_from, date_to)
 
-    invoices = invoice_repo.fee_revenue_rows(firm_id, date_from, date_to)
+    # Both places the firm bills its fees: the earlier fee bills and the fee bills in the practice's own books
+    # (`services/practice_fee_revenue_service`, POST-B-193). Every row carries the client it is revenue of.
+    fees = practice_fee_revenue_service.fee_revenue(firm_id, date_from, date_to)
+    invoices = fees.rows
     entries = time_tracking_analytics_repo.get_worth_entries(firm_id, date_from, date_to)
 
     # M2: by_client / by_engagement below name every client (client_name plus revenue, effort and realization rate).
@@ -538,7 +569,8 @@ def revenue_vs_effort(
         "realization_rate": firm.realization_rate,
         "by_client": by_client_list,
         "by_engagement": by_engagement_list,
-        "not_measured": list(rule_real.NOT_MEASURED),
+        "not_measured": [*rule_real.NOT_MEASURED, *_fee_source_sentences(fees, invoices, _eff, fee_sources.FOR_REALIZATION)],
+        "revenue_sources": _fee_source_summary(fees, invoices, _eff),
     })
 
 

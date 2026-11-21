@@ -110,7 +110,7 @@ ENDPOINTS = ["/api/analytics/profitability", "/api/analytics/concentration", "/a
 @pytest.fixture
 def served(monkeypatch):
     reads: list[tuple] = []
-    monkeypatch.setattr(an.invoice_repo, "fee_revenue_rows", lambda firm, a, b: reads.append(("invoices", firm, a, b)) or [])
+    monkeypatch.setattr(an.practice_fee_revenue_service.invoice_repo, "fee_revenue_rows", lambda firm, a, b: reads.append(("invoices", firm, a, b)) or [])
     monkeypatch.setattr(an.time_tracking_analytics_repo, "get_cost_entries", lambda firm, a, b: reads.append(("entries", firm, a, b)) or [])
     # /revenue-vs-effort reads its hours through this one instead, so it is observed too: without it a wrong window on that read goes unseen.
     monkeypatch.setattr(an.time_tracking_analytics_repo, "get_worth_entries", lambda firm, a, b: reads.append(("worth", firm, a, b)) or [])
