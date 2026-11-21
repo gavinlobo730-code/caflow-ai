@@ -15,12 +15,7 @@ import { wearsThePracticeFrame } from "@/lib/workspace/practiceWorkspace";
 import { rememberPracticeAccess, rememberedPracticeAccess } from "@/lib/workspace/practiceAccessMemory";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { canAccessWorkspace } from "@/lib/auth/permissions";
-<<<<<<< HEAD
 import { WhereIsGuide } from "@/components/guide/WhereIsGuide";
-=======
-import { GuidedTipsProvider } from "@/lib/tips/GuidedTipsContext";
-import { GuidedTip } from "@/components/tips/GuidedTip";
->>>>>>> origin/main
 
 // usePathname() reflects the App Router's FlightRouterState, which under
 // `output: export` + Cloudflare's rewrite-to-_placeholder hosting is
