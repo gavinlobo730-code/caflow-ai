@@ -11,6 +11,19 @@ from domain.time_summary import summarise
 _get_db = db_provider.request_db
 
 
+def _writer():
+    """The client that CREATES, CHANGES and REMOVES a time entry: the server's own, carrying the person it acts for (POST-A-546).
+
+    An entry's two rate columns price the hour and `billed_invoice_id` says which invoice bills it. Those are the server's to
+    write (the rate is resolved when the work is recorded, the mark is set by a claim that takes only entries still unbilled),
+    and the database is about to refuse them from a signed-in session, so that a hand-made request cannot price or mark an
+    entry. An insert carries the rate and an update may, and removing an entry an invoice bills would leave the invoice billing
+    time that is not there, so all three go through here, ahead of that migration (the house order: the server's writers move
+    in a change that ships first). Reads stay the caller's. Every statement names the firm, because row security does not run
+    for this client."""
+    return db_provider.privileged_for(_get_db())
+
+
 class TimeTrackingRepository(BaseRepository[dict]):
 
     @staticmethod
@@ -100,28 +113,30 @@ class TimeTrackingRepository(BaseRepository[dict]):
         return result.data
 
     def create(self, data: dict) -> dict:
-        result = _get_db().table("time_entries").insert({
+        if not data.get("firm_id"):
+            raise ValueError("a time entry is created for a firm: the server's own client is not narrowed by row security")
+        result = _writer().table("time_entries").insert({
             **data,
             "created_at": self.now_iso(),
             "updated_at": self.now_iso(),
         }).execute()
         return result.data[0]
 
-    def update(self, id: str, data: dict, firm_id: Optional[str] = None) -> Optional[dict]:
-        query = _get_db().table("time_entries").update({
+    def update(self, id: str, data: dict, firm_id: str) -> Optional[dict]:
+        """Change one entry OF THE FIRM. `firm_id` is required, never defaulted: this statement runs as the server's own client."""
+        if not firm_id:
+            raise ValueError("a time entry is changed inside a firm: the server's own client is not narrowed by row security")
+        result = (_writer().table("time_entries").update({
             **data,
             "updated_at": self.now_iso(),
-        }).eq("id", id)
-        if firm_id:
-            query = query.eq("firm_id", firm_id)
-        result = query.execute()
+        }).eq("id", id).eq("firm_id", firm_id).execute())
         return result.data[0] if result.data else None
 
-    def delete(self, id: str, firm_id: Optional[str] = None) -> bool:
-        query = _get_db().table("time_entries").delete().eq("id", id)
-        if firm_id:
-            query = query.eq("firm_id", firm_id)
-        result = query.execute()
+    def delete(self, id: str, firm_id: str) -> bool:
+        """Remove one entry OF THE FIRM. `firm_id` is required, never defaulted: this statement runs as the server's own client."""
+        if not firm_id:
+            raise ValueError("a time entry is removed inside a firm: the server's own client is not narrowed by row security")
+        result = _writer().table("time_entries").delete().eq("id", id).eq("firm_id", firm_id).execute()
         return len(result.data) > 0
 
     def get_summary(self, firm_id: str, user_id: str, date_from: date, date_to: date) -> dict:

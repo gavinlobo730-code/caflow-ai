@@ -173,7 +173,7 @@ def _refuse_a_pan_a_hidden_entity_holds(db, current_user: dict, pan: Optional[st
     if not db:
         holder = next((e for e in _MOCK_ENTITIES if e.get("firm_id") == firm_id and e.get("pan") == pan), None)
     else:
-        found = db.table("entities").select("id").eq("firm_id", firm_id).eq("pan", pan).limit(1).execute().data or []
+        found = privileged_for(db).table("entities").select("id").eq("firm_id", firm_id).eq("pan", pan).limit(1).execute().data or []
         holder = found[0] if found else None
     if holder and _entity_is_hidden(db, current_user, str(holder["id"])):
         raise HTTPException(status_code=409, detail=PAN_HELD_OUT_OF_REACH)
@@ -414,7 +414,7 @@ def list_entities(
         return _entity_window(result[offset: offset + probe(limit)], limit, scoped=scoped)
 
     def register():
-        q = db.table("entities").select("*").eq("firm_id", current_user["firm_id"])
+        q = privileged_for(db).table("entities").select("*").eq("firm_id", current_user["firm_id"])
         if entity_type:
             q = q.eq("entity_type", entity_type)
         if search:
@@ -501,7 +501,7 @@ def update_entity(
                 return api_response(True, _MOCK_ENTITIES[i])
         raise HTTPException(status_code=404, detail="Entity not found")
 
-    existing = db.table("entities").select("id").eq("id", entity_id).eq("firm_id", firm_id).maybe_single().execute().data
+    existing = privileged_for(db).table("entities").select("id").eq("id", entity_id).eq("firm_id", firm_id).maybe_single().execute().data
     if not existing:
         raise HTTPException(status_code=404, detail="Entity not found")
 
@@ -534,12 +534,12 @@ def get_entity(
         return api_response(True, {**entity, "roles": roles,
                                    "relationships": _edges_between_visible(db, current_user, relationships)})
 
-    entity = db.table("entities").select("*").eq("id", entity_id).eq("firm_id", firm_id).maybe_single().execute().data
+    entity = privileged_for(db).table("entities").select("*").eq("id", entity_id).eq("firm_id", firm_id).maybe_single().execute().data
     if not entity:
         raise HTTPException(status_code=404, detail="Entity not found")
 
     roles = filter_by_client(current_user, db.table("entity_roles").select("*").eq("entity_id", entity_id).eq("firm_id", firm_id).execute().data or [])
-    relationships = db.table("entity_relationships").select("*").eq("firm_id", firm_id).or_(
+    relationships = privileged_for(db).table("entity_relationships").select("*").eq("firm_id", firm_id).or_(
         f"from_entity_id.eq.{entity_id},to_entity_id.eq.{entity_id}"
     ).execute().data or []
 
@@ -590,7 +590,7 @@ def add_entity_role(
         )
         return api_response(True, row)
 
-    entity = db.table("entities").select("id, full_name").eq("id", entity_id).eq("firm_id", firm_id).maybe_single().execute().data
+    entity = privileged_for(db).table("entities").select("id, full_name").eq("id", entity_id).eq("firm_id", firm_id).maybe_single().execute().data
     if not entity:
         raise HTTPException(status_code=404, detail="Entity not found")
 
@@ -679,8 +679,8 @@ def create_relationship(
         )
         return api_response(True, row)
 
-    from_e = db.table("entities").select("id").eq("id", data.from_entity_id).eq("firm_id", firm_id).maybe_single().execute().data
-    to_e   = db.table("entities").select("id").eq("id", data.to_entity_id).eq("firm_id", firm_id).maybe_single().execute().data
+    from_e = privileged_for(db).table("entities").select("id").eq("id", data.from_entity_id).eq("firm_id", firm_id).maybe_single().execute().data
+    to_e   = privileged_for(db).table("entities").select("id").eq("id", data.to_entity_id).eq("firm_id", firm_id).maybe_single().execute().data
     if not from_e or not to_e:
         raise HTTPException(status_code=404, detail="One or both entities not found in firm")
 
@@ -714,7 +714,7 @@ def list_relationships(
         ]
         return api_response(True, _edges_between_visible(db, current_user, result))
 
-    res = db.table("entity_relationships").select("*").eq("firm_id", firm_id).or_(
+    res = privileged_for(db).table("entity_relationships").select("*").eq("firm_id", firm_id).or_(
         f"from_entity_id.eq.{entity_id},to_entity_id.eq.{entity_id}"
     ).execute()
     return api_response(True, _edges_between_visible(db, current_user, res.data or []))
@@ -831,7 +831,7 @@ def detect_cross_client_matches(
                         new_count += 1
         return api_response(True, {"new_matches_detected": new_count})
 
-    entities_with_pan = db.table("entities").select("id, pan, full_name").eq("firm_id", firm_id).not_.is_("pan", "null").execute().data or []
+    entities_with_pan = privileged_for(db).table("entities").select("id, pan, full_name").eq("firm_id", firm_id).not_.is_("pan", "null").execute().data or []
 
     pan_entity_map: dict[str, list[dict]] = {}
     for entity in entities_with_pan:
@@ -959,8 +959,8 @@ def create_entity_to_entity_relationship(
     # task #231 audit finding: unlike create_relationship immediately above
     # this in the same file, this endpoint inserted from_entity_id/to_entity_id
     # with NO ownership check at all — mirror that endpoint's exact guard.
-    from_e = db.table("entities").select("id").eq("id", data.from_entity_id).eq("firm_id", firm_id).maybe_single().execute().data
-    to_e   = db.table("entities").select("id").eq("id", data.to_entity_id).eq("firm_id", firm_id).maybe_single().execute().data
+    from_e = privileged_for(db).table("entities").select("id").eq("id", data.from_entity_id).eq("firm_id", firm_id).maybe_single().execute().data
+    to_e   = privileged_for(db).table("entities").select("id").eq("id", data.to_entity_id).eq("firm_id", firm_id).maybe_single().execute().data
     if not from_e or not to_e:
         raise HTTPException(status_code=404, detail="One or both entities not found in firm")
 
@@ -985,7 +985,7 @@ def list_entity_to_entity_relationships(
         ]
         return api_response(True, _edges_between_visible(db, current_user, result))
 
-    res = db.table("entity_to_entity_relationships").select("*").eq("firm_id", firm_id).or_(
+    res = privileged_for(db).table("entity_to_entity_relationships").select("*").eq("firm_id", firm_id).or_(
         f"from_entity_id.eq.{entity_id},to_entity_id.eq.{entity_id}"
     ).execute()
     return api_response(True, _edges_between_visible(db, current_user, res.data or []))
@@ -1014,7 +1014,7 @@ def create_loan(
     assert_client_access(current_user, data.client_id)
     _assert_entity_visible(db, current_user, data.entity_id, detail="Entity not found in firm")
     if db:
-        entity = db.table("entities").select("id").eq("id", data.entity_id).eq("firm_id", firm_id).maybe_single().execute().data
+        entity = privileged_for(db).table("entities").select("id").eq("id", data.entity_id).eq("firm_id", firm_id).maybe_single().execute().data
         if not entity:
             raise HTTPException(status_code=404, detail="Entity not found in firm")
     else:
@@ -1175,7 +1175,7 @@ def create_property(
     assert_client_access(current_user, data.client_id)
     _assert_entity_visible(db, current_user, data.entity_id, detail="Entity not found in firm")
     if db and data.entity_id:
-        entity = db.table("entities").select("id").eq("id", data.entity_id).eq("firm_id", firm_id).maybe_single().execute().data
+        entity = privileged_for(db).table("entities").select("id").eq("id", data.entity_id).eq("firm_id", firm_id).maybe_single().execute().data
         if not entity:
             raise HTTPException(status_code=404, detail="Entity not found in firm")
     elif not db and data.entity_id:
