@@ -126,7 +126,7 @@ def screens(db, monkeypatch):
     import core.authz as authz
 
     monkeypatch.setattr(authz, "effective_client_ids", lambda user: None)
-    monkeypatch.setattr(an.invoice_repo, "fee_revenue_rows", lambda *a, **k: [
+    monkeypatch.setattr(an.practice_fee_revenue_service.invoice_repo, "fee_revenue_rows", lambda *a, **k: [
         {"client_id": LAST_CLIENT, "engagement_id": LAST_ENGAGEMENT, "status": "Issued", "amount_paise": 500_000}])
     monkeypatch.setattr(an.time_tracking_analytics_repo, "get_cost_entries", lambda *a, **k: [
         {"id": "t1", "user_id": "u1", "client_id": LAST_CLIENT, "engagement_id": LAST_ENGAGEMENT, "duration_minutes": 60, "is_billable": True}])
@@ -190,7 +190,7 @@ ARCHIVED = "c00005"
 
 
 def _bill_the_archived_client(monkeypatch):
-    monkeypatch.setattr(an.invoice_repo, "fee_revenue_rows", lambda *a, **k: [
+    monkeypatch.setattr(an.practice_fee_revenue_service.invoice_repo, "fee_revenue_rows", lambda *a, **k: [
         {"client_id": ARCHIVED, "engagement_id": "e00005", "status": "Issued", "amount_paise": 500_000}])
     monkeypatch.setattr(an.time_tracking_analytics_repo, "get_cost_entries", lambda *a, **k: [])
     monkeypatch.setattr(an.time_tracking_analytics_repo, "get_worth_entries", lambda *a, **k: [])

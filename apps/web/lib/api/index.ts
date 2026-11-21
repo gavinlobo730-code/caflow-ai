@@ -621,6 +621,18 @@ export type ProfitabilityStatus = "healthy" | "fair" | "at_risk" | "not_billed" 
  *  margin are `null`, never revenue less nothing (POST-B-321). `firm_metrics` narrows with the caller's book on this
  *  endpoint (deliberately: the totals are summed from the very per-client rows being filtered, so leaving them
  *  firm-wide would let an Executive recover the practice's position by subtracting their own clients). */
+/** Where the fee revenue behind an answer was read from (POST-B-193): the earlier fee bills and the fee bills in the firm's
+ *  own books. The server also says it in words, at the end of `not_measured`. */
+export interface RevenueSources {
+  earlier_fee_bills_paise: number;
+  practice_books_paise: number;
+  /** "read", or "not_set_up" when the firm has no practice client yet. */
+  practice_books: string;
+  /** Billed in the firm's own books to customers that are no client of the firm; `null` for a caller who is not told. */
+  unlinked_paise: number | null;
+  unlinked_customers: number | null;
+}
+
 export interface ProfitabilityPayload {
   period: string;
   firm_metrics: {
@@ -653,6 +665,7 @@ export interface ProfitabilityPayload {
   }[];
   /** What the figures are and are not, in the server's words. Rendered beside them. */
   not_measured: string[];
+  revenue_sources: RevenueSources;
   by_client?: {
     client_id: string;
     client_name: string;
@@ -745,6 +758,7 @@ export interface RealizationPayload {
     realization_rate: number | null;
   }[];
   not_measured: string[];
+  revenue_sources: RevenueSources;
 }
 
 /** `GET /api/intelligence/compliance-risk`. Per-client risk of missing a
@@ -9233,6 +9247,7 @@ export type ConcentrationPayload = {
    *  bill of health nobody issued. */
   icai_fee_dependence: string;
   not_measured: string[];
+  revenue_sources: RevenueSources;
 };
 
 /** One figure or ratio across the firm's clients for one financial year.

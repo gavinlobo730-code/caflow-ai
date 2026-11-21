@@ -429,7 +429,11 @@ def test_a_client_billed_with_no_time_says_so_and_has_no_profit(book):
 
 def test_the_statements_of_what_is_not_measured_travel_with_the_figures(book):
     book()
-    assert _profit()["not_measured"] == list(rule.NOT_MEASURED)
+    # The rule's own statements first, word for word, then where the revenue was read from (POST-B-193), which is a
+    # sentence about THIS answer and is held by `tests/test_the_practices_fee_revenue_is_read_from_both_places.py`.
+    said = _profit()["not_measured"]
+    assert said[:len(rule.NOT_MEASURED)] == list(rule.NOT_MEASURED)
+    assert len(said) > len(rule.NOT_MEASURED), "the answer no longer says where its revenue was read from"
 
 
 def test_the_engagement_view_lists_an_engagement_with_effort_and_no_invoice(book):
