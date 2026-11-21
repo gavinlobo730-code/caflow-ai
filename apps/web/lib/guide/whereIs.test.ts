@@ -9,7 +9,8 @@ import {
 import { MAIN_AREAS, MORE_AREAS } from "../workspace/outerMenu.ts";
 import type { UserRole } from "../auth/permissions.ts";
 
-const MANAGER_PAIRS = ["team:read", "assignment:read", "approval:read", "workload:read", "payroll:read"];
+// The pairs a Manager holds by default that this module asks about (the server's table gives a Manager each of them).
+const MANAGER_PAIRS = ["team:read", "assignment:read", "approval:read", "workload:read", "payroll:read", "pipeline:read", "engagement:read"];
 const who = (role: UserRole | null, pairs: string[] = [], over: Partial<Who> = {}): Who => ({
   role, can: (r, a) => pairs.includes(`${r}:${a}`), resolved: true, clientSectionOffered: () => true, ...over,
 });

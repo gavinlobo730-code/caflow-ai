@@ -134,6 +134,10 @@
     "read",
     "write"
   ],
+  "pipeline": [
+    "read",
+    "write"
+  ],
   "portal": [
     "read",
     "write"

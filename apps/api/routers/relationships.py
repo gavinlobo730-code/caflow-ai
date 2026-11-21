@@ -17,14 +17,14 @@ import uuid
 
 from models.common import api_response
 from core.authz import (
-    assert_client_access, can_access_client, filter_by_client, is_firmwide,
+    assert_client_access, can_access_client, effective_client_ids, filter_by_client, is_firmwide,
     firmwide_roles_label,
 )
 from core.permissions import rbac
 from services.timeline_service import timeline_service
 from domain.money_sentence import rupee_whole_text
 from core import db_provider
-from core.db_paging import fetch_window
+from core.db_paging import fetch_all, fetch_all_ordered, fetch_window
 from core.list_window import probe, split
 from core.db_provider import privileged_for
 from models.iso_date import OptionalIsoDate, PatchIsoDate
@@ -92,6 +92,107 @@ LOANS_TABLE = "related_party_loans"
 
 
 _db = db_provider.request_db_or_none
+
+
+# ── Which entities a caller may see (POST-A-544) ──────────────────────────────
+# The register has no client column, by design (the note at the top of this file), so until 21-11-2026 every member of staff
+# read every person and company the firm knows, with PAN and email: an Executive assigned to one client could read the
+# directors and shareholders of every other. The rule now, for a caller who is not firm-wide:
+#
+#   an entity is VISIBLE if it holds a role at one of the caller's clients, or holds NO role at all.
+#
+# The second half is what lets a person create an entity and then attach it: between those two steps it has no role, and
+# hiding it would lose it for the person who just typed it. An entity whose every role is at a client outside the caller's
+# reach is hidden, and hidden means absent: not in the list, 404 by id (the same words as one that does not exist), not the
+# other end of an edge, and not a thing a role, a loan or a property can be attached to.
+#
+# The roles are read with the PRIVILEGED client, naming the firm, and that is the point and not a shortcut: the caller's own
+# read of `entity_roles` is narrowed by the database to their clients, so it cannot tell "no role anywhere" from "roles only
+# where I may not look", which is exactly the distinction the rule turns on. Only ids leave this function.
+#
+# Match detection is untouched: it is a Partner's (it refuses anybody else above) and reads the whole register.
+
+def _roles_of_the_firm(db, firm_id: str, entity_id: Optional[str] = None) -> list[dict]:
+    """(entity_id, client_id) of every role in the firm, or of one entity. Mock mode reads the in-memory store."""
+    if not db:
+        return [r for r in _MOCK_ENTITY_ROLES
+                if r.get("firm_id") == firm_id and (entity_id is None or r.get("entity_id") == entity_id)]
+
+    def roles():
+        q = privileged_for(db).table("entity_roles").select("id, entity_id, client_id").eq("firm_id", firm_id)
+        return q.eq("entity_id", entity_id) if entity_id else q
+
+    return fetch_all(roles, label="entity_roles.who_may_see_an_entity")
+
+
+def _hidden_entity_ids(db, current_user: dict) -> Optional[set[str]]:
+    """The entities this caller may not see, or None when the caller sees the whole register (firm-wide)."""
+    mine = effective_client_ids(current_user)
+    if mine is None:
+        return None
+    with_a_role: set[str] = set()
+    at_mine: set[str] = set()
+    for role in _roles_of_the_firm(db, current_user["firm_id"]):
+        entity_id = role.get("entity_id")
+        if not entity_id:
+            continue
+        with_a_role.add(str(entity_id))
+        if str(role.get("client_id")) in mine:
+            at_mine.add(str(entity_id))
+    return with_a_role - at_mine
+
+
+def _entity_is_hidden(db, current_user: dict, entity_id: str) -> bool:
+    """Whether ONE entity is hidden from this caller: it holds roles, and none of them at a client the caller may reach."""
+    mine = effective_client_ids(current_user)
+    if mine is None:
+        return False
+    roles = _roles_of_the_firm(db, current_user["firm_id"], entity_id)
+    return bool(roles) and not any(str(r.get("client_id")) in mine for r in roles)
+
+
+def _assert_entity_visible(db, current_user: dict, entity_id: Optional[str], detail: str = "Entity not found") -> None:
+    """404 in the words THAT DOOR gives a missing entity, so a hidden one is not confirmed to exist. No entity named: nothing
+    to ask."""
+    if entity_id and _entity_is_hidden(db, current_user, entity_id):
+        raise HTTPException(status_code=404, detail=detail)
+
+
+#: One PAN is one entity in a firm (the unique key the cross-client matching rests on), so somebody who may not see an entity
+#: still cannot add it again. Without this sentence they would be told "open it instead of adding it again" about a record
+#: they cannot open. It says the one thing they need (who can attach it) and nothing about which client or whose name.
+PAN_HELD_OUT_OF_REACH = (
+    "A person or company with this PAN is already on your firm's register, connected to a client you are not assigned to. "
+    "Ask a Partner to add them to your client.")
+
+
+def _refuse_a_pan_a_hidden_entity_holds(db, current_user: dict, pan: Optional[str]) -> None:
+    if not pan or effective_client_ids(current_user) is None:
+        return
+    firm_id = current_user["firm_id"]
+    if not db:
+        holder = next((e for e in _MOCK_ENTITIES if e.get("firm_id") == firm_id and e.get("pan") == pan), None)
+    else:
+        found = db.table("entities").select("id").eq("firm_id", firm_id).eq("pan", pan).limit(1).execute().data or []
+        holder = found[0] if found else None
+    if holder and _entity_is_hidden(db, current_user, str(holder["id"])):
+        raise HTTPException(status_code=409, detail=PAN_HELD_OUT_OF_REACH)
+
+
+def _assert_both_ends_visible(db, current_user: dict, from_entity_id: str, to_entity_id: str) -> None:
+    """An edge is written between two entities the caller can see. The words are the ones these two doors already use for
+    an end that does not exist."""
+    for end in (from_entity_id, to_entity_id):
+        _assert_entity_visible(db, current_user, end, detail="One or both entities not found in firm")
+
+
+def _edges_between_visible(db, current_user: dict, edges: list[dict]) -> list[dict]:
+    """Drop an entity-to-entity edge either end of which is hidden: the edge names both."""
+    hidden = _hidden_entity_ids(db, current_user)
+    if not hidden:
+        return edges
+    return [e for e in edges
+            if str(e.get("from_entity_id")) not in hidden and str(e.get("to_entity_id")) not in hidden]
 
 
 # ─── Pydantic Models ──────────────────────────────────────────────────────────
@@ -266,8 +367,9 @@ class PropertyIn(BaseModel):
 ENTITY_LIST_MAX = 2000
 
 
-def _entity_window(rows: list[dict], limit: int):
-    """The answer: the window, and whether the read found a row beyond it (`split` drops the probe row)."""
+def _entity_window(rows: list[dict], limit: int, *, scoped: bool = False):
+    """The answer: the window, and whether the read found a row beyond it (`split` drops the probe row). `scoped` says the
+    list is the caller's part of the register and not all of it, so the screen can say so in words."""
     entities, has_more = split(rows, limit)
     return api_response(True, {
         "entities": entities,
@@ -275,6 +377,7 @@ def _entity_window(rows: list[dict], limit: int):
         "has_more": has_more,
         "limit": limit,
         "max_limit": ENTITY_LIST_MAX,
+        "scoped": scoped,
     })
 
 
@@ -291,8 +394,12 @@ def list_entities(
     register page guessed from `rows == 2000`), so a firm with more entities had some of them missing without a word
     (POST-A-259). `has_more` comes from the read: one row more than the window is asked for and it is never returned."""
     db = _db()
+    # None: the caller sees the whole register. A set (even an empty one): the caller is not firm-wide, and the answer says so.
+    hidden = _hidden_entity_ids(db, current_user)
+    scoped = hidden is not None
     if not db:
-        result = [e for e in _MOCK_ENTITIES if e.get("firm_id") == current_user["firm_id"]]
+        result = [e for e in _MOCK_ENTITIES
+                  if e.get("firm_id") == current_user["firm_id"] and str(e.get("id")) not in (hidden or ())]
         if entity_type:
             result = [e for e in result if e.get("entity_type") == entity_type]
         if search:
@@ -304,7 +411,7 @@ def list_entities(
                 or s in (e.get("email") or "").lower()
             ]
         result = sorted(result, key=lambda e: ((e.get("full_name") or ""), str(e.get("id"))))
-        return _entity_window(result[offset: offset + probe(limit)], limit)
+        return _entity_window(result[offset: offset + probe(limit)], limit, scoped=scoped)
 
     def register():
         q = db.table("entities").select("*").eq("firm_id", current_user["firm_id"])
@@ -318,8 +425,18 @@ def list_entities(
     # one short, so a window of up to ENTITY_LIST_MAX asked for in one range came back 1,000 long over a firm with 1,500 entities
     # and `has_more` read False because the answer was shorter than the window (POST-A-295). `id` breaks a tie between two
     # entities with one name, so the same row is never on two windows.
+    if hidden:
+        # THE WINDOW IS CUT AFTER THE NARROWING, NOT BEFORE. A window read from the database and narrowed afterwards comes back
+        # short and says nothing (a page of 50 with 30 hidden rows is 20 rows and `has_more` False over a register that has more),
+        # and the hidden ids cannot go into the query: a firm's can run to thousands, past what one request line carries. So a
+        # caller with something hidden reads the matching register in the same name order and the window is taken from what is
+        # left. It is a read of masters (one row per person or company the firm knows), not of transactions, and the register
+        # screen already loads up to ENTITY_LIST_MAX of them at once.
+        visible = [e for e in fetch_all_ordered(register, ["full_name"], label="entities.visible_to_the_caller")
+                   if str(e.get("id")) not in hidden]
+        return _entity_window(visible[offset: offset + probe(limit)], limit, scoped=True)
     rows = fetch_window(register, "full_name", count=probe(limit), start=offset, desc=False)
-    return _entity_window(rows, limit)
+    return _entity_window(rows, limit, scoped=scoped)
 
 
 @router.post("/entities")
@@ -330,6 +447,7 @@ def create_entity(
     db = _db()
     firm_id = current_user["firm_id"]
     now = datetime.now(timezone.utc).isoformat()
+    _refuse_a_pan_a_hidden_entity_holds(db, current_user, data.pan)
 
     row = {
         "id":         str(uuid.uuid4()),
@@ -375,6 +493,7 @@ def update_entity(
     update = data.model_dump(exclude_none=True)
     update["updated_at"] = datetime.now(timezone.utc).isoformat()
 
+    _assert_entity_visible(db, current_user, entity_id)
     if not db:
         for i, e in enumerate(_MOCK_ENTITIES):
             if e["id"] == entity_id and e.get("firm_id") == firm_id:
@@ -397,6 +516,7 @@ def get_entity(
 ):
     db = _db()
     firm_id = current_user["firm_id"]
+    _assert_entity_visible(db, current_user, entity_id)
 
     if not db:
         entity = next((e for e in _MOCK_ENTITIES if e["id"] == entity_id and e.get("firm_id") == firm_id), None)
@@ -411,7 +531,8 @@ def get_entity(
             r for r in _MOCK_RELATIONSHIPS
             if (r.get("from_entity_id") == entity_id or r.get("to_entity_id") == entity_id) and r.get("firm_id") == firm_id
         ]
-        return api_response(True, {**entity, "roles": roles, "relationships": relationships})
+        return api_response(True, {**entity, "roles": roles,
+                                   "relationships": _edges_between_visible(db, current_user, relationships)})
 
     entity = db.table("entities").select("*").eq("id", entity_id).eq("firm_id", firm_id).maybe_single().execute().data
     if not entity:
@@ -422,7 +543,8 @@ def get_entity(
         f"from_entity_id.eq.{entity_id},to_entity_id.eq.{entity_id}"
     ).execute().data or []
 
-    return api_response(True, {**entity, "roles": roles, "relationships": relationships})
+    return api_response(True, {**entity, "roles": roles,
+                               "relationships": _edges_between_visible(db, current_user, relationships)})
 
 
 # ─── Roles ────────────────────────────────────────────────────────────────────
@@ -443,6 +565,7 @@ def add_entity_role(
     # customers.py/vendors.py's identical fix) so it applies regardless of
     # whether this deployment is running against mock data or a real DB.
     assert_client_access(current_user, data.client_id)
+    _assert_entity_visible(db, current_user, entity_id)
 
     row = {
         "id":                str(uuid.uuid4()),
@@ -528,6 +651,7 @@ def create_relationship(
     db = _db()
     firm_id = current_user["firm_id"]
     now = datetime.now(timezone.utc).isoformat()
+    _assert_both_ends_visible(db, current_user, data.from_entity_id, data.to_entity_id)
 
     row = {
         "id":                str(uuid.uuid4()),
@@ -580,6 +704,7 @@ def list_relationships(
 ):
     db = _db()
     firm_id = current_user["firm_id"]
+    _assert_entity_visible(db, current_user, entity_id)
 
     if not db:
         result = [
@@ -587,12 +712,12 @@ def list_relationships(
             if (r.get("from_entity_id") == entity_id or r.get("to_entity_id") == entity_id)
             and r.get("firm_id") == firm_id
         ]
-        return api_response(True, result)
+        return api_response(True, _edges_between_visible(db, current_user, result))
 
     res = db.table("entity_relationships").select("*").eq("firm_id", firm_id).or_(
         f"from_entity_id.eq.{entity_id},to_entity_id.eq.{entity_id}"
     ).execute()
-    return api_response(True, res.data or [])
+    return api_response(True, _edges_between_visible(db, current_user, res.data or []))
 
 
 # ─── Cross-Client Matches ─────────────────────────────────────────────────────
@@ -807,6 +932,7 @@ def create_entity_to_entity_relationship(
     db = _db()
     firm_id = current_user["firm_id"]
     now = datetime.now(timezone.utc).isoformat()
+    _assert_both_ends_visible(db, current_user, data.from_entity_id, data.to_entity_id)
 
     row = {
         "id":                str(uuid.uuid4()),
@@ -849,6 +975,7 @@ def list_entity_to_entity_relationships(
 ):
     db = _db()
     firm_id = current_user["firm_id"]
+    _assert_entity_visible(db, current_user, entity_id)
 
     if not db:
         result = [
@@ -856,12 +983,12 @@ def list_entity_to_entity_relationships(
             if (r.get("from_entity_id") == entity_id or r.get("to_entity_id") == entity_id)
             and r.get("firm_id") == firm_id
         ]
-        return api_response(True, result)
+        return api_response(True, _edges_between_visible(db, current_user, result))
 
     res = db.table("entity_to_entity_relationships").select("*").eq("firm_id", firm_id).or_(
         f"from_entity_id.eq.{entity_id},to_entity_id.eq.{entity_id}"
     ).execute()
-    return api_response(True, res.data or [])
+    return api_response(True, _edges_between_visible(db, current_user, res.data or []))
 
 
 # ─── Loan Intelligence ────────────────────────────────────────────────────────
@@ -885,6 +1012,7 @@ def create_loan(
     # and inserted unchecked — a loan record could be planted cross-referencing
     # another firm's real client_id/entity_id.
     assert_client_access(current_user, data.client_id)
+    _assert_entity_visible(db, current_user, data.entity_id, detail="Entity not found in firm")
     if db:
         entity = db.table("entities").select("id").eq("id", data.entity_id).eq("firm_id", firm_id).maybe_single().execute().data
         if not entity:
@@ -966,7 +1094,7 @@ def list_loans(
             result = [l for l in result if l.get("client_id") == client_id]
         if flagged_only:
             result = [l for l in result if l.get("section_185_flagged") or l.get("section_186_flagged")]
-        return api_response(True, result)
+        return api_response(True, filter_by_client(current_user, result))
 
     q = db.table(LOANS_TABLE).select("*").eq("firm_id", firm_id)
     if client_id:
@@ -974,7 +1102,10 @@ def list_loans(
     if flagged_only:
         q = q.or_("section_185_flagged.eq.true,section_186_flagged.eq.true")
     res = q.order("created_at", desc=True).execute()
-    return api_response(True, res.data or [])
+    # With no client named this is every related-party loan of the firm, and each row names a client. The database's own
+    # rule narrows it when the server reads as the caller; this is the second lock, so the answer does not depend on which
+    # client the server happened to read with (POST-A-543). A Partner's list is unchanged.
+    return api_response(True, filter_by_client(current_user, res.data or []))
 
 
 @router.get("/loans/section-185-report")
@@ -996,6 +1127,7 @@ def section_185_report(
         result = [l for l in _MOCK_LOANS if l.get("section_185_flagged") and l.get("firm_id") == firm_id]
         if client_id:
             result = [l for l in result if l.get("client_id") == client_id]
+        result = filter_by_client(current_user, result)
         total_paise = sum(l["principal_paise"] for l in result)
         return api_response(True, {
             "flagged_loans": result,
@@ -1006,7 +1138,9 @@ def section_185_report(
     q = db.table(LOANS_TABLE).select("*").eq("firm_id", firm_id).eq("section_185_flagged", True)
     if client_id:
         q = q.eq("client_id", client_id)
-    rows = q.execute().data or []
+    # Narrowed BEFORE the count and the total are taken, so a member of staff is not told how many flagged loans, or how
+    # much principal, sit at clients they are not assigned to (POST-A-543).
+    rows = filter_by_client(current_user, q.execute().data or [])
     total_paise = sum(r["principal_paise"] for r in rows)
     return api_response(True, {
         "flagged_loans": rows,
@@ -1039,6 +1173,7 @@ def create_property(
     # and inserted unchecked — a property record could be planted
     # cross-referencing another firm's real client_id/entity_id.
     assert_client_access(current_user, data.client_id)
+    _assert_entity_visible(db, current_user, data.entity_id, detail="Entity not found in firm")
     if db and data.entity_id:
         entity = db.table("entities").select("id").eq("id", data.entity_id).eq("firm_id", firm_id).maybe_single().execute().data
         if not entity:

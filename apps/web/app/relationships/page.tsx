@@ -258,9 +258,19 @@ function EntityFormModal({
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
+/** What the server said about whose register it answered with: `scoped` true or false, or null when it did not say. */
+function registerScopeSaid(data: unknown): boolean | null {
+  if (typeof data !== "object" || data === null || Array.isArray(data)) return null;
+  const said = (data as Record<string, unknown>).scoped;
+  return typeof said === "boolean" ? said : null;
+}
+
 export default function RelationshipsPage() {
   const [entities, setEntities] = useState<Entity[]>([]);
   const [entitiesCapped, setEntitiesCapped] = useState(false);
+  // What the SERVER said about whose register this is: true, the caller's part of it; false, all of it; null, it did not say
+  // (an API a few minutes older than this page). The notice below is drawn from this and says nothing when it is null.
+  const [registerScoped, setRegisterScoped] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -300,6 +310,7 @@ export default function RelationshipsPage() {
       if (!win) throw new Error("The entity register came back in a form this screen cannot read.");
       setEntities(win.rows);
       setEntitiesCapped(win.hasMore);
+      setRegisterScoped(registerScopeSaid(json.data));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
@@ -418,14 +429,23 @@ export default function RelationshipsPage() {
         }
       />
 
-      {/* POST-A-357: the register is read by every member of the firm on purpose, so the screen says so (the Python guard
-          tests/test_the_register_says_it_is_shared_across_the_practice.py holds this sentence to the catalog). */}
-      <Callout tone="note" title="This register is shared across the whole practice">
-        Everyone in the firm who can open Relationships sees every person and company here, whichever clients they are
-        assigned to, including PAN, GSTIN, date of birth, phone and address. That is deliberate: one person who stands
-        behind several clients is one record, and the match detection needs to see all of them. Who may add or change a
-        record is decided by role.
-      </Callout>
+      {/* POST-A-544 (it replaces the notice of POST-A-357, which said the whole firm read all of it): the server now shows
+          a member who is not a Partner only the entities of their own clients, and says which answer it gave. The Python
+          guard tests/test_the_register_says_it_is_shared_across_the_practice.py holds both sentences to the server. */}
+      {registerScoped === true && (
+        <Callout tone="note" title="You are shown part of this register">
+          You see the people and companies connected to the clients you are assigned to, and any that are not attached to
+          a client yet. A Partner sees the whole register. If somebody you need is already recorded for another client,
+          ask a Partner to add them to yours: one person is one record, so they cannot be added a second time.
+        </Callout>
+      )}
+      {registerScoped === false && (
+        <Callout tone="note" title="You are shown the whole register">
+          You see every person and company the firm keeps on record, including PAN, GSTIN, date of birth, phone and
+          address. Other members of staff see only those connected to the clients they are assigned to, and any that are
+          not attached to a client yet. One person who stands behind several clients is one record.
+        </Callout>
+      )}
 
       {/* Registry table — shared DataTable (search, sort, filters, pagination, export, prefs) */}
       <DataTable

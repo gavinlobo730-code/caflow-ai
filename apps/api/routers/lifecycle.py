@@ -708,7 +708,7 @@ def list_leads(
     assigned_to: Optional[str] = Query(None),
     limit: Annotated[int, Query(ge=1, le=LEAD_LIST_MAX)] = 50,
     offset: int = Query(0, ge=0),
-    current_user: dict = Depends(rbac("client", "read")),
+    current_user: dict = Depends(rbac("pipeline", "read")),
 ):
     """A window of the firm's active pipeline leads, newest first, and whether more exist beyond it. The board used to
     decide it had been cut short by asking whether the row count equalled the limit it had asked for (POST-A-259's family);
@@ -753,7 +753,7 @@ def list_leads(
 @router.post("/leads")
 def create_lead(
     data: LeadIn,
-    current_user: dict = Depends(rbac("client", "write")),
+    current_user: dict = Depends(rbac("pipeline", "write")),
 ):
     db = _db()
     # The assignee is a member of the caller's firm. `leads.assigned_to` is keyed to AUTH.USERS(id) (migration 059), unlike every other person
@@ -864,7 +864,7 @@ def create_lead(
 def update_lead(
     lead_id: str,
     data: LeadUpdateIn,
-    current_user: dict = Depends(rbac("client", "write")),
+    current_user: dict = Depends(rbac("pipeline", "write")),
 ):
     db = _db()
     update = {k: v for k, v in data.model_dump().items() if v is not None}
@@ -960,7 +960,11 @@ def update_lead(
 def convert_lead(
     lead_id: str,
     data: LeadConvertIn,
-    current_user: dict = Depends(rbac("client", "write")),
+    current_user: dict = Depends(rbac("pipeline", "write")),
+    # Converting a lead CREATES a client (or attaches the lead to one), so it needs the right to do that as well as the
+    # pipeline's own. Before POST-A-543 this route asked `client:write` alone; the pipeline pair was added BESIDE it, not in
+    # its place, so a person ticked for the pipeline only cannot make a client through this door.
+    _may_create_a_client: dict = Depends(rbac("client", "write")),
 ):
     # LeadConvertIn.client_id is OPTIONAL: absent means "create a new client",
     # present means "attach this lead to an EXISTING one". The second case is a

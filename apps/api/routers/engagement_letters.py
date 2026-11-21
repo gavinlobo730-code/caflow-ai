@@ -842,7 +842,7 @@ def _do_resend(db, eng: dict, firm_id: str, to_email: Optional[str], actor: dict
 
 @router.get("/templates")
 def list_templates(
-    current_user: dict = Depends(rbac("client", "read")),
+    current_user: dict = Depends(rbac("engagement", "read")),
 ):
     """
     List all non-deleted engagement letter templates for the firm.
@@ -891,7 +891,7 @@ def list_templates(
 @router.post("/templates")
 def create_template(
     body: TemplateIn,
-    current_user: dict = Depends(rbac("client", "write")),
+    current_user: dict = Depends(rbac("engagement", "write")),
 ):
     """Create a new engagement letter template. Manager+."""
     db = _db()
@@ -933,7 +933,7 @@ def create_template(
 @router.get("/templates/{template_id}")
 def get_template(
     template_id: str,
-    current_user: dict = Depends(rbac("client", "read")),
+    current_user: dict = Depends(rbac("engagement", "read")),
 ):
     """Get a single engagement letter template."""
     db = _db()
@@ -972,7 +972,7 @@ def get_template(
 def update_template(
     template_id: str,
     body: TemplateUpdate,
-    current_user: dict = Depends(rbac("client", "write")),
+    current_user: dict = Depends(rbac("engagement", "write")),
 ):
     """Update an engagement letter template. Increments version. Manager+."""
     db = _db()
@@ -1041,7 +1041,7 @@ def update_template(
 @router.delete("/templates/{template_id}")
 def delete_template(
     template_id: str,
-    current_user: dict = Depends(rbac("client", "write")),
+    current_user: dict = Depends(rbac("engagement", "write")),
 ):
     """Soft-delete an engagement letter template (sets is_deleted=true). Manager+."""
     db = _db()
@@ -1102,7 +1102,7 @@ def list_engagements(
     status: Optional[str] = Query(None),
     lead_id: Optional[str] = Query(None),
     client_id: Optional[str] = Query(None),
-    current_user: dict = Depends(rbac("client", "read")),
+    current_user: dict = Depends(rbac("engagement", "read")),
 ):
     """List engagement letters with optional filters by status, lead_id, or client_id."""
     # Optional client_id: check the one that was asked for, or — for the
@@ -1155,7 +1155,7 @@ def list_engagements(
 @router.post("")
 def create_engagement(
     body: EngagementIn,
-    current_user: dict = Depends(rbac("client", "write")),
+    current_user: dict = Depends(rbac("engagement", "write")),
 ):
     """
     Create a new engagement letter in Draft status. Manager+.
@@ -1272,7 +1272,7 @@ def create_engagement(
 @router.get("/{engagement_id}")
 def get_engagement(
     engagement_id: str,
-    current_user: dict = Depends(rbac("client", "read")),
+    current_user: dict = Depends(rbac("engagement", "read")),
 ):
     """Get a single engagement letter with its audit event history."""
     db = _db()
@@ -1325,7 +1325,7 @@ def get_engagement(
 def update_engagement(
     engagement_id: str,
     body: EngagementUpdate,
-    current_user: dict = Depends(rbac("client", "write")),
+    current_user: dict = Depends(rbac("engagement", "write")),
 ):
     """Update an engagement letter. Only allowed when status is Draft. Manager+."""
     db = _db()
@@ -1414,7 +1414,7 @@ def update_engagement(
 @router.post("/{engagement_id}/generate")
 def generate_engagement(
     engagement_id: str,
-    current_user: dict = Depends(rbac("client", "write")),
+    current_user: dict = Depends(rbac("engagement", "write")),
 ):
     """
     Transition Draft → Generated.
@@ -1559,7 +1559,7 @@ def generate_engagement(
 def send_engagement(
     engagement_id: str,
     body: Optional[SendIn] = None,
-    current_user: dict = Depends(rbac("client", "write")),
+    current_user: dict = Depends(rbac("engagement", "write")),
 ):
     """
     Send the engagement letter to the client and transition Generated/Draft → Sent.
@@ -1671,7 +1671,7 @@ def send_engagement(
 def resend_engagement(
     engagement_id: str,
     body: Optional[ResendIn] = None,
-    current_user: dict = Depends(rbac("client", "write")),
+    current_user: dict = Depends(rbac("engagement", "write")),
 ):
     """
     Resend the SAME engagement letter — same subject, same PDF, same engagement
@@ -1732,7 +1732,7 @@ def resend_engagement(
 @router.get("/{engagement_id}/signing-link")
 def get_signing_link(
     engagement_id: str,
-    current_user: dict = Depends(rbac("client", "read")),
+    current_user: dict = Depends(rbac("engagement", "read")),
 ):
     """
     Return the EXACT public signing URL that was emailed, so the CA can copy it
@@ -1766,7 +1766,7 @@ def get_signing_link(
 def change_recipient(
     engagement_id: str,
     body: RecipientIn,
-    current_user: dict = Depends(rbac("client", "write")),
+    current_user: dict = Depends(rbac("engagement", "write")),
 ):
     """
     Change the recipient email on an already-sent letter ("send it to my Gmail
@@ -1845,7 +1845,7 @@ def change_recipient(
 def regenerate_link(
     engagement_id: str,
     body: Optional[RegenerateLinkIn] = None,
-    current_user: dict = Depends(rbac("client", "write")),
+    current_user: dict = Depends(rbac("engagement", "write")),
 ):
     """
     ADVANCED: mint a brand-new signing token, INVALIDATING every previously
@@ -1923,7 +1923,7 @@ def regenerate_link(
 @router.get("/{engagement_id}/pdf")
 def download_engagement_pdf(
     engagement_id: str,
-    current_user: dict = Depends(rbac("client", "read")),
+    current_user: dict = Depends(rbac("engagement", "read")),
 ):
     """
     Download the engagement letter PDF. It is re-rendered from the stored
@@ -1963,7 +1963,7 @@ def download_engagement_pdf(
 def sign_engagement(
     engagement_id: str,
     body: SignIn,
-    current_user: dict = Depends(rbac("client", "write")),
+    current_user: dict = Depends(rbac("engagement", "write")),
 ):
     """
     Transition Sent/Viewed → Signed. Records signed_at and optional signed_pdf_url.
@@ -2053,7 +2053,7 @@ def sign_engagement(
 def reject_engagement(
     engagement_id: str,
     body: RejectIn,
-    current_user: dict = Depends(rbac("client", "write")),
+    current_user: dict = Depends(rbac("engagement", "write")),
 ):
     """
     Transition Sent/Viewed → Rejected. Records rejected_at and optional rejection_notes.
@@ -2143,7 +2143,7 @@ def reject_engagement(
 @router.delete("/{engagement_id}")
 def delete_engagement(
     engagement_id: str,
-    current_user: dict = Depends(rbac("client", "write")),
+    current_user: dict = Depends(rbac("engagement", "write")),
 ):
     """
     Soft-delete (discard/cancel) an engagement letter. Manager+.

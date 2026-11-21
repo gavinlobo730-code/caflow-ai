@@ -433,10 +433,15 @@ def delete_schedule(
 def get_analytics(
     template_id: Optional[str] = None,
     days: int = Query(30, ge=1, le=365),
-    current_user: dict = Depends(rbac("task", "read")),
+    current_user: dict = Depends(rbac("analytics", "read")),
 ):
     """
     GET /api/workflows/analytics?firm_id=&days=30
+
+    `analytics:read` (Manager and above by default) since POST-A-543: these are counts over EVERY run of the firm, whichever
+    client it was for (executions, failures, approvals waiting), and no assignment narrows a count taken across the firm. It
+    was `task:read`, which every member of staff holds.
+
     Returns workflow performance analytics: execution counts, success rate,
     avg duration, top templates, and common failure patterns.
     Product Bible Chapter 17 — Workflow Engine analytics.

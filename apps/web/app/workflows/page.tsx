@@ -11,6 +11,7 @@ import { ATTENTION, BRAND, BRAND_SURFACE, HINT, MUTED, PROBLEM, READY } from "@/
 import { objectWithLists } from "@/lib/api/shape";
 import { PageHeader } from "@/components/ui/page-header";
 import { SectionPlaceholder } from "@/components/ui/page-frame";
+import { usePermissions } from "@/lib/auth/AuthContext";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -133,6 +134,11 @@ export default function WorkflowsPage() {
   const [toggling, setToggling] = useState<string | null>(null);
   const [toggleError, setToggleError] = useState<string | null>(null);
   const [tab, setTab] = useState<"templates" | "instances" | "analytics">("templates");
+  // The statistics are counts over every run of the firm, whichever client it was for, and the server reads them with
+  // analytics:read (Manager and above by default; POST-A-543). Somebody without it is not asked for them and is not shown
+  // the tiles or the tab: a tile reading 0 would be a statement about the firm, and nothing is known about the firm here.
+  const { can } = usePermissions();
+  const mayReadStats = can("analytics", "read");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -142,10 +148,10 @@ export default function WorkflowsPage() {
       if (search) params.search = search;
       const [tplRes, analyticsRes] = await Promise.all([
         api.workflowEngine.listTemplates(params) as Promise<{ data: { templates: WorkflowTemplate[] } }>,
-        api.workflowEngine.analytics() as Promise<{ data: WorkflowAnalytics }>,
+        mayReadStats ? api.workflowEngine.analytics() as Promise<{ data: WorkflowAnalytics }> : Promise.resolve(null),
       ]);
       setTemplates(tplRes.data?.templates || []);
-      setAnalytics(objectWithLists<WorkflowAnalytics>(analyticsRes.data, "by_template") || null);
+      setAnalytics(analyticsRes ? objectWithLists<WorkflowAnalytics>(analyticsRes.data, "by_template") || null : null);
       setLoadError(null);
     } catch (e) {
       setTemplates([]);
@@ -153,7 +159,7 @@ export default function WorkflowsPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, category]);
+  }, [search, category, mayReadStats]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -214,18 +220,20 @@ export default function WorkflowsPage() {
 
       <div className="px-6 py-6 max-w-ps-data mx-auto space-y-6">
 
-        {/* Summary stats */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          <StatCard label="Total Workflows" value={summary?.total_templates ?? 0} />
-          <StatCard label="Total Executions" value={summary?.total_executions ?? 0} sub="all time" />
-          <StatCard label="Success Rate" value={`${summary?.overall_success_rate ?? 0}%`} color={READY} />
-          <StatCard label="Pending Approvals" value={summary?.pending_approvals ?? 0} color={ATTENTION} />
-          <StatCard label="Unresolved Failures" value={summary?.unresolved_failures ?? 0} color={PROBLEM} />
-        </div>
+        {/* Summary stats: the firm's own counts, for whoever may read them; a dash until they have been read, never a 0. */}
+        {mayReadStats && (
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4" data-workflow-stats="">
+            <StatCard label="Total Workflows" value={summary ? summary.total_templates : "—"} />
+            <StatCard label="Total Executions" value={summary ? summary.total_executions : "—"} sub="all time" />
+            <StatCard label="Success Rate" value={summary ? `${summary.overall_success_rate}%` : "—"} color={READY} />
+            <StatCard label="Pending Approvals" value={summary ? summary.pending_approvals : "—"} color={ATTENTION} />
+            <StatCard label="Unresolved Failures" value={summary ? summary.unresolved_failures : "—"} color={PROBLEM} />
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="flex gap-1 border-b border-ps-border">
-          {(["templates", "instances", "analytics"] as const).map(t => (
+          {(["templates", "instances", "analytics"] as const).filter((t) => t !== "analytics" || mayReadStats).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
