@@ -88,6 +88,21 @@ export const PRACTICE_PEOPLE_SECTIONS: readonly PeopleSection[] = [
   { id: "login-history", label: "Login History", href: "/team/login-history/", requires: ["team", "read"] },
 ];
 
+/**
+ * The People screen an address is, or is under (the longest address wins), or null for an address that is not one. The
+ * screens' own access gate asks this for the permission pair the screen's reads need, so the gate, the menus and the tiles
+ * read ONE list and cannot disagree about which pair a screen needs.
+ */
+export function peopleSectionAt(pathname: string): PeopleSection | null {
+  const path = withoutTrailingSlash((pathname || "").split(/[?#]/)[0]);
+  let best: PeopleSection | null = null;
+  for (const s of PRACTICE_PEOPLE_SECTIONS) {
+    const href = withoutTrailingSlash(s.href);
+    if ((path === href || path.startsWith(href + "/")) && (!best || href.length > withoutTrailingSlash(best.href).length)) best = s;
+  }
+  return best;
+}
+
 /** The address prefixes of the People screens: each address and everything under it. */
 export const PEOPLE_PREFIXES: readonly string[] = ["/team", "/approvals"];
 

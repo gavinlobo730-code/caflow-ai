@@ -36,6 +36,11 @@ Findings made while walking the questions are not part of the walkthrough: those
 
 **The order of work now.** The three pieces above, one at a time, then the walk as each role; you are told when all three are merged.
 
+**The role walk (21 November 2026).** The product was opened as a Partner, a Manager, an Executive and a Reviewer, each with that role's own permissions, in a test browser with stand-in data. The menus are right for all four. Four small faults were found on the Team screens and fixed (POST-A-542). **What was not done:** a walk against a real server with real data. That needs either a helper program this session was not allowed to download (it needs your OK), or a throwaway account that you create on the live site.
+
+**What you decided after it (21 November 2026, about 14:35 to 15:05 IST).** (1) One rule for what a person sees and can open: the Partner's ticks. The menu follows the ticks and so does a typed address; the role only sets a person's starting ticks; the tick screen is to use the menu's own names; and a person without a tick can press Request access, which goes to the Partners through Approvals (POST-A-543, a few days, in four steps; you see the table of areas and ticks before the menu changes). (2) The two unused database fields the tips left behind are to be removed now (POST-A-541). (3) The two staff lists (a login on Team, an employee in the firm's payroll) wait (POST-A-540). (4) The invoice line typed as a price including GST is to be built now (POST-A-490). (5) Hourly billing is to be built after the ticks work (POST-B-194).
+
+
 ## 0c. THE SESSION RECORD: 20 November 2026 (afternoon and evening IST), and the plan it set
 
 **What you decided, in the order you decided it.**

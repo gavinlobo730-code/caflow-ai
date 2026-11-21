@@ -25,7 +25,7 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { headersFor } from "../security-headers.mjs";
-import { FAKE_SESSION, FAKE_USER } from "./fixtures.mjs";
+import { FAKE_SESSION, FAKE_USER, FAKE_USERS_ROW } from "./fixtures.mjs";
 
 /**
  * What an UNROUTED `GET /api/identity/permissions` is answered with: the Partner map, the file
@@ -36,6 +36,8 @@ import { FAKE_SESSION, FAKE_USER } from "./fixtures.mjs";
  * still wins: routes are tried before this.
  */
 const PARTNER_PERMISSIONS = JSON.parse(fs.readFileSync(new URL("./partner-permissions.json", import.meta.url), "utf8"));
+/** Each staff role's map, written by the same script from `core/permissions.py` and held by the same Python test. */
+const ROLE_PERMISSIONS = JSON.parse(fs.readFileSync(new URL("./role-permissions.json", import.meta.url), "utf8"));
 const unroutedGet = (pathname) =>
   /\/api\/identity\/permissions$/.test(pathname)
     ? ok({ role: "Partner", permissions: structuredClone(PARTNER_PERMISSIONS), role_defaults: structuredClone(PARTNER_PERMISSIONS), has_overrides: false })
@@ -238,6 +240,18 @@ export function createStub({ root, port, headerRules, resolveBuilt }) {
     },
     refusalsServed: () => refusals,
     setTable(name, rows) { tables[name] = rows; },
+    /**
+     * Sign the scenario in as a staff role: the person's own row says the role AND the permission map served is that
+     * role's own (`role-permissions.json`). Changing the row alone leaves the Partner's map in place, which drives a
+     * screen that asks the map (a button, an access gate) as nobody the product has.
+     */
+    signInAs(role) {
+      const map = ROLE_PERMISSIONS[role];
+      if (!map) throw new Error(`signInAs: no permission map for the role ${JSON.stringify(role)}`);
+      tables.users = [{ ...FAKE_USERS_ROW, role }];
+      routes.unshift({ method: "GET", re: /\/api\/identity\/permissions$/, delay: undefined, status: undefined,
+        reply: () => ok({ role, permissions: structuredClone(map), role_defaults: structuredClone(map), has_overrides: false }) });
+    },
     /** Answer an insert into `name` with the row `makeRow(sent)` returns (see `insertAnswers`). */
     answerInserts(name, makeRow) { insertAnswers[name] = makeRow; },
     /** Sign in as this auth user from now on (call BEFORE the first navigation of a scenario). */

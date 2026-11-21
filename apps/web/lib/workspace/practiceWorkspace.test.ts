@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   NOT_FOR_THE_PRACTICE, PEOPLE_PREFIXES, PRACTICE_PEOPLE_SECTIONS, PRACTICE_PREFIXES, PRACTICE_SECTIONS, booksSectionsFor, isPeoplePath,
-  isPracticePath, peopleSectionsOffered, practiceSectionAt, readPracticeLookup, wearsThePracticeFrame,
+  isPracticePath, peopleSectionsOffered, practiceSectionAt, readPracticeLookup, wearsThePracticeFrame, peopleSectionAt,
 } from "./practiceWorkspace.ts";
 import { rememberPracticeAccess, rememberedPracticeAccess } from "./practiceAccessMemory.ts";
 import { canAccessWorkspace, type UserRole } from "../auth/permissions.ts";
@@ -190,4 +190,20 @@ test("the server's answer about the practice is ready, not set up, or unavailabl
     { success: true, data: { provisioned: "false" } }]) {
     assert.deepEqual(readPracticeLookup(bad), { state: "unavailable", practiceId: null }, JSON.stringify(bad));
   }
+});
+
+test("the People screen an address is on, for the pair its gate asks (POST-A-542)", () => {
+  // Each People screen's own address, with and without the trailing slash, a query and a deeper address.
+  for (const s of PRACTICE_PEOPLE_SECTIONS) {
+    assert.equal(peopleSectionAt(s.href)?.id, s.id);
+    assert.equal(peopleSectionAt(s.href.replace(/\/$/, ""))?.id, s.id);
+    assert.equal(peopleSectionAt(`${s.href}?tab=x`)?.id, s.id);
+  }
+  // The longest address wins: Workload is not Team, although its address is under Team's.
+  assert.deepEqual(peopleSectionAt("/team/workload/")?.requires, ["workload", "read"]);
+  assert.deepEqual(peopleSectionAt("/team/assignments/x/")?.requires, ["assignment", "read"]);
+  // An address under Team that is no screen of its own takes Team's pair, so nothing under /team is ungated.
+  assert.deepEqual(peopleSectionAt("/team/work-allocation/")?.requires, ["team", "read"]);
+  // Nothing else is a People screen.
+  for (const other of ["/", "/teams/", "/practice/", "/approvals-x/", "/clients/c-1/", ""]) assert.equal(peopleSectionAt(other), null, other);
 });
