@@ -23,14 +23,16 @@ import { MAIN_CONTENT_ID } from "@/components/shell/SkipToContent";
  */
 export function WorkspaceShell({
   onOpenSearch,
+  onOpenGuide,
   children,
 }: {
   onOpenSearch: () => void;
+  onOpenGuide: () => void;
   children: React.ReactNode;
 }) {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-ps-bg print:block print:h-auto print:overflow-visible">
-      <WorkspaceTopBar onOpenSearch={onOpenSearch} />
+      <WorkspaceTopBar onOpenSearch={onOpenSearch} onOpenGuide={onOpenGuide} />
       {/* The skip link's target. `tabIndex={-1}` so a jump to it moves focus
           here, `outline-none` because it is a landmark and not a control —
           both explained at SkipToContent. */}

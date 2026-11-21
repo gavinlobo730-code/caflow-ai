@@ -49,7 +49,8 @@ export type AiDisclosureSurface =
   | "statement_scan"
   | "notice_extraction"
   | "assistant"
-  | "copilot";
+  | "copilot"
+  | "guide";
 
 export interface AiDisclosureEntry {
   /** Every provider the backend behind this screen can send the content to. */
@@ -90,5 +91,11 @@ export const AI_DISCLOSURES: Record<AiDisclosureSurface, AiDisclosureEntry> = {
   copilot: {
     providers: ["groq"],
     sentence: "Your messages, and counts from your practice's own records, are sent to Groq, an AI provider outside India. No client name is added from our side. What you type is sent as written, except that anything shaped like a PAN or a GSTIN is replaced first.",
+  },
+
+  // routers/guide.py: the question and the names of the product's own screens go to Groq, which answers with screen ids only.
+  guide: {
+    providers: ["groq"],
+    sentence: "Your question is sent to Groq, an AI provider outside India, with the names of PracticeSync's screens and nothing from your records. Anything shaped like a PAN or a GSTIN is replaced before it is sent; a name you type is sent as written.",
   },
 };

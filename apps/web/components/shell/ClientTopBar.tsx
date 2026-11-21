@@ -60,7 +60,7 @@ import { Button } from "@/components/ui/button";
  * component because the grid's backdrop is a hand-built full-window layer, and a second copy of one is what
  * `scripts/an-overlay-is-the-shared-dialog-or-on-the-frozen-list.test.ts` exists to refuse.
  */
-export function ClientTopBar({ onOpenSearch, practicePath = false }: { onOpenSearch: () => void; practicePath?: boolean }) {
+export function ClientTopBar({ onOpenSearch, onOpenGuide, practicePath = false }: { onOpenSearch: () => void; onOpenGuide: () => void; practicePath?: boolean }) {
   // THE LOOKUP MOVED UP, and the bar reads the answer rather than its own.
   //
   // It used to run this query itself, keeping `client` and `clientLoadFailed`
@@ -268,7 +268,6 @@ export function ClientTopBar({ onOpenSearch, practicePath = false }: { onOpenSea
           onClick={() => setGridOpen((v) => !v)}
           aria-expanded={gridOpen}
           aria-controls="client-module-menu"
-          data-tip="practice-menu"
           className={cn(
             "flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-xs font-semibold transition-colors shrink-0",
             gridOpen ? "bg-brand text-white" : "text-ps-ink hover:bg-ps-bg"
@@ -289,7 +288,7 @@ export function ClientTopBar({ onOpenSearch, practicePath = false }: { onOpenSea
         {/* The search MODAL is AppShell's — one instance, one open state, one
             ⌘K listener — so the handler is threaded down rather than a second
             copy being held here. */}
-        <UtilityCluster orientation="bar" onOpenSearch={onOpenSearch} />
+        <UtilityCluster orientation="bar" onOpenSearch={onOpenSearch} onOpenGuide={onOpenGuide} />
       </header>
 
       {gridOpen && (

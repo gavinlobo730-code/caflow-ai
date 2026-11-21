@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Search, Settings, LogOut } from "lucide-react";
+import { Compass, Search, Settings, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth/AuthContext";
 
@@ -42,9 +42,12 @@ export type UtilityOrientation = "rail" | "bar" | "bar-dark";
 export function UtilityCluster({
   orientation,
   onOpenSearch,
+  onOpenGuide,
 }: {
   orientation: UtilityOrientation;
   onOpenSearch: () => void;
+  /** Opens "Where is…?" (POST-A-538). The dialog is AppShell's, one instance, like the search box. */
+  onOpenGuide: () => void;
 }) {
   const { user, userRole, signOut, fullName } = useAuth();
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
@@ -77,7 +80,20 @@ export function UtilityCluster({
           : "flex items-center gap-1 shrink-0"
       )}
     >
-      <button onClick={onOpenSearch} title="Search (⌘K)" aria-label="Search" data-tip="open-search" className={button}>
+      {/* "Where is…?" comes first and carries its words on a wide bar: it is what a new CA is told to use in place of the
+          guided tips, so it must be findable without knowing what the icon means (POST-A-538). */}
+      <button
+        onClick={onOpenGuide}
+        title="Where is…? Ask where to find something"
+        aria-label="Where is…? Ask where to find something"
+        data-guide-open
+        className={cn(button, !isRail && "w-auto gap-1.5 px-2")}
+      >
+        <Compass size={15} className="shrink-0" />
+        {!isRail && <span className="hidden text-xs font-medium lg:inline">Where is…?</span>}
+      </button>
+
+      <button onClick={onOpenSearch} title="Search (⌘K)" aria-label="Search" className={button}>
         <Search size={15} />
       </button>
 

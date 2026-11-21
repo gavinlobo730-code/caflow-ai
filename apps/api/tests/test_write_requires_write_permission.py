@@ -201,6 +201,10 @@ def test_no_mutating_route_is_guarded_by_a_read_level_action():
         # Stateless Groq passthrough over a static prompt; loads nothing, writes
         # nothing. Verified when its dead client_id field was removed.
         "/api/assistant",
+        # "Where is…?" (POST-A-538): the body carries a question and the ids of screens, and the answer is ids of
+        # screens. It writes nothing but the usage row every model call writes, and it is ai:read on purpose: a Reviewer
+        # on their first day is who most needs to ask where a thing is.
+        "/api/guide/where",
         # Copilot: deliberately open to every role. The protection here is that
         # the prompt carries no client-identifying data at all (see
         # test_copilot_no_client_data.py), which holds regardless of role.
