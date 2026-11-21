@@ -3,7 +3,7 @@
 # arm64 both resolve from it; it was Python 3.11.18 when it was taken on 28-10-2026. A pin that nothing moves is an unpatched
 # base, so Dependabot's docker entry (.github/dependabot.yml) proposes the next digest every week, holds the minor and the
 # major back (the lock is compiled for 3.11), and the `docker image` workflow builds each proposal.
-FROM python:3.11-slim@sha256:673719e071ecf27434fd2635bbd8d00f49f4fdd81f243143438a42ced8bedf60
+FROM python:3.11-slim@sha256:07d4824036af339fa1b6ef769cc99d9c10a141769538b52b3b597c84f7a7b535
 
 WORKDIR /app
 
