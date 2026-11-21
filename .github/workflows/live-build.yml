@@ -48,7 +48,10 @@ jobs:
           SITE: https://caflow-ai.pages.dev
         run: |
           set -uo pipefail
-          field() { python3 -c 'import json,sys; v=json.load(open(sys.argv[1])).get(sys.argv[2]); print("" if v is None else v)' "$1" "$2" 2>/dev/null || true; }
+          # The API answers in the house envelope ({success, data, error}), so its fields are inside `data`; the product
+          # site's version file is a bare object. Read `data` where there is one and the object itself where there is not.
+          # The first run of this job (22-11-2026) read the top level only and printed "could not be read" over a 200.
+          field() { python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d=d["data"] if isinstance(d.get("data"), dict) else d; v=d.get(sys.argv[2]); print("" if v is None else v)' "$1" "$2" 2>/dev/null || true; }
 
           # --max-time 90 and three tries: a cold start on the free tier was measured at 56.55s, so the first request is
           # expected to be slow, and one that times out is asked again before the host is called unreachable.
@@ -73,7 +76,7 @@ jobs:
             [ -n "$site_build" ] || site_build="(answered, in a shape this job does not read: $(head -c 200 /tmp/version.json))"
           fi
 
-          api_line="API is running: ${api_build:-could not be read (HTTP $api_code)}${api_schema:+ (schema check: $api_schema)}"
+          api_line="API is running: ${api_build:-could not be read (HTTP $api_code): $(head -c 200 /tmp/health.json 2>/dev/null)}${api_schema:+ (schema check: $api_schema)}"
           site_line="Product site is serving: ${site_build:-could not be read (HTTP $site_code)}"
           echo "$api_line"
           echo "$site_line"
