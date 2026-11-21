@@ -40,6 +40,15 @@ export function screenId(s: Screen): string {
 
 const BY_ID: ReadonlyMap<string, Screen> = new Map(ALL_SCREENS.map((s) => [screenId(s), s]));
 
+/**
+ * The firm screens whose page mounts a gate on one permission pair: the address (and everything under it), the resource and
+ * the action. The menus, the gate and the guide read the same pair, so none of them offers what another refuses.
+ */
+export const SCREEN_PAIRS: ReadonlyArray<readonly [prefix: string, resource: string, action: string]> = [
+  ["/pipeline", "pipeline", "read"],
+  ["/engagements", "engagement", "read"],
+];
+
 export interface Who {
   role: UserRole | null;
   can: (resource: string, action: string) => boolean;
@@ -74,6 +83,11 @@ export function offeredTo(s: Screen, who: Who): boolean {
     }
     return true;
   }
+  // A screen whose own gate asks a permission pair (POST-A-543): the pipeline and the engagement letters are shown to whoever
+  // holds the pair their reads need, by the Partner's ticks and not by a role. `SCREEN_PAIRS` is the list, and
+  // `scripts/a-screen-behind-a-tick-is-offered-by-that-tick.test.ts` holds it to the gates the pages mount.
+  const pair = SCREEN_PAIRS.find(([prefix]) => href === prefix || href.startsWith(prefix + "/"));
+  if (pair && who.resolved && !who.can(pair[1], pair[2])) return false;
   // Every other firm screen: its area's role rule, and no address above it that the role's menus hide.
   const area = getActiveWorkspaceForPathname(href);
   if (area && !canAccessWorkspace(area, who.role)) return false;

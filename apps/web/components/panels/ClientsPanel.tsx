@@ -43,6 +43,9 @@ export function ClientsPanel({ onOpenSearch }: ClientsPanelProps) {
   // (POST-A-488): a tester who looked here for a way to add a company found none.
   const { can } = usePermissions();
   const canAdd = can("client", "write");
+  // The pipeline is every lead of the firm and is read with pipeline:read (POST-A-543): the entry is offered to whoever holds
+  // it. `can()` answers false until the permissions are known, so the entry appears once they are and never flashes away.
+  const items = CLIENTS_ITEMS.filter((item) => item.href !== "/pipeline" || can("pipeline", "read"));
 
   return (
     <div className="flex flex-col h-full">
@@ -82,7 +85,7 @@ export function ClientsPanel({ onOpenSearch }: ClientsPanelProps) {
           Navigate
         </p>
         <div className="space-y-0.5">
-          {CLIENTS_ITEMS.map(({ href, label, icon: Icon }) => {
+          {items.map(({ href, label, icon: Icon }) => {
             const active =
               href === "/clients"
                 ? pathname === "/clients" || pathname.startsWith("/clients/")

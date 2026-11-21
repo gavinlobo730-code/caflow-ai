@@ -190,6 +190,8 @@ export const WORKSPACE_CONFIGS: WorkspaceConfig[] = [
     description: "Engagement letters & agreements",
     defaultRoute: "/engagements",
     icon: FileText,
+    // The letters are read with engagement:read since POST-A-543 (they carry fees): Manager and above by default.
+    requires: ["engagement", "read"],
   },
 ];
 

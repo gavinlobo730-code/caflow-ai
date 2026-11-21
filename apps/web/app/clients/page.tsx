@@ -550,13 +550,15 @@ export default function ClientsPage() {
             >
               <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
             </button>
-            <Link
-              href="/pipeline"
-              className="flex items-center gap-2 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg transition-colors"
-            >
-              <KanbanSquare size={15} />
-              Pipeline
-            </Link>
+            {can("pipeline", "read") && (
+              <Link
+                href="/pipeline"
+                className="flex items-center gap-2 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg transition-colors"
+              >
+                <KanbanSquare size={15} />
+                Pipeline
+              </Link>
+            )}
             {canAdd && (
               <button
                 onClick={() => setImportOpen(true)}

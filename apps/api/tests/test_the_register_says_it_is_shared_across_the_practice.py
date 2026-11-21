@@ -1,21 +1,24 @@
-"""The people-and-companies register says it is read by every member of the firm, and the sentence is held to the policies (POST-A-357).
+"""What the people-and-companies register screen says about who reads it is held to the server and to the policies (POST-A-357, POST-A-544).
 
-WHAT WAS FOUND. `entities` holds a PAN, a GSTIN, a date of birth, a phone number and an address, and its read policy asks the firm and nothing
-narrower, so a member assigned to client A can read the details of a person who stands behind client B only. The independent review of
-migration 531 recorded that as intended ("shared across clients on purpose"), and the third catalog population (POST-A-305) lists the three
-register tables as `firm_wide`, with the category checked against the table's own policies. Nothing on any screen said it.
+THE FIRST DECISION (POST-A-357, 29-10-2026). `entities` holds a PAN, a GSTIN, a date of birth, a phone number and an address, and its read
+policy asks the firm and nothing narrower. It was decided to keep the firm-wide read and say so on the screen, because a narrowed read would
+hide a person already known through another client from the entity picker and produce a duplicate.
 
-WHAT WAS DECIDED (29-10-2026, under the owner's standing instructions: lawful, safe for the data of a CA's clients, best for the product).
-The firm-wide read stays and the screen says so. Narrowing it to "a member sees an entity only when a link ties it to a client in reach" would
-defeat what the register is for: the entity picker and the cross-client match detection exist to find a person already known through ANOTHER
-client, and a narrowed read would hide that person and make a duplicate. Every member who can open Relationships is a member of this one firm;
-the register's write side was already taken away from the signed-in role (migration 562), so the exposure is a read by a colleague, not a
-change by one. If a pilot firm asks for a narrower read, the policy and this sentence change together, and this test is what makes them.
+WHAT CHANGED (POST-A-544, 21-11-2026). The owner decided that what a member of staff sees is limited to their own clients, and the map made
+for that decision counted this register as the one list of people that was not. The SERVER now narrows it: a member who is not firm-wide is
+shown an entity only when it holds a role at one of their clients, or no role at all, and the answer carries `scoped`. The picker's problem,
+which is why this was not built in October, has an answer now: one PAN is one entity in a firm, so a PAN that a hidden entity holds is
+refused in a sentence that says a Partner can attach it. The screen says which answer the server gave, in two sentences keyed on `scoped`.
 
-WHY A SOURCE GUARD ON THE PYTHON SIDE. The sentence is true only while the three tables are `firm_wide` in the catalog, and the catalog is
-checked against the policies by `test_a_table_with_no_client_is_firm_level_on_purpose_pg`. A guard written in `apps/web` would assert the
-screen against a copy of itself. This one reads the catalog (the side that owns the fact) and the screen (the side that says it), so narrowing
-the read without changing the sentence, or changing the sentence without narrowing the read, is a red test.
+WHAT IS STILL TRUE OF THE DATABASE, AND WHY THIS FILE STILL READS THE CATALOG. The three tables are still `firm_wide` in the catalog, and
+that category is checked against the policies by `test_a_table_with_no_client_is_firm_level_on_purpose_pg`: a hand-made request to the
+database's own API, by a signed-in member of staff, is still answered with the whole register. Closing that needs the server's reads moved
+to its own client and then a migration, and is the open half of POST-A-544. So this file holds three things together: the screen's two
+sentences, the server's `scoped`, and, WHILE the catalog says `firm_wide`, a ledger line that says the database half is open. Whoever
+narrows the database changes the category and closes the line in the same commit, and this test is what makes them.
+
+WHY A SOURCE GUARD ON THE PYTHON SIDE. A guard written in `apps/web` would assert the screen against a copy of itself. This one reads the
+catalog and the route (the sides that own the facts) and the screen (the side that says them).
 
 It reads `apps/web/app/relationships/page.tsx`, so the `browser contract` CI job selects it for a pull request that touches only the web app
 (`scripts/ci/tests_reading_the_browser.py`).
@@ -39,24 +42,57 @@ def _page() -> str:
     return re.sub(r"(?m)^\s*//[^\n]*$", "", text)
 
 
-def test_the_three_register_tables_are_firm_wide_in_the_catalog_the_policies_are_checked_against():
+LEDGER = API.parent.parent / "docs" / "open-items" / "new-findings.md"   # docs/open-items/new-findings.md
+ROUTER = API / "routers" / "relationships.py"
+
+
+def test_while_the_database_still_answers_the_whole_register_the_ledger_says_that_half_is_open():
     tables = json.loads(CATALOG.read_text())["tables"]
     for name in REGISTER_TABLES:
-        assert name in tables, f"{name} left the firm-level catalog: the screen's sentence about it needs a new basis"
-        assert tables[name]["category"] == "firm_wide", (
-            f"{name} is now `{tables[name]['category']}` in the catalog, so the register is no longer read by every member of the firm: "
-            "change the notice on the Entity Registry screen in the same commit, because it still says it is"
-        )
+        assert name in tables, f"{name} left the firm-level catalog: the screen's sentences about it need a new basis"
+    still_firm_wide = [name for name in REGISTER_TABLES if tables[name]["category"] == "firm_wide"]
+    line_open = any(line.startswith("- **POST-A-544**") for line in LEDGER.read_text().splitlines())
+    if still_firm_wide:
+        assert line_open, (
+            f"{still_firm_wide} are still `firm_wide` in the catalog (a hand-made request to the database reads the whole register) "
+            "and the ledger line that says so, POST-A-544, is gone: reopen it, or narrow the database and change the category")
+        assert "server" in tables["entities"]["why"] and "POST-A-544" in tables["entities"]["why"], (
+            "the catalog's reason for `entities` no longer says that the server narrows the read and the database does not yet")
+    else:
+        assert not line_open, "the database is narrowed and POST-A-544 is still open: close the line in the same commit"
 
 
-def test_the_screen_says_every_member_who_can_open_the_register_sees_all_of_it():
+def test_the_server_says_whether_it_answered_with_the_whole_register_or_the_callers_part():
+    import ast
+    tree = ast.parse(ROUTER.read_text())
+    window = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "_entity_window")
+    keys = {k.value for d in ast.walk(window) if isinstance(d, ast.Dict) for k in d.keys if isinstance(k, ast.Constant)}
+    assert "scoped" in keys, "the register's answer no longer carries `scoped`, which the screen's two sentences are keyed on"
+    lister = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "list_entities")
+    called = {c.func.id for c in ast.walk(lister) if isinstance(c, ast.Call) and isinstance(c.func, ast.Name)}
+    assert "_hidden_entity_ids" in called, "the register is listed without asking which entities the caller may not see"
+
+
+def test_the_screen_says_which_answer_the_server_gave_and_never_that_everyone_sees_everything():
     src = _page()
-    assert 'title="This register is shared across the whole practice"' in src, "the register's notice is gone from the screen"
     flat = " ".join(src.split())
-    for must in ("Everyone in the firm who can open Relationships sees every person and company here",
-                 "whichever clients they are assigned to",
-                 "PAN, GSTIN, date of birth, phone and address"):
+    assert "registerScoped === true" in flat and "registerScoped === false" in flat, "the notice is no longer keyed on the server's answer"
+    for must in ('title="You are shown part of this register"',
+                 "You see the people and companies connected to the clients you are assigned to",
+                 "ask a Partner to add them to yours",
+                 'title="You are shown the whole register"',
+                 "PAN, GSTIN, date of birth, phone and address",
+                 "Other members of staff see only those connected to the clients they are assigned to"):
         assert must in flat, f"the notice no longer says: {must}"
+    for gone in ("This register is shared across the whole practice",
+                 "Everyone in the firm who can open Relationships sees every person and company here"):
+        assert gone not in flat, f"the screen still says what the server no longer does: {gone}"
+
+
+def test_the_refusal_of_a_pan_out_of_reach_is_the_sentence_the_screen_promises():
+    """The screen tells a member to ask a Partner because a person cannot be added twice; the server's refusal says the same."""
+    import routers.relationships as rel
+    assert "Ask a Partner to add them to your client" in rel.PAN_HELD_OUT_OF_REACH
 
 
 def test_the_notice_names_the_fields_the_register_really_holds():

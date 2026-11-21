@@ -135,6 +135,10 @@
       "read",
       "write"
     ],
+    "pipeline": [
+      "read",
+      "write"
+    ],
     "portal": [
       "read",
       "write"
@@ -326,6 +330,10 @@
       "write"
     ],
     "payroll": [
+      "read",
+      "write"
+    ],
+    "pipeline": [
       "read",
       "write"
     ],

@@ -75,11 +75,13 @@ test("a Manager's list: Team where it was, no My practice, and the same More", (
   });
 });
 
-test("an Executive's and a Reviewer's list: no Team, no My practice, no Payroll, and More holds what they had", () => {
+test("an Executive's and a Reviewer's list: no Team, no My practice, no Payroll, no Engagements, and More holds the rest", () => {
+  // Engagements left their list on 21-11-2026 (POST-A-543): the letters carry fees and are read with engagement:read, a
+  // Partner's and a Manager's by default, so the area is offered to whoever holds that pair and to nobody else.
   for (const role of ["Executive", "Reviewer"] as UserRole[]) {
     assert.deepEqual(outerMenu(offeredTo(role)), {
       main: ["home", "clients", "ai"],
-      more: ["accounting", "relationships", "health", "knowledge", "engagements"],
+      more: ["accounting", "relationships", "health", "knowledge"],
     }, role);
   }
 });

@@ -79,7 +79,7 @@
     "entities": {
       "category": "firm_wide",
       "writes": "",
-      "why": "The people and companies the firm keeps on record (PAN, GSTIN, date of birth), shared across clients on purpose because one person can stand behind several clients. The signed-in role holds no write."
+      "why": "The people and companies the firm keeps on record (PAN, GSTIN, date of birth), one record per person because one person can stand behind several clients. The server narrows what a member who is not firm-wide is shown to the entities of their own clients; the database read is still the whole firm's, which is the open half of POST-A-544. The signed-in role holds no write."
     },
     "entity_relationships": {
       "category": "firm_wide",

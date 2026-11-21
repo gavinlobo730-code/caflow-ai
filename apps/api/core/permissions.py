@@ -306,7 +306,19 @@ PERMISSIONS: dict[str, dict[str, set[str]]] = {
         "write": _AT_LEAST_MANAGER,
     },
     # Fee engagements / proposals / engagement letters — Manager+.
+    # The engagement-letter routes ASK this pair since POST-A-543 (21-11-2026). Until then the resource was declared and
+    # no route used it: the letters were read with `client:read`, which every member of staff holds, so an Executive or a
+    # Reviewer could list the letters of their own clients, fees and all. The owner's decision: engagement letters carry
+    # fees and are a Partner's and a Manager's by default; a Partner can tick the pair for anybody else.
     "engagement": {
+        "read":  _AT_LEAST_MANAGER,
+        "write": _AT_LEAST_MANAGER,
+    },
+    # The pipeline: leads, people and businesses who are not clients yet (POST-A-543, the owner's decision of 21-11-2026).
+    # A lead has no client, so no assignment can narrow the list: whoever may read it reads every lead of the firm. It was
+    # read with `client:read`, which every member of staff holds. It is its own pair so that a Partner can tick the
+    # pipeline for one person without also giving them the right to create and edit clients (`client:write`).
+    "pipeline": {
         "read":  _AT_LEAST_MANAGER,
         "write": _AT_LEAST_MANAGER,
     },
