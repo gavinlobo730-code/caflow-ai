@@ -206,7 +206,7 @@ def start_timer(body: StartTimerBody, current_user: dict = Depends(rbac("time_en
     running = time_tracking_repo.find_running(firm_id=firm_id, user_id=user_id)
     if running:
         duration = _compute_duration(running["started_at"], _now())
-        time_tracking_repo.update(running["id"], {"ended_at": _now(), "duration_minutes": duration})
+        time_tracking_repo.update(running["id"], {"ended_at": _now(), "duration_minutes": duration}, firm_id=firm_id)
 
     # The engagement and the rate are resolved NOW, so the row a running timer
     # lives in already says which engagement it is for and what an hour of it

@@ -22,6 +22,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from core.db_paging import fetch_all
+from core.db_provider import privileged_for
 from domain.related_party.disclosure import (
     Dealings,
     Disclosure,
@@ -92,7 +93,7 @@ class RelatedPartyService:
         if not ids:
             return {}
         rows = fetch_all(
-            lambda: self.db.table("entities")
+            lambda: privileged_for(self.db).table("entities")
             .select("id, full_name, entity_type, pan, gstin, email")
             .eq("firm_id", firm_id)
             .in_("id", ids),
@@ -150,7 +151,7 @@ class RelatedPartyService:
         seen: dict[str, dict] = {}
         for column in ("from_entity_id", "to_entity_id"):
             rows = fetch_all(
-                lambda col=column: self.db.table("entity_to_entity_relationships")
+                lambda col=column: privileged_for(self.db).table("entity_to_entity_relationships")
                 .select("id, from_entity_id, to_entity_id, relationship_type, "
                         "ownership_percent, effective_from, effective_to, notes")
                 .eq("firm_id", firm_id)
