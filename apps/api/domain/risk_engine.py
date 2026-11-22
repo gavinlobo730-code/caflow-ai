@@ -177,9 +177,15 @@ def _derive_compliance_risks(firm_id: Optional[str], client_id: Optional[str]) -
         records = compliance_records_repo.find_all(firm_id=firm_id, client_id=client_id)
     else:
         from mock_data import MOCK_COMPLIANCE_RECORDS
+        from repositories.compliance_records_repository import _the_practice
         records = MOCK_COMPLIANCE_RECORDS
         if client_id:
             records = [r for r in records if r.get("client_id") == client_id]
+        # The repository's rule, kept here too because this branch reads the store itself: with no client named, the
+        # practice's own rows are not a client's risk (POST-A-534).
+        practice = _the_practice(firm_id, client_id, False)
+        if practice:
+            records = [r for r in records if str(r.get("client_id")) != practice]
 
     derived: list[dict] = []
     today = ist_today()

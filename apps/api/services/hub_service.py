@@ -320,9 +320,12 @@ def _signals(firm_id: str, scope: Optional[list[str]],
         return undeposited
 
     tasks: dict[str, Callable[[], Any]] = {
+        # Without the practice's own obligations (POST-A-534): since 22-11-2026 the practice has rows of its own (the
+        # deposits its own payroll owes), and the tile opens Deadlines, a list across the firm's clients that leaves the
+        # practice out (G2), so a count that included them would not add up to the list it leads to.
         "compliance": lambda: _count(
             "compliance_records", firm_id, scope,
-            in_=("status", _outstanding("compliance_records", _COMPLIANCE_DONE))),
+            in_=("status", _outstanding("compliance_records", _COMPLIANCE_DONE)), not_clients=_not_practice()),
         "gst": lambda: _count(
             "gstr1_returns", firm_id, scope,
             in_=("status", _outstanding("gst_returns", _GST_RETURN_DONE)))

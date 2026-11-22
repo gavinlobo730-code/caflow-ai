@@ -1251,6 +1251,72 @@ def generate_default_for_client(firm_id: str, client_id: str, financial_year: st
     return out
 
 
+def _the_practice_with_staff_on_its_payroll(firm_id: str) -> Optional[str]:
+    """The id of the firm's own practice when it has at least one active employee on its own payroll, else None.
+
+    The practice is not a client with an engagement to read a service from, so the fact that says "this practice owes
+    payroll deposits" is the roster itself. Read on the server's own client, naming the firm and the practice: a signed-in
+    session holds nothing on the payroll tables. No practice (or mock mode, where there is none): None."""
+    from services.internal_client_service import get_internal_client_id
+    practice = get_internal_client_id(firm_id)
+    if not practice:
+        return None
+    from core import db_provider
+    rows = (db_provider.service_db().table("payroll_employees").select("id")
+            .eq("firm_id", firm_id).eq("client_id", str(practice)).eq("is_active", True).limit(1).execute().data) or []
+    return str(practice) if rows else None
+
+
+def generate_for_the_practice(firm_id: str, financial_year: str, actor: Optional[dict] = None) -> dict:
+    """The dates the firm's OWN payroll owes for one FY, generated against the practice itself (POST-A-534). Idempotent.
+
+    The firm runs its own staff's payroll on its practice record since POST-A-532, and nothing put that payroll's dates
+    on any calendar: obligations come from a client's engagements (the practice has none with itself) or from the
+    no-engagement fallback over the firm's clients (which the practice is not, guardrail G2). So a practice paying its own
+    staff was reminded of every client's EPF, ESI and salary-TDS deposit and of none of its own.
+
+    WHAT IS GENERATED, and only when the practice has an active employee on its own payroll: the three monthly deposits a
+    payroll engagement gets (`_payroll_obligations`: EPF, ESI, TDS on salary) and the quarterly salary statement
+    (`TDS24Q`, the same row `_tds_obligations` gives a TDS engagement, with the same date from `compliance_engine`). The
+    statement is here because the practice has no TDS engagement to bring it and it is owed by whoever deducts under
+    section 192; a practice that deducted nothing in a quarter records the row as not required, as a client would.
+    NOT GENERATED: 26Q and the non-salary deposit (the practice's own payments to contractors are its books' matter and no
+    fact held here says it makes any), GST, income tax and ROC dates of the practice (no fact held here says what it is
+    registered for), and professional tax (no single date exists: `_payroll_obligations` says why).
+
+    THE ROWS ARE THE PRACTICE'S, so no list across the firm's clients carries them (`compliance_records_repo.find_all`
+    leaves the practice out when no client is named). They are read by naming the practice, which only a Partner may."""
+    practice = _the_practice_with_staff_on_its_payroll(firm_id)
+    if not practice:
+        return {"generated": 0, "skipped": 0, "generated_ids": []}
+    specs = _payroll_obligations(financial_year) + [
+        s for s in _tds_obligations(financial_year) if s["obligation_type"] == "TDS24Q"]
+    existing = compliance_records_repo.find_all(firm_id=firm_id, client_id=practice)
+    seen = {(r.get("obligation_type"), str(r.get("period_start"))[:10]) for r in existing if r.get("obligation_type")}
+    generated: list[str] = []
+    skipped = 0
+    for s in specs:
+        key = (s["obligation_type"], s["period_start"])
+        if key in seen:
+            skipped += 1
+            continue
+        rec = compliance_records_repo.create({
+            "firm_id": firm_id, "client_id": practice, "engagement_id": None,
+            "compliance_type": s["compliance_type"], "obligation_type": s["obligation_type"],
+            "period_label": s["period_label"], "period_start": s["period_start"],
+            "period_end": s["period_end"], "due_date": s["due_date"],
+            "status": "Not Started", "priority": "medium",
+        })
+        seen.add(key)
+        generated.append(rec["id"])
+        _audit_timeline_generate(firm_id, rec, actor)
+    out = {"generated": len(generated), "skipped": skipped, "generated_ids": generated}
+    gaps = sorted({g for s in specs for g in s.get("statutory_gaps", ())})
+    if gaps:
+        out["statutory_gaps"] = gaps
+    return out
+
+
 def generate_due(firm_id: str, client_id: Optional[str] = None, financial_year: Optional[str] = None,
                  actor: Optional[dict] = None, allowed_client_ids: Optional[set] = None) -> dict:
     """Generate obligations for every active engagement (optionally one client) for the
@@ -1296,8 +1362,22 @@ def generate_due(firm_id: str, client_id: Optional[str] = None, financial_year: 
         per_engagement.append({"engagement_id": None, "client_id": cid,
                                **{k: res[k] for k in ("generated", "skipped")}})
 
+    # The practice's own payroll (POST-A-534). On a run across the firm by somebody firm-wide (a Partner, or the nightly
+    # scheduler: `allowed_client_ids` is None), and on a run that NAMES the practice (the door has already asked whose it
+    # is). Never on a run confined to a member's assigned clients: the practice is nobody's assigned client.
+    practice_run = None
+    if allowed_client_ids is None:
+        from services.internal_client_service import is_internal_client
+        if client_id is None or is_internal_client(client_id, firm_id):
+            practice_run = generate_for_the_practice(firm_id, fy, actor=actor)
+            total_gen += practice_run["generated"]
+            total_skip += practice_run["skipped"]
+            gaps.update(practice_run.get("statutory_gaps", ()))
+
     out = {"financial_year": fy, "generated": total_gen, "skipped": total_skip,
            "engagements": per_engagement}
+    if practice_run is not None and (practice_run["generated"] or practice_run["skipped"]):
+        out["practice"] = {k: practice_run[k] for k in ("generated", "skipped")}
     # Every assumed statutory date this run produced, once each. The daily
     # scheduler calls this too; a gap that only reaches a log is the failure
     # this shape exists to fix, so it rides the response the router returns.
@@ -1476,7 +1556,10 @@ def escalate(firm_id: str, today: Optional[date] = None, actor: Optional[dict] =
     # Pushed server-side: escalate() only ever acts on open obligations, so
     # there's no reason to also fetch every Filed/Completed row just to
     # discard it in Python.
-    for r in compliance_records_repo.find_all(firm_id=firm_id, exclude_statuses=SETTLED):
+    # `include_practice`: the sweep is not a list of clients, it is a reminder to the people NAMED on an obligation, and
+    # `_notify_internal` tells only those who can open the row's client, which for the practice is its Partners. A member's
+    # own run is confined to their clients below, as before, and the practice is nobody's assigned client.
+    for r in compliance_records_repo.find_all(firm_id=firm_id, exclude_statuses=SETTLED, include_practice=True):
         if allowed_client_ids is not None and str(r.get("client_id")) not in allowed_client_ids:
             continue
         due = str(r.get("due_date", ""))[:10]
@@ -1581,16 +1664,21 @@ def my_obligations(firm_id: str, user_id: str, today: Optional[date] = None,
     an empty list is not read as "nothing to do" in a practice that has not yet named its preparers."""
     today = today or ist_today()
     uid = str(user_id or "")
-    rows = compliance_records_repo.find_all(firm_id=firm_id, exclude_statuses=list(SETTLED))
+    # `include_practice`: this is "the rows that name ME", not a list of clients, and a Partner named on one of the
+    # practice's own deposits must find it on My Work. The name it is shown under is resolved below (`_dashboard_names`
+    # reads the practice's name too). It is counted in nobody's "unassigned" figure: that figure is about clients' work.
+    rows = compliance_records_repo.find_all(firm_id=firm_id, exclude_statuses=list(SETTLED), include_practice=True)
     if allowed_client_ids is not None:
         rows = [r for r in rows if str(r.get("client_id")) in allowed_client_ids]
+    from services.internal_client_service import get_internal_client_id
+    _practice = str(get_internal_client_id(firm_id) or "")
     mine, unassigned = [], 0
     for r in rows:
         roles: list[str] = []
         for col, role in _PERSON_COLUMNS:
             if uid and str(r.get(col) or "") == uid and role not in roles:
                 roles.append(role)
-        if not any(r.get(col) for col, _role in _PERSON_COLUMNS):
+        if not any(r.get(col) for col, _role in _PERSON_COLUMNS) and str(r.get("client_id") or "") != _practice:
             unassigned += 1
         if roles:
             mine.append((r, roles))
