@@ -383,7 +383,7 @@ async function openOpeningDocument(env) {
 }
 
 /** The Bills of Entry tab with "Record a Bill of Entry" open, the number and the assessable value typed, so only the date is left. */
-async function openBillOfEntry(env) {
+export async function openBillOfEntry(env) {
   const { page, stub } = env;
   stub.route({ method: "POST", re: /api\/bills-of-entry$/, reply: () => ok({ id: "be-1" }) });
   await page.goto(env.at("/purchases/?tab=bills-of-entry"), { waitUntil: "networkidle" });

@@ -20,12 +20,13 @@
  * copy of it here is a second place for it to be wrong.
  */
 import { useCallback, useEffect, useState } from "react";
-import { X, FileText, Check } from "lucide-react";
+import { FileText, Check } from "lucide-react";
 import { api, type RcmDocumentPreview } from "@/lib/api";
 import { formatPaise } from "@/lib/money/format";
 import { Callout, GapList, StatutoryNotes } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
+import { Drawer } from "@/components/ui/drawer";
 import { formatDate } from "@/lib/dates/format";
 import { LoadingRegion } from "@/components/ui/skeleton";
 
@@ -92,26 +93,17 @@ export function RcmDocumentPanel({
   const issued = preview?.existing ?? null;
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/20">
-      <div className="w-full max-w-2xl h-full bg-white shadow-xl flex flex-col">
-        <div className="px-5 py-4 border-b border-ps-border flex items-start justify-between">
-          <div>
-            <p className="text-sm font-semibold text-ps-ink flex items-center gap-2">
-              <FileText size={15} className="text-brand" />
-              {kind === "self_invoice" ? "Self-invoice" : "Payment voucher"}
-            </p>
-            {/* The SECTION comes off the wire, so the screen never asserts
-                which provision it is issuing under. */}
-            <p className="text-2xs text-ps-hint mt-0.5">
-              {preview?.section} · {preview?.rule}
-            </p>
-          </div>
-          <button disabled={issuing} onClick={onClose} aria-label="Close" className="p-1 rounded hover:bg-ps-muted text-ps-label">
-            <X size={16} />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+    // The shared side sheet (POST-A-130): named for the document, modal, Tab kept inside, focus given back. Its close (Escape, a click
+    // beside it, its ×) is held while the document is being issued.
+    <Drawer open ariaLabel={kind === "self_invoice" ? "Self-invoice" : "Payment voucher"} widthClass="sm:max-w-2xl" onClose={() => { if (!issuing) onClose(); }}
+      title={<span className="font-sans flex items-center gap-2"><FileText size={15} className="text-brand" />{kind === "self_invoice" ? "Self-invoice" : "Payment voucher"}</span>}>
+      <div className="flex min-h-[calc(100%-3rem)] flex-col">
+        <div className="flex-1 px-5 py-4 space-y-4">
+          {/* The SECTION comes off the wire, so the screen never asserts
+              which provision it is issuing under. */}
+          <p className="text-2xs text-ps-hint">
+            {preview?.section} · {preview?.rule}
+          </p>
           {error && <Callout tone="problem">{error}</Callout>}
 
           {busy && !preview && <LoadingRegion label="Loading the document" className="text-xs text-ps-hint">Loading…</LoadingRegion>}
@@ -236,13 +228,13 @@ export function RcmDocumentPanel({
           )}
         </div>
 
-        <div className="px-5 py-3 border-t border-ps-border flex items-center justify-between">
+        <div className="sticky bottom-0 bg-white px-5 py-3 border-t border-ps-border flex items-center justify-between">
           <p className="text-3xs text-ps-hint max-w-sm">
             Check the particulars before issuing. Nothing is sent to any portal.
           </p>
           <div className="flex gap-2">
             <button disabled={issuing} onClick={onClose}
-              className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg">
+              className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50">
               Close
             </button>
             <Button variant="plain" size="none" onClick={issue}
@@ -253,6 +245,6 @@ export function RcmDocumentPanel({
           </div>
         </div>
       </div>
-    </div>
+    </Drawer>
   );
 }

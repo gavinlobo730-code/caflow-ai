@@ -25,12 +25,13 @@
  * runs the same `apportion_many` the receipt runs, over the same goods lines.
  */
 import { useCallback, useEffect, useState } from "react";
-import { X, Truck, Trash2, Lock } from "lucide-react";
+import { Truck, Trash2, Lock } from "lucide-react";
 import { apiGet, apiCall, getAuthToken, fmt, HELD_DIALOG_MS } from "@/lib/invoices/shared";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { Callout, GapList } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
+import { Drawer } from "@/components/ui/drawer";
 import { LoadingRegion } from "@/components/ui/skeleton";
 
 interface Charge {
@@ -183,25 +184,15 @@ export function LandedCostPanel({
     || data?.bill_status === "partially_paid" || data?.bill_status === "paid";
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/20">
-      <div className="w-full max-w-2xl h-full bg-white shadow-xl flex flex-col">
-        <div className="px-5 py-4 border-b border-ps-border flex items-start justify-between">
-          <div>
-            <p className="text-sm font-semibold text-ps-ink flex items-center gap-2">
-              <Truck size={15} className="text-brand" />
-              Landed costs
-            </p>
-            <p className="text-2xs text-ps-hint mt-0.5">
-              AS-2 par. 6 · {data?.bill_no ? `Bill ${data.bill_no}` : "This bill"}
-            </p>
-          </div>
-          <button disabled={saving} onClick={onClose} aria-label="Close"
-            className="p-1 rounded hover:bg-ps-muted text-ps-label">
-            <X size={16} />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+    // The shared side sheet (POST-A-130): named, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it, its ×) is
+    // held while a charge is being saved.
+    <Drawer open ariaLabel="Landed costs" widthClass="sm:max-w-2xl" onClose={() => { if (!saving) onClose(); }}
+      title={<span className="font-sans flex items-center gap-2"><Truck size={15} className="text-brand" />Landed costs</span>}>
+      <div className="flex min-h-[calc(100%-3rem)] flex-col">
+        <div className="flex-1 px-5 py-4 space-y-4">
+          <p className="text-2xs text-ps-hint">
+            AS-2 par. 6 · {data?.bill_no ? `Bill ${data.bill_no}` : "This bill"}
+          </p>
           {error && <Callout tone="problem">{error}</Callout>}
 
           {busy && !data && <LoadingRegion label="Loading the landed cost" className="text-xs text-ps-hint">Loading…</LoadingRegion>}
@@ -384,13 +375,13 @@ export function LandedCostPanel({
           )}
         </div>
 
-        <div className="px-5 py-3 border-t border-ps-border flex justify-end">
+        <div className="sticky bottom-0 bg-white px-5 py-3 border-t border-ps-border flex justify-end">
           <button disabled={saving} onClick={onClose}
-            className="px-3 py-1.5 rounded-lg border border-ps-border text-xs text-ps-label hover:bg-ps-bg">
+            className="px-3 py-1.5 rounded-lg border border-ps-border text-xs text-ps-label hover:bg-ps-bg disabled:opacity-50">
             Close
           </button>
         </div>
       </div>
-    </div>
+    </Drawer>
   );
 }

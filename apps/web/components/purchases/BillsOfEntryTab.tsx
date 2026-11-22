@@ -21,7 +21,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
-import { Plus, X, AlertTriangle, Info, Ship, Trash2 } from "lucide-react";
+import { Plus, AlertTriangle, Info, Ship, Trash2 } from "lucide-react";
 import { api, type BillOfEntry, type BillOfEntryAuthorities } from "@/lib/api";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
@@ -31,6 +31,7 @@ import { AccountLookup, type AccountLike } from "@/components/lookups/AccountLoo
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { todayIstISO } from "@/lib/dates/format";
 import { Button } from "@/components/ui/button";
+import { Drawer } from "@/components/ui/drawer";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { EmptyState } from "@/components/ui/states";
@@ -403,15 +404,12 @@ export function BillsOfEntryTab({ clientId, openDoc }:
       )}
 
       {showForm && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-black/20">
-          <div className="w-full max-w-xl h-full bg-white shadow-xl flex flex-col">
-            <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between">
-              <p className="text-sm font-semibold text-ps-ink">Record a Bill of Entry</p>
-              <button disabled={saving} onClick={closeForm} aria-label="Close"
-                className="p-1 rounded hover:bg-ps-muted text-ps-label"><X size={16} /></button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+        // The shared side sheet (POST-A-130): named, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it, its ×)
+        // is held while the Bill of Entry is being saved.
+        <Drawer open title={<span className="font-sans">Record a Bill of Entry</span>} ariaLabel="Record a Bill of Entry" widthClass="sm:max-w-xl"
+          onClose={() => { if (!saving) closeForm(); }}>
+          <div className="flex min-h-[calc(100%-3rem)] flex-col">
+            <div className="flex-1 px-5 py-4 space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <label className="text-xs">
                   <span className="block text-ps-body font-medium mb-1">Bill of Entry number *</span>
@@ -534,9 +532,9 @@ export function BillsOfEntryTab({ clientId, openDoc }:
             {msg?.type === "err" && (
               <p role="alert" className="mx-5 mb-3 rounded-lg px-3 py-2 text-xs bg-state-problem-surface border border-state-problem-border text-state-problem">{msg.text}</p>
             )}
-            <div className="px-5 py-3 border-t border-ps-border flex justify-end gap-2">
+            <div className="sticky bottom-0 bg-white px-5 py-3 border-t border-ps-border flex justify-end gap-2">
               <button disabled={saving} onClick={closeForm}
-                className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg">
+                className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50">
                 Cancel
               </button>
               <Button variant="plain" size="none" onClick={handleSave} disabled={saving}
@@ -545,7 +543,7 @@ export function BillsOfEntryTab({ clientId, openDoc }:
               </Button>
             </div>
           </div>
-        </div>
+        </Drawer>
       )}
     </div>
   );
