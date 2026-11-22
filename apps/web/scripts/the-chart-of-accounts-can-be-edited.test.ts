@@ -118,12 +118,19 @@ test("EditAccountModal sends only the fields that actually changed", () => {
     "(the backend 422s that with \"Nothing to change.\")");
 });
 
-test("editing a nested modal cannot close the ledger drill-down behind it", () => {
-  const body = componentBody(page, "EditAccountModal");
-  // While its save is out the backdrop does not close it (POST-A-395), and the click is still stopped from reaching the ledger behind.
-  assert.match(body, /onClick=\{\(e\) => \{ e\.stopPropagation\(\); if \(!saving && e\.target === e\.currentTarget\) onClose\(\); \}\}/,
-    "EditAccountModal renders as a sibling of LedgerDrillDown's own content " +
-    "box, not inside it — without stopPropagation on every click (not only " +
-    "backdrop clicks), typing in this form bubbles up to the ledger modal's " +
-    "own onClick={onClose} and closes the whole thing underneath the CA");
+test("the account editor over the ledger is the shared dialog, and neither keeps a layer or a key listener of its own", () => {
+  // The editor used to be a hand-built layer that stopped every click, because it sat under the ledger's click-to-close backdrop in the
+  // component tree. Both are the shared Modal now (POST-A-130): there is no backdrop of the ledger's above the editor, and the shared stack
+  // gives Escape to the top dialog alone, so neither a stopped click nor a key listener is needed, and one left behind would read as the
+  // thing doing the work. That a click inside the editor closes nothing is driven in a browser (weekly group `ledger-dialogs`).
+  const editor = componentBody(page, "EditAccountModal");
+  const ledger = componentBody(page, "LedgerDrillDown");
+  for (const [name, body] of [["EditAccountModal", editor], ["LedgerDrillDown", ledger]] as const) {
+    assert.match(body, /<Modal\s+title=/, `${name} is not drawn with the shared Modal`);
+    assert.doesNotMatch(body, /fixed inset-0/, `${name} draws a window-covering layer of its own again`);
+    assert.doesNotMatch(body, /addEventListener\("keydown"/, `${name} listens for keys itself again: the shared dialog owns Escape`);
+  }
+  // While its save is out the editor's close (Escape, a click beside it, its close button) is held (POST-A-395).
+  assert.match(editor, /onClose=\{\(\) => \{ if \(!saving\) onClose\(\); \}\}/, "the account editor can be closed while its save is out");
+  assert.match(ledger, /\{editing && selectedAccount && \(\s*<EditAccountModal/, "the ledger no longer opens the editor for the account being viewed");
 });
