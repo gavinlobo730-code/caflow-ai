@@ -22,8 +22,11 @@ test("Settings is a group and not an area: nothing puts it on the menu, and each
   const opens = Object.fromEntries(settings.permissions.map((p) => [`${p.resource}:${p.action}`, p.screens]));
   assert.deepEqual(opens["branding:read"], ["/settings/branding", "/settings/email-templates", "/settings/invoice-settings", "/settings/invoice-templates"]);
   assert.deepEqual(opens["firm:admin"], ["/settings/ai"]);
-  // The audit log opens on the permission that approves in the books: one tick, and the screen says both things it decides.
-  assert.deepEqual(opens["accounting:approve"], ["/settings/audit-log"]);
+  // The audit log opens on a permission of its own (POST-A-550). It used to open on the one that approves in the books, so one
+  // tick decided both, and the screen had to say so beside the tick; that pair opens no Settings page now.
+  assert.deepEqual(opens["audit:read"], ["/settings/audit-log"]);
+  assert.equal(opens["accounting:approve"], undefined);
+  assert.equal(pairWords("audit", "read"), "See the audit log (who changed what, and the history of a record)");
   assert.ok(settings.permissions.find((p) => p.resource === "tds" && p.action === "read")!.alsoIn.includes("deadlines"));
   assert.equal(pairWords("firm", "admin"), "Administer the firm (AI status and how the deployment is set up)");
   assert.equal(pairWords("branding", "read"), "See branding, the invoice settings and the mail and invoice templates");

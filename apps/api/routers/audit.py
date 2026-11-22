@@ -33,9 +33,10 @@ def get_audit_log(
     date_to: Optional[str] = Query(None, description="IST date, inclusive (YYYY-MM-DD)"),
     cursor: Optional[str] = Query(None, description="next_cursor from the previous page"),
     limit: int = Query(audit_query.DEFAULT_PAGE, ge=1, le=audit_query.MAX_PAGE),
-    current_user: dict = Depends(rbac("accounting", "approve")),
+    current_user: dict = Depends(rbac("audit", "read")),
 ):
-    """One page of the firm's audit log, newest first — Partners only.
+    """One page of the firm's audit log, newest first. Asks `audit` `read`, a Partner's to start with and a tick of its own
+    (POST-A-550): it used to ask `accounting` `approve`, so whoever was let to approve journals read the whole log.
 
     `next_cursor` is null on the last page. There is deliberately no total: a
     count over the whole log to render one page is the cost this endpoint
@@ -63,7 +64,7 @@ def get_entity_history(
     entity_id: str,
     cursor: Optional[str] = Query(None),
     limit: int = Query(audit_query.DEFAULT_PAGE, ge=1, le=audit_query.MAX_PAGE),
-    current_user: dict = Depends(rbac("accounting", "approve")),
+    current_user: dict = Depends(rbac("audit", "read")),
 ):
     """Everything that ever happened to ONE row, oldest change last.
 

@@ -120,7 +120,8 @@ export const SCREEN_RULES: ReadonlyArray<readonly [prefix: string, rule: AccessR
   // shown the page with its controls switched off (`components/settings/ChangePart.tsx`). The Settings home, the security
   // page, the scheduled reports and the signature tracker are every member's and are not named here.
   ["/settings/ai", { all: [["firm", "admin"]] }],
-  ["/settings/audit-log", { all: [["accounting", "approve"]] }],
+  // The audit log has a pair of its own (POST-A-550): it was read on the pair that approves in the books, so one tick gave both.
+  ["/settings/audit-log", { all: [read("audit")] }],
   ["/settings/branding", { all: [read("branding")] }],
   ["/settings/email-templates", { all: [read("branding")] }],
   ["/settings/invoice-settings", { all: [read("branding")] }],

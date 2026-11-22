@@ -103,7 +103,7 @@ test("the table has no prefix twice, and every screen rule sits in an area that 
 test("a Settings page is opened by the pair its own read asks, and the Settings home and a person's own security page by nothing", () => {
   const holds = (...pairs: string[]) => ({ can: (r: string, a: string) => pairs.includes(`${r}:${a}`), isPartner: false });
   const cases: Array<[string, string]> = [
-    ["/settings/ai", "firm:admin"], ["/settings/audit-log", "accounting:approve"], ["/settings/branding", "branding:read"],
+    ["/settings/ai", "firm:admin"], ["/settings/audit-log", "audit:read"], ["/settings/branding", "branding:read"],
     ["/settings/email-templates", "branding:read"], ["/settings/invoice-settings", "branding:read"],
     ["/settings/invoice-templates", "branding:read"], ["/settings/firm-hsn-library", "accounting:read"],
     ["/settings/journal-approval", "accounting:read"], ["/settings/multi-currency", "settings:read"],

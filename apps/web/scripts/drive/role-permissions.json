@@ -23,6 +23,9 @@
       "read",
       "write"
     ],
+    "audit": [
+      "read"
+    ],
     "automation": [
       "read",
       "write"

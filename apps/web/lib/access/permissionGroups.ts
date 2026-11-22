@@ -58,6 +58,8 @@ const RESOURCE_WORDS: Readonly<Record<string, string>> = {
   settings: "the firm's settings",
   branding: "branding, the invoice settings and the mail and invoice templates",
   firm: "the firm's profile",
+  // Its own permission since POST-A-550: who changed what, across the firm, and the history of one record.
+  audit: "the audit log (who changed what, and the history of a record)",
 };
 
 /** What each action is called. `read` is "See"; the rest say what the person may do. */
