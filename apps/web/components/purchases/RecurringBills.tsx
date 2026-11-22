@@ -19,7 +19,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { recentFirst, useRecentPartyIds } from "@/lib/lookups/recentParties";
 import { api } from "@/lib/api";
-import { Plus, RefreshCw, Clock, X, Trash2 } from "lucide-react";
+import { Plus, RefreshCw, Clock, Trash2 } from "lucide-react";
 
 import { apiCall, apiGet, getAuthToken, HELD_DIALOG_MS } from "@/lib/invoices/shared";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -34,6 +34,8 @@ import { EntityLookup } from "@/components/lookups/EntityLookup";
 
 import { Callout } from "@/components/ui/callout";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
+import { Drawer } from "@/components/ui/drawer";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { formatDate, todayIstISO } from "@/lib/dates/format";
@@ -579,16 +581,18 @@ function RecurringBillEditor({
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/30 flex items-start justify-center overflow-y-auto p-4">
-      <div className="bg-white rounded-xl w-full max-w-4xl my-8 shadow-xl">
-        <div className="flex items-center justify-between px-5 py-3 border-b border-ps-border">
-          <h3 className="text-sm font-semibold text-ps-ink">
-            {existing ? "Edit recurring bill" : "New recurring bill"}
-          </h3>
-          <button disabled={saving} onClick={onClose} aria-label="Close"><X size={16} className="text-ps-hint" /></button>
-        </div>
-
-        <div className="p-5 space-y-4">
+    // POST-A-130: the shared dialog (named, Escape, Tab kept inside, focus given back), with its buttons kept in view. It stays open while saving.
+    <Modal title={existing ? "Edit recurring bill" : "New recurring bill"} maxWidthClass="max-w-4xl" onClose={() => { if (!saving) onClose(); }}
+      footer={<>
+        <button disabled={saving} onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">
+          Cancel
+        </button>
+        <Button variant="plain" size="none" onClick={save} disabled={saving}
+          className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
+          {saving ? "Saving…" : existing ? "Save changes" : "Create template"}
+        </Button>
+      </>}>
+        <div className="space-y-4">
           {err && <Callout tone="problem">{err}</Callout>}
 
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
@@ -749,18 +753,7 @@ function RecurringBillEditor({
             the journal, withholds the TDS and claims the credit.
           </p>
         </div>
-
-        <div className="flex gap-3 justify-end px-5 py-3 border-t border-ps-border">
-          <button disabled={saving} onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">
-            Cancel
-          </button>
-          <Button variant="plain" size="none" onClick={save} disabled={saving}
-            className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
-            {saving ? "Saving…" : existing ? "Save changes" : "Create template"}
-          </Button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -804,17 +797,10 @@ function RecurringBillHistory({
   }, [template.id]);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/30 flex items-start justify-end">
-      <div className="bg-white h-full w-full max-w-lg shadow-xl overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-3 border-b border-ps-border sticky top-0 bg-white">
-          <div>
-            <h3 className="text-sm font-semibold text-ps-ink">{template.title}</h3>
-            <p className="text-2xs text-ps-hint">{vendorName}</p>
-          </div>
-          <button onClick={onClose} aria-label="Close"><X size={16} className="text-ps-hint" /></button>
-        </div>
-
+    // POST-A-130: the shared side panel (named, Escape, Tab kept inside, focus given back).
+    <Drawer open onClose={onClose} title={<span className="font-sans">{template.title}</span>} ariaLabel={`History of ${template.title}`} widthClass="sm:max-w-lg">
         <div className="p-5 space-y-5">
+          <p className="text-2xs text-ps-hint">{vendorName}</p>
           <div>
             <p className="text-xs font-semibold text-ps-body mb-2">Next dates</p>
             {upcoming.length === 0 ? (
@@ -867,7 +853,6 @@ function RecurringBillHistory({
             )}
           </div>
         </div>
-      </div>
-    </div>
+    </Drawer>
   );
 }

@@ -16,6 +16,7 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { api } from "@/lib/api";
 import { type Employee } from "@/components/payroll/shared";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
@@ -80,13 +81,9 @@ export function PortalAccessModal({ employee, onClose, onChanged }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl w-full max-w-lg p-5">
-        <h2 className="font-semibold text-ps-ink">Payslip portal — {employee.name}</h2>
-        <p className="text-sm text-ps-label mt-1 mb-4">
-          Lets this employee sign in and see their own payslips and leave
-          balance. They see nothing else.
-        </p>
+    // POST-A-130: the shared dialog (named, Escape, Tab kept inside, focus given back). It stays open while a request is in flight.
+    <Modal title={`Payslip portal — ${employee.name}`} maxWidthClass="max-w-lg" onClose={() => { if (!busy) onClose(); }}
+      note="Lets this employee sign in and see their own payslips and leave balance. They see nothing else.">
 
         {err && <p role="alert" className="text-sm text-state-problem mb-3">{err}</p>}
 
@@ -132,8 +129,7 @@ export function PortalAccessModal({ employee, onClose, onChanged }: {
             </div>
           </div>
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }
 

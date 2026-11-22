@@ -33,6 +33,7 @@ import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { formatPaise } from "@/lib/money/format";
 import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 
@@ -138,25 +139,9 @@ export default function ApplyStructureModal({
   const ready = effectiveFrom.trim() !== "" && chosen > 0 && !missingGross;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/25 p-4"
-      onClick={(e) => { e.stopPropagation(); if (busy !== "apply") onClose(); }}>
-      <div className="w-full max-w-[720px] max-h-[88vh] overflow-y-auto bg-white rounded-xl shadow-xl"
-        onClick={(e) => e.stopPropagation()}>
-        <div className="sticky top-0 bg-white border-b border-ps-border px-5 py-3 flex items-start justify-between gap-3">
-          <div>
-            <p className="text-sm font-semibold text-ps-ink">Apply “{structureName}”</p>
-            <p className="text-2xs text-ps-hint">
-              Writes a salary revision per employee, effective from the date below.
-              Months already released keep the figures they were paid on.
-            </p>
-          </div>
-          <button disabled={busy === "apply"} onClick={onClose}
-            className="text-xs text-ps-label border border-ps-border rounded-lg px-2.5 py-1 hover:bg-ps-bg shrink-0">
-            Close
-          </button>
-        </div>
-
-        <div className="p-5 space-y-4">
+    // POST-A-130: the shared dialog (named, Escape, Tab kept inside, focus given back). It stays open while the revisions are being written.
+    <Modal title={`Apply “${structureName}”`} maxWidthClass="max-w-[720px]" onClose={() => { if (busy !== "apply") onClose(); }}
+      note="Writes a salary revision per employee, effective from the date below. Months already released keep the figures they were paid on.">
           <div className="grid grid-cols-2 gap-3">
             <label htmlFor="apply-structure-effective-from" className="text-2xs text-ps-label block">Effective from
               <DateInput id="apply-structure-effective-from" value={effectiveFrom}
@@ -298,8 +283,6 @@ export default function ApplyStructureModal({
               {busy === "apply" ? "Applying…" : "Apply"}
             </Button>
           </div>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

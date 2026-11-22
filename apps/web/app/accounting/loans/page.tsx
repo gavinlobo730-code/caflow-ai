@@ -18,7 +18,6 @@ import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput
 import { useState, useEffect, useCallback } from "react";
 import {
   Plus,
-  X,
   AlertTriangle,
   Calculator,
   IndianRupee,
@@ -38,6 +37,7 @@ import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { Callout } from "@/components/ui/callout";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { PageHeader } from "@/components/ui/page-header";
@@ -866,15 +866,14 @@ export default function LoansAndFDPage() {
       {/* MODAL: Add Loan                                                       */}
       {/* ================================================================== */}
       {showAddLoan && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-ps-border">
-              <h3 className="text-base font-semibold text-ps-ink">Add Loan</h3>
-              <button disabled={actionInFlight} onClick={() => { setShowAddLoan(false); resetLoanForm(); }} className="text-ps-hint hover:text-ps-label">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="px-6 py-5 space-y-4">
+        <Modal title="Add Loan" maxWidthClass="max-w-lg" onClose={() => { if (!actionInFlight) { setShowAddLoan(false); resetLoanForm(); } }}
+          footer={<>
+            <button disabled={actionInFlight} onClick={() => { setShowAddLoan(false); resetLoanForm(); }} className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-white/[0.08]">Cancel</button>
+            <Button variant="plain" size="none" onClick={handleAddLoan} disabled={actionInFlight} className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-50">
+              {loanSaving ? "Saving…" : "Add Loan"}
+            </Button>
+          </>}>
+            <div className="space-y-4">
               <Field label="Client" required>
                 <div className="w-full">
                   <ClientLookup
@@ -926,29 +925,21 @@ export default function LoansAndFDPage() {
               </Field>
               {loanError && <Callout tone="problem">{loanError}</Callout>}
             </div>
-            <div className="px-6 py-4 border-t border-ps-border flex gap-3 justify-end">
-              <button disabled={actionInFlight} onClick={() => { setShowAddLoan(false); resetLoanForm(); }} className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-white/[0.08]">Cancel</button>
-              <Button variant="plain" size="none" onClick={handleAddLoan} disabled={actionInFlight} className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-50">
-                {loanSaving ? "Saving…" : "Add Loan"}
-              </Button>
-            </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ================================================================== */}
       {/* MODAL: Add FD                                                         */}
       {/* ================================================================== */}
       {showAddFD && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-ps-border">
-              <h3 className="text-base font-semibold text-ps-ink">Add Fixed Deposit</h3>
-              <button disabled={actionInFlight} onClick={() => { setShowAddFD(false); resetFDForm(); }} className="text-ps-hint hover:text-ps-label">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="px-6 py-5 space-y-4">
+        <Modal title="Add Fixed Deposit" maxWidthClass="max-w-lg" onClose={() => { if (!actionInFlight) { setShowAddFD(false); resetFDForm(); } }}
+          footer={<>
+            <button disabled={actionInFlight} onClick={() => { setShowAddFD(false); resetFDForm(); }} className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-white/[0.08]">Cancel</button>
+            <Button variant="plain" size="none" onClick={handleAddFD} disabled={actionInFlight} className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-50">
+              {fdSaving ? "Saving…" : "Add FD"}
+            </Button>
+          </>}>
+            <div className="space-y-4">
               <Field label="Client" required>
                 <div className="w-full">
                   <ClientLookup
@@ -1039,14 +1030,7 @@ export default function LoansAndFDPage() {
               </Field>
               {fdError && <Callout tone="problem">{fdError}</Callout>}
             </div>
-            <div className="px-6 py-4 border-t border-ps-border flex gap-3 justify-end">
-              <button disabled={actionInFlight} onClick={() => { setShowAddFD(false); resetFDForm(); }} className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-white/[0.08]">Cancel</button>
-              <Button variant="plain" size="none" onClick={handleAddFD} disabled={actionInFlight} className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-50">
-                {fdSaving ? "Saving…" : "Add FD"}
-              </Button>
-            </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );
