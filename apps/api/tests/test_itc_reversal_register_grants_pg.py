@@ -180,6 +180,14 @@ NOT_FOR_THE_API = {
     # before the firm's rows go and read by `core/auth` for the caller's own verified account alone, both on the privileged client;
     # `authenticated`, `anon` and PUBLIC hold no privilege and no policy exists, and the deny-list test below proves it.
     "closed_account_markers",
+    # Migration 777 (POST-A-544): the related-party register. `entities` holds a PAN, a date of birth, a phone number and an address,
+    # and the server shows a member who is not firm-wide only the entities of their own clients; the database's row rule asked the
+    # firm alone, so a hand-made request was answered with the whole register. The server has read all three with its own client
+    # since 22-11-2026 and no screen reads them over PostgREST, so 777 took every privilege from `authenticated`, `anon` and PUBLIC.
+    # The deny-list test below proves the denial is real for each name.
+    "entities",
+    "entity_relationships",
+    "entity_to_entity_relationships",
 }
 # Scaffolding left behind by data migrations. Prefixed, not enumerated, because
 # the next one will have a different number.
