@@ -287,9 +287,9 @@ export const scenarios = [
       await page.locator('button[aria-label="Client"]').click();
       await page.locator("[role=listbox] [role=option]", { hasText: "Acme Traders" }).first().click();
       await page.getByRole("button", { name: "Exemption", exact: true }).first().click();
-      const close = page.getByRole("button", { name: "Close", exact: true }).last();
+      // The shared dialog since POST-A-130's thirteenth step, whose own close is named "Close dialog" and is held only while a claim is being saved.
+      const close = page.getByRole("dialog", { name: /^Reinvestment exemption/ }).getByRole("button", { name: "Close dialog", exact: true });
       await close.waitFor();
-      assert.equal(await close.isDisabled(), false, "the exemption dialog's only way out is held while it is merely reading");
       await close.click();
       await until(async () => (await page.getByRole("button", { name: "Record claim" }).count()) === 0, "the dialog to close while it was reading");
       }

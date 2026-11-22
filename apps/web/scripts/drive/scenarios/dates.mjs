@@ -1102,7 +1102,7 @@ async function openRecordItrAcknowledgement(env) {
 }
 
 /** Income Tax > Tax Audit with "Add Audit" open on a client, so only the audit and filing dates are left. */
-async function openAddTaxAudit(env) {
+export async function openAddTaxAudit(env) {
   const { page, stub } = env;
   stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { income_tax: ["read", "write", "approve"] } }) });
   stub.setTable("tax_audits", []);
@@ -1138,7 +1138,7 @@ async function openNewRevisedReturn(env) {
 }
 
 /** Income Tax > Notices with "Add Notice" open on a client, so only the date received and the response due date are left. */
-async function openAddIncomeTaxNotice(env) {
+export async function openAddIncomeTaxNotice(env) {
   const { page, stub } = env;
   stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { income_tax: ["read", "write", "approve"] } }) });
   stub.setTable("it_notices", []);
@@ -1774,7 +1774,7 @@ export async function openCapitalGainsRegisterTab(env) {
 }
 
 /** The capital-gains screen's Register tab with the Add Transaction dialog open and everything but the two dates filled. */
-async function openCapitalGainsRegister(env) {
+export async function openCapitalGainsRegister(env) {
   const { page, stub } = env;
   stub.route({ method: "GET", re: /api\/income-tax\/capital-gains\?/, reply: () => ok([]) });
   stub.route({ method: "POST", re: /api\/income-tax\/capital-gains\/compute$/, reply: () => ok(CG_RESULT) });
@@ -1787,7 +1787,7 @@ async function openCapitalGainsRegister(env) {
 }
 
 /** The reinvestment-claim panel of one register row, with what was bought filled. */
-async function openReinvestmentClaim(env) {
+export async function openReinvestmentClaim(env) {
   const { page, stub } = env;
   const record = {
     id: "cg-1", client_id: CLIENT_ID, asset_description: "Flat 402", asset_type: "property", purchase_date: "2019-04-01", sale_date: "2026-05-10",
