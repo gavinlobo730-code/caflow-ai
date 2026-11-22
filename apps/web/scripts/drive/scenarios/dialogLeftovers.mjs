@@ -118,8 +118,9 @@ export const scenarios = [
     },
   },
   ...[
-    { tracker: "GST", open: openGstTracker("add"), heading: "Add GST Filing", save: "Save Filing" },
-    { tracker: "MCA", open: openMcaTracker("add"), heading: "Add MCA Filing", save: "Add Filing" },
+    { tracker: "GST", open: openGstTracker("add"), heading: "Add GST Filing", save: "Save Filing", close: "Close" },
+    // The shared dialog since POST-A-130's eighth step, whose own close is named "Close dialog".
+    { tracker: "MCA", open: openMcaTracker("add"), heading: "Add MCA Filing", save: "Add Filing", close: "Close dialog" },
   ].map((t) => ({
     id: `the-${t.tracker.toLowerCase()}-trackers-add-filing-keeps-save-on-a-700-pixel-window`,
     title: `${t.tracker} tracker > Add Filing on a window 700 pixels tall: Save and Cancel are on the screen without scrolling the card, and the close is named`,
@@ -131,7 +132,7 @@ export const scenarios = [
       for (const name of [t.save, "Cancel"]) {
         assert.ok(await insideTheWindow(page, dialog.getByRole("button", { name, exact: true }).last()), `${t.tracker}: the Add Filing form's ${name} is off the screen on a window 700 pixels tall`);
       }
-      assert.equal(await dialog.getByRole("button", { name: "Close", exact: true }).count(), 1, `${t.tracker}: the Add Filing form's close has no name`);
+      assert.equal(await dialog.getByRole("button", { name: t.close, exact: true }).count(), 1, `${t.tracker}: the Add Filing form's close has no name`);
     },
   })),
   {

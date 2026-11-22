@@ -4,9 +4,10 @@ import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { useState, useEffect, useCallback } from "react";
 import {
   Plus, Trash2, Edit2, CheckSquare, Tag, Clock, User,
-  X, Loader2, Copy,
+  Loader2, Copy,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { Badge } from "@/components/ui/badge";
@@ -298,14 +299,7 @@ export default function TaskTemplatesPage() {
 
       {/* Create / Edit dialog */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="font-semibold text-ps-ink">{editingId ? "Edit Template" : "New Template"}</h2>
-              <button disabled={saving} onClick={() => setShowForm(false)} className="text-ps-hint hover:text-ps-label">
-                <X size={18} />
-              </button>
-            </div>
+        <Modal title={editingId ? "Edit Template" : "New Template"} maxWidthClass="max-w-md" onClose={() => { if (!saving) setShowForm(false); }}>
 
             <div className="space-y-3">
               <div>
@@ -381,20 +375,12 @@ export default function TaskTemplatesPage() {
                 {editingId ? "Save Changes" : "Create Template"}
               </Button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* Instantiate dialog */}
       {instantiateId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="font-semibold text-ps-ink">Create Task from Template</h2>
-              <button onClick={() => setInstantiateId(null)} className="text-ps-hint hover:text-ps-label">
-                <X size={18} />
-              </button>
-            </div>
+        <Modal title="Create Task from Template" onClose={() => { if (!instantiating) setInstantiateId(null); }}>
             {instSuccess ? (
               <div className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-center">
                 {instSuccess}
@@ -431,8 +417,7 @@ export default function TaskTemplatesPage() {
                 </div>
               </div>
             )}
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

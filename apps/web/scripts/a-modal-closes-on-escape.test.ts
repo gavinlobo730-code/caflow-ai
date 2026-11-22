@@ -65,14 +65,16 @@ test("CsvImportModal does not close on Escape while the import is running", () =
 });
 
 test("ClientFormModal (Add/Edit Client) closes on Escape", () => {
-  const src = read("components/ClientFormModal.tsx");
-  assertClosesOnEscape(functionBody(src, "ClientFormModal"), "ClientFormModal");
+  // Since POST-A-130's eighth step it is the shared Modal, which closes on Escape by calling its `onClose`. A key listener of its own
+  // would be dead code (the Modal stops the key first) that reads as the thing closing the dialog, so there must be none.
+  const body = stripComments(functionBody(read("components/ClientFormModal.tsx"), "ClientFormModal"));
+  assert.match(body, /<Modal title=\{editClient \? "Edit Client" : "Add New Client"\}/, "the client form is not the shared Modal");
+  assert.doesNotMatch(body, /addEventListener\("keydown"/, "the client form listens for keys itself again");
 });
 
 test("ClientFormModal does not close on Escape while saving", () => {
-  const src = read("components/ClientFormModal.tsx");
-  const body = stripComments(functionBody(src, "ClientFormModal"));
-  assert.match(body, /!saving/);
+  const body = stripComments(functionBody(read("components/ClientFormModal.tsx"), "ClientFormModal"));
+  assert.match(body, /onClose=\{\(\) => \{ if \(!saving\) onClose\(\); \}\}/, "the client form can be closed while a save is in flight");
 });
 
 test("engagements/page.tsx: CreateEngagementModal, TemplateModal and DetailModal each close on Escape", () => {

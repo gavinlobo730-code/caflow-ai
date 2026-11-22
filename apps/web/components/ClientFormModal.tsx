@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, FormEvent } from "react";
-import { X } from "lucide-react";
+import { Modal } from "@/components/ui/modal";
 import type { Client } from "@/lib/types";
 import type { CreateClientInput } from "@/lib/data/clients";
 
@@ -65,19 +65,6 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
     setError(null);
   }, [editClient, open]);
 
-  // Escape closes the dialog, matching the shared Modal (components/ui/modal.tsx)
-  // — guarded on `open` since this component stays mounted (and its other
-  // effects run) even while hidden, and on `saving` so a save in flight can't
-  // be abandoned mid-request.
-  useEffect(() => {
-    if (!open) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape" && !saving) onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, saving, onClose]);
-
   function set(field: keyof CreateClientInput, value: string | boolean) {
     setForm(f => ({ ...f, [field]: value }));
   }
@@ -138,28 +125,10 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-ps-bg/60" onClick={(e) => { e.stopPropagation(); if (!saving) onClose(); }} />
-
-      {/* Modal */}
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-ps-border">
-          <div>
-            <h2 className="text-base font-semibold text-ps-ink">
-              {editClient ? "Edit Client" : "Add New Client"}
-            </h2>
-            <p className="text-xs text-ps-label mt-0.5">
-              {editClient ? "Update client details" : "Register a new client with your firm"}
-            </p>
-          </div>
-          <button disabled={saving} onClick={onClose} className="p-1.5 rounded-lg hover:bg-ps-muted text-ps-hint">
-            <X size={16} />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+    // POST-A-130: the shared dialog (named, Escape, Tab kept inside, focus given back). It stays open while the client is being saved.
+    <Modal title={editClient ? "Edit Client" : "Add New Client"} maxWidthClass="max-w-2xl" onClose={() => { if (!saving) onClose(); }}
+      note={editClient ? "Update client details" : "Register a new client with your firm"}>
+        <form onSubmit={handleSubmit} className="space-y-5">
           {/* Row 1 */}
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
@@ -340,7 +309,6 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
