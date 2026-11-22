@@ -177,7 +177,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A BROAD HANDLER ON A MONEY OR LEDGER PATH REPORTS WHAT IT SWALLOWS, AND A ROLLBACK THAT DID NOT RUN IS A POSTING FAILURE
 - THE HEALTH ANSWER NAMES THE BUILD THE API RUNS, SO A DEPLOY THAT LAGS THE WEBSITE IS VISIBLE FROM OUTSIDE
 
-### `docs/design-record/documents-sales-purchase.md` (23 entries): Sales and purchase documents and cycles, templates, supplier master, ledger drill-through
+### `docs/design-record/documents-sales-purchase.md` (24 entries): Sales and purchase documents and cycles, templates, supplier master, ledger drill-through
 - A RECEIPT RECORDED THROUGH THE DATABASE FUNCTION KEEPS THE ID ITS LEDGER ENTRY NAMES, THE BANK ACCOUNT IT WAS
 - A CREDIT OR DEBIT NOTE LINE RECORDED THROUGH THE NUMBERING FUNCTION KEEPS ITS UNIT AND ITS CATALOGUE ITEM,
 
@@ -202,6 +202,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A SETTLEMENT AND A YEAR-END ADJUSTMENT OPEN FROM THE LEDGER ROW THAT NAMES THEM
 - AN AGEING BUCKET ON THE PRACTICE'S RECEIVABLES LISTS ITS INVOICES
 - A DEMO COMPANY IS SIZED BY ITS TURNOVER AND ITS COST SHARE, ITS OWNERS PAY FOR WHAT IT BOUGHT BEFORE THE BOOKS, AND A TEST WORKS ITS YEAR OUT
+- A CREDIT OR DEBIT NOTE IS RAISED AGAINST A DOCUMENT OF ITS OWN CUSTOMER OR SUPPLIER, AND A DRAFT WHOSE PARTY CHANGES DROPS THE OLD PARTY'S
 
 ### `docs/design-record/engineering-and-ci.md` (16 entries): Tests, lint and coverage ratchets, CI, dependency lock, migrations and the schema-drift check
 
@@ -262,7 +263,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - AN ASSET'S PLACE AND KEEPER HAVE A DATED HISTORY, WRITTEN WITH THE ASSET IN ONE STEP, AND A TYPO IS AN EDIT, NOT A MOVEMENT
 - A PHYSICAL COUNT OF A CLIENT'S ASSETS IS A DATED WORKING PAPER WITH A FINDING PER ASSET HELD THAT DAY, AND A CLOSED COUNT NEVER CHANGES
 
-### `docs/design-record/frontend.md` (15 entries): Frontend rules: payload shapes, the browser's second data path, money input, loading and recurring screens
+### `docs/design-record/frontend.md` (16 entries): Frontend rules: payload shapes, the browser's second data path, money input, loading and recurring screens
 
 - A PAYLOAD IS NOT A LIST UNTIL SOMETHING HAS CHECKED, AND THE STATE TYPE HIDES IT
 - A THIRD path existed and it was not a database at all: `localStorage`
@@ -279,6 +280,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A WRITE THE BROWSER MAKES THROUGH THE SUPABASE CLIENT READS ITS ANSWER
 - A PLACEHOLDER A SCREEN DRAWS SAYS WHEN THE SERVER IS SLOW
 - THE RESET PAGE IS TOLD WHICH PAGE LOAD CAME BY A RECOVERY LINK BEFORE THE SIGN-IN LIBRARY CLEANS THE ADDRESS, BECAUSE THE GUARD HOLDS THE PAGE BACK UNTIL AFTER
+- EVIDENCE IN A TEXT BOX IS CORRECTED AND NOT REMOVED, AND ONLY A DRAFT MAY TAKE AWAY ITS LINK, ITS REASON OR ITS PLACE OF SUPPLY
 
 ### `docs/design-record/identifiers.md` (5 entries): Identifiers: GSTIN, UAN, IFSC, party identifiers in imports, the firm's own GSTIN, FY and AY labels, ITR forms
 

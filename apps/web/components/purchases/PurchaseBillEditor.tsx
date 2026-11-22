@@ -60,6 +60,7 @@ import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { removedDateProblem } from "@/lib/dates/removedDate";
+import { removedEvidenceProblem } from "@/lib/forms/removedEvidence";
 import { todayIstISO } from "@/lib/dates/format";
 import { editedText } from "@/lib/forms/editedValue";
 import { AiDisclosure } from "@/components/ai/AiDisclosure";
@@ -707,6 +708,22 @@ export function PurchaseBillEditor({
     if (form15caRefusal.shown) form15caRefusalRef.current?.scrollIntoView?.({ block: "nearest" });
   }, [form15caRefusal.shown]);
 
+  // The supplier's own invoice number and the two Form 15CA / 15CB references are the bill's evidence in TEXT, and were the same defect as the Form 15CA date (POST-A-399, the remainder): an
+  // emptied box sent nothing, the stored value stayed and the screen said the bill was updated. They are corrected and not removed, said the same way; one sentence at a time. The number's
+  // box is closed on a received bill and the Form 15CA block is drawn only for a remittance abroad, and a box the person cannot reach is not one they can empty. (The attached copy of the
+  // supplier's invoice has no control that takes it away, so there is nothing to refuse for it.)
+  const billEvidenceCleared =
+    (!isLocked ? removedEvidenceProblem("The vendor invoice number", initialSnapshot.current.billNo, billNo, "number") : null)
+    ?? (form15Drawn
+      ? removedEvidenceProblem("The Form 15CA acknowledgement number", initialSnapshot.current.form15caAckNo, form15caAckNo, "number")
+        ?? removedEvidenceProblem("The Form 15CB UDIN", initialSnapshot.current.form15cbUdin, form15cbUdin, "UDIN")
+      : null);
+  const billEvidenceRefusal = useDateRefusal(billEvidenceCleared);
+  const billEvidenceRefusalRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (billEvidenceRefusal.shown) billEvidenceRefusalRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [billEvidenceRefusal.shown]);
+
   // A due date on file is corrected and not emptied either (POST-A-399), for a different reason than Form 15CA's. Every bill carries a due date (a create that names none resolves one from the
   // supplier's terms, or thirty days), the payables ageing and the payment run read it, and the PATCH route reads an omitted or null date as "not sent": a box the person emptied would leave the
   // stored date exactly as it was and the screen would say the bill was updated. So the screen says so beside the button, the same way, and a date the bill never had (nothing on file) is not this
@@ -956,6 +973,7 @@ export function PurchaseBillEditor({
     if (dates.first) { dates.refuseWith(setError); return; }
     // The date on file cannot be emptied (above). Said beside the button as a derived sentence; a server answer left over from an earlier press is not shown next to it.
     if (form15caCleared) { setError(null); form15caRefusal.refuse(); return; }
+    if (billEvidenceCleared) { setError(null); billEvidenceRefusal.refuse(); return; }
     if (dueDateCleared) { setError(null); dueDateRefusal.refuse(); return; }
     // A received bill's save sends the due date, the reference, the note, the attached copy and the Form 15CA references and nothing the check reads (the vendor, the date, the lines and the exchange rate are frozen), so the create-time check is not asked of it, as the invoice editor does not ask it of an issued invoice.
     if (!isLocked && !validation.ok) {
@@ -977,8 +995,8 @@ export function PurchaseBillEditor({
         // received-bill edit never fails on fields the CA never touched.
         // Our reference and the note are SOFT particulars the person may take away: an emptied box is sent as null so the server clears it (POST-A-399); `x.trim() || undefined` sent
         // nothing, the stored value stayed and the screen said the bill was updated. What was on file is the snapshot the form opened with (the editor closes after an edit). The due date
-        // is not cleared this way: an emptied one was refused above, so what is sent is a date or nothing. The bill number, the attached copy of the supplier's invoice and the Form
-        // 15CA / 15CB references are the EVIDENCE of the bill and are neither cleared nor refused here yet (POST-A-399 remainder; the dates are POST-A-388's).
+        // is not cleared this way: an emptied one was refused above, so what is sent is a date or nothing. The bill number and the Form 15CA / 15CB references are the EVIDENCE of the
+        // bill: an emptied one was refused above too (`billEvidenceCleared`), so what is sent is the text or nothing. The attached copy has no control that removes it.
         const softOnFile = initialSnapshot.current;
         const patchPayload = isLocked
           ? {
@@ -1825,6 +1843,7 @@ export function PurchaseBillEditor({
         )}
         {error && <Callout tone="problem">{error}</Callout>}
         {form15caRefusal.shown && <div ref={form15caRefusalRef}><Callout tone="problem">{form15caRefusal.shown}</Callout></div>}
+        {billEvidenceRefusal.shown && <div ref={billEvidenceRefusalRef} data-removed-evidence><Callout tone="problem">{billEvidenceRefusal.shown}</Callout></div>}
         {dueDateRefusal.shown && <div ref={dueDateRefusalRef}><Callout tone="problem">{dueDateRefusal.shown}</Callout></div>}
       </div>
     </InvoiceWorkspaceLayout>

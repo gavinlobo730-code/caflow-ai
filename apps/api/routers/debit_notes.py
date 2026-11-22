@@ -19,7 +19,7 @@ from typing import ClassVar, FrozenSet, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from pydantic import BaseModel, field_validator
 from models.iso_date import IsoDate, PatchIsoDate
-from models.clearable import patch_dict
+from models.clearable import draft_only_clears, patch_dict, put_back_on_a_draft, without
 from models.common import api_response
 from models.invoices import PurchaseNoteLineIn
 from domain.gst import note_blocked_credit
@@ -90,6 +90,9 @@ class DebitNoteUpdateIn(BaseModel):
     request that sends it as null (or blank) takes it away (`models.clearable.patch_dict`). Everything else reads null as "not sent", and the
     attached copy of a purchase note (`document_url`) is evidence, so it is not clearable."""
     CLEARABLE: ClassVar[FrozenSet[str]] = frozenset({"notes"})
+    #: What a DRAFT may take away and an issued note may not (POST-A-399, the sixth slice): the document it is raised against and its reason.
+    #: A create takes neither, so a draft may be without them; on an issued note both are frozen and a null still reads "not sent".
+    CLEARABLE_ON_A_DRAFT: ClassVar[FrozenSet[str]] = frozenset({"purchase_bill_id", "reason"})
     vendor_id: str | None = None
     debit_note_date: PatchIsoDate = None
     purchase_bill_id: str | None = None
@@ -285,7 +288,7 @@ def create_debit_note(data: DebitNoteIn, current_user: dict = Depends(rbac("acco
         db = get_supabase()
         # THE VENDOR IS THIS CLIENT'S (POST-A-338): the foreign key is not client-aware.
         named_row_ownership.vendor_is_the_clients(db, firm_id, client_id, data["vendor_id"])
-        named_row_ownership.purchase_bill_is_the_clients(db, firm_id, client_id, data.get("purchase_bill_id"))   # the bill it debits
+        named_row_ownership.note_bill_is_its_suppliers(db, firm_id, client_id, data)   # the bill it debits is this supplier's (POST-A-553)
         dn = insert_numbered_document_with_lines(
             db, "debit_notes", payload, "debit_note_no",
             lambda s: f"DN-{fy}-{s:04d}",
@@ -337,7 +340,9 @@ def update_debit_note(dn_id: str, data: DebitNoteUpdateIn, current_user: dict = 
     GST/AP figures), mirroring purchase_bills.py's draft/locked split."""
     _assert_dn_scope(current_user, dn_id)
     try:
-        data = patch_dict(data)
+        # What only a draft may take away (the document it is raised against, the reason): held aside until the stored note is read.
+        draft_clears = draft_only_clears(data)
+        data = without(patch_dict(data), draft_clears)
         lines_data = data.pop("lines", None)
         soft_fields = {"notes", "document_url"}
 
@@ -346,6 +351,7 @@ def update_debit_note(dn_id: str, data: DebitNoteUpdateIn, current_user: dict = 
                 if dn["id"] == dn_id and not dn.get("deleted_at"):
                     if dn.get("status") != "draft" and (set(data.keys()) - soft_fields or lines_data is not None):
                         raise HTTPException(status_code=422, detail="Only a draft debit note can be edited — issue a new debit note to correct an issued one (CGST Act §34).")
+                    put_back_on_a_draft(data, draft_clears, dn.get("status"))
                     computed = []
                     if lines_data is not None:
                         is_interstate = data.get("is_interstate", dn.get("is_interstate", False))
@@ -377,13 +383,14 @@ def update_debit_note(dn_id: str, data: DebitNoteUpdateIn, current_user: dict = 
             raise HTTPException(status_code=404, detail=f"Debit note {dn_id} not found")
         dn = resp.data[0]
         named_row_ownership.vendor_is_the_clients(db, firm_id, dn.get("client_id"), data.get("vendor_id"))
-        named_row_ownership.purchase_bill_is_the_clients(db, firm_id, dn.get("client_id"), data.get("purchase_bill_id"))
+        named_row_ownership.note_bill_is_its_suppliers(db, firm_id, dn.get("client_id"), data, dn, cleared="purchase_bill_id" in draft_clears)
         status = dn.get("status")
         if status != "draft" and (set(data.keys()) - soft_fields or lines_data is not None):
             raise HTTPException(
                 status_code=422,
                 detail="Only a draft debit note can be edited — issue a new debit note to correct an issued one (CGST Act §34).",
             )
+        put_back_on_a_draft(data, draft_clears, status)
         if data.get("debit_note_date"):
             period_validation_service.validate_posting_date(firm_id or "", data["debit_note_date"])
             if not _USE_MOCK:

@@ -19,9 +19,17 @@ WHAT THIS DOES
     that every document of its kind carries (a due date: a create that names none resolves one, and the collections and ageing readers
     say so) is not. Those still read null as "not sent", and the screen, not the route, decides what to do about an emptied box over
     them: the evidence DATES are refused at the screen (POST-A-388: the shipping bill date, the Form 15CA date, a no-PE declaration date,
-    a bank account's opening-balance date) and so is a due date that is on file (this slice); the evidence TEXTS (the bill number, a
-    Form 15CA acknowledgement number and UDIN, a shipping bill number and a port code) are neither cleared nor refused yet, which is
-    still POST-A-399's.
+    a bank account's opening-balance date) and so is a due date that is on file; the evidence TEXTS (the bill number, a Form 15CA
+    acknowledgement number and UDIN, a shipping bill number and a port code) are refused at the screen the same way
+    (`apps/web/lib/forms/removedEvidence`, the sixth slice).
+
+    WHAT ONLY A DRAFT MAY TAKE AWAY (the sixth slice) is a second, smaller set, `CLEARABLE_ON_A_DRAFT`, read by `draft_only_clears`. A
+    draft is the person's own working copy and may be incomplete: a draft note may point at no invoice or bill (a create takes none), may
+    carry no reason, and a draft invoice may carry no place of supply (the server refuses to ISSUE without one, and resolves one from the
+    customer when none is stored). Each of those was emptied on the screen and then silently kept, and the first is the one that
+    mattered: changing the customer of a draft credit note empties its "Against invoice" box, and the note went on pointing at the OLD
+    customer's invoice. On an ISSUED document the same fields are frozen particulars, so a null or a blank for one there still reads
+    "not sent", exactly as it always did, and the route's own rule for what an issued document may change is not reached by it.
 
     Every `CLEARABLE` name on a model that is read through `patch_dict` is held by
     `tests/test_an_emptied_box_on_an_edit_clears_the_stored_value.py` to be an optional field of that model and a column that accepts NULL in
@@ -56,6 +64,38 @@ def patch_dict(model: BaseModel) -> dict[str, Any]:
         if value is None or (isinstance(value, str) and not value.strip()):
             out[name] = None
     return out
+
+
+def draft_only_clears(model: BaseModel) -> dict[str, None]:
+    """The fields of the model's `CLEARABLE_ON_A_DRAFT` that the request SENT as null or as a blank string, each as `None`.
+
+    The route takes these keys OUT of what `patch_dict` returned (a blank would otherwise travel on as "" to a uuid column) and puts them
+    back as `None` only once it has read the stored row and found it a draft (`put_back_on_a_draft`). A field that was not sent is not in
+    the answer.
+    """
+    names = frozenset(getattr(type(model), "CLEARABLE_ON_A_DRAFT", ()) or ())
+    out: dict[str, None] = {}
+    for name in sorted(names & model.model_fields_set):
+        value = getattr(model, name, None)
+        if value is None or (isinstance(value, str) and not value.strip()):
+            out[name] = None
+    return out
+
+
+def put_back_on_a_draft(data: dict[str, Any], draft_clears: dict[str, None], status: Any) -> None:
+    """Write the names held aside as NULL when the stored document is a DRAFT, and leave `data` as it is for any other status.
+
+    One function so that the question "is it a draft?" is asked the same way in every route and in both of a route's branches, and so
+    that a route cannot apply the clears without asking it.
+    """
+    if status == "draft":
+        data.update(draft_clears)
+
+
+def without(data: dict[str, Any], names: Iterable[str]) -> dict[str, Any]:
+    """`data` with `names` taken out: what a route writes before it knows whether the stored document is a draft."""
+    gone = set(names)
+    return {k: v for k, v in data.items() if k not in gone}
 
 
 def removed_identifier_problem(model: BaseModel, stored: dict, labels: dict[str, str], *, why: str | None = None) -> str | None:
