@@ -217,6 +217,8 @@ def _fy_label(date_str: Optional[str]):
     try:
         d = _date.fromisoformat(str(date_str)[:10])
     except (TypeError, ValueError):
+        # (None, None) for text that is not an ISO date (docstring): it belongs to no year this check can name. A document's date is validated at its
+        # own door before anything is posted.
         return None, None
     fy_start = d.year if d.month >= 4 else d.year - 1
     return d, f"{fy_start}-{str(fy_start + 1)[2:]}"

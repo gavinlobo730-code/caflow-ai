@@ -76,6 +76,7 @@ def _number(value: Any) -> Optional[float]:
     try:
         n = float(value)
     except (TypeError, ValueError):
+        # A field the model garbled is an unread field (docstring), not a failed extraction.
         return None
     return n if math.isfinite(n) else None
 

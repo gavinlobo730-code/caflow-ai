@@ -400,6 +400,7 @@ def stated_filed_date(
     try:
         day = date.fromisoformat(str(period_first_day or "")[:10]).isoformat()
     except ValueError:
+        # No readable first day: nothing can be tied to this return, so no date is stated (docstring).
         return None
     try:
         rows = (db.table("filings").select("filed_date, acknowledgement_number")

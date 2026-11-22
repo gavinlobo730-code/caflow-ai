@@ -72,7 +72,10 @@ def _effective_due_date(invoice: dict) -> Optional[date]:
     try:
         from datetime import timedelta
         return date.fromisoformat(str(raw_inv_date)[:10]) + timedelta(days=30)
-    except ValueError:
+    except ValueError as unreadable:
+        # As the due date above: a DATE column that does not read is damage, and the log says the invoice was given no effective due
+        # date at all (None) rather than a guessed one (POST-A-505).
+        capture_soft_failure(unreadable, operation="invoice_lifecycle.invoice_date_unreadable", invoice_id=invoice.get("id"))
         return None
 
 

@@ -191,6 +191,7 @@ def _opening_figures_differ(owned_row: dict, qty, cost_paise) -> bool:
         try:
             return None if value is None else Decimal(str(value))
         except InvalidOperation:
+            # Not a number: no figure, and an absent figure only equals an absent one (docstring of the enclosing function).
             return None
 
     return (number(owned_row.get("opening_qty_units")) != number(qty)
@@ -238,6 +239,7 @@ def _has_seedable_opening_balance(qty, cost) -> bool:
     try:
         return float(qty) > 0
     except (TypeError, ValueError):
+        # Not a number: not an opening balance seed_opening_balance would seed (the same gate, per the docstring).
         return False
 
 

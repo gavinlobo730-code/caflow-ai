@@ -124,6 +124,8 @@ def _parse(ts: object) -> Optional[datetime]:
     try:
         parsed = datetime.fromisoformat(ts.strip().replace("Z", "+00:00"))
     except ValueError:
+        # Not a timestamp. A timestamptz column always reads back as ISO text, so a stored instant never lands here: this is an absent value or a
+        # hand-built one, and None says there is no instant.
         return None
     # A timestamptz comes back with an offset; a bare one was written as UTC.
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)

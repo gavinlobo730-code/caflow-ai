@@ -76,6 +76,7 @@ def parse_dob(value) -> Optional[date]:
     try:
         return date.fromisoformat(str(value)[:10])
     except (ValueError, TypeError):
+        # A malformed date of birth is an unknown, which the payslip path reports (docstring); it must not stop a month's payroll.
         return None
 
 
@@ -93,6 +94,7 @@ def age_reached_during_fy(dob, fy: Optional[str]) -> Optional[int]:
         # fy_bounds returns ISO STRINGS, not dates.
         end = date.fromisoformat(fy_bounds(fy)[1])
     except (ValueError, TypeError, KeyError):
+        # A year label that cannot be read gives no age: unknown, never a guessed age band.
         return None
     years = end.year - born.year
     if (end.month, end.day) < (born.month, born.day):

@@ -188,6 +188,7 @@ def wage_month_of(fy: str | None, month: int | None) -> tuple[int, int] | None:
     try:
         start = int(fy[:4])
     except (ValueError, TypeError):
+        # A label that does not start with a year: unknown (docstring), never a guessed wage month.
         return None
     return (start if int(month) >= 4 else start + 1, int(month))
 

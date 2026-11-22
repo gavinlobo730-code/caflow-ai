@@ -85,6 +85,7 @@ def shared_ledger(db, firm_id: str, client_id: str) -> Optional[dict]:
     try:
         account_id = phase2_journal_service._find_account(db, firm_id, client_id, SHARED_ACCUMULATED_PATTERN)
     except ValueError:
+        # _find_account raises when the chart has no such ledger: None is that answer (docstring).
         return None
     return chart_row(db, firm_id, account_id)
 
@@ -95,6 +96,7 @@ def cost_ledger(db, firm_id: str, client_id: str, category: Optional[str]) -> Op
     try:
         account_id = phase2_journal_service._find_account(db, firm_id, client_id, ledger_pattern(category))
     except ValueError:
+        # _find_account raises when the chart has no such ledger: None is that answer (docstring).
         return None
     return chart_row(db, firm_id, account_id)
 

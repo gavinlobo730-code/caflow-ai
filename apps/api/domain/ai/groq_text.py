@@ -233,6 +233,7 @@ def _retry_after(response: httpx.Response) -> Optional[float]:
         raw = response.headers.get("retry-after")
         return float(raw) if raw not in (None, "") else None
     except (TypeError, ValueError):
+        # The header is optional and a provider may put a date there: no number means no stated wait, and backoff_delay uses its own.
         return None
 
 

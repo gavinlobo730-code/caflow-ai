@@ -150,6 +150,8 @@ def _parse(value: Any) -> Optional[date]:
     try:
         return date.fromisoformat(str(value or "")[:10])
     except ValueError:
+        # Not a date. A DATE or timestamp column always reads back as ISO text, so a stored one never lands here: this is an absent value or text that
+        # was never a date, and None says there is none.
         return None
 
 
@@ -294,6 +296,7 @@ def _later(period: str, than: str) -> bool:
     try:
         return _sort_period(period) > _sort_period(than)
     except (TypeError, ValueError):
+        # A period that cannot be read is not shown to be later than anything: the answer is no.
         return False
 
 

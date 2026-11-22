@@ -27,6 +27,7 @@ def _int(value) -> int:
     try:
         return int(value or 0)
     except (TypeError, ValueError):
+        # An integer column, or its absence: NULL counts as 0 and nothing else is stored there.
         return 0
 
 

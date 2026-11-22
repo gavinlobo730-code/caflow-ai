@@ -93,6 +93,7 @@ def filed_on(db, firm_id: str, client_id: str, period: str,
     try:
         first_day = return_period.month_bounds(period)[0]
     except ValueError:
+        # Not a return period: there is no filing to look up, and the caller prints 'recorded' rather than a date.
         return None
     return filing_record.stated_filed_date(
         db, firm_id, client_id, filing_record.FILING_TYPE_GSTR1, first_day, arn=arn,

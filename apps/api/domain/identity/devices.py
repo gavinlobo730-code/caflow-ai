@@ -40,6 +40,8 @@ def instant(value: Any) -> Optional[datetime]:
         try:
             moment = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
         except ValueError:
+            # Not a timestamp. A timestamptz column always reads back as ISO text, so a stored instant never lands here: this is an absent value or a
+            # hand-built one, and None says there is no instant.
             return None
     else:
         return None

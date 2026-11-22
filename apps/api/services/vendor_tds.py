@@ -63,6 +63,7 @@ def fy_label(on_date) -> Optional[str]:
     try:
         d = datetime.strptime(str(on_date)[:10], "%Y-%m-%d").date()
     except (ValueError, TypeError, KeyError):
+        # None where the date is unusable (docstring): the resident path then uses current law, as documented there.
         return None
     return ist_fy_label(d)
 

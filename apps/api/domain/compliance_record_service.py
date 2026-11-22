@@ -159,6 +159,7 @@ def year_end_not_yet_reached_on(financial_year: Optional[str], filed_on: str) ->
         # Normalised first: `fy_bounds` reads the first four characters and ignores the rest, so "2025-99" would be judged as FY 2025-26.
         year_end = fy_bounds(normalise_fy_label(str(financial_year or "")))[1]
     except ValueError:
+        # A label that is not a financial year is not judged (docstring): there is nothing to compare the date with.
         return None
     return year_end if str(filed_on)[:10] < year_end else None
 

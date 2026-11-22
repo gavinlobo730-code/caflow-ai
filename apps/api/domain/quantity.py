@@ -51,6 +51,7 @@ def quantity_violation(value) -> Optional[str]:
     try:
         d = Decimal(str(value))
     except (InvalidOperation, ValueError, TypeError):
+        # Not a number: the answer IS the sentence saying so.
         return "Quantity must be a number."
     if not d.is_finite():
         return "Quantity must be a number."

@@ -164,6 +164,7 @@ def month_end(fy_label: str | None, month: int | None) -> date | None:
             return None
         return _last_day_of(fy_label, month)
     except (ValueError, TypeError, IndexError):
+        # None, never a guess, for a period that cannot be read (docstring); the caller decides what that means for its question.
         return None
 
 
@@ -188,6 +189,7 @@ def rule_in_force(fy_label: str | None, month: int | None) -> bool:
             return False
         return _last_day_of(fy_label, month) >= WAGE_RULE_EFFECTIVE_FROM
     except (ValueError, TypeError, IndexError):
+        # Unknown period: False, the pre-Code behaviour (docstring). Applying the rule to a month it may not govern would rewrite historic payslips.
         return False
 
 

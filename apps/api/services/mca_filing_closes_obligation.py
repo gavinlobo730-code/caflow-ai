@@ -86,6 +86,7 @@ def _year_in(text: Any) -> Optional[str]:
     try:
         return normalise_fy_label(match.group(1))
     except ValueError:
+        # Looks like a year label and is not one (2025-27): no year is read from the text.
         return None
 
 
@@ -143,6 +144,7 @@ def _year_of_window(start: Any, end: Any) -> Optional[str]:
     try:
         year = ist_fy_label(date.fromisoformat(first))
     except ValueError:
+        # The window does not start on a readable day: it is no financial year's window.
         return None
     return year if fy_bounds(year) == (first, last) else None
 

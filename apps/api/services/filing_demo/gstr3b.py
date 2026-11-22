@@ -106,6 +106,7 @@ def _due_date(client_id: str, firm_id: str, period: str) -> str:
         return gstr3b_due_date(int(period[2:]), int(period[:2]),
                                frequency, state_code).isoformat()
     except (ValueError, TypeError, IndexError):
+        # A malformed period costs the walk-through its due-date line, not the walk-through (docstring).
         return ""
 
 
@@ -153,6 +154,7 @@ def _correction_window(period: str, client_id: str = "", firm_id: str = "") -> s
         filed = _annual_return_filed(client_id, firm_id, f"{fy_end - 1}-{str(fy_end)[2:]}")
         return correction_window_closes(fy_end, filed).isoformat()
     except (ValueError, TypeError, IndexError):
+        # A malformed period costs the walk-through this one line, not the walk-through.
         return ""
 
 

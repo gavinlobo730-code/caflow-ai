@@ -205,6 +205,7 @@ def _due_date_line(financial_year: str) -> str | None:
         # of the starting year + 1.
         fy_end = int(str(financial_year)[:4]) + 1
     except (TypeError, ValueError):
+        # A year label that cannot be read: the walk-through shows no due-date line rather than a wrong one.
         return None
     non_audit = compliance_engine.itr_due_date(fy_end, is_audit=False)
     audit = compliance_engine.itr_due_date(fy_end, is_audit=True)

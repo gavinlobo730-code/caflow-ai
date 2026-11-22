@@ -312,4 +312,5 @@ def days_between(a: Optional[str], b: Optional[str]) -> Optional[int]:
         return (date.fromisoformat(str(b)[:10])
                 - date.fromisoformat(str(a)[:10])).days
     except (TypeError, ValueError):
+        # One of the two days cannot be read: there is no count of days to give (None), never 0.
         return None

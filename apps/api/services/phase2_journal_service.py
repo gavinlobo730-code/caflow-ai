@@ -268,6 +268,7 @@ class Phase2JournalService:
         except journal_figures.EntryCannotBeReused as refusal:
             return None if refusal.unreadable else str(refusal)
         except ValueError:
+            # An account the posting needs is not in the chart: the chart-of-accounts blocker says that (docstring), and this pre-flight adds nothing.
             return None
         except Exception as e:
             capture_posting_failure(e, operation="entry_left_behind_problem", firm_id=firm_id, client_id=client_id)

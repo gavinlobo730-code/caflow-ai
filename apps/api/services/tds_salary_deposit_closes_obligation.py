@@ -96,6 +96,7 @@ def month_problem(*, deduction_month: Optional[str], section: str, financial_yea
             raise ValueError
         first = date(year, mon, 1)
     except (ValueError, IndexError):
+        # Not a month: the answer IS the sentence asking for YYYY-MM.
         return "The wage month is not a month: give it as YYYY-MM, such as 2026-04."
     if not deposit_due.is_salary(section or ""):
         return ("A wage month is stated only on a salary challan (section 192): a challan under any other section is matched to "
@@ -125,6 +126,8 @@ def _as_date(value: Any) -> Optional[date]:
     try:
         return date.fromisoformat(str(value or "")[:10])
     except ValueError:
+        # Not a date. A DATE or timestamp column always reads back as ISO text, so a stored one never lands here: this is an absent value or text that
+        # was never a date, and None says there is none.
         return None
 
 

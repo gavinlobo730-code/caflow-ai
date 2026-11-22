@@ -60,7 +60,10 @@ def reference_due_date(inv: dict, credit_days: int = DEFAULT_CREDIT_DAYS) -> Opt
     if inv.get("invoice_date"):
         try:
             return date.fromisoformat(str(inv["invoice_date"])[:10]) + timedelta(days=eff_credit_days)
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as unreadable:
+            # The invoice date is a DATE column and the credit days an integer: one that does not read is damage, said as the due
+            # date's is above. There is then no reference date at all (None), and the invoice is not aged by a guessed one (POST-A-505).
+            capture_soft_failure(unreadable, operation="collections.invoice_date_unreadable", invoice_id=inv.get("id"))
             return None
     return None
 

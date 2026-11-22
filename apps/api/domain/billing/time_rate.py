@@ -91,6 +91,7 @@ def clean_rate(rate: object) -> Optional[int]:
     try:
         value = int(rate)
     except (TypeError, ValueError):
+        # Not a number at all: no rate was stated (None, per the docstring), never a rate of 0.
         return None
     return value if value >= 0 and value == rate else None
 
@@ -118,6 +119,7 @@ def value_paise(minutes: object, rate_paise: object) -> Optional[int]:
     try:
         mins = int(minutes or 0)
     except (TypeError, ValueError):
+        # Minutes that are not a number: no value can be worked out, and None is not 0 (docstring).
         return None
     return (max(mins, 0) * rate) // 60
 
