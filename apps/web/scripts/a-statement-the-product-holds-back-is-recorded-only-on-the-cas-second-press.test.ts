@@ -187,10 +187,13 @@ test("the firm-level page's question does not outlive what it asked about: it is
   assert.match(filed[1], /finally \{\s*setFiling\(false\);\s*\}/, "the hold is not released in a finally");
   assert.match(page, /actionInFlight = approving \|\| loading \|\| filing;/, "the page's one-action-at-a-time rule does not count the filing");
   assert.match(page, /<button onClick=\{\(\) => setShowFiledModal\(false\)\} disabled=\{filing\}/, "Cancel is live while the filing is being recorded");
-  assert.match(page, /onClick=\{\(e\) => \{ e\.stopPropagation\(\); if \(!filing\) setShowFiledModal\(false\); \}\}/, "the backdrop closes the dialog while the filing is being recorded, or does not stop its click");
+  // The shared Modal since POST-A-130's fifteenth step: Escape, a click beside it and its × are one `onClose`, held while the filing is recorded.
+  assert.match(page, /<Modal title=\{`Mark \$\{returnType\} as Filed`\}[^>]*onClose=\{\(\) => \{ if \(!filing\) setShowFiledModal\(false\); \}\}/, "the dialog can be closed (Escape, a click beside it, its ×) while the filing is being recorded");
   assert.match(page, /<RecordAnywayAsk sentence=\{heldBack\.sentence\} what="filed" busy=\{filing\}/, "the filing question does not say it is busy while the request is out");
   // the dialog grew by a question: on a short screen its buttons would leave the page if it did not scroll
-  assert.match(page, /relative bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6 space-y-4 max-h-\[90vh\] overflow-y-auto/, "the Mark as Filed dialog does not scroll on a short screen");
+  // …which the shared Modal does for every dialog (its panel is bounded by the window and scrolls, with the buttons in a footer that stays in view).
+  assert.match(code("components/ui/modal.tsx"), /max-h-\[90vh\] overflow-y-auto/, "the shared dialog does not scroll on a short screen");
+  assert.match(page, /footer=\{<>\s*<button onClick=\{\(\) => setShowFiledModal\(false\)\} disabled=\{filing\}/, "the Mark as Filed dialog's buttons are not in the footer that stays in view");
 });
 
 test("the question says the server's sentence, offers the two choices and sends nothing on Leave", () => {

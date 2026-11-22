@@ -36,7 +36,9 @@ test("the override dialog's hold ends with the write and its re-read is outside 
 
 test("the rule knows a filing flag, and the Mark as Filed backdrop stops its click", () => {
   assert.match(read("scripts/dialogHolds.ts"), /posting\|issuing\|filing\|recording/);
-  assert.match(read("app/tds/returns/page.tsx"), /onClick=\{\(e\) => \{ e\.stopPropagation\(\); if \(!filing\) setShowFiledModal\(false\); \}\}/);
+  // The shared Modal since POST-A-130's fifteenth step: there is no backdrop of its own to stop a click on; its one close (Escape, a click
+  // beside it, its ×) is held while the filing is being recorded.
+  assert.match(read("app/tds/returns/page.tsx"), /<Modal title=\{`Mark \$\{returnType\} as Filed`\}[^>]*onClose=\{\(\) => \{ if \(!filing\) setShowFiledModal\(false\); \}\}/);
 });
 
 test("a landed charge cannot be removed twice while the list is re-read", () => {
