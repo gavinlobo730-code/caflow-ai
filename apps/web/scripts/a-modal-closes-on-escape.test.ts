@@ -83,11 +83,17 @@ test("engagements/page.tsx: CreateEngagementModal, TemplateModal and DetailModal
 });
 
 test("clients/page.tsx: the Archive/Restore/Delete confirmations close on Escape, guarded on actionBusy", () => {
+  // Since POST-A-130's seventh step each is the shared Modal, which closes on Escape by calling its `onClose` (and only as the top dialog):
+  // the rule this test holds is that each one's `onClose` clears its own target and is held while an action is in flight. The page's own
+  // keydown listener is gone, and must stay gone: the Modal stops the key before a window listener hears it, so one here would be dead code
+  // that reads as the thing closing the dialog.
   const src = stripComments(read("app/clients/page.tsx"));
-  assert.match(src, /addEventListener\("keydown"/);
-  assert.match(src, /e\.key !== "Escape" \|\| actionBusy/);
-  // All three targets are cleared, whichever one was open.
-  for (const setter of ["setArchiveTarget(null)", "setRestoreTarget(null)", "setDeleteTarget(null)"]) {
-    assert.ok(src.includes(setter), `missing ${setter}`);
+  assert.doesNotMatch(src, /addEventListener\("keydown"/, "the page listens for keys itself again");
+  for (const [title, setter] of [["Archive Client", "setArchiveTarget(null)"], ["Restore Client", "setRestoreTarget(null)"], ["Permanently Delete", "setDeleteTarget(null)"]]) {
+    const at = src.indexOf(`<Modal title="${title}"`);
+    assert.ok(at >= 0, `${title} is not the shared Modal`);
+    const open = src.slice(at, src.indexOf(">\n", src.indexOf("onClose=", at)));
+    assert.match(open, /onClose=\{\(\) => \{ if \(!actionBusy\) \{/, `${title} can be closed while its action is in flight`);
+    assert.ok(open.includes(setter), `${title}: closing it does not clear its target`);
   }
 });

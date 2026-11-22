@@ -33,6 +33,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { wantsToAddClient } from "@/lib/clients/addClient";
 
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { LoadingRegion } from "@/components/ui/skeleton";
 const CLIENT_IMPORT_COLUMNS = [
   { key: "client_name",  label: "Client Name",    required: true,  hint: "e.g. ABC Pvt Ltd" },
@@ -175,24 +176,9 @@ export default function ClientsPage() {
   // A selection may only name rows still on screen (see lib/table/pruneSelection).
   useEffect(() => { setSelected((s) => pruneSelection(s, clients.map((c) => c.id))); }, [clients]);
 
-  // Escape closes whichever lifecycle confirmation is open, matching the
-  // shared Modal (components/ui/modal.tsx) these hand-rolled overlays don't
-  // use — guarded on actionBusy so an archive/restore/delete in flight can't
-  // be abandoned mid-request.
-  useEffect(() => {
-    if (!archiveTarget && !restoreTarget && !deleteTarget) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key !== "Escape" || actionBusy) return;
-      setArchiveTarget(null);
-      setRestoreTarget(null);
-      setDeleteTarget(null);
-      setDeleteConfirmName("");
-      setDeleteBlockers(null);
-      setActionError(null);
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [archiveTarget, restoreTarget, deleteTarget, actionBusy]);
+  // Escape on a lifecycle confirmation (Archive, Restore, Permanently Delete) is the shared Modal's now (POST-A-130): each dialog's own
+  // `onClose` below is held on `actionBusy`, so an archive, restore or delete in flight cannot be abandoned mid-request. The listener
+  // this page kept for its hand-built overlays is gone: the Modal acts on the key first and stops it, so that listener never ran.
   const [bulkBusy, setBulkBusy]   = useState(false);
   // One action at a time: every button that starts work waits for whichever
   // is already running. Guarding each on its own flag alone let two fire at
@@ -886,14 +872,7 @@ export default function ClientsPage() {
 
       {/* ── Archive modal ─────────────────────────────────────────────────── */}
       {archiveTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-xl">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
-                <Archive size={16} className="text-amber-600" />
-              </div>
-              <h2 className="text-base font-semibold text-ps-ink">Archive Client</h2>
-            </div>
+        <Modal title="Archive Client" onClose={() => { if (!actionBusy) { setArchiveTarget(null); setActionError(null); } }}>
             <p className="text-sm text-ps-label mb-1">
               Archive <span className="font-semibold">{archiveTarget.client_name}</span>?
             </p>
@@ -917,20 +896,12 @@ export default function ClientsPage() {
                 {actionBusy ? "Archiving…" : "Archive"}
               </Button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ── Restore modal ─────────────────────────────────────────────────── */}
       {restoreTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-xl">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-9 h-9 rounded-full bg-green-100 flex items-center justify-center shrink-0">
-                <RotateCcw size={16} className="text-green-600" />
-              </div>
-              <h2 className="text-base font-semibold text-ps-ink">Restore Client</h2>
-            </div>
+        <Modal title="Restore Client" onClose={() => { if (!actionBusy) { setRestoreTarget(null); setActionError(null); } }}>
             <p className="text-sm text-ps-label mb-4">
               Restore <span className="font-semibold">{restoreTarget.client_name}</span> to the active client list?
             </p>
@@ -951,24 +922,13 @@ export default function ClientsPage() {
                 {actionBusy ? "Restoring…" : "Restore"}
               </Button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ── Delete modal ──────────────────────────────────────────────────── */}
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-xl">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-9 h-9 rounded-full bg-red-100 flex items-center justify-center shrink-0">
-                <Trash2 size={16} className="text-red-600" />
-              </div>
-              <div>
-                <h2 className="text-base font-semibold text-ps-ink">Permanently Delete</h2>
-                <p className="text-xs font-medium text-red-600">This cannot be undone</p>
-              </div>
-            </div>
-
+        <Modal title="Permanently Delete" note={<span className="font-medium text-red-600">This cannot be undone</span>}
+          onClose={() => { if (!actionBusy) { setDeleteTarget(null); setDeleteConfirmName(""); setDeleteBlockers(null); setActionError(null); } }}>
             {!deleteBlockers && (
               <>
                 <p className="text-sm text-ps-label mb-3">
@@ -1037,8 +997,7 @@ export default function ClientsPage() {
                 </Button>
               )}
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ── Form modal ────────────────────────────────────────────────────── */}
