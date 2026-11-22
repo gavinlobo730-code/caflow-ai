@@ -3,9 +3,10 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Compass, Search, Settings, LogOut } from "lucide-react";
+import { Compass, Search, Settings, LogOut, Receipt } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth/AuthContext";
+import { hasEmployeePortalAccess } from "@/lib/portal/employeeAccess";
 
 /**
  * Search, Settings and the account menu — the three things a signed-in CA must
@@ -51,6 +52,18 @@ export function UtilityCluster({
 }) {
   const { user, userRole, signOut, fullName } = useAuth();
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
+  // "My payslips" (POST-A-549): a member of staff whom the practice also pays here, and who accepted the payslip portal's
+  // invitation with the address they sign in with, reaches their own payslips from this menu. Asked of the server the first
+  // time the menu is opened, never on every screen: most members are not on the practice's own payroll, and the answer for
+  // them is "no" (the link is then simply not drawn). null is "not asked yet".
+  const [ownPayslips, setOwnPayslips] = useState<boolean | null>(null);
+  function toggleAvatarMenu() {
+    setAvatarMenuOpen((v) => !v);
+    if (ownPayslips === null) {
+      setOwnPayslips(false);
+      void hasEmployeePortalAccess().then(setOwnPayslips);
+    }
+  }
   const pathname = usePathname();
   const isSettingsRoute = pathname.startsWith("/settings");
   const isRail = orientation === "rail";
@@ -111,7 +124,7 @@ export function UtilityCluster({
 
       <div className="relative">
         <button
-          onClick={() => setAvatarMenuOpen((v) => !v)}
+          onClick={toggleAvatarMenu}
           title={user?.email ?? "Account"}
           aria-label="Account"
           className={cn(
@@ -144,6 +157,20 @@ export function UtilityCluster({
                   {userRole ?? "Partner"}
                 </p>
               </div>
+              {ownPayslips && (
+                <Link
+                  href="/portal/employee"
+                  data-my-payslips
+                  onClick={() => setAvatarMenuOpen(false)}
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-colors",
+                    isDark ? "text-white/70 hover:text-white hover:bg-white/10" : "text-ps-label hover:text-ps-ink hover:bg-ps-bg"
+                  )}
+                >
+                  <Receipt size={13} />
+                  My payslips
+                </Link>
+              )}
               <button
                 onClick={() => {
                   setAvatarMenuOpen(false);

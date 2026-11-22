@@ -158,4 +158,24 @@ def accept_employee_invite(body: AcceptEmployeeInviteBody,
     """
     result = employee_portal_service.accept_employee_invite(
         body.token, jwt_user.get("auth_user_id"), jwt_user.get("email"))
+    # ONE SIGN-IN MAY BE BOTH A MEMBER OF STAFF AND A PORTAL EMPLOYEE (POST-A-549, decided 22-11-2026). A practice that
+    # runs its own payroll here invites its own staff, at the address they already sign in with. The two doors read two
+    # principals off the one sign-in and each reads only its own rows, so nothing is widened; what the page must NOT do
+    # is ask such a person to "set a password", which would replace the one they sign in to the practice with. So the
+    # answer says whether this sign-in is already a member of staff, read from the caller's own verified sign-in.
+    result["staff_sign_in"] = _is_a_staff_sign_in(jwt_user.get("auth_user_id"))
     return api_response(True, result)
+
+
+def _is_a_staff_sign_in(auth_user_id) -> bool:
+    """Whether the sign-in is linked to a member of staff, in any practice. A read that fails is answered as "no" and
+    reported: the page then offers the password step, which is what it always did, and the binding is already made."""
+    if not auth_user_id:
+        return False
+    try:
+        from repositories.user_repository import user_repo
+        return bool(user_repo.find_linked_member(str(auth_user_id)))
+    except Exception as swallowed:                      # noqa: BLE001 — reported; the fallback is the older behaviour
+        from core.observability import capture_soft_failure
+        capture_soft_failure(swallowed, operation="employee_portal.staff_sign_in_read")
+        return False

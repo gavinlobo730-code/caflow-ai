@@ -439,7 +439,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - ITR-6'S GROSS BLOCK IS FILLED ONLY WHERE EACH LEDGER LINE TIES
 - A BROUGHT-FORWARD LOSS IS OFFERED FROM ITS RECORD, USED PER FILING AND PER YEAR, AND AN UPDATED RETURN WRITES NOTHING
 
-### `docs/design-record/tax-tds.md` (29 entries): TDS and TCS: sections and thresholds, the 2026 vocabulary fork, interest, 26AS
+### `docs/design-record/tax-tds.md` (30 entries): TDS and TCS: sections and thresholds, the 2026 vocabulary fork, interest, 26AS
 
 - From 01-04-2026 the whole TDS vocabulary changed, and `domain/tds/vocabulary.py` is the single place that knows it
 - A CONFIRMED SUBSET OF THE S. 393 PAYMENT-CODE TABLE IS NOW HELD
@@ -470,8 +470,9 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A DEDUCTION TYPED ON THE TDS SCREEN MAY NAME THE SUPPLIER IT WAS PAID TO, AND IS THEN COUNTED IN THAT SUPPLIER'S YEAR WITH ITS BILLS AND ADVANCES
 - s.194A HAS TWO RAISED LIMITS AND THEY HANG ON THE PAYER AS WELL AS THE PAYEE
 - A 2025-ACT DEDUCTEE ROW CARRIES ITS s.393 PAYMENT CODE, OR NAMES WHY NOT
+- THE TDS WORKSPACE ANSWERS A FAILURE WITH ITS OWN SENTENCE, AND A CONTENDED SNAPSHOT SAVE TAKES THE NEXT VERSION
 
-### `docs/design-record/tenancy-and-security.md` (94 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
+### `docs/design-record/tenancy-and-security.md` (95 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
 
 - EVERY QUERY ON A FIRM TABLE CARRIES ITS FIRM'S SCOPE OR IS NAMED ON A FROZEN LIST, THE TABLE SET IS THE SNAPSHOT'S, AND HOW LITTLE
 - ACCESS IS DECIDED PER PERSON, AND A ROLE IS THE TEMPLATE IT FALLS BACK TO
@@ -567,6 +568,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A SIGN-UP LINK IS HELD BY THE SERVER, OPENS ON ITS OWN PAGE, USES NOTHING UP, AND CARRIES WHAT IT WAS ASKED FOR
 - A PURGED FIRM'S PEOPLE ARE TOLD THEIR FIRM IS CLOSED BY A MARKER THAT OUTLIVES THEIR MEMBER ROW
 - AN EMPLOYEE'S PORTAL INVITATION LINK EXISTS ONLY IN THE MAIL THE SERVER SENDS, AND THE SCREEN IS TOLD ONLY WHETHER THAT MAIL WENT
+- ONE SIGN-IN MAY BE BOTH A MEMBER OF STAFF AND A PORTAL EMPLOYEE
 
 ### `docs/design-record/workflow-and-team.md` (4 entries): Workflow engine slices and the Team screen's permission notice
 
@@ -930,8 +932,6 @@ _Longer design records for this area were moved to `docs/design-record/ledger-an
   NAMES the gaps rather than refusing, because a screen opening a form needs
   to say what to go and record; the boxes stay editable, and a value already
   typed is not overwritten when the panel reopens.
-- **THE TDS WORKSPACE ANSWERS A FAILURE WITH ITS OWN SENTENCE, AND A CONTENDED SNAPSHOT SAVE TAKES THE NEXT VERSION** (tds_income_tax-34). Twelve handlers (the audit counted nine) ended `return api_response(False, None, str(e))`; for a PostgREST failure that is the error dict (table, column, constraint, hint) inside an HTTP 200. `_could_not(exc, action)` logs the traceback and words the refusal through `core.exceptions.unhandled_failure`, the speaker `main.py` applies to every uncaught exception, so there is no second wording table; the guard is the RULE on broad handlers (`except Exception`/bare), not on the twelve sites, and leaves the narrow `except ValueError` that words the engine's own 422 because that message is authored there. `utcnow()` stamped five records naive. A duplicate `"194J(B)"` key was deleted with every registry compared byte-identical against git HEAD, so no figure moves. `save_computation_snapshot` retries on SQLSTATE 23505 and ONLY 23505 (migration 319's UNIQUE already existed; the finding's 'no guard' was wrong), re-reading the maximum version, five attempts, then the router's existing 409.
-
 - **A TDS ENGAGEMENT OWES TWELVE MONTHLY DEPOSITS, NOT FOUR STATEMENTS**
   (TDS-12). Rule 30(2) binds every deductor other than an office of the
   government, and `compliance_engine.tds_deposit_due_date` had exactly one
