@@ -14,11 +14,18 @@ WHAT THIS HOLDS
       design-record index, the coming-soon register), it holds only test modules, and the real-Postgres set holds the one that reads the
       documents. A second, independent look (a constant that names a thing only the documents hold, such as `open-items`) finds no module
       outside the list.
-    * The workflow's `detect` step marks a change docs-only exactly when every changed file is under `docs/` or is `CLAUDE.md`, and only
-      for a pull request: a document plus a line of code, a document plus a workflow, a frontend, an empty diff and a PUSH are not. It is
-      run for real over throw-away git histories, like the rule beside it.
+    * The workflow's `detect` step puts a change in the docs lane exactly when every changed file is under `docs/`, is `CLAUDE.md` or is
+      under one of the two frontends, with at least one document among them, and only for a pull request: a document plus a line of code,
+      a document plus a workflow, a frontend alone (the frontend rule's), an empty diff and a PUSH are not. It is run for real over
+      throw-away git histories, like the rule beside it.
     * The workflow gives the docs lane its own steps in both required jobs, under the unchanged job names, and the whole-suite, lint and
       coverage steps are the ones it skips. The lane is the ONLY thing that changed: the whole-suite steps are unchanged for everything else.
+    * A SCREEN CHANGE WITH ITS NOTES (22-11-2026). Nearly every change to a screen edits a line of the ledger too, and that line sent it
+      through the whole suite, about fifty minutes, for a diff no backend test but the readers of those files can see. It is the lane now,
+      and where a frontend is in the diff the lane's steps ADD the modules that read a frontend: the required mock job runs both derived
+      lists as one, and the migration job the real-Postgres ones. The two steps' own shell is run for real here, against stand-in finders
+      and a stand-in pytest: a document alone runs the document readers, a document with a frontend runs both sets once each, a finder
+      that fails stops the step before pytest, and a list that comes out empty never reaches pytest bare.
 """
 from __future__ import annotations
 
@@ -190,7 +197,7 @@ def _docs_only(tmp_path: Path, edit, *, event: str = "pull_request") -> str:
     done = subprocess.run(["bash", "-c", script], cwd=repo, capture_output=True, text=True,
                           env={**os.environ, "BASE_SHA": base, "HEAD_SHA": head, "GITHUB_OUTPUT": str(out)})
     assert done.returncode == 0, done.stderr
-    return dict(line.split("=", 1) for line in out.read_text().splitlines() if "=" in line)["docs_only"]
+    return dict(line.split("=", 1) for line in out.read_text().splitlines() if "=" in line)["docs_lane"]
 
 
 def _write(*names: str):
@@ -207,12 +214,18 @@ def _write(*names: str):
     (("docs/a.md", "docs/open-items/x.md", "CLAUDE.md"), "true"),
     (("docs/a.md", "apps/api/x.py"), "false"),                        # a document plus a line of code
     (("CLAUDE.md", ".github/workflows/backend-ci.yml"), "false"),    # a document plus the workflow itself
-    (("docs/a.md", "apps/web/a.ts"), "false"),                        # a document plus a frontend
+    (("docs/a.md", "apps/web/a.ts"), "true"),                         # a screen change with its notes (22-11-2026)
+    (("CLAUDE.md", "apps/marketing/a.ts"), "true"),                   # ... and the public site with its notes
+    (("docs/a.md", "apps/web/a.ts", "apps/marketing/a.ts"), "true"),
+    (("docs/a.md", "apps/web/a.ts", "apps/api/x.py"), "false"),       # ... but not with a line of code in it
+    (("docs/a.md", "apps/web/a.ts", ".github/workflows/backend-ci.yml"), "false"),
+    (("docs/a.md", "apps/web/a.ts", "shared/vectors.json"), "false"), # a shared vector is read by both suites: the whole suite
     (("apps/web/a.ts",), "false"),                                    # a frontend alone is the frontend rule's, not this one
+    (("apps/web/a.ts", "apps/marketing/a.ts"), "false"),
     (("README.md",), "false"),                                        # the root README is not CLAUDE.md and not under docs/
     (("apps/api/x.py",), "false"),
 ])
-def test_docs_only_exactly_when_every_changed_file_is_a_document(tmp_path, names, expected):
+def test_the_lane_exactly_when_every_changed_file_is_a_document_or_a_frontend_with_a_document_among_them(tmp_path, names, expected):
     assert _docs_only(tmp_path, _write(*names)) == expected
 
 
@@ -221,18 +234,25 @@ def test_a_lookalike_path_is_not_a_document(tmp_path):
         assert _docs_only(tmp_path / str(i), _write(name)) == "false", name
 
 
-def test_an_empty_diff_is_not_docs_only(tmp_path):
+def test_a_lookalike_of_a_frontend_beside_a_document_is_not_the_lane(tmp_path):
+    """The lane admits `apps/web/` and `apps/marketing/` beside a document and nothing that only looks like them."""
+    for i, name in enumerate(("apps/webX/a.ts", "apps/web.ts", "apps/marketing2/a.ts", "apps/api/web/a.ts", "web/a.ts", "apps/a.ts")):
+        assert _docs_only(tmp_path / str(i), _write("docs/a.md", name)) == "false", name
+
+
+def test_an_empty_diff_is_not_the_lane(tmp_path):
     assert _docs_only(tmp_path, lambda r: None) == "false"
 
 
-def test_a_push_is_never_docs_only_so_the_whole_suite_runs_after_every_merge(tmp_path):
+def test_a_push_is_never_the_lane_so_the_whole_suite_runs_after_every_merge(tmp_path):
     assert _docs_only(tmp_path, _write("docs/a.md"), event="push") == "false"
+    assert _docs_only(tmp_path / "with-a-screen", _write("docs/a.md", "apps/web/a.ts"), event="push") == "false"
 
 
 def test_a_docs_only_change_still_runs_the_suite_it_is_marked_api_true():
     """`api` stays true for a document: the docs lane is a narrower suite, not a skipped one, and the jobs' install steps key on it."""
     text = WORKFLOW.read_text(encoding="utf-8")
-    assert "docs_only=true" in text and "api=false" in text
+    assert "docs_lane=true" in text and "api=false" in text
     detect = text[text.index("- id: detect"):text.index("  test:")]
     assert detect.count('echo "api=false"') == 1, "only the frontend-only branch may set api=false"
 
@@ -271,7 +291,7 @@ def test_the_required_jobs_keep_their_names_and_the_scope_job_reports_the_new_ou
     jobs = _jobs()
     assert re.search(r"^    name: pytest — mock mode \(Python 3\.11\)$", jobs["test"], re.M)
     assert re.search(r"^    name: migration apply — real Postgres 16$", jobs["migrations"], re.M)
-    assert "docs_only: ${{ steps.detect.outputs.docs_only }}" in jobs["scope"]
+    assert "docs_lane: ${{ steps.detect.outputs.docs_lane }}" in jobs["scope"]
     # No `paths:` filter on a workflow that carries a required check (the top of the workflow says why).
     on = text[text.index("\non:\n"): text.index("\nconcurrency:")]
     assert "paths" not in on, "a path filter on a workflow carrying a required check"
@@ -279,7 +299,7 @@ def test_the_required_jobs_keep_their_names_and_the_scope_job_reports_the_new_ou
 
 def test_the_whole_suite_lint_and_coverage_steps_skip_the_docs_lane_and_nothing_else_changed_for_them():
     jobs = _jobs()
-    skipping = "needs.scope.outputs.api == 'true' && needs.scope.outputs.docs_only != 'true'"
+    skipping = "needs.scope.outputs.api == 'true' && needs.scope.outputs.docs_lane != 'true'"
     for starts in ("Lint — ruff", "Run tests (in-memory", "Coverage — report", "Keep the coverage report"):
         assert _step(jobs["test"], starts)["if"] == skipping, starts
     assert _step(jobs["migrations"], "Run real-Postgres regression suite")["if"] == skipping
@@ -291,7 +311,7 @@ def test_the_whole_suite_lint_and_coverage_steps_skip_the_docs_lane_and_nothing_
 
 def test_the_docs_lane_steps_run_the_derived_list_and_only_in_the_lane():
     jobs = _jobs()
-    lane = "needs.scope.outputs.api == 'true' && needs.scope.outputs.docs_only == 'true'"
+    lane = "needs.scope.outputs.api == 'true' && needs.scope.outputs.docs_lane == 'true'"
     mock = _step(jobs["test"], "Run the tests that read docs/")
     assert mock["if"] == lane and "tests_reading_the_docs.py --mock" in mock["text"] and 'pytest "${modules[@]}"' in mock["text"]
     pg = _step(jobs["migrations"], "Run the real-Postgres tests that read docs/")
@@ -304,4 +324,118 @@ def test_the_docs_lane_steps_run_the_derived_list_and_only_in_the_lane():
 
 def test_the_pull_request_comment_about_coverage_is_not_posted_for_a_lane_that_measured_nothing():
     step = _step(_jobs()["test"], "Post the coverage figures")
-    assert "docs_only != 'true'" in step["if"]
+    assert "docs_lane != 'true'" in step["if"]
+
+
+# ── a screen change with its notes: the lane's steps add the modules that read a frontend ─────────────────────────────────────────
+
+def test_the_lane_steps_add_the_frontend_readers_only_where_a_frontend_changed():
+    jobs = _jobs()
+    mock = _step(jobs["test"], "Run the tests that read docs/")
+    pg = _step(jobs["migrations"], "Run the real-Postgres tests that read docs/")
+    for step in (mock, pg):
+        assert "FRONTEND_CHANGED: ${{ needs.scope.outputs.web }}" in step["text"], "the step must be told whether a frontend changed"
+        assert 'if [ "$FRONTEND_CHANGED" = "true" ]; then' in step["text"]
+        assert "tests_reading_the_browser.py" in step["text"]
+    # The real-Postgres step takes only the real-Postgres readers of a frontend; the mock step takes the list as the frontend job does.
+    assert "_pg\\.py$" in pg["text"] or r"_pg\.py$" in pg["text"]
+    # The mock list may never be empty when it reaches pytest: an empty one ends the step red.
+    assert re.search(r'-eq 0 \][\s\S]*exit 1', mock["text"])
+    # The frontend job is still the frontend-only path, so the lane does not run the same modules twice.
+    assert re.search(r"^    if: needs\.scope\.outputs\.web == 'true' && needs\.scope\.outputs\.api != 'true'$", jobs["browser-contract"], re.M)
+
+
+def _run_script(step: dict) -> str:
+    """The shell of a step's `run: |`, as the runner would execute it."""
+    lines = step["text"].splitlines()
+    at = next(i for i, line in enumerate(lines) if line.strip() == "run: |")
+    indent = len(lines[at]) - len(lines[at].lstrip())
+    body = []
+    for line in lines[at + 1:]:
+        if line.strip() and len(line) - len(line.lstrip()) <= indent:
+            break
+        body.append(line[indent + 2:] if line.strip() else "")
+    return "\n".join(body)
+
+
+def _run_lane_step(tmp_path: Path, job: str, starts: str, *, frontend_changed: str, docs: str, browser: str,
+                   docs_exit: int = 0, browser_exit: int = 0) -> tuple[int, list[str], str]:
+    """Run a lane step's own shell in a throw-away `apps/api`: stand-in finders print what the test says, and a stand-in `pytest`
+    records its arguments. Returns the exit code, the modules pytest was handed (in order) and the step's output."""
+    import os
+    api = tmp_path / "api"
+    ci = api / "scripts" / "ci"
+    ci.mkdir(parents=True)
+    # `--mock` / `--pg` are accepted and ignored: which set a flag selects is the finder's own test, above. What is held here is what the
+    # STEP does with the answer.
+    (ci / "tests_reading_the_docs.py").write_text(f"import sys\nsys.stdout.write({docs!r})\nsys.exit({docs_exit})\n")
+    (ci / "tests_reading_the_browser.py").write_text(f"import sys\nsys.stdout.write({browser!r})\nsys.exit({browser_exit})\n")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    seen = tmp_path / "pytest-args"
+    (bin_dir / "pytest").write_text(f'#!/usr/bin/env bash\nprintf "%s\\n" "$@" > "{seen}"\n')
+    (bin_dir / "pytest").chmod(0o755)
+    (bin_dir / "python3").write_text(f'#!/usr/bin/env bash\nexec "{sys.executable}" "$@"\n')
+    (bin_dir / "python3").chmod(0o755)
+    step = _step(_jobs()[job], starts)
+    done = subprocess.run(["bash", "-c", _run_script(step)], cwd=api, capture_output=True, text=True,
+                          env={**os.environ, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}", "FRONTEND_CHANGED": frontend_changed})
+    handed = [a for a in (seen.read_text().splitlines() if seen.exists() else []) if a.startswith("tests/")]
+    return done.returncode, handed, done.stdout + done.stderr
+
+
+MOCK = ("test", "Run the tests that read docs/")
+PG = ("migrations", "Run the real-Postgres tests that read docs/")
+# Stand-in module names, deliberately NOT shaped like a test's name: `test_a_test_named_in_a_test_exists.py` reads every such word in a test
+# file as a claim that the test exists.
+DOCS_LIST = "tests/ledger_reader.py\ntests/both_reader.py\n"
+BROWSER_LIST = "tests/screen_reader.py\ntests/both_reader.py\ntests/columns_reader_pg.py\n"
+
+
+def test_the_mock_step_runs_the_document_readers_alone_for_a_document(tmp_path):
+    code, handed, out = _run_lane_step(tmp_path, *MOCK, frontend_changed="false", docs=DOCS_LIST, browser=BROWSER_LIST)
+    assert code == 0, out
+    assert handed == ["tests/both_reader.py", "tests/ledger_reader.py"], "a document alone must not run the frontend's readers"
+
+
+def test_the_mock_step_runs_both_sets_once_each_for_a_screen_change_with_its_notes(tmp_path):
+    code, handed, out = _run_lane_step(tmp_path, *MOCK, frontend_changed="true", docs=DOCS_LIST, browser=BROWSER_LIST)
+    assert code == 0, out
+    assert handed == ["tests/both_reader.py", "tests/columns_reader_pg.py", "tests/ledger_reader.py", "tests/screen_reader.py"], \
+        "the two derived lists, as one, with a module that reads both run once"
+
+
+@pytest.mark.parametrize("failing", ["docs", "browser"])
+def test_a_finder_that_fails_stops_the_mock_step_before_pytest(tmp_path, failing):
+    code, handed, out = _run_lane_step(tmp_path, *MOCK, frontend_changed="true", docs=DOCS_LIST, browser=BROWSER_LIST,
+                                       docs_exit=1 if failing == "docs" else 0, browser_exit=1 if failing == "browser" else 0)
+    assert code != 0 and handed == [], f"a finder that failed must end the step red with nothing run: {out}"
+
+
+def test_an_empty_mock_list_never_reaches_pytest(tmp_path):
+    """A bare `pytest` collects the whole suite, which would look like the lane and cost the budget it exists to save."""
+    code, handed, out = _run_lane_step(tmp_path, *MOCK, frontend_changed="false", docs="", browser=BROWSER_LIST)
+    assert code == 1 and handed == [], out
+
+
+def test_the_real_postgres_step_takes_only_the_real_postgres_readers_of_a_frontend(tmp_path):
+    code, handed, out = _run_lane_step(tmp_path, *PG, frontend_changed="true", docs="tests/scoped_reader_pg.py\n", browser=BROWSER_LIST)
+    assert code == 0, out
+    assert handed == ["tests/columns_reader_pg.py", "tests/scoped_reader_pg.py"]
+    code, handed, out = _run_lane_step(tmp_path / "doc", *PG, frontend_changed="false", docs="tests/scoped_reader_pg.py\n", browser=BROWSER_LIST)
+    assert code == 0 and handed == ["tests/scoped_reader_pg.py"], out
+
+
+def test_the_real_postgres_step_with_nothing_to_run_ends_clean_and_runs_nothing(tmp_path):
+    code, handed, out = _run_lane_step(tmp_path, *PG, frontend_changed="true", docs="", browser="tests/screen_reader.py\n")
+    assert code == 0 and handed == [], out
+    assert "nothing to run" in out
+
+
+def test_the_real_frontend_finder_has_real_postgres_modules_for_the_lane_to_take():
+    """Not vacuous on the real tree: the three frontend guards that need a database are in the derived list, so a screen change with its
+    notes gets them in the migration job."""
+    done = subprocess.run([sys.executable, str(API / "scripts" / "ci" / "tests_reading_the_browser.py")], capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr
+    pg = [line for line in done.stdout.splitlines() if line.endswith("_pg.py")]
+    assert "tests/test_frontend_columns_exist_pg.py" in pg, pg
