@@ -88,6 +88,7 @@ import { StateLookup } from "@/components/lookups/StateLookup";
 import { DrCr, sideOf } from "@/components/ui/drcr";
 import { formatPaiseBare } from "@/lib/money/format";
 import { Callout } from "@/components/ui/callout";
+import { Modal } from "@/components/ui/modal";
 import { objectWithLists } from "@/lib/api/shape";
 import { readOnlinePayment } from "@/lib/payments/onlinePayment";
 import { Button } from "@/components/ui/button";
@@ -893,12 +894,7 @@ function RecurringEditor({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl border border-ps-border p-6 w-full max-w-2xl shadow-xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-ps-ink">{existing ? "Edit" : "New"} Recurring Template</h3>
-          <button disabled={saving} onClick={onClose} className="text-ps-hint hover:text-ps-body"><X size={14} /></button>
-        </div>
+    <Modal title={`${existing ? "Edit" : "New"} Recurring Template`} maxWidthClass="max-w-2xl" onClose={() => { if (!saving) onClose(); }}>
         <form onSubmit={submit} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -1046,8 +1042,7 @@ function RecurringEditor({
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -1083,13 +1078,8 @@ function RecurringHistoryDrawer({
   }, [template.id]);
 
   return (
-    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl border border-ps-border p-6 w-full max-w-lg shadow-xl max-h-[85vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-1">
-          <h3 className="text-sm font-semibold text-ps-ink">{template.title}</h3>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-body"><X size={14} /></button>
-        </div>
-        <p className="text-2xs text-ps-hint mb-4">{customerName} · {FREQ_LABEL[template.frequency] ?? template.frequency}</p>
+    <Modal title={template.title} maxWidthClass="max-w-lg" onClose={onClose}
+      note={<>{customerName} · {FREQ_LABEL[template.frequency] ?? template.frequency}</>}>
 
         {loading ? (
           <TransactionListSkeleton rows={3} />
@@ -1137,8 +1127,7 @@ function RecurringHistoryDrawer({
         <div className="flex justify-end mt-5 pt-4 border-t border-ps-border">
           <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Close</button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -1443,9 +1432,7 @@ function Statements({ clientId }: { clientId: string }) {
       {customerId && <StatementDeliveryLog clientId={clientId} customerId={customerId} refreshKey={deliveryRefresh} />}
 
       {emailModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={(e) => { e.stopPropagation(); if (!emailing) setEmailModal(false); }}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-sm font-semibold text-ps-ink">Email statement to customer</h3>
+        <Modal title="Email statement to customer" onClose={() => { if (!emailing) setEmailModal(false); }}>
             <label className="block">
               <span className="text-xs font-medium text-ps-label">Recipient email</span>
               <input value={emailTo} onChange={(e) => setEmailTo(e.target.value)} placeholder="customer@example.com"
@@ -1456,14 +1443,11 @@ function Statements({ clientId }: { clientId: string }) {
               <button disabled={emailing} onClick={() => setEmailModal(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg">Cancel</button>
               <Button variant="plain" size="none" onClick={sendEmail} disabled={actionInFlight || !emailTo} className="text-xs px-4 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">{emailing ? "Sending…" : "Send"}</Button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {applyModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={(e) => { e.stopPropagation(); if (!applying) setApplyModal(false); }}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-sm font-semibold text-ps-ink">Apply credit to an invoice</h3>
+        <Modal title="Apply credit to an invoice" onClose={() => { if (!applying) setApplyModal(false); }}>
             <p className="text-xs text-ps-label">
               Available credit: <span className="font-mono font-medium">₹{stmtRupees(credit?.balance_paise ?? 0)}</span>
             </p>
@@ -1493,8 +1477,7 @@ function Statements({ clientId }: { clientId: string }) {
                 {applying ? "Applying…" : "Apply"}
               </Button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );
@@ -2533,12 +2516,7 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
   }
 
   return (
-    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4" onClick={(e) => { e.stopPropagation(); if (!busy) onClose(); }}>
-      <div className="bg-white rounded-xl border border-ps-border p-6 w-full max-w-lg shadow-xl max-h-[88vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-1">
-          <h3 className="text-sm font-semibold text-ps-ink">Online Payment · {invoice.invoice_no}</h3>
-          <button disabled={busy} onClick={onClose} className="text-ps-hint hover:text-ps-body"><X size={14} /></button>
-        </div>
+    <Modal title={`Online Payment · ${invoice.invoice_no}`} maxWidthClass="max-w-lg" onClose={() => { if (!busy) onClose(); }}>
         {gatewayOn && (
           <p className="text-2xs text-ps-hint mb-4">
             A verified payment posts a receipt automatically through the standard receipt workflow — no manual entry.
@@ -2627,8 +2605,7 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
         <div className="flex justify-end mt-5 pt-4 border-t border-ps-border">
           <button disabled={busy} onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Close</button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -2668,12 +2645,7 @@ function SendInvoiceModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl border border-ps-border p-6 w-full max-w-md shadow-xl">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-ps-ink">Send Invoice {invoice.invoice_no}</h3>
-          <button disabled={sending} onClick={onClose} className="text-ps-hint hover:text-ps-body"><X size={14} /></button>
-        </div>
+    <Modal title={`Send Invoice ${invoice.invoice_no}`} maxWidthClass="max-w-md" onClose={() => { if (!sending) onClose(); }}>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-medium text-ps-label mb-1">Recipient Email</label>
@@ -2712,8 +2684,7 @@ function SendInvoiceModal({
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -2747,12 +2718,7 @@ function RemindInvoiceModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl border border-ps-border p-6 w-full max-w-md shadow-xl">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-ps-ink">Send Payment Reminder</h3>
-          <button disabled={sending} onClick={onClose} className="text-ps-hint hover:text-ps-body"><X size={14} /></button>
-        </div>
+    <Modal title="Send Payment Reminder" maxWidthClass="max-w-md" onClose={() => { if (!sending) onClose(); }}>
         <div className="space-y-3 text-xs">
           <div className="rounded-lg bg-ps-bg border border-ps-border p-3 space-y-1">
             <div className="flex justify-between">
@@ -2807,8 +2773,7 @@ function RemindInvoiceModal({
             {sending ? "Sending…" : <><AlertTriangle size={11} /> Send Reminder</>}
           </Button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -2836,14 +2801,7 @@ function DeliveryHistoryModal({
   const lastEmail = deliveries[0]?.sent_to ?? "";
 
   return (
-    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl border border-ps-border p-6 w-full max-w-lg shadow-xl">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-ps-ink">
-            Delivery History — {invoice.invoice_no}
-          </h3>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-body"><X size={14} /></button>
-        </div>
+    <Modal title={`Delivery History — ${invoice.invoice_no}`} maxWidthClass="max-w-lg" onClose={onClose}>
         {deliveries.length === 0 ? (
           <p className="text-xs text-ps-hint text-center py-8">No delivery attempts yet.</p>
         ) : (
@@ -2892,8 +2850,7 @@ function DeliveryHistoryModal({
             Close
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -2930,12 +2887,10 @@ function DeleteInvoiceModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl border border-ps-border p-6 w-full max-w-md shadow-xl">
+    <Modal title="Delete draft invoice?" maxWidthClass="max-w-md" onClose={() => { if (!deleting) onClose(); }}>
         <div className="flex items-start gap-3 mb-4">
           <div className="p-2 rounded-full bg-state-problem-surface text-red-600 flex-shrink-0"><AlertTriangle size={16} /></div>
           <div>
-            <h3 className="text-sm font-semibold text-ps-ink">Delete draft invoice?</h3>
             <p className="text-xs text-ps-label mt-1">
               <span className="font-mono">{invoice.invoice_no}</span> will be removed from your invoice
               list. Only drafts can be deleted — issued, partially-paid, paid and cancelled invoices are
@@ -2957,8 +2912,7 @@ function DeleteInvoiceModal({
             {deleting ? "Deleting…" : <><Trash2 size={12} /> Delete Draft</>}
           </Button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -3370,12 +3324,8 @@ function Customers({
       )}
 
       {deactivateTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
-            <div className="px-6 py-5 border-b border-ps-border">
-              <h2 className="text-base font-semibold text-ps-ink">Deactivate Customer?</h2>
-            </div>
-            <div className="px-6 py-5 space-y-2">
+        <Modal title="Deactivate Customer?" maxWidthClass="max-w-md" onClose={() => { if (!deactivating) setDeactivateTarget(null); }}>
+            <div className="space-y-2">
               <p className="text-sm text-ps-label">
                 <span className="font-medium text-ps-ink">{deactivateTarget.name}</span> will no
                 longer be available for new invoices.
@@ -3385,7 +3335,7 @@ function Customers({
                 this customer later.
               </p>
             </div>
-            <div className="px-6 py-4 border-t border-ps-border flex justify-end gap-2">
+            <div className="flex justify-end gap-2">
               <button
                 onClick={() => setDeactivateTarget(null)}
                 disabled={(deactivating) || actionInFlight}
@@ -3401,26 +3351,22 @@ function Customers({
                 {deactivating ? "Deactivating…" : "Deactivate"}
               </Button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* Permanent-delete flow: checking → blocked (has records) → confirm (clean) */}
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+        <Modal title={deleteDeps === null ? "Delete customer" : deleteDeps.can_delete ? "Delete Customer?" : "Can't delete this customer"} maxWidthClass="max-w-md"
+          onClose={() => { if (!deleteBusy) { setDeleteTarget(null); setDeleteDeps(null); } }}>
             {deleteDeps === null ? (
               <LoadingRegion label="Checking for linked records" noticeClassName="px-6 justify-center text-center">
-                <div className="px-6 py-10 flex items-center justify-center gap-2 text-sm text-ps-label">
+                <div className="py-6 flex items-center justify-center gap-2 text-sm text-ps-label">
                   <Loader2 size={16} className="animate-spin" /> Checking for linked records…
                 </div>
               </LoadingRegion>
             ) : deleteDeps.can_delete ? (
               <>
-                <div className="px-6 py-5 border-b border-ps-border">
-                  <h2 className="text-base font-semibold text-ps-ink">Delete Customer?</h2>
-                </div>
-                <div className="px-6 py-5 space-y-2">
+                <div className="space-y-2">
                   <p className="text-sm text-ps-label">
                     <span className="font-medium text-ps-ink">{deleteTarget.name}</span> has no
                     linked invoices, receipts, credit notes or opening balance.
@@ -3429,7 +3375,7 @@ function Customers({
                     This permanently removes the customer and cannot be undone.
                   </p>
                 </div>
-                <div className="px-6 py-4 border-t border-ps-border flex justify-end gap-2">
+                <div className="flex justify-end gap-2">
                   <button
                     onClick={() => { setDeleteTarget(null); setDeleteDeps(null); }}
                     disabled={deleteBusy}
@@ -3448,11 +3394,7 @@ function Customers({
               </>
             ) : (
               <>
-                <div className="px-6 py-5 border-b border-ps-border flex items-center gap-2">
-                  <AlertTriangle size={18} className="text-amber-500" />
-                  <h2 className="text-base font-semibold text-ps-ink">Can&apos;t delete this customer</h2>
-                </div>
-                <div className="px-6 py-5 space-y-3">
+                <div className="space-y-3">
                   <p className="text-sm text-ps-label">
                     <span className="font-medium text-ps-ink">{deleteTarget.name}</span> has linked
                     accounting records, so it can&apos;t be permanently deleted:
@@ -3482,7 +3424,7 @@ function Customers({
                     invoices.
                   </p>
                 </div>
-                <div className="px-6 py-4 border-t border-ps-border flex justify-end gap-2">
+                <div className="flex justify-end gap-2">
                   <button disabled={actionInFlight}
                     onClick={() => { setDeleteTarget(null); setDeleteDeps(null); }}
                     className="px-4 py-2 text-sm text-ps-label rounded-lg border border-ps-border hover:bg-ps-bg"
@@ -3500,8 +3442,7 @@ function Customers({
                 </div>
               </>
             )}
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* Row actions overflow menu (viewport-anchored to dodge table clipping) */}
