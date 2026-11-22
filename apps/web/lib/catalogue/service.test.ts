@@ -3,6 +3,7 @@
 //   node --experimental-strip-types --test lib/catalogue/service.test.ts
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   serviceToLine, purchaseServiceToLine, formatServiceRate, formatServicePrice, formatServiceKind,
   serviceSecondaryLine, validateServiceForm, serviceFormToPayload, serviceToForm,
@@ -237,4 +238,87 @@ test("a recorded reorder level of zero survives a round trip through the form", 
   // clear a decision the CA made.
   assert.equal(serviceToForm(item({ kind: "good", reorder_level_units: 0 })).reorderLevel, "0");
   assert.equal(serviceToForm(item({ kind: "good" })).reorderLevel, "");
+});
+
+// ── an edit says "take this away" for a box the person emptied (POST-A-399) ─────────────────────────────────────────────
+
+const goodOnFile = (over: Partial<ServiceCatalogueItem> = {}): ServiceCatalogueItem => item({
+  kind: "good", description: "TMT bar 12mm", hsn_sac: "7214", unit: "KGS", category: "Raw Material", notes: "Buy in lots of 50",
+  purchase_price_paise: 4200000, reorder_level_units: 25, alternate_unit: "BOX", units_per_alternate: 12, ...over,
+});
+
+const goodForm = (over: Partial<ServiceFormInput> = {}): ServiceFormInput => form({
+  kind: "good", description: "TMT bar 12mm", hsn_sac: "7214", unit: "KGS", category: "Raw Material", notes: "Buy in lots of 50",
+  purchasePrice: "42000", reorderLevel: "25", alternateUnit: "BOX", unitsPerAlternate: "12", ...over,
+});
+
+test("an edit sends null for each optional box the person emptied over a value on file", () => {
+  const p = serviceFormToPayload(
+    goodForm({ description: "  ", hsn_sac: "", unit: "", category: "", notes: "", purchasePrice: "", reorderLevel: "",
+               alternateUnit: "", unitsPerAlternate: "" }),
+    CLIENT_ID, goodOnFile());
+  assert.equal(p.description, null);
+  assert.equal(p.hsn_sac, null);
+  assert.equal(p.unit, null);
+  assert.equal(p.category, null);
+  assert.equal(p.notes, null);
+  assert.equal(p.purchase_price_paise, null);
+  assert.equal(p.reorder_level_units, null);
+  assert.equal(p.alternate_unit, null);
+  // The factor is not sent with a cleared unit: the server clears the pair together.
+  assert.equal("units_per_alternate" in p && p.units_per_alternate !== undefined, false);
+  // And each of them survives JSON, which is what dropped an `undefined` before.
+  const wire = JSON.parse(JSON.stringify(p));
+  for (const key of ["description", "hsn_sac", "unit", "category", "notes", "purchase_price_paise", "reorder_level_units", "alternate_unit"]) {
+    assert.equal(wire[key], null, key);
+  }
+});
+
+test("an edit sends nothing for an empty box that had nothing on file, and the value for a box that holds one", () => {
+  const bare = goodOnFile({ description: null, hsn_sac: "", unit: null, category: null, notes: null, purchase_price_paise: null,
+                            reorder_level_units: null, alternate_unit: null, units_per_alternate: null });
+  const p = serviceFormToPayload(
+    goodForm({ description: "", hsn_sac: "", unit: "", category: "", notes: "", purchasePrice: "", reorderLevel: "",
+               alternateUnit: "", unitsPerAlternate: "" }),
+    CLIENT_ID, bare);
+  for (const key of ["description", "hsn_sac", "unit", "category", "notes", "purchase_price_paise", "reorder_level_units", "alternate_unit"] as const) {
+    assert.equal(p[key], undefined, key);
+  }
+  const kept = serviceFormToPayload(goodForm(), CLIENT_ID, goodOnFile());
+  assert.equal(kept.description, "TMT bar 12mm");
+  assert.equal(kept.hsn_sac, "7214");
+  assert.equal(kept.unit, "KGS");
+  assert.equal(kept.purchase_price_paise, 4200000);
+  assert.equal(kept.reorder_level_units, 25);
+  assert.equal(kept.alternate_unit, "BOX");
+  assert.equal(kept.units_per_alternate, 12);
+});
+
+test("a stored purchase price of zero is nothing to take away, a typed zero over a real price takes it away, and a reorder level of zero is a level", () => {
+  assert.equal(serviceFormToPayload(goodForm({ purchasePrice: "" }), CLIENT_ID, goodOnFile({ purchase_price_paise: 0 })).purchase_price_paise, undefined);
+  assert.equal(serviceFormToPayload(goodForm({ purchasePrice: "0" }), CLIENT_ID, goodOnFile()).purchase_price_paise, null);
+  // Zero is "tell me when it runs out": typed, it is sent as 0; on file and emptied, it is taken away.
+  assert.equal(serviceFormToPayload(goodForm({ reorderLevel: "0" }), CLIENT_ID, goodOnFile()).reorder_level_units, 0);
+  assert.equal(serviceFormToPayload(goodForm({ reorderLevel: "" }), CLIENT_ID, goodOnFile({ reorder_level_units: 0 })).reorder_level_units, null);
+});
+
+test("a box the form does not draw is never sent as null: a service's unit, reorder level and alternate unit", () => {
+  // A service on file with a legacy unit, a level and an alternate unit; the form draws none of those boxes for a service.
+  const onFile = item({ kind: "service", unit: "OTH", reorder_level_units: 5, alternate_unit: "BOX", units_per_alternate: 2 });
+  const p = serviceFormToPayload(form({ kind: "service", unit: "", reorderLevel: "", alternateUnit: "" }), CLIENT_ID, onFile);
+  assert.equal(p.unit, undefined);
+  assert.equal(p.reorder_level_units, undefined);
+  assert.equal(p.alternate_unit, undefined);
+});
+
+test("a create never sends null, whatever is empty", () => {
+  const p = serviceFormToPayload(goodForm({ description: "", hsn_sac: "", unit: "", category: "", notes: "", purchasePrice: "",
+                                            reorderLevel: "", alternateUnit: "", unitsPerAlternate: "" }), CLIENT_ID);
+  assert.equal(Object.values(p).some((v) => v === null), false);
+  assert.equal(Object.values(serviceFormToPayload(goodForm(), CLIENT_ID, null)).some((v) => v === null), false);
+});
+
+test("the product form hands the item it opened to the payload builder on an edit", () => {
+  const src = readFileSync(new URL("../../components/catalogue/ProductServiceFormModal.tsx", import.meta.url), "utf8");
+  assert.match(src, /serviceFormToPayload\(form, clientId, existing\)/);
 });

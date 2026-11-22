@@ -18,7 +18,7 @@ from pydantic import BaseModel, field_validator, model_validator
 
 from domain.gst import uqc as _uqc
 from domain.gst.goods_or_services import catalogue_kind
-from typing import Optional
+from typing import ClassVar, FrozenSet, Optional
 from models.iso_date import OptionalIsoDate
 
 
@@ -205,6 +205,19 @@ class ServiceCatalogueUpdateIn(BaseModel):
     """Partial edit. Any field left None is untouched; `is_active` toggles
     archive (false) / restore (true). `kind` is immutable after creation —
     archive and re-create instead."""
+    #: What an edit may CLEAR (POST-A-399, fifth slice; read through `models.clearable.patch_dict`). Every one of these is a HINT or a
+    #: soft particular of the item and never a fact a document or a return reads back: a line copies the description, the code, the
+    #: unit and the price when the item is PICKED and keeps its own afterwards (see routers/service_catalogue.py's header), so taking
+    #: one away changes what the next line starts from and nothing already written. The description, the item group and the note are
+    #: free text. The HSN/SAC code and the unit are optional on a new item, so "none recorded" is a state the item can already be in;
+    #: the unit is still judged with the alternate unit against the MERGED row, so it cannot be removed from under a conversion.
+    #: The two figures are ones whose NULL is its own answer: no purchase price recorded (a bill line then starts blank), and no
+    #: reorder level chosen (the reorder list then says no level is recorded, where a level of 0 means "tell me when it runs out").
+    #: NOT the name (required), the selling price and GST rate (the form always sends a figure), the opening stock (a posting, with
+    #: a door of its own) and the alternate-unit pair (cleared together by `_alternate_unit_problem`, as before).
+    CLEARABLE: ClassVar[FrozenSet[str]] = frozenset({
+        "description", "category", "notes", "hsn_sac", "unit", "purchase_price_paise", "reorder_level_units"})
+
     name: Optional[str] = None
     description: Optional[str] = None
     hsn_sac: Optional[str] = None

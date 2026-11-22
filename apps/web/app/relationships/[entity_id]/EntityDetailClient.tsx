@@ -12,6 +12,7 @@ import { Callout } from "@/components/ui/callout";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { errorMessage } from "@/lib/api";
+import { editedText, removedIdentifierProblem } from "@/lib/forms/editedValue";
 import { formatDate } from "@/lib/dates/format";
 import { PageHeader } from "@/components/ui/page-header";
 import { arrayOrEmpty } from "@/lib/api/shape";
@@ -21,6 +22,9 @@ import { doingOf, fetchBounded, jsonPlain, type UntypedJson } from "@/lib/api/fa
 // list (apps/web/app/relationships/page.tsx) — kept as its own copy here
 // rather than imported, because a Next.js `page.tsx` may only export the
 // framework's own reserved names (see the note beside EntityFormModal there).
+/** Why an entity's PAN or GSTIN is corrected and not removed: the server's own words (`routers/relationships.ENTITY_IDENTIFIER_WHY`). */
+const ENTITY_IDENTIFIER_WHY = "The register tells one person or company from another across the firm's clients by it.";
+
 type EntityType =
   | "Individual"
   | "Proprietorship"
@@ -406,6 +410,11 @@ export default function EntityDetailPage() {
 
   async function handleSaveEdit() {
     if (!editForm.full_name.trim()) return;
+    // POST-A-399. A PAN or a GSTIN on file is corrected and never removed by an edit (the register tells one person from another across
+    // clients by it): said here before anything is sent, in the sentence the server refuses the same edit with.
+    const removed = removedIdentifierProblem("PAN", entity?.pan, editForm.pan, ENTITY_IDENTIFIER_WHY)
+      ?? removedIdentifierProblem("GSTIN", entity?.gstin, editForm.gstin, ENTITY_IDENTIFIER_WHY);
+    if (removed) { setEditSaveError(removed); return; }
     setEditSaving(true);
     setEditSaveError(null);
     try {
@@ -414,10 +423,12 @@ export default function EntityDetailPage() {
         body: JSON.stringify({
           full_name: editForm.full_name.trim(),
           entity_type: editForm.entity_type,
-          pan: editForm.pan.trim().toUpperCase() || null,
-          gstin: editForm.gstin.trim().toUpperCase() || null,
-          email: editForm.email.trim() || null,
-          phone: editForm.phone.trim() || null,
+          // An identifier is sent when the box holds one; an empty box over nothing has nothing to say.
+          pan: editForm.pan.trim().toUpperCase() || undefined,
+          gstin: editForm.gstin.trim().toUpperCase() || undefined,
+          // An emptied email or phone that was on file is sent as null, which clears it; an untouched empty one is not sent.
+          email: editedText(editForm.email, entity?.email),
+          phone: editedText(editForm.phone, entity?.phone),
         }),
       });
       if (!json.success) throw new Error(json.error ?? "Failed to update entity");
