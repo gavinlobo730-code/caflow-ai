@@ -9,7 +9,7 @@ judgement stays with the CA, per the architecture decision that Caflow does
 not decide or suggest HSN/SAC classifications.
 """
 import re
-from typing import Optional
+from typing import Optional, ClassVar, FrozenSet
 
 from pydantic import BaseModel, field_validator
 
@@ -88,6 +88,11 @@ class FirmHsnLibraryUpdateIn(BaseModel):
     """Partial edit. Any field left None is untouched; `is_active` toggles
     retire (false) / restore (true). hsn_code and hsn_type are immutable
     after creation — retire the row and add a new one instead."""
+    #: What an edit may CLEAR (POST-A-399, fifth slice; read through `models.clearable.patch_dict`): the rate hint and the note. The
+    #: rate here is only what a new line is pre-filled with, never what a document is taxed at, so "no rate recorded" is an
+    #: answer and an emptied box means it. NOT the description, which every code has (a blank one is refused).
+    CLEARABLE: ClassVar[FrozenSet[str]] = frozenset({"gst_rate_pct", "notes"})
+
     description: Optional[str] = None
     gst_rate_pct: Optional[float] = None
     uqc: Optional[str] = None

@@ -43,6 +43,10 @@ from models.invoices import (InvoiceLineIn, PurchaseBillIn, PurchaseBillLineIn, 
                              SalesInvoiceUpdateIn)
 from tests.e2e_harness import FakeDB, seed_standard_coa, wire_e2e
 
+from routers.relationships import ENTITY_IDENTIFIERS, EntityUpdateIn
+from routers.lifecycle import LeadUpdateIn
+from models.firm_hsn_library import FirmHsnLibraryUpdateIn
+from models.service_catalogue import ServiceCatalogueUpdateIn
 FIRM = "FIRM-A"
 CALLER = {"firm_id": FIRM, "auth_user_id": "u1", "email": "ca@firma.test", "role": "Partner"}
 API = Path(__file__).resolve().parents[1]
@@ -397,6 +401,9 @@ MASTER_MODELS = [
     (VendorUpdateIn, "vendors"),
     (BankAccountUpdateIn, "bank_accounts"),
     (EmployeeUpdateIn, "payroll_employees"),   # POST-A-399, third slice
+    (EntityUpdateIn, "entities"),              # POST-A-399, fifth slice: a person or company on the related-party register
+    (LeadUpdateIn, "leads"),                   # POST-A-399, fifth slice: a prospect on the pipeline
+    (ServiceCatalogueUpdateIn, "service_catalogue"),   # POST-A-399, fifth slice: a client's product or service
 ]
 
 #: A firm's own SETTING (POST-A-399, the bank matching rule): every name it may clear is a condition or a proposal whose NULL is its own answer
@@ -404,11 +411,15 @@ MASTER_MODELS = [
 #: tests/test_an_emptied_box_on_a_bank_rule_clears_it.py.
 SETTING_MODELS = [
     (MatchingRuleUpdateIn, "bank_matching_rules"),
+    # POST-A-399, fifth slice: a code in the firm's own HSN/SAC library. Its rate is only what a new line is pre-filled with, never what a
+    # document is taxed at, so "no rate recorded" is its own answer; held by tests/test_an_emptied_box_on_an_entity_a_lead_or_a_library_code_clears_it.py.
+    (FirmHsnLibraryUpdateIn, "firm_hsn_library"),
 ]
 MASTER_FIGURES_WHOSE_NULL_IS_AN_ANSWER = {
     "credit_limit_paise",  # "no limit recorded", against 0 which is cash only (migrations 378 and 414)
     "credit_days",         # on a vendor: "no payment terms confirmed", against 0 which is due on receipt (migration 202); NOT NULL on a customer
     "treaty_rate_bps",     # unset: the s.195 engine refuses rather than assume a rate
+    "purchase_price_paise",  # on a product or service: "no purchase price recorded", so a bill line picked from it starts blank (a hint, never a posting)
 }
 
 #: A model's field and its column are not always one name; none of the six differ today.
@@ -472,7 +483,12 @@ def test_the_clearable_names_are_free_text_and_never_a_date_an_amount_or_evidenc
 #: The identifiers each master's edit refuses to empty because a return reads them: a party's GSTIN and state code, and a vendor's PAN and foreign
 #: tax number. A customer's PAN and TAN are not among them (no return reads them off a customer) and are clearable.
 MASTER_IDENTIFIERS = {CustomerUpdateIn: set(CUSTOMER_IDENTIFIERS), VendorUpdateIn: set(PARTY_IDENTIFIERS), BankAccountUpdateIn: set(),
-                      EmployeeUpdateIn: set(EMPLOYEE_IDENTIFIERS)}
+                      EmployeeUpdateIn: set(EMPLOYEE_IDENTIFIERS),
+                      # An entity's PAN and GSTIN are what the register matches one person across clients on; a lead carries no identifier.
+                      EntityUpdateIn: set(ENTITY_IDENTIFIERS), LeadUpdateIn: set(),
+                      # A product's code and unit are hints a line copies when the item is picked and then keeps as its own; no return reads
+                      # them off the item, and both are optional on a new one.
+                      ServiceCatalogueUpdateIn: set()}
 
 
 def test_a_master_clears_a_soft_particular_or_an_unstated_answer_and_never_an_identifier_a_date_or_evidence():

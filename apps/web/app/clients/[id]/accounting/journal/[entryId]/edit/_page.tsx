@@ -30,6 +30,7 @@ import { TableSkeleton } from "@/components/ui/skeleton";
 import EntryHistory from "@/components/accounting/EntryHistory";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import { useJournalApprovalRule } from "@/lib/accounting/journalApprovalRule";
+import { editedJournalReference, removedJournalReferenceProblem } from "@/lib/accounting/journalReference";
 
 function getEntryIdFromLocation(): string {
   if (typeof window === "undefined") return "";
@@ -176,12 +177,18 @@ export default function JournalEntryPageClient() {
         return true;
       }
 
+      // A reference is changed and never removed (POST-A-399): every entry carries one, so an emptied box over the one on file
+      // is said beside the button and nothing is sent. It used to be sent as null, which the server reads as "not sent": the
+      // old reference stayed and this screen said the entry was corrected.
+      const referenceRefusal = removedJournalReferenceProblem(entry?.reference_no, payload.reference_no);
+      if (referenceRefusal) { setSaveError(referenceRefusal); return false; }
+
       // A posted entry must send its FULL line set — edit_posted_journal
       // rewrites them wholesale rather than diffing.
       await api.accounting.updateJournalEntry(entryId, {
         entry_date: payload.entry_date,
         entry_type: payload.entry_type,
-        reference_no: payload.reference_no || null,
+        reference_no: editedJournalReference(payload.reference_no),
         narration: payload.narration,
         lines: payload.lines,
         // ACC-25, second half. This was the one field the editor collected and

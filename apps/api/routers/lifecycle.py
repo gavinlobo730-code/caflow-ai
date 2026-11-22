@@ -9,7 +9,7 @@ All monetary values stored in integer paise (₹1 = 100 paise) — never float.
 from core.ist_clock import ist_today
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any, Optional, ClassVar, FrozenSet
 from datetime import datetime, timezone, date
 import logging
 import uuid
@@ -28,6 +28,7 @@ from core.list_window import probe, split
 from core.db_provider import privileged_for
 from core.observability import capture_soft_failure
 from models.iso_date import OptionalIsoDate, PatchIsoDate
+from models.clearable import patch_dict
 
 _logger = logging.getLogger("caflow.lifecycle")
 
@@ -597,6 +598,11 @@ class LeadIn(BaseModel):
 
 
 class LeadUpdateIn(BaseModel):
+    #: What an edit may CLEAR (POST-A-399, fifth slice; read through `models.clearable.patch_dict`): a prospect's email and phone and
+    #: the note, which are soft and optional. NOT the company or the stage, which every lead has; NOT the source, the estimated fee,
+    #: the person it is assigned to or the expected close date, which no screen sends empty (each still reads null as "not sent").
+    CLEARABLE: ClassVar[FrozenSet[str]] = frozenset({"email", "phone", "notes"})
+
     company_name: Optional[str] = None
     contact_name: Optional[str] = None
     email: Optional[str] = None
@@ -867,7 +873,8 @@ def update_lead(
     current_user: dict = Depends(rbac("pipeline", "write")),
 ):
     db = _db()
-    update = {k: v for k, v in data.model_dump().items() if v is not None}
+    # POST-A-399. An emptied email, phone or note is cleared (written NULL); every other null still reads "not sent".
+    update = patch_dict(data)
     update["updated_at"] = datetime.now(timezone.utc).isoformat()
     named_row_ownership.member_auth_id_is_the_firms(db, current_user["firm_id"], update.get("assigned_to"))   # keyed to auth.users: see create_lead
 

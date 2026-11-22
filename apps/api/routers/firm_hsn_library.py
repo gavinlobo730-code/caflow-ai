@@ -25,6 +25,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ValidationError as PydanticValidationError
 from models.common import api_response
 from models.firm_hsn_library import FirmHsnLibraryIn, FirmHsnLibraryUpdateIn
+from models.clearable import patch_dict
 from core import db_provider
 from core.db_provider import privileged_for
 from core.list_window import split
@@ -325,7 +326,8 @@ def update_code(
     """Edit a code's description/rate hint/notes, or retire/restore via is_active."""
     try:
         firm_id = current_user.get("firm_id")
-        patch = {k: v for k, v in data.model_dump().items() if v is not None}
+        # POST-A-399. An emptied rate hint or note is cleared (written NULL); every other null still reads "not sent".
+        patch = patch_dict(data)
         if not patch:
             raise HTTPException(status_code=422, detail="No fields to update.")
         patch["updated_at"] = datetime.now(timezone.utc).isoformat()

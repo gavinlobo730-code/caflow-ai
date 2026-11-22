@@ -13,6 +13,7 @@
  * stock/quantity/valuation/SKU/barcode/warehouse concept here.
  */
 import { paiseFromRupeeInput, bpsFromPercentInput, parseQuantity } from "../money/rupeeInput.ts";
+import { editedText } from "../forms/editedValue.ts";
 import type { InvoiceLine } from "../invoices/gst";
 import type { PurchaseBillLine } from "../purchases/billEditor";
 
@@ -231,27 +232,38 @@ export function validateServiceForm(input: ServiceFormInput): ServiceFormValidat
 export interface ServicePayload {
   client_id: string;
   name: string;
-  description?: string;
+  // `null` on the seven optional particulars below is "take away what is on file", and only an EDIT sends it (see
+  // `serviceFormToPayload`'s third argument); a create never does.
+  description?: string | null;
   kind: "good" | "service";
-  hsn_sac?: string;
+  hsn_sac?: string | null;
   gst_rate_bps: number;
   default_rate_paise: number;
-  purchase_price_paise?: number;
-  category?: string;
-  notes?: string;
-  unit?: string;
+  purchase_price_paise?: number | null;
+  category?: string | null;
+  notes?: string | null;
+  unit?: string | null;
   opening_qty_units?: number;
   opening_cost_paise?: number;
   opening_balance_date?: string;
-  alternate_unit?: string;
+  alternate_unit?: string | null;
   units_per_alternate?: number;
-  reorder_level_units?: number;
+  reorder_level_units?: number | null;
 }
 
 /** Map a validated form to the API create/update body (rupees → integer paise).
  * Unit and opening balance are only sent for goods — a service line has no
- * UQC and can't carry stock, so these fields never leak onto a service payload. */
-export function serviceFormToPayload(input: ServiceFormInput, clientId: string): ServicePayload {
+ * UQC and can't carry stock, so these fields never leak onto a service payload.
+ *
+ * AN EDIT PASSES THE ITEM AS IT WAS OPENED (`onFile`), AND THAT IS WHAT LETS AN EMPTIED BOX MEAN SOMETHING (POST-A-399).
+ * Without it every blank box is `undefined`, which `JSON.stringify` drops, so the description, the item group, the
+ * note, the HSN/SAC code, the unit, the purchase price, the reorder level or the alternate unit a person had EMPTIED
+ * reached the server as nothing: the stored value stayed and the form said it was saved. With it, a box that is empty
+ * over a value that was on file is sent as `null` ("take this away"), and a box that is empty over nothing still sends
+ * nothing. A box the form does not SHOW is never sent as null: the unit, the reorder level and the alternate unit are
+ * drawn for a product only, so they clear only while the form says product. */
+export function serviceFormToPayload(input: ServiceFormInput, clientId: string,
+                                     onFile?: ServiceCatalogueItem | null): ServicePayload {
   const ratePaise = fieldPaise(input.rate);
   const purchasePaise = fieldPaise(input.purchasePrice);
   const isGood = input.kind === "good";
@@ -264,32 +276,42 @@ export function serviceFormToPayload(input: ServiceFormInput, clientId: string):
   // `Math.round(0.1 * 100)` and `bpsFromPercentInput("0.1")` disagreeing is
   // exactly the class of difference this module exists to remove.
   const gstBps = bpsFromPercentInput(String(input.gstRate || 0));
+  // On an edit, an empty box over a value on file is null; on a create (no `onFile`) it is undefined, as it always was.
+  const text = (now: string, was: string | null | undefined) => (onFile ? editedText(now, was) : now.trim() || undefined);
+  const purchaseNow = purchasePaise !== null && purchasePaise > 0 ? purchasePaise : undefined;
+  const reorderNow = isGood && reorderLevel !== null && reorderLevel >= 0 ? reorderLevel : undefined;
+  const alternateNow = isGood && input.alternateUnit.trim() && alternateFactor !== null ? input.alternateUnit.trim() : undefined;
   return {
     client_id: clientId,
     name: input.name.trim(),
-    description: input.description.trim() || undefined,
+    description: text(input.description, onFile?.description),
     kind: input.kind,
-    hsn_sac: input.hsn_sac.trim() || undefined,
+    hsn_sac: text(input.hsn_sac, onFile?.hsn_sac),
     gst_rate_bps: gstBps ?? 0,
     default_rate_paise: ratePaise !== null && ratePaise > 0 ? ratePaise : 0,
-    purchase_price_paise: purchasePaise !== null && purchasePaise > 0 ? purchasePaise : undefined,
-    category: input.category.trim() || undefined,
-    notes: input.notes.trim() || undefined,
-    unit: isGood && input.unit.trim() ? input.unit.trim() : undefined,
+    // The box shows a stored price of 0 as empty (`serviceToForm`), so only a real price on file is something to take away.
+    // An empty box and a typed 0 both read 0 here, and both mean "no price".
+    purchase_price_paise: purchaseNow ?? (onFile && purchasePaise === 0 && (onFile.purchase_price_paise ?? 0) > 0 ? null : undefined),
+    category: text(input.category, onFile?.category),
+    notes: text(input.notes, onFile?.notes),
+    unit: isGood ? text(input.unit, onFile?.unit) : undefined,
     opening_qty_units: openingQty !== null && openingQty > 0 ? openingQty : undefined,
     opening_cost_paise: openingCostPaise !== null && openingCostPaise >= 0 ? openingCostPaise : undefined,
     opening_balance_date: isGood && input.openingBalanceDate.trim() ? input.openingBalanceDate.trim() : undefined,
     // BOTH OR NEITHER, which the database CHECKs and the create door refuses:
     // a unit with no factor cannot be converted and a factor with no unit
     // converts to nothing, and either alone reads as a whole fact on a screen.
-    alternate_unit: isGood && input.alternateUnit.trim() && alternateFactor !== null
-      ? input.alternateUnit.trim() : undefined,
-    units_per_alternate: isGood && input.alternateUnit.trim() && alternateFactor !== null
-      ? alternateFactor : undefined,
+    // An alternate unit that was on file and is now an empty box (its factor emptied with it: the validator refuses a
+    // factor with no unit) is sent as null, which the server reads as "clear the pair"; it has always been able to, and
+    // no form ever asked.
+    alternate_unit: alternateNow
+      ?? (onFile && isGood && !input.alternateUnit.trim() && (onFile.alternate_unit ?? "").trim() ? null : undefined),
+    units_per_alternate: alternateNow !== undefined && alternateFactor !== null ? alternateFactor : undefined,
     // Sent when it is a number at all, INCLUDING zero — "tell me when it runs
-    // out" is a real answer and `> 0` would silently discard it.
-    reorder_level_units: isGood && reorderLevel !== null && reorderLevel >= 0
-      ? reorderLevel : undefined,
+    // out" is a real answer and `> 0` would silently discard it. An emptied box
+    // over a level on file (zero included) takes the level away.
+    reorder_level_units: reorderNow
+      ?? (onFile && isGood && input.reorderLevel.trim() === "" && onFile.reorder_level_units != null ? null : undefined),
   };
 }
 
