@@ -43,7 +43,6 @@ import {
   ChevronDown,
   ChevronUp,
   Plus,
-  X,
   CalendarDays,
   IndianRupee,
 } from "lucide-react";
@@ -62,6 +61,7 @@ import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { Callout, GapList } from "@/components/ui/callout";
 import { YearPicker } from "@/components/ui/year-picker";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { todayIstISO } from "@/lib/dates/format";
@@ -296,21 +296,26 @@ function BulkMarkFiledModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg">
-        <div className="flex items-center justify-between px-6 py-5 border-b border-ps-border">
-          <h3 className="text-base font-semibold text-ps-ink">
-            Mark {pending.length} ITR Filing{pending.length === 1 ? "" : "s"} as Filed
-          </h3>
-          <button
-            onClick={onClose}
-            className="text-ps-hint hover:text-ps-label transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="px-6 py-5 space-y-4">
+    // The shared dialog (POST-A-130). Its close (Escape, a click beside it, its ×) and its Cancel are held while the filings are out: the
+    // hand-built one could be closed over requests still in flight, which then landed on nothing.
+    <Modal title={`Mark ${pending.length} ITR Filing${pending.length === 1 ? "" : "s"} as Filed`} maxWidthClass="max-w-lg" onClose={() => { if (!loading) onClose(); }}
+      footer={<>
+        <button
+          onClick={onClose}
+          disabled={loading}
+          className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors disabled:opacity-50"
+        >
+          Cancel
+        </button>
+        <Button variant="plain" size="none"
+          onClick={handleSubmit}
+          disabled={submitDisabled}
+          className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-50 transition-colors"
+        >
+          {loading ? "Saving…" : `Confirm Filing (${remaining.length})`}
+        </Button>
+      </>}>
+        <div className="space-y-4">
           {/* Warning banner — CA Review */}
           <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-4 py-3">
             <p className="text-xs font-semibold text-state-attention uppercase tracking-wide">
@@ -394,24 +399,7 @@ function BulkMarkFiledModal({
 
           {error && <Callout tone="problem">{error}</Callout>}
         </div>
-
-        <div className="px-6 py-4 border-t border-ps-border flex gap-3 justify-end">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors"
-          >
-            Cancel
-          </button>
-          <Button variant="plain" size="none"
-            onClick={handleSubmit}
-            disabled={submitDisabled}
-            className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-50 transition-colors"
-          >
-            {loading ? "Saving…" : `Confirm Filing (${remaining.length})`}
-          </Button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -1231,21 +1219,26 @@ export default function IncomeTaxPage() {
       {/* MODAL: Add ITR Deadline                                             */}
       {/* ================================================================== */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-ps-border">
-              <h3 className="text-base font-semibold text-ps-ink">
-                Add ITR Deadline
-              </h3>
-              <button disabled={actionInFlight}
-                onClick={() => setShowAddModal(false)}
-                className="text-ps-hint hover:text-ps-label transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="px-6 py-5 space-y-4">
+        <Modal title="Add ITR Deadline" maxWidthClass="max-w-md" onClose={() => { if (!actionInFlight) setShowAddModal(false); }}
+          footer={<>
+            <button disabled={actionInFlight}
+              onClick={() => setShowAddModal(false)}
+              className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            {/* Also waits on the due-date lookup: saving mid-fetch would
+                either store a blank date or store the one left over from the
+                previously-selected client. */}
+            <Button variant="plain" size="none"
+              onClick={handleAddSubmit}
+              disabled={actionInFlight || dueDateLoading}
+              className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-50 transition-colors"
+            >
+              {addLoading ? "Adding…" : "Add Deadline"}
+            </Button>
+          </>}>
+            <div className="space-y-4">
               {/* Client */}
               <div>
                 <label className="block text-xs font-medium text-ps-body mb-1.5">
@@ -1347,27 +1340,7 @@ export default function IncomeTaxPage() {
 
               {addError && <Callout tone="problem">{addError}</Callout>}
             </div>
-
-            <div className="px-6 py-4 border-t border-ps-border flex gap-3 justify-end">
-              <button disabled={actionInFlight}
-                onClick={() => setShowAddModal(false)}
-                className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors"
-              >
-                Cancel
-              </button>
-              {/* Also waits on the due-date lookup: saving mid-fetch would
-                  either store a blank date or store the one left over from the
-                  previously-selected client. */}
-              <Button variant="plain" size="none"
-                onClick={handleAddSubmit}
-                disabled={actionInFlight || dueDateLoading}
-                className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-50 transition-colors"
-              >
-                {addLoading ? "Adding…" : "Add Deadline"}
-              </Button>
-            </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ================================================================== */}
@@ -1375,21 +1348,23 @@ export default function IncomeTaxPage() {
       {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT                            */}
       {/* ================================================================== */}
       {filedModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-ps-border">
-              <h3 className="text-base font-semibold text-ps-ink">
-                Mark ITR as Filed
-              </h3>
-              <button disabled={actionInFlight}
-                onClick={() => setFiledModal(null)}
-                className="text-ps-hint hover:text-ps-label transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="px-6 py-5 space-y-4">
+        <Modal title="Mark ITR as Filed" maxWidthClass="max-w-md" onClose={() => { if (!actionInFlight) setFiledModal(null); }}
+          footer={<>
+            <button disabled={actionInFlight}
+              onClick={() => setFiledModal(null)}
+              className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <Button variant="plain" size="none"
+              onClick={handleMarkFiled}
+              disabled={actionInFlight}
+              className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-50 transition-colors"
+            >
+              {filedLoading ? "Saving…" : "Confirm Filing"}
+            </Button>
+          </>}>
+            <div className="space-y-4">
               {/* Warning banner — CA Review */}
               <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-4 py-3">
                 <p className="text-xs font-semibold text-state-attention uppercase tracking-wide">
@@ -1446,24 +1421,7 @@ export default function IncomeTaxPage() {
 
               {filedError && <Callout tone="problem">{filedError}</Callout>}
             </div>
-
-            <div className="px-6 py-4 border-t border-ps-border flex gap-3 justify-end">
-              <button disabled={actionInFlight}
-                onClick={() => setFiledModal(null)}
-                className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors"
-              >
-                Cancel
-              </button>
-              <Button variant="plain" size="none"
-                onClick={handleMarkFiled}
-                disabled={actionInFlight}
-                className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-50 transition-colors"
-              >
-                {filedLoading ? "Saving…" : "Confirm Filing"}
-              </Button>
-            </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ================================================================== */}

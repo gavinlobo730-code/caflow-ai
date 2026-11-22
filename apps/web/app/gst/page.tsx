@@ -14,7 +14,6 @@ import {
   AlertCircle,
   Clock,
   Plus,
-  X,
   Calendar,
   FileText,
   Receipt,
@@ -289,15 +288,25 @@ function AddFilingModal({ clients, onClose, onAdded }: AddFilingModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-ps-ink">Add GST Filing</h3>
-          <button onClick={onClose} disabled={saving} aria-label="Close" className="text-ps-hint hover:text-ps-label disabled:opacity-50">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
+    // The shared dialog (POST-A-130): named, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it, its ×) is held
+    // while the save is out, and its two buttons are the shared footer, which stays in view on a short window (POST-A-395).
+    <Modal title="Add GST Filing" maxWidthClass="max-w-md" onClose={() => { if (!saving) onClose(); }}
+      footer={<>
+        <button
+          onClick={onClose}
+          disabled={saving}
+          className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg disabled:opacity-50"
+        >
+          Cancel
+        </button>
+        <Button variant="plain" size="none"
+          onClick={handleSave}
+          disabled={saving}
+          className="flex-1 bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50"
+        >
+          {saving ? "Saving…" : "Save Filing"}
+        </Button>
+      </>}>
         {err && <Callout tone="problem">{err}</Callout>}
 
         {/* Client */}
@@ -413,30 +422,11 @@ function AddFilingModal({ clients, onClose, onAdded }: AddFilingModalProps) {
           </div>
         )}
 
-        {/* Pinned to the foot of the card while it scrolls, so Save is in view on a short window (POST-A-395). */}
-        <div className="sticky -bottom-6 -mx-6 px-6 py-3 bg-white border-t border-ps-border flex gap-2">
-          <button
-            onClick={onClose}
-            disabled={saving}
-            className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <Button variant="plain" size="none"
-            onClick={handleSave}
-            disabled={saving}
-            className="flex-1 bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50"
-          >
-            {saving ? "Saving…" : "Save Filing"}
-          </Button>
-        </div>
-
         <p className="text-3xs text-amber-600 bg-state-attention-surface rounded px-2 py-1.5">
           {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
           PracticeSync never auto-submits to the GST portal. Always file manually after CA review.
         </p>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -550,18 +540,25 @@ function BatchMarkFiledModal({ selected, onClose, onSuccess }: BatchMarkFiledMod
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between px-6 py-5 border-b border-ps-border">
-          <h3 className="text-base font-semibold text-ps-ink">
-            Mark {rows.length} Filing{rows.length > 1 ? "s" : ""} as Filed
-          </h3>
-          <button onClick={onClose} disabled={submitting} aria-label="Close" className="text-ps-hint hover:text-ps-label transition-colors disabled:opacity-50">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="px-6 py-5 space-y-4 overflow-y-auto">
+    // The shared dialog (POST-A-130). Its close (Escape, a click beside it, its ×) is held while the filings are out.
+    <Modal title={`Mark ${rows.length} Filing${rows.length > 1 ? "s" : ""} as Filed`} maxWidthClass="max-w-lg" onClose={() => { if (!submitting) onClose(); }}
+      footer={<>
+        <button
+          onClick={onClose}
+          disabled={submitting}
+          className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors disabled:opacity-50"
+        >
+          Cancel
+        </button>
+        <Button variant="plain" size="none"
+          onClick={handleSubmit}
+          disabled={!canSubmit}
+          className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+        >
+          {submitting ? "Saving…" : `Confirm ${rows.length} Filing${rows.length > 1 ? "s" : ""}`}
+        </Button>
+      </>}>
+        <div className="space-y-4">
           <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-4 py-3">
             <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">CA Confirmation Required</p>
             <p className="text-xs text-state-attention mt-1">
@@ -613,25 +610,7 @@ function BatchMarkFiledModal({ selected, onClose, onSuccess }: BatchMarkFiledMod
 
           {formError && <Callout tone="problem">{formError}</Callout>}
         </div>
-
-        <div className="px-6 py-4 border-t border-ps-border flex gap-3 justify-end">
-          <button
-            onClick={onClose}
-            disabled={submitting}
-            className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <Button variant="plain" size="none"
-            onClick={handleSubmit}
-            disabled={!canSubmit}
-            className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
-          >
-            {submitting ? "Saving…" : `Confirm ${rows.length} Filing${rows.length > 1 ? "s" : ""}`}
-          </Button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -1108,16 +1087,24 @@ export default function GSTPage() {
       {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT                            */}
       {/* ================================================================== */}
       {filedModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-ps-border">
-              <h3 className="text-base font-semibold text-ps-ink">Mark {filedModal.filing.return_type} as Filed</h3>
-              <button onClick={() => setFiledModal(null)} className="text-ps-hint hover:text-ps-label transition-colors">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="px-6 py-5 space-y-4">
+        <Modal title={`Mark ${filedModal.filing.return_type} as Filed`} maxWidthClass="max-w-md" onClose={() => { if (!filedLoading) setFiledModal(null); }}
+          footer={<>
+            <button
+              onClick={() => setFiledModal(null)}
+              disabled={filedLoading}
+              className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <Button variant="plain" size="none"
+              onClick={handleMarkFiled}
+              disabled={filedLoading}
+              className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+            >
+              {filedLoading ? "Saving…" : "Confirm Filing"}
+            </Button>
+          </>}>
+            <div className="space-y-4">
               <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-4 py-3">
                 <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">CA Confirmation Required</p>
                 <p className="text-xs text-state-attention mt-1">
@@ -1162,24 +1149,7 @@ export default function GSTPage() {
 
               {filedError && <Callout tone="problem">{filedError}</Callout>}
             </div>
-
-            <div className="px-6 py-4 border-t border-ps-border flex gap-3 justify-end">
-              <button
-                onClick={() => setFiledModal(null)}
-                className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors"
-              >
-                Cancel
-              </button>
-              <Button variant="plain" size="none"
-                onClick={handleMarkFiled}
-                disabled={filedLoading}
-                className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
-              >
-                {filedLoading ? "Saving…" : "Confirm Filing"}
-              </Button>
-            </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ================================================================== */}
