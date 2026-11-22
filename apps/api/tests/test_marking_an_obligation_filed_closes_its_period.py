@@ -445,6 +445,7 @@ def test_only_update_record_moves_an_obligation_to_filed():
         ("services/compliance_obligation_service.py", "escalate"): "escalation tier columns only",
         ("services/compliance_obligation_service.py", "generate_for_engagement"): "born 'Not Started'",
         ("services/compliance_obligation_service.py", "generate_default_for_client"): "born 'Not Started'",
+        ("services/compliance_obligation_service.py", "generate_for_the_practice"): "born 'Not Started' (the practice's own payroll dates)",
     }
     found: set[tuple[str, str]] = set()
     for path in list(root.glob("**/*.py")):

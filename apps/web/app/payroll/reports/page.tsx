@@ -45,6 +45,8 @@ import { unreadSentence } from "@/lib/export/unread";
 import { toast } from "@/components/ui/use-toast";
 import { formatPaise } from "@/lib/money/format";
 import { PageHeader } from "@/components/ui/page-header";
+import { MY_PRACTICE, openedForChoice, type PickerClient } from "@/lib/payroll/openedFor";
+import { useOpenedFor } from "@/lib/payroll/useOpenedFor";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { SectionPlaceholder, PagePlaceholder } from "@/components/ui/page-frame";
@@ -1084,7 +1086,7 @@ type EmpYearRow = {
 // a hundred employees over twelve months is 1,200 payslips to render a hundred
 // lines, and that is proportional to payroll volume rather than to the table.
 
-function YearEndSummaryTab({ fyOptions }: { fyOptions: string[] }) {
+function YearEndSummaryTab({ fyOptions, clientId }: { fyOptions: string[]; clientId?: string }) {
   const [selectedFy, setSelectedFy] = useState(fyOptions[0] ?? currentFy());
 
   // THE ONE TAB THAT HAS TO BE A SERVER AGGREGATE, and the distinction is
@@ -1102,7 +1104,8 @@ function YearEndSummaryTab({ fyOptions }: { fyOptions: string[] }) {
     let cancelled = false;
     setRowsLoading(true);
     setRowsError(null);
-    api.payroll.yearEndSummary({ financial_year: selectedFy })
+    // With a client named this is that client's year (the practice's own, when the screen was opened for it: POST-A-534).
+    api.payroll.yearEndSummary({ financial_year: selectedFy, ...(clientId ? { client_id: clientId } : {}) })
       .then(res => {
         if (cancelled) return;
         if (!res.success) throw new Error(res.error || "Could not load the year");
@@ -1115,7 +1118,7 @@ function YearEndSummaryTab({ fyOptions }: { fyOptions: string[] }) {
       })
       .finally(() => { if (!cancelled) setRowsLoading(false); });
     return () => { cancelled = true; };
-  }, [selectedFy]);
+  }, [selectedFy, clientId]);
 
   const empRows: EmpYearRow[] = rows.map(r => ({
     emp: r.employee ? ({ ...r.employee } as Employee) : undefined,
@@ -1418,6 +1421,11 @@ export default function PayrollReportsPage() {
   const [clientNames, setClientNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // OPENED FOR ONE CLIENT (POST-A-534): `?client=` from a client's own Payroll page. Every tab then reads that one client's
+  // employees and runs, which is the only way the firm's own practice is reported on here: the firm-wide lists leave it out
+  // (it is not one of the firm's clients), and the server returns its rows to a Partner who names it. See lib/payroll/openedFor.
+  const { openedFor, practiceId, settled } = useOpenedFor();
+  const [narrowedTo, setNarrowedTo] = useState<{ id: string; name: string } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1430,19 +1438,30 @@ export default function PayrollReportsPage() {
       // the CSV would go out short with no error anywhere. `payroll_runs` is the one that passes 1000 first: it is a row
       // per client per month, so a fifty-client practice crosses it inside two years. The server answers runs newest
       // month first.
+      const clientsRead = selectAll(() => sb.from("clients").select("id, client_name").eq("firm_id", firmId).eq("is_internal", false).order("id"));
+      // Which client the address names, if it names one this screen can open: one of the firm's clients, or the practice
+      // (the server's answer, never a guess). Anything else is ignored and the screen opens as it does from the menu.
+      const opened = openedFor
+        ? openedForChoice(((await clientsRead).data ?? []) as PickerClient[], openedFor, practiceId)
+        : null;
+      const only = opened?.choose ?? undefined;
       const [empRes, runsRes, clientsRes] = await Promise.all([
-        api.payroll.listEmployees(undefined, true) as Promise<ApiResp<Employee[]>>,
-        api.payroll.listRuns() as Promise<ApiResp<PayrollRun[]>>,
-        selectAll(() => sb.from("clients").select("id, client_name").eq("firm_id", firmId).eq("is_internal", false).order("id")),
+        api.payroll.listEmployees(only, true) as Promise<ApiResp<Employee[]>>,
+        api.payroll.listRuns(only) as Promise<ApiResp<PayrollRun[]>>,
+        clientsRead,
       ]);
       if (!empRes?.success || !Array.isArray(empRes.data)) throw new Error(empRes?.error ?? "Could not load the employees.");
       if (!runsRes?.success || !Array.isArray(runsRes.data)) throw new Error(runsRes?.error ?? "Could not load the payroll runs.");
       // A missing client name is not worth failing the page for — the run is
       // still selectable, it just reads "Client — August 2026".
-      setClientNames(Object.fromEntries(
+      const names: Record<string, string> = Object.fromEntries(
         ((clientsRes.data ?? []) as { id: string; client_name: string }[])
           .map(c => [c.id, c.client_name]),
-      ));
+      );
+      // The practice is in no client list, so it is named here when the screen was opened for it.
+      if (opened?.isPractice && only) names[only] = MY_PRACTICE;
+      setClientNames(names);
+      setNarrowedTo(only ? { id: only, name: names[only] ?? "this client" } : null);
 
       const empList: Employee[] = empRes.data;
       const runList: PayrollRun[] = runsRes.data;
@@ -1464,9 +1483,11 @@ export default function PayrollReportsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [openedFor, practiceId]);
 
-  useEffect(() => { load(); }, [load]);
+  // Not before the practice question is answered: the first read is one client's rows or the firm's, and a read made
+  // early would draw the firm's clients and then replace them.
+  useEffect(() => { if (settled) load(); }, [load, settled]);
 
   if (loading) {
     return (
@@ -1515,6 +1536,13 @@ export default function PayrollReportsPage() {
           className="mb-6"
         />
 
+        {narrowedTo && (
+          <p data-reports-for={narrowedTo.id} className="mb-4 text-xs text-ps-label">
+            Showing <span className="font-medium text-ps-ink">{narrowedTo.name}</span> only.{" "}
+            <a href="/payroll/reports/" className="text-brand hover:underline">Show every client</a>
+          </p>
+        )}
+
         <Tabs defaultValue="payslip-summary">
           <TabsList className="mb-6 flex-wrap h-auto gap-1">
             <TabsTrigger value="payslip-summary" className="flex items-center gap-1.5 text-xs">
@@ -1559,7 +1587,7 @@ export default function PayrollReportsPage() {
             <TdsProjectionTab employees={employees} fyOptions={fyOptions} />
           </TabsContent>
           <TabsContent value="year-end">
-            <YearEndSummaryTab fyOptions={fyOptions} />
+            <YearEndSummaryTab fyOptions={fyOptions} clientId={narrowedTo?.id} />
           </TabsContent>
           <TabsContent value="statutory-calendar">
             <StatutoryDuesCalendarTab />

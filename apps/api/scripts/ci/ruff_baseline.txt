@@ -130,7 +130,6 @@ models/payroll.py :: B904 :: ApplyStructureIn._iso_date :: 1
 repositories/assignment_repository.py :: F401 :: <module> :: 1
 repositories/assignment_rule_repository.py :: C901 :: AssignmentRuleRepository.evaluate_rules :: 18
 repositories/automation_repository.py :: F401 :: <module> :: 1
-repositories/compliance_records_repository.py :: C901 :: ComplianceRecordsRepository.find_all :: 17
 repositories/compliance_records_repository.py :: F401 :: <module> :: 1
 repositories/escalation_rule_repository.py :: F401 :: <module> :: 1
 repositories/notifications_repository.py :: F401 :: <module> :: 1

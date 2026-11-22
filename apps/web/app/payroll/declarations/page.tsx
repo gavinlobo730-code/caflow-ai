@@ -31,6 +31,8 @@ import { selectAll } from "@/lib/supabase/selectAll";
 import { CLIENT_LIST_UNREAD } from "@/lib/clients/clientListUnread";
 import { istToday } from "@/lib/dateMath";
 import { LoadingRegion } from "@/components/ui/skeleton";
+import { openedForChoice } from "@/lib/payroll/openedFor";
+import { useOpenedFor } from "@/lib/payroll/useOpenedFor";
 
 type Client = { id: string; client_name: string };
 type Employee = { id: string; name: string };
@@ -83,6 +85,18 @@ export default function DeclarationsPage() {
   const [clientsFailed, setClientsFailed] = useState(false);
   const [employees, setEmployees] = useState<Record<string, string>>({});
   const [clientId, setClientId] = useState("");
+  // OPENED FOR ONE CLIENT (POST-A-534): `?client=` from a client's own Payroll page. The firm's own practice is in no list of
+  // clients, so it is offered here only when the screen was opened for it, by a Partner; see lib/payroll/openedFor.
+  const { openedFor, practiceId } = useOpenedFor();
+  const opened = openedForChoice(clients, openedFor, practiceId);
+  const openedChoice = opened.choose;
+  // Once: the first time the address's client can be chosen. After that the picker is the CA's.
+  const [arrived, setArrived] = useState(false);
+  useEffect(() => {
+    if (arrived || !openedChoice) return;
+    setClientId(openedChoice);
+    setArrived(true);
+  }, [arrived, openedChoice]);
   const [fy, setFy] = useState(financialYears[0]);
   const [rows, setRows] = useState<DeclarationRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -148,7 +162,7 @@ export default function DeclarationsPage() {
         <CardContent className="pt-5 flex flex-wrap items-end gap-3">
           <div className="min-w-[260px]">
             <label className="block text-xs text-ps-label mb-1">Client</label>
-            <ClientLookup ariaLabel="Client" clients={clients} value={clientId} onChange={setClientId} />
+            <ClientLookup ariaLabel="Client" clients={opened.clients} value={clientId} onChange={setClientId} />
             {clientsFailed && <p role="alert" className="mt-1 max-w-[260px] text-2xs text-state-problem">{CLIENT_LIST_UNREAD}</p>}
           </div>
           <div>

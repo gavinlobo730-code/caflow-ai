@@ -146,6 +146,20 @@ def test_naming_the_practice_is_how_a_partner_reaches_its_roster(firm):
     assert [r["id"] for r in roster] == ["e000003"]
 
 
+def test_the_runs_list_leaves_the_practice_out_until_a_partner_names_it(firm):
+    """The Reports screen opened for the practice reads `list_runs` and `list_employees` with the practice named (POST-A-534):
+    named, the answer is the practice's runs and nobody else's; with no client named, the practice's runs are not among them."""
+    firm._tables["payroll_runs"] = [
+        {"id": "r000001", "firm_id": FIRM, "client_id": A_CLIENT, "month": "2026-08", "status": "finalized"},
+        {"id": "r000002", "firm_id": FIRM, "client_id": THE_PRACTICE, "month": "2026-08", "status": "finalized"},
+        {"id": "r000003", "firm_id": FIRM, "client_id": THE_PRACTICE, "month": "2026-09", "status": "draft"},
+    ]
+    across = pr.list_runs(client_id=None, current_user=PARTNER)["data"]
+    assert [r["id"] for r in across] == ["r000001"], "a run of the firm's own payroll is in the list across clients"
+    named = pr.list_runs(client_id=THE_PRACTICE, current_user=PARTNER)["data"]
+    assert [r["id"] for r in named] == ["r000003", "r000002"], "the practice's runs, newest month first"
+
+
 #: A payroll route that names no client, run or employee and is NOT a list across clients, with why. Read on 21-11-2026.
 NOT_A_LIST_ACROSS_CLIENTS: dict[str, str] = {
     "employee_import_template": "a blank CSV template: the column headings and no row of anybody's",

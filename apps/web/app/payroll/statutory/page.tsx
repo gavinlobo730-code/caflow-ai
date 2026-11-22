@@ -42,6 +42,8 @@ import { formatPaise } from "@/lib/money/format";
 import { istToday } from "@/lib/dateMath";
 import { CLIENT_LIST_UNREAD } from "@/lib/clients/clientListUnread";
 import { SectionPlaceholder } from "@/components/ui/page-frame";
+import { openedForChoice } from "@/lib/payroll/openedFor";
+import { useOpenedFor } from "@/lib/payroll/useOpenedFor";
 
 type Client = { id: string; client_name: string };
 
@@ -57,6 +59,18 @@ export default function StatutoryPage() {
   // A client list that could not be read is not a firm with no clients (POST-A-515 (d)): the picker says so.
   const [clientsFailed, setClientsFailed] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState("");
+  // OPENED FOR ONE CLIENT (POST-A-534): `?client=` from a client's own Payroll page. The firm's own practice is in no list of
+  // clients, so it is offered here only when the screen was opened for it, by a Partner; see lib/payroll/openedFor.
+  const { openedFor, practiceId } = useOpenedFor();
+  const opened = openedForChoice(clients, openedFor, practiceId);
+  const openedChoice = opened.choose;
+  // Once: the first time the address's client can be chosen. After that the picker is the CA's.
+  const [arrived, setArrived] = useState(false);
+  useEffect(() => {
+    if (arrived || !openedChoice) return;
+    setSelectedClientId(openedChoice);
+    setArrived(true);
+  }, [arrived, openedChoice]);
   const [selMonth, setSelMonth] = useState(now.getMonth() + 1);
   const [selYear, setSelYear] = useState(now.getFullYear());
   const [summary, setSummary] = useState<StatutorySummary | null>(null);
@@ -166,7 +180,7 @@ export default function StatutoryPage() {
               <div className="flex flex-wrap gap-4 items-end">
                 <div>
                   <label className="block text-xs font-medium text-ps-body mb-1">Client</label>
-                  <ClientLookup clients={clients} value={selectedClientId}
+                  <ClientLookup clients={opened.clients} value={selectedClientId}
                     onChange={setSelectedClientId} ariaLabel="Client"
                     placeholder="Select client…" />
                   {clientsFailed && <p role="alert" className="mt-1 max-w-[260px] text-2xs text-state-problem">{CLIENT_LIST_UNREAD}</p>}

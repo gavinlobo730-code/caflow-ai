@@ -221,7 +221,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE BACKEND INSTALLS FROM A HASH-PINNED LOCK AND THE IMAGE HOLDS NO TEST SUITE
 - THE SHARED PAGER RETRIES A READ, BUILDS A QUERY AFRESH FOR EVERY PAGE, AND READS IN A STATED ORDER THAT ENDS IN `id`
 - A DOCS-ONLY CHANGE RUNS ONLY THE TESTS THAT READ THE DOCUMENTS, DERIVED AND NEVER LISTED, AND A PUSH TO `main` RUNS EVERYTHING
-### `docs/design-record/filing-and-compliance.md` (10 entries): Filing to government portals, trackers and the period lock
+### `docs/design-record/filing-and-compliance.md` (11 entries): Filing to government portals, trackers and the period lock
 - A TIED CHALLAN IS CHECKED AGAINST THE ACCOUNT IT CLEARS, AND THE CHALLANS NOBODY HAS TIED ARE A WORKLIST THAT FLAGS A MONTH'S WAIT
 
 - AND THE PRODUCT WORDS THAT POSITION ONCE
@@ -233,6 +233,8 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A WRONG TDS CHALLAN IS CORRECTED BY RETRACTING IT AND RECORDING IT AGAIN, NEVER EDITED IN PLACE, AND A MONTH CLOSED
 - A TAX AUDIT RECORDED AS COMPLETED OR FILED DOES NOT CARRY A DAY THAT HAS NOT COME
 - A NEW MCA FILING NAMES THE CLIENT'S COMPANY AND A YEAR THE CALENDAR HOLDS OPEN, AND BOTH COME FROM THE SERVER
+- THE FIRM'S OWN PAYROLL HAS ITS DATES ON THE PRACTICE'S OWN RECORD, AND NO LIST ACROSS THE FIRM'S CLIENTS CARRIES THEM
+
 ### `docs/design-record/fixed-assets-and-inventory.md` (24 entries): Fixed assets, capital work in progress, stock costing, ageing, godowns, batches and counts
 
 - AN ASSET UNDER CONSTRUCTION IS NOT IN THE REGISTER, AND THAT IS THE FIX

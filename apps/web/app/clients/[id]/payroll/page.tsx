@@ -13,6 +13,8 @@ import { cn } from "@/lib/utils";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { supabase } from "@/lib/supabase/client";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
+import Link from "next/link";
+import { openedForHref } from "@/lib/payroll/openedFor";
 import { openedAt } from "@/lib/accounting/sourceDocument";
 import CsvImportModal from "@/components/LazyCsvImportModal";
 import type { ImportRow } from "@/components/CsvImportModal";
@@ -2327,7 +2329,7 @@ function PayrollEnablementLine({ clientId }: { clientId: string }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function PayrollPage() {
-  const { clientId } = useClientNav();
+  const { clientId, client: openClient } = useClientNav();
   const [tab, setTab] = useState<Tab>("inputs");
   const [openDoc, setOpenDoc] = useState<string | null>(null);
   const [openDocTab, setOpenDocTab] = useState<string | null>(null);
@@ -2393,6 +2395,18 @@ export default function PayrollPage() {
           className="mb-3"
         />
         <PayrollEnablementLine clientId={clientId} />
+        {/* POST-A-534. The firm's own practice is in no list of the firm's clients, so the firm-level payroll screens, whose
+            pickers are those lists, could not be opened for it. Each takes `?client=` and offers the practice only when opened
+            for it (lib/payroll/openedFor); these links are the way in, and they are shown on the practice's own page alone. */}
+        {openClient?.is_internal === true && (
+          <p data-own-payroll-screens className="mb-3 text-xs text-ps-label">
+            For the firm&apos;s own payroll:{" "}
+            <Link className="text-brand hover:underline" href={openedForHref("/payroll/attendance/", clientId)}>Attendance</Link>{" · "}
+            <Link className="text-brand hover:underline" href={openedForHref("/payroll/statutory/", clientId)}>Statutory position</Link>{" · "}
+            <Link className="text-brand hover:underline" href={openedForHref("/payroll/declarations/", clientId)}>Investment declarations</Link>{" · "}
+            <Link className="text-brand hover:underline" href={openedForHref("/payroll/reports/", clientId)}>Reports</Link>
+          </p>
+        )}
         <div className="flex items-center gap-0.5">
           {TABS.map(t => (
             <button

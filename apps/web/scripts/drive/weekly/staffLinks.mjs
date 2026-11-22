@@ -78,6 +78,10 @@ export const scenarios = [
       assert.equal(await rowsOf(page, "employee-only").count(), 1);
       assert.match(await rowsOf(page, "employee-only").innerText(), /No sign-in on Team[\s\S]*Meera Iyer/);
       assert.equal(await panel(page).getByRole("link", { name: "Open the firm's payroll" }).getAttribute("href"), `/clients/${env.clientId}/payroll/`);
+      // ...and the dates that payroll owes are the practice's own, so the way to them is beside it and leads to the practice's own
+      // Compliance page, never to a calendar across the firm's clients (POST-A-534).
+      assert.equal(await panel(page).locator("[data-own-payroll-dates]").getAttribute("href"), `/clients/${env.clientId}/compliance/`);
+      assert.equal((await panel(page).locator("[data-own-payroll-dates]").innerText()).trim(), "Its statutory dates");
 
       // The Team list itself marks who is on the payroll, by the link and by nothing else.
       const teamRow = (name) => page.locator("table").first().locator("tr", { hasText: name });

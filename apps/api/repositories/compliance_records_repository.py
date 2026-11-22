@@ -38,6 +38,49 @@ def _mock_in_scope(record: dict, firm_id: Optional[str], client_id: Optional[str
     return True
 
 
+def _the_practice(firm_id: Optional[str], client_id: Optional[str], include_practice: bool) -> Optional[str]:
+    """The id of the firm's own practice when a read must LEAVE ITS ROWS OUT, else None (POST-A-534).
+
+    The practice is not one of the firm's clients (guardrail G2), and since 22-11-2026 it has compliance rows of its own:
+    the deposits its own payroll owes. A read that names NO client is a read across the firm's clients, so it leaves the
+    practice's rows out, for everybody, here at the one place every such read passes through (the lists, the calendar, the
+    dashboards, the counts the copilot is given, the risks derived from an overdue row, the nightly sweep). The practice's
+    rows are read by NAMING the practice (`client_id`), where the door asks whose it is, or by a caller that says
+    `include_practice=True` and has a reason written beside it. No firm, a named client, or no practice: nothing to leave out.
+    """
+    if client_id or include_practice or not firm_id:
+        return None
+    from services.internal_client_service import get_internal_client_id
+    practice = get_internal_client_id(firm_id)
+    return str(practice) if practice else None
+
+
+def _mock_find_all(firm_id, client_id, practice, status, compliance_type, exclude_statuses, due_from, due_to) -> list[dict]:
+    """The mock twin of `find_all`'s query, filter for filter.
+
+    Mirrors the real branch's unconditional `.is_("deleted_at", "null")` — a soft-deleted row
+    (compliance_obligation_service's GST-frequency reconciliation is the first writer) must not keep reappearing as
+    "existing" on the next generation run, in mock mode any more than in production."""
+    records = [r for r in MOCK_COMPLIANCE_RECORDS if not r.get("deleted_at")]
+    if firm_id:
+        records = [r for r in records if r.get("firm_id") == firm_id]
+    if client_id:
+        records = [r for r in records if r["client_id"] == client_id]
+    if practice:
+        records = [r for r in records if str(r.get("client_id")) != practice]
+    if status:
+        records = [r for r in records if r["status"] == status]
+    if compliance_type:
+        records = [r for r in records if r["compliance_type"] == compliance_type]
+    if exclude_statuses:
+        records = [r for r in records if r.get("status") not in exclude_statuses]
+    if due_from:
+        records = [r for r in records if str(r.get("due_date") or "")[:10] >= due_from]
+    if due_to:
+        records = [r for r in records if str(r.get("due_date") or "")[:10] <= due_to]
+    return records
+
+
 class ComplianceRecordsRepository(BaseRepository[dict]):
 
     def find_by_id(self, id: str) -> Optional[dict]:
@@ -56,33 +99,17 @@ class ComplianceRecordsRepository(BaseRepository[dict]):
         exclude_statuses: Optional[list[str]] = None,
         due_from: Optional[str] = None,
         due_to: Optional[str] = None,
+        include_practice: bool = False,
     ) -> list[dict]:
         """`due_from` / `due_to` (ISO dates, both inclusive) bound the read by due
         date, so a screen that shows one month asks for one month and what crosses
         the wire is proportional to the answer, not to every year the firm has
-        ever generated. Absent means unbounded — every earlier caller."""
+        ever generated. Absent means unbounded — every earlier caller.
+
+        WITH NO CLIENT NAMED THE PRACTICE'S OWN ROWS ARE LEFT OUT (`_the_practice`, POST-A-534)."""
+        practice = _the_practice(firm_id, client_id, include_practice)
         if _USE_MOCK:
-            # Mirrors the real branch's unconditional `.is_("deleted_at",
-            # "null")` — a soft-deleted row (compliance_obligation_service's
-            # GST-frequency reconciliation is the first writer) must not keep
-            # reappearing as "existing" on the next generation run, in mock
-            # mode any more than in production.
-            records = [r for r in MOCK_COMPLIANCE_RECORDS if not r.get("deleted_at")]
-            if firm_id:
-                records = [r for r in records if r.get("firm_id") == firm_id]
-            if client_id:
-                records = [r for r in records if r["client_id"] == client_id]
-            if status:
-                records = [r for r in records if r["status"] == status]
-            if compliance_type:
-                records = [r for r in records if r["compliance_type"] == compliance_type]
-            if exclude_statuses:
-                records = [r for r in records if r.get("status") not in exclude_statuses]
-            if due_from:
-                records = [r for r in records if str(r.get("due_date") or "")[:10] >= due_from]
-            if due_to:
-                records = [r for r in records if str(r.get("due_date") or "")[:10] <= due_to]
-            return records
+            return _mock_find_all(firm_id, client_id, practice, status, compliance_type, exclude_statuses, due_from, due_to)
 
         def make_query():
             q = _get_db().table("compliance_records").select("*").is_("deleted_at", "null")
@@ -90,6 +117,8 @@ class ComplianceRecordsRepository(BaseRepository[dict]):
                 q = q.eq("firm_id", firm_id)
             if client_id:
                 q = q.eq("client_id", client_id)
+            if practice:
+                q = q.neq("client_id", practice)
             if status:
                 q = q.eq("status", status)
             if compliance_type:
@@ -117,14 +146,18 @@ class ComplianceRecordsRepository(BaseRepository[dict]):
 
     def count_all(self, firm_id: Optional[str] = None, client_id: Optional[str] = None) -> int:
         """Lightweight row count (no full-row fetch) — for metrics that need a
-        total across the firm's entire history without paying to transfer it."""
+        total across the firm's entire history without paying to transfer it.
+        With no client named, the practice's own rows are not counted (`_the_practice`)."""
         if _USE_MOCK:
             return len(self.find_all(firm_id=firm_id, client_id=client_id))
+        practice = _the_practice(firm_id, client_id, False)
         query = _get_db().table("compliance_records").select("id", count="exact").is_("deleted_at", "null")
         if firm_id:
             query = query.eq("firm_id", firm_id)
         if client_id:
             query = query.eq("client_id", client_id)
+        if practice:
+            query = query.neq("client_id", practice)
         result = query.execute()
         return result.count or 0
 

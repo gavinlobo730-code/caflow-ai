@@ -117,6 +117,17 @@ export function StaffLinksPanel({ links, side, onChanged }: {
           {side === "team"
             ? <Link href={`/clients/${practiceId}/payroll/`} className="text-brand hover:underline">Open the firm&apos;s payroll</Link>
             : <Link href="/team/" className="text-brand hover:underline">Open Team</Link>}
+          {/* The dates the firm's OWN payroll owes (its EPF, ESI and salary-TDS deposits and its quarterly salary statement) are the
+              practice's, so no calendar across the firm's clients shows them: they are on the practice's own Compliance page
+              (POST-A-534). Offered only while the practice's payroll is on, which is when they are generated. */}
+          {roster.payroll_enabled !== false && (
+            <>
+              {" · "}
+              <Link href={`/clients/${practiceId}/compliance/`} data-own-payroll-dates className="text-brand hover:underline">
+                Its statutory dates
+              </Link>
+            </>
+          )}
         </p>
         {roster.payroll_enabled === false && (
           <p data-payroll-off className="text-xs text-ps-label mt-1">
