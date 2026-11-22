@@ -7,12 +7,12 @@
  *  payment journal, so a second copy of it is a second way to post real money. */
 
 import { useState, useEffect } from "react";
-import { X } from "lucide-react";
 import { api, type ApiResp } from "@/lib/api";
 import { todayIstISO } from "@/lib/dates/format";
 import { fmtRs } from "@/components/payroll/shared";
 import { Callout } from "@/components/ui/callout";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { LoadingRegion } from "@/components/ui/skeleton";
@@ -85,12 +85,8 @@ export function DisburseModal({ run, onClose, onDone }: {
   const inputCls = "w-full border rounded-lg px-3 py-2 text-sm";
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-ps-ink">Mark Payroll Paid — {run.month}</h3>
-          <button disabled={saving} onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
-        </div>
+    // POST-A-130: the shared dialog (named, Escape, Tab kept inside, focus given back). While the payment is being recorded it stays open.
+    <Modal title={`Mark Payroll Paid — ${run.month}`} maxWidthClass="max-w-md" onClose={() => { if (!saving) onClose(); }}>
         <div className="bg-ps-bg rounded-lg px-3 py-2 text-xs text-ps-label">
           Posts <span className="font-medium">Dr Net Salary Payable / Cr Bank</span> for the net pay
           <span className="font-mono"> {netStr}</span>, clearing the payable raised at finalization.
@@ -129,7 +125,6 @@ export function DisburseModal({ run, onClose, onDone }: {
             {saving ? "Recording…" : "Confirm Payment"}
           </Button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

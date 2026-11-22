@@ -63,7 +63,7 @@ test("the Escape branch asks isTop BEFORE it stops the event or closes", () => {
 test("the Modal takes a footer and keeps it at the bottom of the panel", () => {
   const src = read("components/ui/modal.tsx");
   assert.match(src, /footer\?: ReactNode/);
-  assert.match(src, /\{footer && \(\s*<div className="sticky bottom-0[^"]*">\s*\{footer\}/);
+  assert.match(src, /\{footer && \(\s*<div className="sticky -bottom-4[^"]*">\s*\{footer\}/);
 });
 
 test("the bank's entry dialog and the three it opens are the shared Modal", () => {
@@ -111,7 +111,12 @@ test("the fixed-asset drawers ignore Escape, the backdrop and Cancel while a sav
 
 test("the Modal's footer bar is flush with the panel's bottom edge, which a plain -mb-4 cannot do under space-y-3", () => {
   const src = read("components/ui/modal.tsx");
-  assert.match(src, /sticky bottom-0 -mx-4 !-mb-4/);
+  // The margin gives the bar the panel's 16px of padding; the sticky offset must give it the same 16px, or `bottom-0` holds the bar at the
+  // panel's CONTENT edge and takes the margin straight back (the white strip under the bar, measured in a browser on 22-11-2026; the weekly
+  // drive `money-dialogs` measures the bar against the panel).
+  assert.match(src, /sticky -bottom-4 -mx-4 !-mb-4/);
+  assert.doesNotMatch(src, /sticky bottom-0 -mx-4/, "the bar is held 16px above the panel's edge again");
+  assert.match(src, /bg-white rounded-xl shadow-xl p-4 space-y-3/, "the bar's -4 offsets are the panel's p-4: change them together");
   assert.match(src, /footer \? " scroll-pb-16" : ""/);
 });
 

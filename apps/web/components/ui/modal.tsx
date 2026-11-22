@@ -111,9 +111,13 @@ export function Modal({
         {children}
         {/* `!-mb-4`: the panel's `space-y-3` sets margin-bottom: 0 on every sibling after the first and outranks a plain `-mb-4`, which left the bar 16px
             above the panel's bottom edge with a white strip beneath it. `scroll-pb-16` keeps a control focused near the end of a scrolled dialog from
-            hiding behind the bar. */}
+            hiding behind the bar.
+            `-bottom-4`, not `bottom-0`: a sticky box is held inside the panel's CONTENT edge, which is the panel's 16px of padding above its
+            bottom edge, so `bottom-0` pulled the bar back up by exactly the 16px the margin had just given it and the white strip stayed
+            (measured on Add Loan, 22-11-2026: bar bottom 798.5, panel bottom 814.5). Minus the padding, the bar sits on the panel's edge at
+            rest and while the body scrolls beneath it. */}
         {footer && (
-          <div className="sticky bottom-0 -mx-4 !-mb-4 flex items-center justify-end gap-2 rounded-b-xl border-t border-ps-border bg-white px-4 py-3">
+          <div className="sticky -bottom-4 -mx-4 !-mb-4 flex items-center justify-end gap-2 rounded-b-xl border-t border-ps-border bg-white px-4 py-3">
             {footer}
           </div>
         )}

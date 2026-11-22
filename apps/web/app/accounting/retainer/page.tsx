@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import {
   Plus, Pencil, FileText, AlertCircle, CheckCircle2,
-  IndianRupee, Users, ExternalLink, X, Power,
+  IndianRupee, Users, ExternalLink, Power,
 } from "lucide-react";
 import { formatPaise } from "@/lib/services/formatting";
 import { getClients } from "@/lib/data/clients";
@@ -14,6 +14,7 @@ import { paiseFromRupeeInput, rupeeInputFromPaise, bpsFromPercentInput } from "@
 
 import { Callout } from "@/components/ui/callout";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
@@ -133,17 +134,8 @@ function SetRetainerModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-5 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-ps-ink">
-            {existing ? "Edit" : "Set"} Retainer — {client.client_name}
-          </h3>
-          <button disabled={saving} onClick={onClose} className="text-ps-hint hover:text-ps-label" aria-label="Close">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
+    // POST-A-130: the shared dialog (named, Escape, Tab kept inside, focus given back). It stays open while the retainer is being saved.
+    <Modal title={`${existing ? "Edit" : "Set"} Retainer — ${client.client_name}`} maxWidthClass="max-w-md" onClose={() => { if (!saving) onClose(); }}>
         <div>
           <label htmlFor="retainer-fee" className="text-xs font-medium text-ps-body block mb-1">Fee per period (₹)</label>
           <div className="relative">
@@ -228,8 +220,7 @@ function SetRetainerModal({
             {saving ? "Saving…" : "Save Retainer"}
           </Button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

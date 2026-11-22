@@ -23,6 +23,7 @@ import type { Account, Client } from "@/lib/types";
 import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
 import { Callout } from "@/components/ui/callout";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/states";
@@ -629,17 +630,8 @@ export default function RecurringPage() {
       )}
 
       {modalOpen && (
-        <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-ps-ink">
-                {editing ? "Edit" : "New"} recurring journal
-              </h3>
-              <button onClick={() => setModalOpen(false)} disabled={busyId === "save"} className="text-ps-hint hover:text-ps-label disabled:opacity-50" aria-label="Close">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
+        // POST-A-130: the shared dialog (named, Escape, Tab kept inside, focus given back). It stays open while the template is being saved.
+        <Modal title={`${editing ? "Edit" : "New"} recurring journal`} maxWidthClass="max-w-lg" onClose={() => { if (busyId !== "save") setModalOpen(false); }}>
             <div>
               <label className="text-xs font-medium text-ps-body block mb-1">Client</label>
               <ClientLookup
@@ -796,8 +788,7 @@ export default function RecurringPage() {
                 {busyId === "save" ? "Saving…" : "Save template"}
               </Button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );
