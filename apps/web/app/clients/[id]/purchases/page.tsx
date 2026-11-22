@@ -67,6 +67,7 @@ import { postingAccountNotice } from "@/lib/accounting/postingAccountNotice";
 
 import { PossibleDuplicatesNotice, type PossibleDuplicate } from "@/components/parties/PossibleDuplicatesNotice";
 import { Callout } from "@/components/ui/callout";
+import { Modal } from "@/components/ui/modal";
 import { gstinProblem } from "@/lib/gst/gstin";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
@@ -1274,12 +1275,10 @@ function DeleteBillModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl border border-ps-border p-6 w-full max-w-md shadow-xl">
+    <Modal title="Delete draft purchase bill?" maxWidthClass="max-w-md" onClose={() => { if (!deleting) onClose(); }}>
         <div className="flex items-start gap-3 mb-4">
           <div className="p-2 rounded-full bg-state-problem-surface text-red-600 flex-shrink-0"><AlertTriangle size={16} /></div>
           <div>
-            <h3 className="text-sm font-semibold text-ps-ink">Delete draft purchase bill?</h3>
             <p className="text-xs text-ps-label mt-1">
               <span className="font-mono">{bill.bill_no || "This bill"}</span> will be removed from your purchase
               bill list. Only drafts can be deleted — received, partially-paid, paid and cancelled bills are
@@ -1301,8 +1300,7 @@ function DeleteBillModal({
             {deleting ? "Deleting…" : <><Trash2 size={12} /> Delete Draft</>}
           </Button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -1974,12 +1972,8 @@ function Vendors({ clientId }: { clientId: string }) {
         onDismiss={() => setResemblances([])} />
 
       {deactivateTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
-            <div className="px-6 py-5 border-b border-ps-border">
-              <h2 className="text-base font-semibold text-ps-ink">Deactivate Vendor?</h2>
-            </div>
-            <div className="px-6 py-5 space-y-2">
+        <Modal title="Deactivate Vendor?" maxWidthClass="max-w-md" onClose={() => { if (!deactivating) setDeactivateTarget(null); }}>
+            <div className="space-y-2">
               <p className="text-sm text-ps-label">
                 <span className="font-medium text-ps-ink">{deactivateTarget.name}</span> will no
                 longer be available for new bills.
@@ -1989,7 +1983,7 @@ function Vendors({ clientId }: { clientId: string }) {
                 this vendor later.
               </p>
             </div>
-            <div className="px-6 py-4 border-t border-ps-border flex justify-end gap-2">
+            <div className="flex justify-end gap-2">
               <button
                 onClick={() => setDeactivateTarget(null)}
                 disabled={(deactivating) || actionInFlight}
@@ -2005,26 +1999,22 @@ function Vendors({ clientId }: { clientId: string }) {
                 {deactivating ? "Deactivating…" : "Deactivate"}
               </Button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* Permanent-delete flow: checking → blocked (has records) → confirm (clean) */}
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+        <Modal title={deleteDeps === null ? "Delete vendor" : deleteDeps.can_delete ? "Delete Vendor?" : "Can't delete this vendor"} maxWidthClass="max-w-md"
+          onClose={() => { if (!deleteBusy) { setDeleteTarget(null); setDeleteDeps(null); } }}>
             {deleteDeps === null ? (
               <LoadingRegion label="Checking for linked records" noticeClassName="px-6 justify-center text-center">
-                <div className="px-6 py-10 flex items-center justify-center gap-2 text-sm text-ps-label">
+                <div className="py-6 flex items-center justify-center gap-2 text-sm text-ps-label">
                   <Loader2 size={16} className="animate-spin" /> Checking for linked records…
                 </div>
               </LoadingRegion>
             ) : deleteDeps.can_delete ? (
               <>
-                <div className="px-6 py-5 border-b border-ps-border">
-                  <h2 className="text-base font-semibold text-ps-ink">Delete Vendor?</h2>
-                </div>
-                <div className="px-6 py-5 space-y-2">
+                <div className="space-y-2">
                   <p className="text-sm text-ps-label">
                     <span className="font-medium text-ps-ink">{deleteTarget.name}</span> has no
                     linked bills, payments, debit notes, credit notes or opening balance.
@@ -2033,7 +2023,7 @@ function Vendors({ clientId }: { clientId: string }) {
                     This permanently removes the vendor and cannot be undone.
                   </p>
                 </div>
-                <div className="px-6 py-4 border-t border-ps-border flex justify-end gap-2">
+                <div className="flex justify-end gap-2">
                   <button
                     onClick={() => { setDeleteTarget(null); setDeleteDeps(null); }}
                     disabled={deleteBusy}
@@ -2052,11 +2042,7 @@ function Vendors({ clientId }: { clientId: string }) {
               </>
             ) : (
               <>
-                <div className="px-6 py-5 border-b border-ps-border flex items-center gap-2">
-                  <AlertTriangle size={18} className="text-amber-500" />
-                  <h2 className="text-base font-semibold text-ps-ink">Can&apos;t delete this vendor</h2>
-                </div>
-                <div className="px-6 py-5 space-y-3">
+                <div className="space-y-3">
                   <p className="text-sm text-ps-label">
                     <span className="font-medium text-ps-ink">{deleteTarget.name}</span> has linked
                     accounting records, so it can&apos;t be permanently deleted:
@@ -2088,7 +2074,7 @@ function Vendors({ clientId }: { clientId: string }) {
                     bills.
                   </p>
                 </div>
-                <div className="px-6 py-4 border-t border-ps-border flex justify-end gap-2">
+                <div className="flex justify-end gap-2">
                   <button disabled={actionInFlight}
                     onClick={() => { setDeleteTarget(null); setDeleteDeps(null); }}
                     className="px-4 py-2 text-sm text-ps-label rounded-lg border border-ps-border hover:bg-ps-bg"
@@ -2106,8 +2092,7 @@ function Vendors({ clientId }: { clientId: string }) {
                 </div>
               </>
             )}
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* Row actions overflow menu (viewport-anchored to dodge table clipping) */}
