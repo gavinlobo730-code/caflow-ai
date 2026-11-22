@@ -54,6 +54,10 @@ const RESOURCE_WORDS: Readonly<Record<string, string>> = {
   payroll: "payroll",
   knowledge: "the knowledge base",
   engagement: "engagement letters",
+  // The pairs that open a Settings page (POST-A-545).
+  settings: "the firm's settings",
+  branding: "branding, the invoice settings and the mail and invoice templates",
+  firm: "the firm's profile",
 };
 
 /** What each action is called. `read` is "See"; the rest say what the person may do. */
@@ -64,6 +68,7 @@ const ACTION_WORDS: Readonly<Record<string, string>> = {
   compute: "Compute",
   delete: "Delete",
   export: "Export",
+  admin: "Administer",
 };
 
 /** Title Case from a snake_case name: the fallback for a permission this file has no words for. */
@@ -81,6 +86,8 @@ export function pairWords(resource: string, action: string): string {
   if (!hasWords(resource, action)) return `${titled(resource)}: ${titled(action)}`;
   // "Compute the income tax desk" reads wrongly; the two compute permissions the table names are said in full.
   if (action === "compute" && resource === "income_tax") return "Work out income tax (compute)";
+  // "Administer the firm's profile" names the wrong thing: this is the tick behind the AI status page and the deployment card.
+  if (action === "admin" && resource === "firm") return "Administer the firm (AI status and how the deployment is set up)";
   return `${ACTION_WORDS[action]} ${RESOURCE_WORDS[resource]}`;
 }
 
@@ -102,6 +109,15 @@ export interface MenuGroup {
   permissions: MenuPermission[];
 }
 
+/**
+ * SETTINGS IS A GROUP HERE AND NOT AN AREA OF THE MENU (POST-A-545). No area owns the Settings addresses and Settings is
+ * always offered (every person has a profile and a password there), so nothing "puts Settings on the menu". But each
+ * Settings PAGE is opened by a permission of its own in the one table, and a Partner has to be able to see which tick opens
+ * which page, exactly as for the screens of an area. This is the id of the group that lists them, after the areas.
+ */
+export const SETTINGS_GROUP = "settings";
+const isSettingsPage = (prefix: string) => prefix === "/settings" || prefix.startsWith("/settings/");
+
 /** The areas a Partner ticks permissions for, in the menu's order. Home is always there and My practice is not a tick. */
 export const TICKABLE_AREAS: readonly string[] = [...MAIN_AREAS, ...MORE_AREAS].filter((id) => id !== "home" && id !== "practice");
 
@@ -116,14 +132,14 @@ export function menuGroups(): MenuGroup[] {
   for (const area of TICKABLE_AREAS) for (const pair of pairsOf(AREA_RULES[area] ?? {})) touch(pair, area);
   const screensIn = new Map<string, Array<readonly [string, AccessRule]>>();
   for (const entry of SCREEN_RULES) {
-    const area = getActiveWorkspaceForPathname(entry[0]);
-    if (!area || !TICKABLE_AREAS.includes(area)) continue;
+    const area = isSettingsPage(entry[0]) ? SETTINGS_GROUP : getActiveWorkspaceForPathname(entry[0]);
+    if (!area || !(area === SETTINGS_GROUP || TICKABLE_AREAS.includes(area))) continue;
     if (!screensIn.has(area)) screensIn.set(area, []);
     screensIn.get(area)!.push(entry);
     for (const pair of pairsOf(entry[1])) touch(pair, area);
   }
 
-  return TICKABLE_AREAS.map((areaId) => {
+  return [...TICKABLE_AREAS, SETTINGS_GROUP].map((areaId) => {
     const rule = AREA_RULES[areaId] ?? {};
     const own = pairsOf(rule);
     const seen = new Map<string, MenuPermission>();

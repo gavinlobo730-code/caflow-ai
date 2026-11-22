@@ -68,7 +68,6 @@ test("a menu entry that names a pair of its own names one the table asks for tha
     const src = fs.readFileSync(path.join(WEB, "components", "panels", file), "utf8");
     for (const m of src.matchAll(/\{[^{}]*?href:\s*"([^"]+)"[^{}]*?requires:\s*\["([a-z_]+)",\s*"([a-z_]+)"\][^{}]*?\}/gs)) {
       const [href, pair] = [m[1], `${m[2]}:${m[3]}`];
-      if (href.startsWith("/settings")) continue;       // Settings pages keep their own rule
       const area = getActiveWorkspaceForPathname(href.split("?")[0]);
       const asked = [...names(screenRule(href)), ...names(area ? AREA_RULES[area] : null)];
       assert.ok(asked.includes(pair), `${file}: ${href} is listed by ${pair}, and the table asks ${asked.join(", ") || "nothing"} for it`);
@@ -89,7 +88,9 @@ test("the guide offers exactly what the gate opens, for every firm screen and ea
     const can = (r: string, a: string) => (map[r] ?? []).includes(a);
     const asker = { can, isPartner: role === "Partner" };
     for (const s of ALL_SCREENS) {
-      if (s.scope !== "firm" || s.href === "/settings" || s.href.startsWith("/settings/")) continue;
+      // The Settings pages are compared too since they joined the table (POST-A-545): they were skipped while each kept a
+      // role guard of its own.
+      if (s.scope !== "firm") continue;
       const guide = offeredTo(s, { role, can, resolved: true, clientSectionOffered: () => true });
       assert.equal(guide, mayOpen(s.href, asker).allowed, `${role} on ${s.href}: the guide and the gate disagree`);
       compared += 1;

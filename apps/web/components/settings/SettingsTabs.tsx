@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useAuth } from "@/lib/auth/AuthContext";
+import { useScreenAccess } from "@/lib/access/useScreenAccess";
 import { cn } from "@/lib/utils";
 import {
   SETTINGS_GROUPS,
@@ -25,13 +25,13 @@ import {
 export function SettingsTabs() {
   const pathname = usePathname() ?? "/settings";
   const tab = useSearchParams()?.get("tab") ?? null;
-  const { userRole } = useAuth();
+  const access = useScreenAccess();
   const active = groupForPage(pathname, tab);
 
   return (
     <nav aria-label="Settings sections" className="border-b border-ps-border bg-white print:hidden">
       <div className="mx-auto flex max-w-5xl gap-1 overflow-x-auto px-4 md:px-6">
-        {SETTINGS_GROUPS.filter((g) => groupHasContent(g, userRole)).map((g) => {
+        {SETTINGS_GROUPS.filter((g) => groupHasContent(g, access)).map((g) => {
           const on = g.id === active;
           return (
             <Link

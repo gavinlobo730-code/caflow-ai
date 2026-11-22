@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useAuth } from "@/lib/auth/AuthContext";
+import { useScreenAccess } from "@/lib/access/useScreenAccess";
 import { SETTINGS_GROUPS, groupHasContent, linkShownTo, settingsTabHref } from "@/lib/settings/groups";
 import { cn, isExactPath } from "@/lib/utils";
 
@@ -49,10 +49,10 @@ const PANEL_GROUPS = SETTINGS_GROUPS.map((g) => ({
 
 export function SettingsPanel() {
   const pathname = usePathname();
-  const { userRole } = useAuth();
+  const access = useScreenAccess();
   const groups = PANEL_GROUPS
-    .filter(({ group }) => groupHasContent(group, userRole))
-    .map((g) => ({ ...g, items: g.items.filter(({ link }) => linkShownTo(link, userRole)) }));
+    .filter(({ group }) => groupHasContent(group, access))
+    .map((g) => ({ ...g, items: g.items.filter(({ link }) => linkShownTo(link, access)) }));
 
   return (
     <div className="flex flex-col h-full">

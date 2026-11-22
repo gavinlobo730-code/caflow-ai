@@ -24,8 +24,9 @@ import RequestAccess from "@/components/auth/RequestAccess";
  * permission the notice named, and an approval switches it on. My practice is not offered it: no permission opens it.
  *
  * WHAT IT LEAVES ALONE. My practice: its pages carry the Partner guard, which sends a non-Partner home with its own notice.
- * Settings and the inside of a client: their own rules (`screenAccess.ts` says why). And everything, until the permissions
- * are known. This is what is SHOWN; the server's `rbac()` is the control.
+ * The inside of a client: its own rules (`screenAccess.ts` says why). And everything, until the permissions are known. The
+ * Settings pages are answered here like any other screen since they joined the table (POST-A-545); each used to carry a
+ * role guard that sent a person home without a word. This is what is SHOWN; the server's `rbac()` is the control.
  */
 export default function ScreenAccessGate({ pathname, children }: { pathname: string; children: ReactNode }) {
   const { verdict } = useScreenAccess();

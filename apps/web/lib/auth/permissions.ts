@@ -10,8 +10,8 @@
  * used to live in this file and hide areas and addresses by role (the hidden addresses for staff and for a Manager, the
  * hidden areas, the always-visible list) are gone with the two functions that read them.
  *
- * What still asks the role: My practice (a Partner's alone, decided by the role on the server as well) and the Settings
- * pages, whose guards name the roles they admit (`components/RoleGuard.tsx`, `lib/settings/groups.ts`).
+ * What still asks the role: My practice (a Partner's alone, decided by the role on the server as well). The Settings pages
+ * asked a role too, through a guard on each page, until they joined the one table (POST-A-545).
  *
  * NOTE: this is what is OFFERED. Real authorization is enforced server-side (FastAPI rbac()/permissions). These helpers
  * fail CLOSED (default to least privilege) for unknown roles rather than fail open.
@@ -40,18 +40,6 @@ export function normalizeRole(raw: string | null | undefined): UserRole | null {
   const titled = (raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase()) as UserRole;
   if (CANONICAL.has(titled)) return titled;
   return LEGACY_ROLE_MAP[raw.trim().toLowerCase()] ?? null;
-}
-
-/** Least-privileged staff role — the fail-closed default for unknown/missing roles. */
-const LEAST_PRIVILEGE: UserRole = "Reviewer";
-
-/**
- * Returns true if the given role is in the allowed list.
- * Unknown/null roles fail CLOSED to least privilege (no longer default to Partner).
- */
-export function hasRole(role: UserRole | null, allowed: UserRole[]): boolean {
-  const effectiveRole: UserRole = role ?? LEAST_PRIVILEGE;
-  return allowed.includes(effectiveRole);
 }
 
 /** True only for Partner (route-level guard for Practice / Revenue Operations). */

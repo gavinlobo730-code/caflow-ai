@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { ChevronLeft, Plus, Star, Trash2, Check } from "lucide-react";
 import { useAuth } from "@/lib/auth/AuthContext";
-import { RoleGuard } from "@/components/RoleGuard";
+import { ChangePart, ReadOnlyNotice, useMayChange } from "@/components/settings/ChangePart";
 import { api, type ApiResp } from "@/lib/api/index";
 import { Callout } from "@/components/ui/callout";
 import { arrayOrEmpty } from "@/lib/api/shape";
@@ -243,6 +243,8 @@ function TemplateCard({
 
 // ── Main Page ──────────────────────────────────────────────────────────────
 export default function InvoiceTemplatesPage() {
+  // Who may add, default or delete a template: the pair the server asks for those writes (POST-A-545).
+  const mayChange = useMayChange("branding", "write");
   const { user } = useAuth();
   const [templates, setTemplates] = useState<InvoiceTemplate[]>([]);
   const [loading, setLoading] = useState(true);
@@ -314,7 +316,7 @@ export default function InvoiceTemplatesPage() {
   }
 
   return (
-    <RoleGuard allowed={["Partner"]}>
+    <>
       <div className="p-6 max-w-3xl mx-auto space-y-5">
         {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
         {showCreate && <CreateModal onClose={() => setShowCreate(false)} onCreated={load} />}
@@ -326,16 +328,18 @@ export default function InvoiceTemplatesPage() {
           <PageHeader
             title="Invoice Templates"
             subtitle="Choose where the logo and the signature sit on the invoices your practice issues to its own clients. Engagement letters and your clients' own invoices do not use it."
-            actions={
+            actions={mayChange ? (
               <button
                 onClick={() => setShowCreate(true)}
                 className="flex items-center gap-1.5 px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors"
               >
                 <Plus size={14} /> New Template
               </button>
-            }
+            ) : undefined}
           />
         </div>
+
+        <ReadOnlyNotice resource="branding" action="write" page="Invoice Templates" />
 
         {loading ? (
           <SectionPlaceholder label="Loading templates" shape="table" rows={4} />
@@ -362,7 +366,7 @@ export default function InvoiceTemplatesPage() {
             }
           />
         ) : (
-          <div className="space-y-3">
+          <ChangePart resource="branding" action="write" className="space-y-3">
             {noDefaultNote && !templates.some((t) => t.is_default) && (
               <Callout tone="note">{noDefaultNote}</Callout>
             )}
@@ -375,9 +379,9 @@ export default function InvoiceTemplatesPage() {
                 onDelete={() => handleDelete(t)}
               />
             ))}
-          </div>
+          </ChangePart>
         )}
       </div>
-    </RoleGuard>
+    </>
   );
 }

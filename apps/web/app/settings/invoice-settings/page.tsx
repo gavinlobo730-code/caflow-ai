@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Hash, CreditCard, Save } from "lucide-react";
 import { useAuth } from "@/lib/auth/AuthContext";
-import { RoleGuard } from "@/components/RoleGuard";
+import { ChangePart, ReadOnlyNotice } from "@/components/settings/ChangePart";
 import { api, type ApiResp } from "@/lib/api/index";
 import { PageHeader } from "@/components/ui/page-header";
 import { istToday } from "@/lib/dateMath";
@@ -177,7 +177,7 @@ export default function InvoiceSettingsPage() {
   }
 
   return (
-    <RoleGuard allowed={["Partner"]}>
+    <>
       <div className="p-6 max-w-3xl mx-auto space-y-5">
         {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
@@ -186,6 +186,8 @@ export default function InvoiceSettingsPage() {
           title="Invoice Settings"
           subtitle="Configure invoice numbering, payment details, and footer text."
         />
+
+        <ReadOnlyNotice resource="branding" action="write" page="Invoice Settings" />
 
         {loadError && !loading && (
           <div className="flex items-center justify-between gap-3 bg-state-problem-surface border border-red-100 rounded-xl px-4 py-3">
@@ -198,6 +200,7 @@ export default function InvoiceSettingsPage() {
           </div>
         )}
 
+        <ChangePart resource="branding" action="write" className="space-y-5">
         {/* ── Invoice Numbering ────────────────────────────────────────── */}
         <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
           <div className="flex items-center gap-2.5 px-5 py-4 border-b border-ps-border">
@@ -421,7 +424,8 @@ export default function InvoiceSettingsPage() {
             {saving ? "Saving…" : "Save Settings"}
           </button>
         </div>
+        </ChangePart>
       </div>
-    </RoleGuard>
+    </>
   );
 }

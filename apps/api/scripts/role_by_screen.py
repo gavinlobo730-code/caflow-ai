@@ -3,7 +3,7 @@
 Written from two sources and nothing else: the backend's permission table (`core.permissions.PERMISSIONS`, the
 template `rbac()` falls back to) and the menu declarations in `apps/web` (the ONE table of which permission opens
 which area and screen, `lib/access/screenAccess.ts`, since POST-A-543; each firm panel's entries with the pair each
-names itself; the Settings links' roles; and the client workspace's sections).
+names itself; the Settings links, each asked of the same table since POST-A-545; and the client workspace's sections).
 It is a READING of those declarations, so it says what the menus draw for a role and not what a page then does: a
 page may still narrow its rows to the person's assigned clients, hide a button, or be refused by the server.
 
@@ -170,20 +170,39 @@ def _cell(roles: set[str]) -> list[str]:
     return ["yes" if r in roles else "-" for r in ROLES]
 
 
-def _settings_lines() -> list[str]:
+def _settings_lines(sets, areas, screens) -> list[str]:
+    """The Settings links, each by what the ONE table asks for its page (POST-A-545: the pages used to be opened by a role, and each
+    link repeated its page's guard). A link to a card on a page also asks the card's own pair (`requires`). The page a link goes
+    to may be an area's screen (Team), so the area's rule is asked too, as the browser's `mayOpen` does. This says who may OPEN
+    the page: changing what is on it is a second permission, and a person without that one is shown the page read-only."""
     lines: list[str] = []
     settings = (WEB / "lib" / "settings" / "groups.ts").read_text()
     lines += ["", "## Settings", "",
-              "| Link | Goes to | " + " | ".join(ROLES) + " |", "|---|---|" + "---|" * len(ROLES)]
+              "Who is offered each link, which is who may open the page. Changing what is on a page asks a second permission "
+              "(the page's write), and a person who holds only the first is shown the page with its controls switched off.", "",
+              "| Link | Goes to | Asks | " + " | ".join(ROLES) + " |", "|---|---|---|" + "---|" * len(ROLES)]
     seen = set()
     for obj in _objects(settings):
         href, label = _key(obj, "href"), _key(obj, "label")
         if not href or not label or (href, label) in seen:
             continue
         seen.add((href, label))
-        m = re.search(r"\broles:\s*\[([^\]]*)\]", obj)
-        roles = set(re.findall(_STR, m.group(1))) & set(ROLES) if m else set(ROLES)
-        lines.append(f"| {label} | `{href}` | " + " | ".join(_cell(roles)) + " |")
+        assert not re.search(r"\broles:\s*\[", obj), f"{href} names roles again: the Settings pages follow the one table"
+        roles, asks = set(ROLES), []
+        owner = _area_of(href)
+        if owner and owner in areas:
+            roles &= _rule_holders(areas[owner], sets)
+            asks.append(_rule_words(areas[owner]))
+        own = _screen_rule(screens, href)
+        if own:
+            roles &= _rule_holders(own, sets)
+            asks.append(_rule_words(own))
+        card = _requires(obj)
+        if card:
+            roles &= _holders([card], sets)
+            asks.append(f"`{card[0]}` `{card[1]}` (the card)")
+        said = " and ".join(dict.fromkeys(a for a in asks if a)) or "nothing: every member's"
+        lines.append(f"| {label} | `{href}` | {said} | " + " | ".join(_cell(roles)) + " |")
 
     return lines
 
@@ -296,7 +315,7 @@ def build() -> str:
         "person has no grant of their own), the one table of which permission opens which area of the firm menu and "
         "which screen (`apps/web/lib/access/screenAccess.ts`: since 21-11-2026 the menu, the page and the guide all "
         "follow it, and no list of roles hides an area or an address), each firm panel's entries and the permission "
-        "each names itself, the Settings links' roles (`apps/web/lib/settings/groups.ts`) and the client workspace's "
+        "each names itself, the Settings links (`apps/web/lib/settings/groups.ts`, each asked of the same table) and the client workspace's "
         "sections (`apps/web/lib/workspace/ClientNavContext.tsx`).",
         "",
         "**What it does not read.** A per-person grant or block (the Team screen's grid) changes what one person is "
@@ -317,7 +336,7 @@ def build() -> str:
         lines.append(f"| {label} | {asks or 'nothing: always offered'} | " + " | ".join(_cell(roles)) + " |")
 
     lines += _panel_lines(sets, tile_roles, {t[0]: t[1] for t in tiles}, areas, screens)
-    lines += _settings_lines() + _client_lines(sets)
+    lines += _settings_lines(sets, areas, screens) + _client_lines(sets)
     return "\n".join(lines) + "\n"
 
 

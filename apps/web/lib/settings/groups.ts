@@ -11,14 +11,15 @@
  * to one cannot be missing from the others. It moves no page: every screen keeps the address it had, and a tab is
  * the Settings home with `?tab=` (no new route, so no redirect rule).
  *
- * `roles` repeats, link by link, the roles the page's own `RoleGuard` admits (POST-A-447: the Settings panel listed every
- * page to everyone, so a Manager, an Executive or a Reviewer was offered pages that sent them straight back to the home
- * page, while three pages a Manager may open were hidden from them as "Partner only"). It decides nothing about
- * access: every page keeps its own guard, and the server's permission check is what refuses.
- * `lib/settings/groups.test.ts` holds each link's `roles` equal to its page's guard, so the two cannot drift.
+ * WHO IS SHOWN A LINK IS THE ONE TABLE'S ANSWER (POST-A-545). Each link used to repeat the roles its page's own role guard
+ * admitted. The pages now follow the permissions a Partner ticks, like every other firm screen: a link is listed when
+ * `mayOpen` (`lib/access/screenAccess.ts`) opens its address, which is the pair the page's own read asks on the server. So a
+ * link, the page gate and the "Where is…?" guide cannot disagree, and a tick a Partner changes moves all three. A link to a
+ * CARD on a page (a fragment) names the pair that card is shown on (`requires`), since the table knows pages and not cards.
+ * It decides nothing about access: the server's permission check is what refuses.
  */
 
-import type { UserRole } from "@/lib/auth/permissions";
+import { mayOpen, type Asker, type Pair } from "../access/screenAccess.ts";
 
 export type SettingsGroupId = "profile" | "firm" | "security" | "documents" | "statutory" | "ai";
 
@@ -30,10 +31,10 @@ export interface SettingsLink {
   /** One sentence saying what is there. */
   says: string;
   /**
-   * The roles the page's own `RoleGuard` admits, where it has one (or, for a fragment, the roles the card it opens is
-   * shown to). Absent: every staff role may open it. Every surface that lists Settings shows the link only to these.
+   * For a link to a CARD on a page (its address carries a fragment): the pair that card is shown on. A link to a page names
+   * none, because the one table answers for the page.
    */
-  roles?: readonly UserRole[];
+  requires?: Pair;
 }
 
 export interface SettingsGroup {
@@ -79,13 +80,11 @@ export const SETTINGS_GROUPS: readonly SettingsGroup[] = [
         href: "/settings/multi-currency",
         label: "Foreign currency",
         says: "Whether this firm records foreign-currency documents at all, and which clients may. Off unless a Partner switches it on.",
-        roles: ["Partner"],
       },
       {
         href: "/settings/journal-approval",
         label: "Journal approval",
         says: "Whether a Partner approves every manual journal before it reaches a client's books. Off unless a Partner switches it on.",
-        roles: ["Partner"],
       },
     ],
   },
@@ -103,8 +102,8 @@ export const SETTINGS_GROUPS: readonly SettingsGroup[] = [
         href: "/settings/security#deployment",
         label: "How this deployment is set up",
         says: "The security settings this deployment is running with, read from the server, with what each one means.",
-        // The card on that page is shown to whoever may administer the firm, which is a Partner.
-        roles: ["Partner"],
+        // The card on that page is shown to whoever may administer the firm (`can("firm", "admin")` there).
+        requires: ["firm", "admin"],
       },
       {
         href: "/team",
@@ -115,7 +114,6 @@ export const SETTINGS_GROUPS: readonly SettingsGroup[] = [
         href: "/settings/audit-log",
         label: "Audit log",
         says: "Who created, changed or deleted a client, a document or a ledger entry, and when.",
-        roles: ["Partner"],
       },
     ],
   },
@@ -128,31 +126,26 @@ export const SETTINGS_GROUPS: readonly SettingsGroup[] = [
         href: "/settings/branding",
         label: "Branding",
         says: "Logo, tagline and primary colour for your practice's own invoices; the other settings are kept on file.",
-        roles: ["Partner"],
       },
       {
         href: "/settings/invoice-settings",
         label: "Invoice numbering and payment details",
         says: "Invoice numbering format, bank details, UPI and footer text.",
-        roles: ["Partner"],
       },
       {
         href: "/settings/invoice-templates",
         label: "Invoice templates",
         says: "Where the logo and the signature sit on your practice's own invoices.",
-        roles: ["Partner"],
       },
       {
         href: "/settings/email-templates",
         label: "Email templates",
         says: "The wording of the mails sent for invoices, engagements, documents and reminders.",
-        roles: ["Partner"],
       },
       {
         href: "/settings/firm-hsn-library",
         label: "HSN and SAC codes",
         says: "The HSN and SAC codes your firm bills against. You keep this list; nothing is suggested or shipped.",
-        roles: ["Partner", "Manager"],
       },
       {
         href: "/settings/scheduled-reports",
@@ -170,13 +163,11 @@ export const SETTINGS_GROUPS: readonly SettingsGroup[] = [
         href: "/settings/statutory-values",
         label: "Professional tax and other statutory values",
         says: "Your firm's reading of the state professional-tax notifications. Four states are built in; the rest deduct nothing until you record them here.",
-        roles: ["Partner", "Manager"],
       },
       {
         href: "/settings/treaty-rates",
         label: "DTAA treaty rates",
         says: "Your firm's reading of the treaty rates it withholds under, per country and nature of income. Empty until you record them.",
-        roles: ["Partner", "Manager"],
       },
       {
         href: "/settings/dsc-tracker",
@@ -194,7 +185,6 @@ export const SETTINGS_GROUPS: readonly SettingsGroup[] = [
         href: "/settings/ai",
         label: "PracticeSync AI status and allowance",
         says: "Whether PracticeSync AI (the assistant, the copilot and the invoice and notice readers) can reach its two providers, and the firm's monthly allowance.",
-        roles: ["Partner"],
       },
     ],
   },
@@ -242,18 +232,37 @@ export function everySettingsPage(): string[] {
   return seen;
 }
 
-/** Whether a person of this role is shown a link: every role when the link names none, else only the roles it names. */
-export function linkShownTo(link: SettingsLink, role: UserRole | null): boolean {
-  return !link.roles || (role !== null && link.roles.includes(role));
+/** The signed-in person as the one table asks about them (`useScreenAccess()` returns exactly this, and more). */
+export interface SettingsAsker {
+  who: Asker;
+  /** False until the permissions are known. */
+  resolved: boolean;
 }
 
-/** The links a person sees on a tab: those whose page admits their role. */
-export function visibleLinks(group: SettingsGroup, role: UserRole | null): SettingsLink[] {
-  return group.links.filter((l) => linkShownTo(l, role));
+/** UNTIL THE PERMISSIONS ARE KNOWN NOTHING IS WITHHELD ON A PAIR, the choice every menu here makes (`useScreenAccess`). */
+function asking(access: SettingsAsker): Asker {
+  return access.resolved ? access.who : { can: () => true, isPartner: access.who.isPartner };
+}
+
+/** Whether this person is shown a link: the one table opens its page, and they hold the pair of the card it names, if any. */
+export function linkShownTo(link: SettingsLink, access: SettingsAsker): boolean {
+  const who = asking(access);
+  if (link.requires && !who.can(link.requires[0], link.requires[1])) return false;
+  return mayOpen(link.href, who).allowed;
+}
+
+/** The links a person sees on a tab. */
+export function visibleLinks(group: SettingsGroup, access: SettingsAsker): SettingsLink[] {
+  return group.links.filter((l) => linkShownTo(l, access));
+}
+
+/** Whether the Firm Profile card is drawn: its read asks `firm` `read` on the server (saving it asks `firm` `write`). */
+export function firmProfileShown(access: SettingsAsker): boolean {
+  return asking(access).can("firm", "read");
 }
 
 /** Whether a tab has anything to show the person: a form the page renders, or a link they may see. */
-export function groupHasContent(group: SettingsGroup, role: UserRole | null): boolean {
-  const inline = (group.inline ?? []).filter((f) => f !== "firm-profile" || role === "Partner");
-  return inline.length > 0 || visibleLinks(group, role).length > 0;
+export function groupHasContent(group: SettingsGroup, access: SettingsAsker): boolean {
+  const inline = (group.inline ?? []).filter((f) => f !== "firm-profile" || firmProfileShown(access));
+  return inline.length > 0 || visibleLinks(group, access).length > 0;
 }
