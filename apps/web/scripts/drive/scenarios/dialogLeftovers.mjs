@@ -48,23 +48,26 @@ const SENT_LETTER = {
 export const scenarios = [
   {
     id: "the-engagement-template-dialog-holds-close-and-cancel-while-its-save-is-out",
-    title: "Engagements > Templates > New Template: while Save is out, Close (named) and Cancel are held and Escape does not close it; it closes when the answer lands",
+    title: "Engagements > Templates > New Template: while Save is out, Cancel is held and the ×, Escape and a click beside it do not close it; it closes when the answer lands",
     async run(env) {
       const { page, stub } = env;
       await openNewEngagementLetter(env);
       await page.keyboard.press("Escape");
-      stub.route({ method: "POST", re: /api\/engagement-letters\/templates$/, reply: (_req, raw) => ok({ template: { id: "t-1", ...JSON.parse(raw), is_default: false } }) });
+      stub.route({ method: "POST", re: /api\/engagement-letters\/templates$/, delay: 2500, reply: (_req, raw) => ok({ template: { id: "t-1", ...JSON.parse(raw), is_default: false } }) });
       await page.getByRole("button", { name: "Templates", exact: true }).click();
       await page.getByRole("button", { name: "New Template", exact: true }).first().click();
       const dialog = overlayWith(page, "New Template");
       await dialog.getByLabel("Template Name", { exact: true }).fill("Standard GST letter");
       await dialog.getByLabel("Template Content", { exact: true }).fill("Dear {{client_name}}, ...");
       await dialog.getByRole("button", { name: "Save Template" }).click();
-      const close = dialog.getByRole("button", { name: "Close", exact: true });
+      // The shared dialog (POST-A-130): Cancel is greyed out, and the × is not but goes through the same held close as Escape and a click
+      // beside the dialog. Every way out is tried while the Save is out.
       const cancel = dialog.getByRole("button", { name: "Cancel", exact: true });
-      await until(async () => (await close.isDisabled()) && (await cancel.isDisabled()), "Close and Cancel to be held while Save is out", 3000);
+      await until(async () => await cancel.isDisabled(), "Cancel to be held while Save is out", 3000);
+      await dialog.getByRole("button", { name: "Close dialog", exact: true }).click();
       await page.keyboard.press("Escape");
-      assert.equal(await dialog.count(), 1, "Escape closed the dialog over a Save still in flight");
+      await page.mouse.click(5, 5);
+      assert.equal(await dialog.count(), 1, "the ×, Escape or a click beside it closed the dialog over a Save still in flight");
       await stub.quiet();
       await until(async () => (await page.getByRole("heading", { name: "New Template" }).count()) === 0, "the dialog to close when the Save was answered");
       assert.equal(stub.writesTo(/engagement-letters\/templates$/, "POST").length, 1, "the template was not written exactly once");
@@ -72,24 +75,30 @@ export const scenarios = [
   },
   {
     id: "the-engagement-detail-dialog-holds-its-close-while-a-step-is-out",
-    title: "Engagements > a sent letter > Mark as Signed > Confirm Signed: while it is out, the dialog's Close (named) and the step's Cancel are held",
+    title: "Engagements > a sent letter > Mark as Signed > Confirm Signed: while it is out, the step's Cancel is held and the dialog's ×, Escape and a click beside it do not close it; the × closes it once the answer lands",
     async run(env) {
       const { page, stub } = env;
       stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { engagements: ["read", "write"], engagement: ["read", "write"], billing: ["read", "write"] } }) });
       stub.route({ method: "GET", re: /api\/engagement-letters$/, reply: () => ok({ engagements: [SENT_LETTER] }) });
       stub.route({ method: "GET", re: /api\/engagement-letters\/templates$/, reply: () => ok({ templates: [] }) });
-      stub.route({ method: "POST", re: /api\/engagement-letters\/en-9\/sign$/, reply: () => ok({ engagement: { ...SENT_LETTER, status: "Signed", signed_at: "2026-10-08T06:00:00Z" } }) });
+      stub.route({ method: "POST", re: /api\/engagement-letters\/en-9\/sign$/, delay: 2500, reply: () => ok({ engagement: { ...SENT_LETTER, status: "Signed", signed_at: "2026-10-08T06:00:00Z" } }) });
       await page.goto(`${env.base}/engagements/`, { waitUntil: "networkidle" });
       await page.getByText("Statutory audit FY 2026-27").first().click();
       const dialog = overlayWith(page, "Statutory audit FY 2026-27");
       await dialog.getByRole("button", { name: /Mark as Signed/ }).click();
       await dialog.getByRole("button", { name: /Confirm Signed/ }).click();
-      const close = dialog.getByRole("button", { name: "Close", exact: true });
+      const close = dialog.getByRole("button", { name: "Close dialog", exact: true });
       const cancel = dialog.getByRole("button", { name: "Cancel", exact: true });
-      await until(async () => (await close.isDisabled()) && (await cancel.isDisabled()), "the dialog's Close and the step's Cancel to be held while Confirm Signed is out", 3000);
-      await stub.quiet();
+      await until(async () => await cancel.isDisabled(), "the step's Cancel to be held while Confirm Signed is out", 3000);
+      await close.click();
+      await page.keyboard.press("Escape");
+      await page.mouse.click(5, 5);
+      assert.equal(await dialog.count(), 1, "the ×, Escape or a click beside it closed the letter over a signing still in flight");
+      await stub.quiet({ timeoutMs: 15_000 });
       assert.equal(stub.writesTo(/en-9\/sign$/, "POST").length, 1, "the signing was not recorded exactly once");
-      await until(async () => !(await close.isDisabled()), "Close to be offered again once the answer landed");
+      // …and once the answer has landed the close works again.
+      await close.click();
+      await until(async () => (await dialog.count()) === 0, "the letter to close once the answer landed");
     },
   },
   {

@@ -146,7 +146,7 @@ test("an engagement letter refuses an expiry before its start, in a sentence der
   assert.match(modal, /sentenceRef\.current\?\.scrollIntoView\?\.\(\{ block: "nearest" \}\)/, "the sentence is not brought into view in a card that scrolls");
   assert.match(modal, /\{sentence && <div ref=\{sentenceRef\}><Callout tone="problem">\{sentence\}<\/Callout><\/div>\}/, "the sentence is not rendered");
   // Close and Cancel wait for a Create that is out, each on its own element; the dialog is opened empty.
-  assert.match(modal, /<button onClick=\{onClose\} disabled=\{saving\} aria-label="Close"/, "the header Close is live while a Create is out");
+  assert.match(modal, /<Modal title="New Engagement Letter"[^>]*onClose=\{\(\) => \{ if \(!saving\) onClose\(\); \}\}/, "the dialog's close (Escape, a click beside it, its ×) is live while a Create is out");
   assert.match(modal, /onClick=\{onClose\}\s+disabled=\{saving\}\s+className="flex-1 rounded-lg border/, "Cancel is live while a Create is out");
   assert.match(modal, /if \(open\) \{\s*clearRefusal\(\);[\s\S]{0,700}setErr\(null\);/, "the dialog is opened again with the last refusal on it");
   // …and it is emptied BEFORE the first paint: the dialog stays mounted and is shown by `open`, so the reset in an ordinary effect ran after the first frame, which drew the last

@@ -1821,24 +1821,24 @@ async function atDscTracker(env) {
   await page.goto(`${env.base}/settings/dsc-tracker/`, { waitUntil: "networkidle" });
   await page.getByText("Asha Rao").first().waitFor();
 }
-async function openDscRenew(env) {
+export async function openDscRenew(env) {
   await atDscTracker(env);
   await env.page.getByRole("button", { name: "Renew", exact: true }).first().click();
   await dscOverlay(env.page, "Renew this DSC").waitFor();
 }
-async function openDscCorrect(env) {
+export async function openDscCorrect(env) {
   await atDscTracker(env);
   await env.page.getByRole("button", { name: "Correct", exact: true }).first().click();
   await dscOverlay(env.page, "Correct this record").waitFor();
 }
-async function openDscAdd(env) {
+export async function openDscAdd(env) {
   await atDscTracker(env);
   await env.page.getByRole("button", { name: "Add DSC", exact: true }).first().click();
   const add = dscOverlay(env.page, "Add DSC Record");
   await add.getByLabel("Full Name", { exact: true }).fill("Ravi Menon");
 }
 
-async function openAddLead(env) {
+export async function openAddLead(env) {
   const { page, stub } = env;
   stub.route({ method: "GET", re: /api\/lifecycle\/leads\?/, reply: () => ok({ leads: [], returned: 0, has_more: false, limit: 500, max_limit: 500 }) });
   stub.route({ method: "POST", re: /api\/lifecycle\/leads$/, reply: (req, body) => ok({ id: "lead-1", stage: "Lead", ...JSON.parse(body) }) });
@@ -4751,20 +4751,26 @@ export const scenarios = [
   // While a Create is out the dialog cannot be left: Close and Cancel are held, and live again after a refusal.
   {
     id: "new-engagement-letter-close-and-cancel-are-held-while-a-create-is-out",
-    title: "Engagements > New Engagement: while a Create is out Close and Cancel are held, and live again once the answer is a refusal",
+    title: "Engagements > New Engagement: while a Create is out Cancel is held and the ×, Escape and a click beside the dialog do not close it; both work again once the answer is a refusal",
     async run(env) {
       const { page, stub } = env;
       await openNewEngagementLetter(env);
       const dialog = engagementDialog(page);
       stub.route({ method: "POST", re: /api\/engagement-letters$/, delay: 1800, ...refuse("A stub refusal of the letter.", 422) });
       await dialog.getByRole("button", { name: "Create Engagement", exact: true }).click();
-      const close = dialog.getByRole("button", { name: "Close", exact: true });
+      // The shared dialog since POST-A-130's fourteenth step: Cancel is greyed out, and the × is not but goes through the same held close
+      // as Escape and a click beside the dialog, so each is tried while the Create is out.
+      const close = dialog.getByRole("button", { name: "Close dialog", exact: true });
       const cancel = dialog.getByRole("button", { name: "Cancel", exact: true });
-      await until(async () => (await close.isDisabled({ timeout: 500 }).catch(() => false)) && (await cancel.isDisabled({ timeout: 500 }).catch(() => false)),
-        "Close and Cancel to be held while the Create was out");
+      await until(async () => await cancel.isDisabled({ timeout: 500 }).catch(() => false), "Cancel to be held while the Create was out");
+      await close.click();
+      await page.keyboard.press("Escape");
+      await page.mouse.click(5, 5);
+      assert.equal(await dialog.count(), 1, "the ×, Escape or a click beside it closed the dialog while the Create was out");
       await shownInTheDialog(page, "A stub refusal of the letter.", "the refusal was not shown once the answer came");
-      assert.equal(await close.isDisabled(), false, "Close stayed held after the answer");
       assert.equal(await cancel.isDisabled(), false, "Cancel stayed held after the answer");
+      await close.click();
+      await until(async () => (await dialog.count()) === 0, "the dialog to close by its × once the answer had come");
     },
   },
   // A dialog opened again after a refusal holds nothing of the last one, whether the sentence came from the boxes (the order of the two dates) or from the server.
