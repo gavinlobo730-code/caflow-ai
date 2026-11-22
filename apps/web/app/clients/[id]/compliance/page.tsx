@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { useEffect, useState, useCallback } from "react";
 import { pruneSelection } from "@/lib/table/pruneSelection";
 import { CheckCircle, Download, X } from "lucide-react";
@@ -223,10 +224,10 @@ function NoticesSection({ clientId }: { clientId: string }) {
               <p role="alert" className="text-xs text-state-problem">{extractError}</p>
             )}
             <div className="flex gap-2">
-              <button onClick={extract} disabled={extracting || !noticeText}
+              <Button variant="plain" size="none" spinner={false} onClick={extract} disabled={extracting || !noticeText}
                 className="px-3 py-1 bg-brand text-white rounded text-sm disabled:opacity-50">
                 {extracting ? "Extracting…" : "Extract"}
-              </button>
+              </Button>
               <button onClick={() => { setShowExtract(false); setExtractError(null); }} className="px-3 py-1 border rounded text-sm">Cancel</button>
             </div>
           </div>
@@ -285,10 +286,10 @@ function NoticesSection({ clientId }: { clientId: string }) {
                           className="text-xs px-2 py-0.5 border rounded hover:bg-ps-bg text-ps-body">
                           Correct
                         </button>
-                        <button onClick={() => approveNotice(n.id as string)}
+                        <Button variant="plain" size="none" spinner={false} onClick={() => approveNotice(n.id as string)}
                           className="text-xs px-2 py-0.5 border rounded hover:bg-state-ready-surface text-state-ready">
                           CA Approve
-                        </button>
+                        </Button>
                       </div>
                     )}
                   </td>

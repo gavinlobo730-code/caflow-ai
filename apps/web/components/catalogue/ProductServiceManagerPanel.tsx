@@ -13,6 +13,7 @@
  * buttons still work independently — DataTable's actions column already
  * stops click propagation). Omit it for pure management.
  */
+import { Button } from "@/components/ui/button";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { Plus, Pencil, Archive, RotateCcw, Trash2, BookMarked, Upload, X } from "lucide-react";
@@ -404,11 +405,11 @@ export function ProductServiceManagerPanel({
             )}
             <button type="button" onClick={() => setEditing(s)} className="p-1.5 text-ps-label hover:text-emerald-600 hover:bg-emerald-50 rounded" aria-label="Edit"><Pencil size={14} /></button>
             {s.is_active ? (
-              <button type="button" disabled={rowBusy} onClick={() => setActive(s, false)} className="p-1.5 text-ps-label hover:text-amber-600 hover:bg-state-attention-hover rounded" aria-label="Archive"><Archive size={14} /></button>
+              <Button variant="plain" size="none" spinner={false} type="button" disabled={rowBusy} onClick={() => setActive(s, false)} className="p-1.5 text-ps-label hover:text-amber-600 hover:bg-state-attention-hover rounded" aria-label="Archive"><Archive size={14} /></Button>
             ) : (
-              <button type="button" disabled={rowBusy} onClick={() => setActive(s, true)} className="p-1.5 text-ps-label hover:text-emerald-600 hover:bg-emerald-50 rounded" aria-label="Restore"><RotateCcw size={14} /></button>
+              <Button variant="plain" size="none" spinner={false} type="button" disabled={rowBusy} onClick={() => setActive(s, true)} className="p-1.5 text-ps-label hover:text-emerald-600 hover:bg-emerald-50 rounded" aria-label="Restore"><RotateCcw size={14} /></Button>
             )}
-            <button type="button" disabled={rowBusy} onClick={() => deleteItem(s)} className="p-1.5 text-ps-label hover:text-red-600 hover:bg-state-problem-hover rounded" aria-label="Delete"><Trash2 size={14} /></button>
+            <Button variant="plain" size="none" spinner={false} type="button" disabled={rowBusy} onClick={() => deleteItem(s)} className="p-1.5 text-ps-label hover:text-red-600 hover:bg-state-problem-hover rounded" aria-label="Delete"><Trash2 size={14} /></Button>
           </div>
         )}
       />

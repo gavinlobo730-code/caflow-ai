@@ -324,60 +324,16 @@ test("every helper named as a read-by-POST is written as <module>::<name> with i
 // ═════════════════════════════════════════════════════════════════════════════
 
 /**
- * Raw async-writing `<button>`s that REMAIN, by file. This table may only shrink.
+ * Raw async-writing `<button>`s that REMAIN, by file. This table may only shrink, and since 22-11-2026 it is EMPTY (POST-A-144):
+ * the 76 that were left on 38 screens (master data, trackers, documents, engagement letters, the client's own signing page, portal
+ * messaging, settings and administration) were each moved onto `<Button variant="plain">`, which keeps the look the screen gave
+ * them and ignores a second click while the first is working. A new raw `<button>` that starts a write therefore fails the
+ * equality below outright: there is no line to add its count to.
  *
- * What is NOT on it is the point: every screen that posts to the ledger, creates or
- * settles a money document, runs payroll, records a statutory filing or computes a
- * return has been moved onto <Button> (see MONEY_SCREENS below). What is left is
- * master data, trackers, portal messaging, settings and administration — a second
- * click there costs a duplicate row somebody deletes, not a duplicate voucher.
- * Moving one across is deleting its line here.
+ * What the analysis cannot see is unchanged and is said at the top of this file: a handler that arrives as a prop, a write behind a
+ * helper outside lib/, and a `<form onSubmit>`.
  */
-const BASELINE: Record<string, number> = {
-  // ── settings and master data ──
-  "app/accounting/account-groups/page.tsx": 1,
-  "app/accounting/coa-import/page.tsx": 1,
-  "app/accounting/suppliers/page.tsx": 1,
-  "app/settings/branding/page.tsx": 1,
-  "app/settings/dsc-tracker/page.tsx": 3,
-  "app/settings/invoice-settings/page.tsx": 1,
-  "app/settings/invoice-templates/page.tsx": 1,
-  "app/settings/page.tsx": 2,
-  "app/settings/scheduled-reports/page.tsx": 2,
-  "app/settings/statutory-values/page.tsx": 2,
-  "app/settings/treaty-rates/page.tsx": 2,
-  "components/accounting/CostCentresTab.tsx": 2,
-  "components/catalogue/ProductServiceFormModal.tsx": 1,
-  "components/catalogue/ProductServiceManagerPanel.tsx": 3,
-  "components/customers/CustomerFormModal.tsx": 1,
-  "components/gst/RegistrationsTab.tsx": 4,
-  "components/lookups/FirmHsnLibraryQuickAddModal.tsx": 1,
-  "components/notifications/EmailPreferencesPanel.tsx": 1,
-  "components/team/MemberAccessDrawer.tsx": 1,
-  "app/team/assignments/page.tsx": 1,
-  // ── trackers, documents and notices ──
-  "app/clients/[id]/documents/page.tsx": 4,
-  "app/clients/documents/page.tsx": 2,
-  "app/documents/page.tsx": 2,
-  "app/income-tax/notices/page.tsx": 4,
-  "app/clients/[id]/compliance/page.tsx": 2,
-  "app/clients/[id]/lifecycle/page.tsx": 4,
-  "app/tasks/page.tsx": 2,
-  "app/workflows/page.tsx": 1,
-  // ── client health, relationships, intelligence ──
-  "app/clients/[id]/ai-insights/page.tsx": 1,
-  "app/knowledge/page.tsx": 1,
-  // ── communication and engagement ──
-  "app/client-portal/page.tsx": 4,
-  "app/clients/[id]/portal/page.tsx": 1,
-  "app/engagements/page.tsx": 10,
-  "app/notifications/page.tsx": 1,
-  "app/pipeline/page.tsx": 1,
-  "app/sign/page.tsx": 2,
-  "components/portal/TaxDeclarationTab.tsx": 1,
-  // ── platform administration and the practice's own profile ──
-  "app/practice/page.tsx": 1,
-};
+const BASELINE: Record<string, number> = {};
 
 /** The screens that post, settle, pay, issue, run payroll or record a filing. A
  *  screen on this list may NOT appear in BASELINE: it is the half of the table
@@ -472,10 +428,12 @@ test("the raw async-writing buttons that remain are exactly the frozen table", (
 });
 
 test("the scan is not vacuous", () => {
-  const total = Object.values(BASELINE).reduce((s, n) => s + n, 0);
-  // A tripwire for a scanner gone blind, not a target: the table only falls as buttons are converted (it held 92, then 89 on 31-10-2026
-  // when the scanner learned to follow a write into `lib/` and 33 such buttons were converted at once), so the floor sits well below it.
-  assert.ok(total >= 60, `the table holds only ${total} — the analysis has probably gone blind`);
+  // A tripwire for a scanner gone blind, not a target. It used to count the TABLE (92, then 89, then 76), which is none by design since
+  // 22-11-2026, so it counts what the same analysis sees of the buttons that WERE on it: every button, raw or guarded, whose click
+  // reaches an async write. A scanner that stopped seeing writes would find few of those and fail here, where an empty table alone
+  // would pass for the wrong reason. The tree held 479 on 22-11-2026, none of them raw; 400 is well under that and far above nothing.
+  const writing = FILES.reduce((s, f) => s + analyseButtons(f, source(f)).buttons.filter((b) => b.write).length, 0);
+  assert.ok(writing >= 400, `only ${writing} buttons in the tree are seen to start an async write — the analysis has probably gone blind`);
   assert.ok(FILES.length > 400, `only ${FILES.length} files walked`);
   const buttons = FILES.reduce((s, f) => s + (source(f).match(/<Button\b/g) ?? []).length, 0);
   assert.ok(buttons >= 300, `only ${buttons} <Button> in the tree — the conversion has been lost`);

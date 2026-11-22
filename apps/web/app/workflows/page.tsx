@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import React, { useEffect, useState, useCallback } from "react";
 import {
   Play, Pause, CheckCircle2, Search, Zap, RefreshCw, Activity,
@@ -344,7 +345,7 @@ export default function WorkflowsPage() {
                           </span>
                         ) : null}
                         {/* Toggle active */}
-                        <button
+                        <Button variant="plain" size="none" spinner={false}
                           onClick={() => toggle(template.id)}
                           disabled={toggling === template.id || template.is_system}
                           className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors ${
@@ -355,7 +356,7 @@ export default function WorkflowsPage() {
                           title={template.is_system ? "System workflows cannot be toggled" : undefined}
                         >
                           {template.is_active ? <><Play size={11} /> Active</> : <><Pause size={11} /> Inactive</>}
-                        </button>
+                        </Button>
                       </div>
                     </div>
                   </div>

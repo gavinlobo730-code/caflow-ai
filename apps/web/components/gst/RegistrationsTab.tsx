@@ -21,6 +21,7 @@
  * `domain/gst/registrations.py`'s answers, served by
  * /api/client-gst-registrations.
  */
+import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/states";
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
@@ -346,10 +347,10 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
               placeholder="GSTR-9 Table 5N, audited accounts, …"
               className="w-full px-2.5 py-1.5 border border-ps-border rounded-lg" />
           </label>
-          <button onClick={saveTurnover} disabled={busy || !tvForm.fy || !tvForm.amount.trim()}
+          <Button variant="plain" size="none" spinner={false} onClick={saveTurnover} disabled={busy || !tvForm.fy || !tvForm.amount.trim()}
             className="px-3 py-1.5 text-xs bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">
             {tvSaving ? "Saving…" : "Record"}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -451,21 +452,21 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
                               onChange={(v) => setClosing({ id: r.id as string, on: v })}
                               onStateChange={closeDates.watch("closing", "Date cancelled or surrendered")}
                               className="px-1.5 py-1 text-2xs border border-ps-border rounded" />
-                            <button onClick={() => handleClose(r, closing.on)}
+                            <Button variant="plain" size="none" spinner={false} onClick={() => handleClose(r, closing.on)}
                               disabled={busy}
                               className="px-2 py-1 text-2xs bg-brand text-white rounded hover:bg-brand-dark disabled:opacity-40">
                               Record
-                            </button>
+                            </Button>
                             <button onClick={() => setClosing(null)} disabled={busy}
                               className="px-1.5 py-1 text-2xs text-ps-hint hover:text-ps-body">
                               Cancel
                             </button>
                           </span>
                         )}
-                        <button onClick={() => handleWithdraw(r)} disabled={busy}
+                        <Button variant="plain" size="none" spinner={false} onClick={() => handleWithdraw(r)} disabled={busy}
                           className="ml-1 px-2 py-1 text-2xs text-ps-hint hover:text-red-600 disabled:opacity-40">
                           Remove
-                        </button>
+                        </Button>
                       </>
                     )}
                   </td>
@@ -627,10 +628,10 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
                 className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg">
                 Cancel
               </button>
-              <button onClick={handleSave} disabled={busy || !form.gstin.trim()}
+              <Button variant="plain" size="none" spinner={false} onClick={handleSave} disabled={busy || !form.gstin.trim()}
                 className="px-3 py-1.5 text-xs bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">
                 {saving ? "Adding…" : "Add"}
-              </button>
+              </Button>
             </div>
           </div>
         </div>

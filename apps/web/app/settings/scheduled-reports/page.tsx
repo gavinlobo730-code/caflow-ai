@@ -314,7 +314,7 @@ export default function ScheduledReportsPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <button disabled={actionInFlight}
+                    <Button variant="plain" size="none" spinner={false} disabled={actionInFlight}
                       onClick={() => handleToggle(s.id, s.is_active)}
                       className={`flex items-center gap-1 text-xs font-medium ${
                         s.is_active ? "text-green-600" : "text-ps-hint"
@@ -325,7 +325,7 @@ export default function ScheduledReportsPage() {
                         : <ToggleLeft size={16} />
                       }
                       {s.is_active ? "Active" : "Inactive"}
-                    </button>
+                    </Button>
                   </td>
                   <td className="px-5 py-3">
                     <Button variant="plain" size="none" disabled={actionInFlight}
@@ -427,14 +427,14 @@ export default function ScheduledReportsPage() {
               >
                 Cancel
               </button>
-              <button
+              <Button variant="plain" size="none" spinner={false}
                 onClick={handleCreate}
                 disabled={actionInFlight}
                 className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40 flex items-center gap-1.5"
               >
                 {saving && <Loader2 size={12} className="animate-spin" />}
                 {saving ? "Creating…" : "Create Schedule"}
-              </button>
+              </Button>
             </div>
           </div>
         </div>

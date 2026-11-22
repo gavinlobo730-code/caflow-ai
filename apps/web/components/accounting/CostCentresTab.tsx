@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { useCallback, useEffect, useState } from "react";
 import { Plus, Layers, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
@@ -60,6 +61,8 @@ export function CostCentresTab({
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [saveError, setSaveError] = useState<string | null>(null);
+  /** Why retiring or reinstating a centre did not happen, or null. */
+  const [statusError, setStatusError] = useState<string | null>(null);
 
   // The master (centres) and the departmental result (report) are loaded
   // and rendered SEPARATELY. The master is a handful of rows a CA is about
@@ -110,11 +113,18 @@ export function CostCentresTab({
 
   async function add() {
     setSaveError(null);
-    const res = await api.accounting.createCostCentre({
-      client_id: clientId, code, name,
-    });
-    if (!res?.success) {
-      setSaveError(res?.error || "Could not create the cost centre");
+    // A request that never got an answer (the network, a timeout) throws: said beside the form like a refusal, and not left as a press
+    // that did nothing (POST-A-144, found when this button took the second-click guard and its handler came under the silent-press rule).
+    try {
+      const res = await api.accounting.createCostCentre({
+        client_id: clientId, code, name,
+      });
+      if (!res?.success) {
+        setSaveError(res?.error || "Could not create the cost centre");
+        return;
+      }
+    } catch (e) {
+      setSaveError(e instanceof Error && e.message ? e.message : "Could not create the cost centre");
       return;
     }
     setCode("");
@@ -127,10 +137,19 @@ export function CostCentresTab({
   }
 
   async function retire(centre: CostCentre) {
-    const res = await api.accounting.updateCostCentre(centre.id, clientId, {
-      is_active: !centre.is_active,
-    });
-    if (res?.success) await Promise.all([loadCentres(), loadReport()]);
+    // A refused or failed change used to leave the row as it was and say nothing; it is said above the list now.
+    setStatusError(null);
+    const couldNot = `Could not ${centre.is_active ? "retire" : "reinstate"} ${centre.name}.`;
+    try {
+      const res = await api.accounting.updateCostCentre(centre.id, clientId, {
+        is_active: !centre.is_active,
+      });
+      if (!res?.success) { setStatusError(res?.error || couldNot); return; }
+    } catch (e) {
+      setStatusError(e instanceof Error && e.message ? e.message : couldNot);
+      return;
+    }
+    await Promise.all([loadCentres(), loadReport()]);
   }
 
   const rows: CostCentreResult[] = report
@@ -192,13 +211,13 @@ export function CostCentresTab({
             department&apos;s cost in half.
           </p>
           {saveError && <p className="text-xs text-state-problem">{saveError}</p>}
-          <button
-            onClick={() => void add()}
+          <Button variant="plain" size="none" spinner={false}
+            onClick={() => add()}
             disabled={!code.trim() || !name.trim()}
             className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
           >
             Save
-          </button>
+          </Button>
         </div>
       )}
 
@@ -220,6 +239,7 @@ export function CostCentresTab({
 
       {!error && !loading && centres.length > 0 && (
         <>
+          {statusError && <p role="alert" data-cost-centre-status-error className="text-xs text-state-problem">{statusError}</p>}
           <section className="bg-white rounded-xl border border-ps-border overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[560px]">
@@ -240,12 +260,12 @@ export function CostCentresTab({
                         {c.is_active ? "Active" : "Retired"}
                       </td>
                       <td className="py-2 pr-4 text-right">
-                        <button
-                          onClick={() => void retire(c)}
+                        <Button variant="plain" size="none" spinner={false}
+                          onClick={() => retire(c)}
                           className="text-3xs text-ps-label hover:text-ps-ink underline"
                         >
                           {c.is_active ? "Retire" : "Reinstate"}
-                        </button>
+                        </Button>
                       </td>
                     </tr>
                   ))}

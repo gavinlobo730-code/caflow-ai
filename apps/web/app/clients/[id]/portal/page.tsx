@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { useEffect, useState } from "react";
 import { Globe, Copy, X } from "lucide-react";
 import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNavContext";
@@ -287,13 +288,13 @@ export default function PortalPage() {
                   >
                     Cancel
                   </button>
-                  <button
+                  <Button variant="plain" size="none" spinner={false}
                     onClick={handleSendInvite}
                     disabled={loading || !inviteEmail.trim()}
                     className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40"
                   >
                     {loading ? "Sending…" : "Send Invite"}
-                  </button>
+                  </Button>
                 </div>
               </>
             )}

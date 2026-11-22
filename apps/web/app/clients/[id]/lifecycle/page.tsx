@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { useState, useEffect, useCallback } from "react";
 import { Plus, X, CheckCircle, Clock } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -301,13 +302,13 @@ export default function ClientLifecyclePage() {
         title="Lifecycle"
         subtitle="Onboarding workflows and renewals"
         actions={
-          <button
+          <Button variant="plain" size="none" spinner={false}
             onClick={handleCreateWorkflow}
             disabled={actionInFlight}
             className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-md hover:bg-brand-dark disabled:opacity-50"
           >
             <Plus size={12} /> New Onboarding
-          </button>
+          </Button>
         }
       />
 
@@ -361,13 +362,13 @@ export default function ClientLifecyclePage() {
                         <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${pct}%` }} />
                       </div>
                       {wf.status === "in_progress" && (
-                        <button
+                        <Button variant="plain" size="none" spinner={false}
                           onClick={() => handleCancelWorkflow(wf.id)}
                           disabled={actionInFlight}
                           className="text-3xs text-state-problem hover:underline disabled:opacity-50 shrink-0"
                         >
                           {cancellingWorkflowId === wf.id ? "Cancelling…" : "Cancel"}
-                        </button>
+                        </Button>
                       )}
                     </div>
                   </div>
@@ -381,12 +382,12 @@ export default function ClientLifecyclePage() {
                               {task.task_name}
                             </span>
                             {task.status !== "done" && task.status !== "skipped" ? (
-                              <button
+                              <Button variant="plain" size="none" spinner={false}
                                 onClick={() => handleUpdateTask(wf.id, task.id, "done")}
                                 className="text-3xs text-brand hover:text-ps-ink ml-2 shrink-0"
                               >
                                 Mark Done
-                              </button>
+                              </Button>
                             ) : (
                               <Badge className={`text-3xs ${TASK_STATUS_COLORS[task.status] ?? "bg-gray-100 text-gray-600"}`}>
                                 {task.status}
@@ -511,13 +512,13 @@ export default function ClientLifecyclePage() {
             )}
             <div className="flex gap-2 mt-5">
               <button disabled={actionInFlight} onClick={() => setRenewalModal(false)} className="flex-1 text-sm text-gray-600 border border-gray-200 py-2 rounded-md hover:bg-gray-50">Cancel</button>
-              <button
+              <Button variant="plain" size="none" spinner={false}
                 onClick={handleSaveRenewal}
                 disabled={actionInFlight || !renewalForm.service_type || !renewalForm.financial_year}
                 className="flex-1 text-sm bg-brand text-white py-2 rounded-md hover:bg-brand-dark disabled:opacity-50"
               >
                 {savingRenewal ? "Saving…" : "Save"}
-              </button>
+              </Button>
             </div>
           </div>
         </div>

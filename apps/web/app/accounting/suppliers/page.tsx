@@ -490,13 +490,13 @@ export default function SuppliersPage() {
                     </td>
                     <td className="px-4 py-3 flex gap-2 justify-end">
                       <button onClick={() => openEdit(v)} className="text-xs text-blue-600 hover:underline">Edit</button>
-                      <button
+                      <Button variant="plain" size="none" spinner={false}
                         onClick={() => toggleActive(v)}
                         disabled={busyId === v.id}
                         className="text-xs text-ps-hint hover:underline disabled:opacity-50"
                       >
                         {busyId === v.id ? "Saving…" : v.is_active ? "Deactivate" : "Activate"}
-                      </button>
+                      </Button>
                     </td>
                   </tr>
                 ))}

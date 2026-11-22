@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { useState, useEffect, useCallback, useRef } from "react";
 // `Image` is aliased: lucide's icon of that name shadows next/image, which made
 // jsx-a11y/alt-text flag this decorative SVG as a real image missing an alt.
@@ -370,14 +371,14 @@ export default function BrandingPage() {
             </div>
 
             <div className="flex justify-end">
-              <button
+              <Button variant="plain" size="none" spinner={false}
                 onClick={handleSave}
                 disabled={saving || loading}
                 className="flex items-center gap-2 px-5 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors disabled:opacity-50"
               >
                 <Save size={14} />
                 {saving ? "Saving…" : "Save Branding"}
-              </button>
+              </Button>
             </div>
           </ChangePart>
 

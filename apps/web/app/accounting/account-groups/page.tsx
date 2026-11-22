@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { useState, useEffect, useId } from "react";
 import { Layers, Plus } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -176,10 +177,10 @@ function LedgerDialog({ account, onClose, onSaved }:
 
         <div className="flex gap-2 pt-1">
           <button disabled={saving} onClick={onClose} className="flex-1 text-xs border border-ps-border rounded-lg py-2 text-ps-body hover:bg-ps-bg">Cancel</button>
-          <button onClick={save} disabled={saving}
+          <Button variant="plain" size="none" spinner={false} onClick={save} disabled={saving}
                   className="flex-1 text-xs bg-brand text-white rounded-lg py-2 hover:bg-brand-dark disabled:opacity-50">
             {saving ? "Saving…" : account ? "Save changes" : "Add ledger"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

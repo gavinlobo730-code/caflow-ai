@@ -368,13 +368,13 @@ export default function NotificationsPage() {
         }
         rowActions={(n) =>
           tab !== "archived" ? (
-            <button
+            <Button variant="plain" size="none" spinner={false}
               onClick={() => archiveOne(n.id)}
               title="Archive"
               className="p-1.5 rounded text-ps-hint hover:text-ps-label hover:bg-ps-muted transition-all"
             >
               <Archive size={13} />
-            </button>
+            </Button>
           ) : null
         }
       />

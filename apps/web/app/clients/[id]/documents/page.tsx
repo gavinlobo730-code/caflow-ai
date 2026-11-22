@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { UploadProgress } from "@/components/ui/upload-progress";
 import type { UploadProgress as BytesSent } from "@/lib/api/uploadWithProgress";
 import { useEffect, useRef, useState } from "react";
@@ -307,13 +308,13 @@ export default function DocumentsPage() {
                             </button>
                           )}
                           {mayDeleteDocument && (
-                            <button
+                            <Button variant="plain" size="none" spinner={false}
                               onClick={() => handleDeleteDocument(doc)}
                               disabled={deletingDocId === doc.id}
                               className="flex items-center gap-1 text-xs text-state-problem hover:underline disabled:opacity-40"
                             >
                               <Trash2 size={12} /> {deletingDocId === doc.id ? "Deleting…" : "Delete"}
-                            </button>
+                            </Button>
                           )}
                         </div>
                       </td>
@@ -372,13 +373,13 @@ export default function DocumentsPage() {
               >
                 Cancel
               </button>
-              <button
+              <Button variant="plain" size="none" spinner={false}
                 onClick={() => handleUploadDocument()}
                 disabled={actionInFlight || !uploadFile || !uploadLabel.trim()}
                 className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40"
               >
                 {uploading ? "Uploading…" : "Upload"}
-              </button>
+              </Button>
             </div>
             <UploadProgress progress={sent} what="the document" />
           </div>
@@ -396,18 +397,18 @@ export default function DocumentsPage() {
             <button onClick={() => setVersionPromptDoc(null)} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">
               Cancel
             </button>
-            <button
-              onClick={() => { setVersionPromptDoc(null); handleUploadDocument(false, null); }}
+            <Button variant="plain" size="none" spinner={false}
+              onClick={() => { setVersionPromptDoc(null); return handleUploadDocument(false, null); }}
               className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg"
             >
               Upload as New
-            </button>
-            <button
-              onClick={() => { const doc = versionPromptDoc; setVersionPromptDoc(null); handleUploadDocument(true, doc); }}
+            </Button>
+            <Button variant="plain" size="none" spinner={false}
+              onClick={() => { const doc = versionPromptDoc; setVersionPromptDoc(null); return handleUploadDocument(true, doc); }}
               className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark"
             >
               New Version
-            </button>
+            </Button>
           </div>
         </Modal>
       )}

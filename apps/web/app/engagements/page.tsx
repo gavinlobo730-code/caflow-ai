@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -943,14 +944,14 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
           {/* Actions */}
           <div className="flex flex-wrap gap-2 pt-1">
             {letter.status === "Draft" && (
-              <button
+              <Button variant="plain" size="none" spinner={false}
                 disabled={actionLoading}
                 onClick={() => doAction(`/api/engagement-letters/${letter.id}/generate`)}
                 className="flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-50 transition-colors"
               >
                 {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}
                 Mark as Generated
-              </button>
+              </Button>
             )}
 
             {letter.status === "Generated" && (
@@ -977,14 +978,14 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                     The letter will be emailed to this address with a PDF copy attached, then marked as Sent.
                   </p>
                   <div className="flex gap-2">
-                    <button
+                    <Button variant="plain" size="none" spinner={false}
                       disabled={actionLoading || !sendEmail.trim()}
                       onClick={() => doAction(`/api/engagement-letters/${letter.id}/send`, { to_email: sendEmail.trim() })}
                       className="flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-50 transition-colors"
                     >
                       {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
                       Send Now
-                    </button>
+                    </Button>
                     <button onClick={() => setShowSendInput(false)} disabled={actionLoading} className="disabled:opacity-50 rounded-lg border border-ps-border px-3 py-2 text-sm text-ps-label hover:bg-ps-bg">
                       Cancel
                     </button>
@@ -997,14 +998,14 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
               <>
                 {!showSignInput && !showRejectInput && !showRecipientInput && !showRegenConfirm && (
                   <>
-                    <button
+                    <Button variant="plain" size="none" spinner={false}
                       disabled={actionLoading}
                       onClick={() => doResend()}
                       className="flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-50 transition-colors"
                     >
                       {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
                       Send Again
-                    </button>
+                    </Button>
                     <button
                       disabled={actionLoading}
                       onClick={doCopyLink}
@@ -1068,22 +1069,22 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                       Updates the recipient on this same engagement — the signing link and token stay the same.
                     </p>
                     <div className="flex flex-wrap gap-2">
-                      <button
+                      <Button variant="plain" size="none" spinner={false}
                         disabled={actionLoading || !recipientEmail.trim()}
                         onClick={() => doChangeRecipient(false)}
                         className="flex items-center gap-1.5 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg disabled:opacity-50 transition-colors"
                       >
                         {actionLoading && <Loader2 size={13} className="animate-spin" />}
                         Save
-                      </button>
-                      <button
+                      </Button>
+                      <Button variant="plain" size="none" spinner={false}
                         disabled={actionLoading || !recipientEmail.trim()}
                         onClick={() => doChangeRecipient(true)}
                         className="flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-50 transition-colors"
                       >
                         {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
                         Save &amp; Resend
-                      </button>
+                      </Button>
                       <button onClick={() => setShowRecipientInput(false)} disabled={actionLoading} className="disabled:opacity-50 rounded-lg border border-ps-border px-3 py-2 text-sm text-ps-label hover:bg-ps-bg">
                         Cancel
                       </button>
@@ -1099,22 +1100,22 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                       Anyone opening an old link will see &ldquo;invalid or expired&rdquo;. A fresh link is created.
                     </p>
                     <div className="flex flex-wrap gap-2 pt-1">
-                      <button
+                      <Button variant="plain" size="none" spinner={false}
                         disabled={actionLoading}
                         onClick={() => doRegenerate(false)}
                         className="flex items-center gap-1.5 rounded-lg border border-state-attention-border bg-white px-4 py-2 text-sm font-medium text-state-attention hover:bg-state-attention-hover disabled:opacity-50 transition-colors"
                       >
                         {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
                         Generate Only
-                      </button>
-                      <button
+                      </Button>
+                      <Button variant="plain" size="none" spinner={false}
                         disabled={actionLoading}
                         onClick={() => doRegenerate(true)}
                         className="flex items-center gap-1.5 rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50 transition-colors"
                       >
                         {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
                         Generate &amp; Email
-                      </button>
+                      </Button>
                       <button onClick={() => setShowRegenConfirm(false)} disabled={actionLoading} className="disabled:opacity-50 rounded-lg border border-ps-border bg-white px-3 py-2 text-sm text-ps-label hover:bg-ps-bg">
                         Cancel
                       </button>
@@ -1132,14 +1133,14 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                       className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-green-500 focus:ring-2 focus:ring-green-100"
                     />
                     <div className="flex gap-2">
-                      <button
+                      <Button variant="plain" size="none" spinner={false}
                         disabled={actionLoading}
                         onClick={() => doAction(`/api/engagement-letters/${letter.id}/sign`, { signed_pdf_url: signedPdfUrl || undefined })}
                         className="flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50 transition-colors"
                       >
                         {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle size={13} />}
                         Confirm Signed
-                      </button>
+                      </Button>
                       <button onClick={() => setShowSignInput(false)} disabled={actionLoading} className="disabled:opacity-50 rounded-lg border border-ps-border px-3 py-2 text-sm text-ps-label hover:bg-ps-bg">
                         Cancel
                       </button>
@@ -1157,14 +1158,14 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                       className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100"
                     />
                     <div className="flex gap-2">
-                      <button
+                      <Button variant="plain" size="none" spinner={false}
                         disabled={actionLoading}
                         onClick={() => doAction(`/api/engagement-letters/${letter.id}/reject`, { rejection_notes: rejectionNotes || undefined })}
                         className="flex items-center gap-1.5 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
                       >
                         {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <XCircle size={13} />}
                         Confirm Reject
-                      </button>
+                      </Button>
                       <button onClick={() => setShowRejectInput(false)} disabled={actionLoading} className="disabled:opacity-50 rounded-lg border border-ps-border px-3 py-2 text-sm text-ps-label hover:bg-ps-bg">
                         Cancel
                       </button>
@@ -1179,14 +1180,14 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
               Returns the linked lead to the pipeline so it can be re-engaged. */}
           {letter.status !== "Signed" && (
             <div className="border-t border-ps-border pt-3">
-              <button
+              <Button variant="plain" size="none" spinner={false}
                 disabled={actionLoading}
                 onClick={doDelete}
                 className="flex items-center gap-1.5 text-xs font-medium text-red-600 hover:text-state-problem disabled:opacity-50"
               >
                 <Trash2 size={13} />
                 Delete engagement
-              </button>
+              </Button>
               <p className="mt-1 text-xs text-ps-hint">
                 Discards this letter and returns the linked lead to the pipeline so you can draft a new one.
               </p>

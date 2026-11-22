@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { Suspense, useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { Library, Search, Plus, History, RotateCcw, RefreshCw } from "lucide-react";
@@ -219,7 +220,7 @@ function KnowledgeInner() {
                       <li key={v.version} className="flex items-center justify-between text-xs text-gray-600">
                         <span>v{v.version}{v.changed_at ? ` · ${formatDate(v.changed_at)}` : ""}</span>
                         {canAuthor && v.version !== a.current_version && (
-                          <button disabled={rowBusy} onClick={() => restore(a.id, v.version)} className="flex items-center gap-1 text-blue-600 hover:underline"><RotateCcw size={11} /> Restore</button>
+                          <Button variant="plain" size="none" spinner={false} disabled={rowBusy} onClick={() => restore(a.id, v.version)} className="flex items-center gap-1 text-blue-600 hover:underline"><RotateCcw size={11} /> Restore</Button>
                         )}
                       </li>
                     ))}
