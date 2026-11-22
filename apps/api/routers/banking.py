@@ -75,7 +75,7 @@ from services.bank_candidate_search_service import bank_candidate_search_service
 from services.bank_entry_service import bank_entry_service, REDRAFT_CHUNK
 from services.trusted_rule_authority import WAITING_SENTENCE
 from domain.banking import file_hash, StatementParseError, PdfPasswordError
-from domain.banking.normalizer import parse_statement_detailed
+from domain.banking.normalizer import parse_statement_detailed, unread_sentence
 from domain.banking.tie_out import statement_check, totals_agreement
 from domain.banking import account_kind
 from domain.banking.register import opening_balance_gap, OPENING_DATE_REQUIRED
@@ -922,11 +922,21 @@ def _statement_refusal(e: StatementParseError) -> HTTPException:
     return HTTPException(status_code=422, detail=str(e))
 
 
+def _unread_as_answered(unread) -> dict:
+    """The two keys every statement answer carries for the rows that could not be read (POST-A-551): each row as the bank printed it,
+    and the one sentence that names them (None when there is none). One function, so the import, its refusal and the check of a column
+    mapping cannot word it three ways."""
+    return {"unread_rows": [u.to_dict() for u in unread], "unread_note": unread_sentence(unread)}
+
+
 def _read_statement_file(filename: str, content: bytes, mapping, *,
                          allow_vision: bool, has_balances: bool,
                          rate_key: Optional[tuple] = None,
                          pdf_password: Optional[str] = None):
-    """(transactions, source_format, used_vision, printed_totals) for an upload.
+    """(transactions, source_format, used_vision, printed_totals, unread_rows) for an upload.
+
+    `unread_rows` are the rows of a CSV, a workbook or a text PDF that look like transactions and could not be read (a date or
+    an amount that is not one, POST-A-551); a statement read by a model has none to name, because nothing there is a cell.
 
     `printed_totals` is the "Grand Total" row the bank printed on the statement,
     when it printed one — the evidence, already inside the file, that every line
@@ -967,7 +977,7 @@ def _read_statement_file(filename: str, content: bytes, mapping, *,
             parsed = parse_statement_detailed(filename or "", content, mapping,
                                               pdf_password=pdf_password)
             fmt = "pdf" if name.endswith(".pdf") else "xlsx" if name.endswith(".xlsx") else "csv"
-            return parsed.transactions, fmt, False, parsed.printed_totals
+            return parsed.transactions, fmt, False, parsed.printed_totals, parsed.unread_rows
         except StatementParseError as e:
             # Only a PDF with no readable text is a candidate for the model. A
             # malformed CSV is a malformed CSV and a picture will not help — and
@@ -1026,7 +1036,7 @@ def _read_statement_file(filename: str, content: bytes, mapping, *,
                 "proves every line was read.")
 
         txns = vision.read_statement(images, call_model=statement_vision.call, mime=mime)
-    return txns, ("image" if is_image else "pdf-scan"), True, printed
+    return txns, ("image" if is_image else "pdf-scan"), True, printed, ()
 
 
 @router.post("/statements/import")
@@ -1165,7 +1175,7 @@ def upload_statement(
     has_balances = (opening_balance_paise is not None
                     and closing_balance_paise is not None)
     try:
-        txns, fmt, used_vision, printed = _read_statement_file(
+        txns, fmt, used_vision, printed, unread = _read_statement_file(
             file.filename or "", content, mapping,
             allow_vision=allow_vision, has_balances=has_balances,
             rate_key=(current_user.get("firm_id") or "", current_user.get("id")),
@@ -1227,12 +1237,17 @@ def upload_statement(
             detail="There is nothing to acknowledge: this statement's own "
                    "totals were not checked, or they agree with the lines read "
                    "from it. Import it without a note.")
+    # Rows that look like transactions and could not be read (POST-A-551). They are in none of the figures below, so a
+    # refusal that says "the lines do not add up" names them: without that the CA is sent to the column mapping, or to
+    # the bank, for a row this reader left out.
+    named = _unread_as_answered(unread)
     if check["refusal"]:
         # A dict, so a screen can offer the way past without matching on the
         # wording of a sentence written for a human. lib/api errorMessage()
         # already flattens {message: ...} for display.
         raise HTTPException(status_code=422, detail={
-            "message": check["refusal"], "code": check["refusal_code"]})
+            "message": check["refusal"] + (f" {named['unread_note']}" if named["unread_note"] else ""),
+            "code": check["refusal_code"], "unread_rows": named["unread_rows"]})
     if used_vision and not check["verified"]:
         # Belt and braces, and deliberately kept. Between them the two refusals
         # above should already cover this path — _read_statement_file refuses a
@@ -1262,6 +1277,7 @@ def upload_statement(
                                    "verified": check["verified"],
                                    "verification_gap": check["gap"],
                                    "totals_mismatch_acknowledged": check["acknowledged"],
+                                   **named,
                                    "read_with_ai": used_vision})
     file_meta = {
         "file_name": file.filename, "file_size_bytes": len(content),
@@ -1326,6 +1342,9 @@ def upload_statement(
     result["verified"] = check["verified"]
     result["verification_gap"] = check["gap"]
     result["totals_mismatch_acknowledged"] = check["acknowledged"]
+    # What was NOT read, beside what was: a row with a figure in it that could not be read as a transaction is not in
+    # `imported`, and an import that says "42 imported" over a file of 43 has to say which one is missing (POST-A-551).
+    result.update(named)
     # Say when a model read the statement. A CA reviewing these lines later is
     # entitled to know they came off a picture rather than a file, and the
     # source_format on the statement row records the same thing durably.
@@ -1439,6 +1458,10 @@ def preview_statement_with_mapping(
         # "quietly" into a number a CA can judge: 3 of 200 is a footer, 180 of
         # 200 is a wrong date column.
         "skipped_count": max(0, info["total_rows"] - len(txns)),
+        # ...and the skipped rows that are NOT a footer: a row with a description and a figure whose date or amount could
+        # not be read. Named, with the cell as printed, so the CA can correct the file or the mapping before importing
+        # (POST-A-551).
+        **_unread_as_answered(parsed.unread_rows),
         "rows": [{
             "transaction_date": t.transaction_date,
             "description": t.description,

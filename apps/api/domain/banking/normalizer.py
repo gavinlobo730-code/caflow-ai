@@ -372,6 +372,21 @@ _DRCR_SUFFIX_RE = re.compile(r"(dr|cr)$", re.IGNORECASE)
 def _to_paise(val) -> int:
     """Parse a money cell to integer paise. Empty / '-' → 0. Never uses float.
 
+    A cell that is NOT an amount also answers 0 here, which is right for the callers that only need a figure to compare (a
+    balance, a totals row). The two transaction legs do not ask this function: they ask `_read_paise`, which answers None
+    for a cell it cannot read, so a row with such a cell is NAMED instead of being read as a row with no movement (POST-A-551).
+    """
+    read = _read_paise(val)
+    return 0 if read is None else read
+
+
+def _read_paise(val) -> Optional[int]:
+    """A money cell as integer paise; 0 for an empty one; None for one that holds something that is not an amount.
+
+    The difference between the last two is the whole of POST-A-551: a stray letter in a figure ("12,3x4.00"), two decimal
+    points or a word in the amount column used to read as nil exactly like a blank cell, so the row carried no movement and
+    was dropped (or kept as a balance marker) with nothing to say which row.
+
     R2.11: a trailing Dr/Cr suffix is common across Indian bank exports in ANY
     case ('Dr', 'DR', 'dr', 'Cr', 'CR', 'cr') — the previous `.rstrip("DrCr")`
     stripped individual CHARACTERS 'D','r','C' (case-sensitive, so it happened
@@ -423,15 +438,17 @@ def _to_paise(val) -> int:
     try:
         raw = Decimal(s)
     except InvalidOperation:
-        # An amount cell that is not a number reads as nil, like a blank one. The row then carries no movement on that leg and is NOT named: recorded
-        # as open on the ledger (POST-A-551).
-        return 0
+        # Something is printed in the cell and it is not a number: None, "could not be read", which the row loop names.
+        return None
+    if not raw.is_finite():
+        # "NaN" and "Infinity" parse as a Decimal and are not an amount: unreadable, like any other word in the cell.
+        return None
     explicit_neg = raw < 0
     try:
         paise = int((abs(raw) * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
     except (InvalidOperation, ValueError):
-        # A figure Decimal cannot scale (NaN, Infinity typed in a cell) reads as nil for the same reason as above (POST-A-551).
-        return 0
+        # A figure Decimal cannot scale (NaN, Infinity typed in a cell) is not an amount either: None, and the row is named.
+        return None
     if drcr == "dr":
         neg = True
     elif drcr == "cr":
@@ -465,8 +482,53 @@ def adapter_for(headers: list[str], mapping: Optional[dict] = None) -> dict:
     return _ADAPTERS[fmt]
 
 
+@dataclass(frozen=True)
+class UnreadRow:
+    """A row of the statement that looks like a transaction and could not be read as one (POST-A-551).
+
+    `column` is which cell stopped it ("date", "amount", "debit" or "credit") and `cell` is that cell as the bank printed
+    it, so a CA can find the row in the file. `date` is the row's date where that much was read (None when the date is
+    what could not be read) and `description` is the row's own narration, cut to a length a screen can show.
+    """
+
+    column: str
+    cell: str
+    date: Optional[str]
+    description: str
+
+    def to_dict(self) -> dict:
+        return {"column": self.column, "cell": self.cell, "date": self.date, "description": self.description}
+
+
+#: How much of a narration or a cell an unread row carries: enough to find the row, not the whole of a long UPI reference.
+_UNREAD_TEXT = 120
+
+
+def _unread(column: str, cell, iso: Optional[str], desc: str) -> UnreadRow:
+    return UnreadRow(column=column, cell=str(cell if cell is not None else "").strip()[:_UNREAD_TEXT],
+                     date=iso, description=(desc or "")[:_UNREAD_TEXT])
+
+
+def unread_sentence(unread) -> Optional[str]:
+    """One sentence naming the rows that were not read, or None when every row was. Up to three are named; the rest are counted."""
+    rows = list(unread or [])
+    if not rows:
+        return None
+    def one(r) -> str:
+        where = f"{r.date}, " if r.date else ""
+        return f"{where}\"{r.description}\" ({r.column} printed as \"{r.cell}\")"
+    named = "; ".join(one(r) for r in rows[:3])
+    more = f"; and {len(rows) - 3} more" if len(rows) > 3 else ""
+    many = len(rows) != 1
+    return (f"{len(rows)} row{'s' if many else ''} of the file could not be read and {'are' if many else 'is'} not in these figures: "
+            f"{named}{more}. Correct {'them' if many else 'it'} in the file, or check the column mapping, and upload it again.")
+
+
 def _rows_to_txns(rows: list[list], header_idx: int,
-                  mapping: Optional[dict] = None) -> list[NormalizedTxn]:
+                  mapping: Optional[dict] = None, *,
+                  unread: Optional[list] = None) -> list[NormalizedTxn]:
+    """The transactions of the rows under the header. `unread`, when a list is given, receives an `UnreadRow` for each row that
+    has a description and could not be read (a date or an amount that is not one), so the caller can name them."""
     headers = [str(c) for c in rows[header_idx]]
     if mapping is not None:
         # An explicit mapping DELIBERATELY skips _validate_adapter. That
@@ -518,6 +580,11 @@ def _rows_to_txns(rows: list[list], header_idx: int,
                     "bank statement row skipped: description %r present but date %r unrecognised",
                     desc[:80], col("date"),
                 )
+                # Named to the caller as well as logged, but only where the row carries a figure: a sub-header or a note
+                # under the table has words and no amount, and naming every one of those would bury the row that matters.
+                if unread is not None and str(col("date") or "").strip() and any(
+                        _read_paise(col(k)) not in (None, 0) for k in ("amount", "debit", "credit")):
+                    unread.append(_unread("date", col("date"), None, desc))
             continue  # skip non-transaction rows (totals, blanks, sub-headers)
         ref = col("ref")
 
@@ -528,7 +595,14 @@ def _rows_to_txns(rows: list[list], header_idx: int,
             # punctuation ("Dr.", "Cr.") is stripped (adversarial-review fix)
             # so a bank's own dotted abbreviation isn't silently unrecognised
             # and its rows dropped with no error.
-            amount = abs(_to_paise(col("amount")))
+            read_amount = _read_paise(col("amount"))
+            if read_amount is None:
+                # Something is printed in the amount cell and it is not an amount (POST-A-551): the row is named, not
+                # skipped as if it carried no movement.
+                if unread is not None:
+                    unread.append(_unread("amount", col("amount"), iso, desc))
+                continue
+            amount = abs(read_amount)
             indicator = str(col("drcr") or "").strip().lower().rstrip(".")
             is_debit = indicator in _INDICATOR_DEBIT_TOKENS
             is_credit = indicator in _INDICATOR_CREDIT_TOKENS
@@ -537,8 +611,16 @@ def _rows_to_txns(rows: list[list], header_idx: int,
             debit_paise = amount if is_debit else 0
             credit_paise = amount if is_credit else 0
         else:
-            debit_paise = abs(_to_paise(col("debit")))
-            credit_paise = abs(_to_paise(col("credit")))
+            read_debit, read_credit = _read_paise(col("debit")), _read_paise(col("credit"))
+            if read_debit is None or read_credit is None:
+                # An unreadable figure beside an empty one used to make this row a balance marker (nil on both legs) and
+                # not a transaction (POST-A-551). It is named instead, by the leg that could not be read.
+                if unread is not None:
+                    leg = "debit" if read_debit is None else "credit"
+                    unread.append(_unread(leg, col(leg), iso, desc))
+                continue
+            debit_paise = abs(read_debit)
+            credit_paise = abs(read_credit)
 
         out.append(NormalizedTxn(
             transaction_date=iso,
@@ -864,13 +946,18 @@ def _finish(rows: list[list], mapping: Optional[dict], *,
     if len(rows) < 2:
         raise StatementParseError(empty)
     header_idx = _find_header_idx(rows)
-    txns = _rows_to_txns(rows, header_idx, mapping)
+    unread: list[UnreadRow] = []
+    txns = _rows_to_txns(rows, header_idx, mapping, unread=unread)
     if not txns:
-        raise StatementParseError(no_txns)
+        # Nothing was read at all. When rows were found and none could be read, say which: "no transactions" alone sends the
+        # CA to the column mapping when the file's own figures are the trouble.
+        said = unread_sentence(unread)
+        raise StatementParseError(f"{no_txns} {said}" if said else no_txns)
     headers = [str(c) for c in rows[header_idx]]
     return ParsedStatement(
         transactions=txns,
-        printed_totals=printed_totals(rows, adapter_for(headers, mapping)))
+        printed_totals=printed_totals(rows, adapter_for(headers, mapping)),
+        unread_rows=tuple(unread))
 
 
 def _csv_rows(text: str) -> list[list]:
@@ -1243,6 +1330,8 @@ class ParsedStatement:
 
     transactions: list[NormalizedTxn]
     printed_totals: Optional[dict]
+    #: Rows that look like transactions and could not be read (POST-A-551): named to the CA, never silently left out.
+    unread_rows: tuple = ()
 
 
 def parse_statement_detailed(filename: str, content: bytes,
