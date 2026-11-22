@@ -130,11 +130,16 @@ def _outputs_for(tmp_path: Path, before: dict[str, str], change) -> dict[str, st
 def test_the_step_skips_a_frontend_only_diff_and_runs_for_a_document(tmp_path):
     base = {"apps/web/a.ts": "1", "apps/api/x.py": "1", "CLAUDE.md": "1"}
     got = _outputs_for(tmp_path / "web", base, lambda r: (r / "apps/web/a.ts").write_text("2"))
-    assert got == {"api": "false", "web": "true", "docs_only": "false"}
+    assert got == {"api": "false", "web": "true", "docs_lane": "false"}
     got = _outputs_for(tmp_path / "doc", base, lambda r: (r / "CLAUDE.md").write_text("2"))
-    assert got == {"api": "true", "web": "false", "docs_only": "true"}      # a document runs the suite: the docs lane's, not the whole
+    assert got == {"api": "true", "web": "false", "docs_lane": "true"}      # a document runs the suite: the docs lane's, not the whole
+    # A screen change with its notes: the lane, and `web` says the lane must add the modules that read a frontend (22-11-2026).
     got = _outputs_for(tmp_path / "both", base, lambda r: ((r / "CLAUDE.md").write_text("2"), (r / "apps/web/a.ts").write_text("2")))
-    assert got == {"api": "true", "web": "true", "docs_only": "false"}
+    assert got == {"api": "true", "web": "true", "docs_lane": "true"}
+    # ... and with a line of code in it, the whole suite.
+    got = _outputs_for(tmp_path / "all", base, lambda r: ((r / "CLAUDE.md").write_text("2"), (r / "apps/web/a.ts").write_text("2"),
+                                                          (r / "apps/api/x.py").write_text("2")))
+    assert got == {"api": "true", "web": "true", "docs_lane": "false"}
 
 
 def test_a_backend_file_moved_into_a_frontend_still_runs_the_suite(tmp_path):

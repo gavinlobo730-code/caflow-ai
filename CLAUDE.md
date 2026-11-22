@@ -95,7 +95,7 @@ asked for again. Where one of them differs from a default, this section wins.
   the work branch to `main`. Close an item's ledger line in the same commit as its work. Before
   each batch, confirm every item in it is still true against the code and close any that is
   already done or moot. A change confined to the web apps skips the backend tests, one confined to
-  `docs/` and CLAUDE.md runs only the tests that read them; a migration merged to `main` applies to production (see Migrations).
+  `docs/` and CLAUDE.md, with or without the web apps, runs only the tests that read what changed; a migration merged to `main` applies to production (see Migrations).
 - **Sub-agents and workflows.** The default is to do the work directly. Sub-agents are for
   narrow, independent, read-only research, or an independent review of one specific diff: at
   most three at a time, each briefed with the goal, the files and what is already ruled out.
