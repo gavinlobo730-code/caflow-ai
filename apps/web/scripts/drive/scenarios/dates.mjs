@@ -4654,7 +4654,7 @@ export const scenarios = [
   // While a Record is out the dialog cannot be left: Close and Cancel are held, so a late answer cannot act on a dialog the person has already left, and they are live again after a refusal.
   {
     id: "statutory-values-close-and-cancel-are-held-while-a-record-is-out",
-    title: "Settings > Statutory values > Record a notification: while a Record is out Close and Cancel are held, and live again once the answer is a refusal",
+    title: "Settings > Statutory values > Record a notification: while a Record is out Cancel is held and the ×, Escape and a click beside the dialog do not close it; Cancel works again once the answer is a refusal",
     async run(env) {
       const { page, stub } = env;
       await openStatutoryValues(env);
@@ -4663,12 +4663,16 @@ export const scenarios = [
       stub.route({ method: "PUT", re: /api\/payroll\/statutory-values\/pt$/, delay: 1800, ...refuse(PT_UNCOVERED_SENTENCE, 422) });
       const dialog = statutoryDialog(page);
       await dialog.getByRole("button", { name: "Record", exact: true }).click();
-      const close = dialog.getByRole("button", { name: "Close", exact: true });
+      // The shared dialog since POST-A-130's sixteenth step: Cancel is greyed out, and the × is not but goes through the same held close as
+      // Escape and a click beside the dialog, so each is tried while the Record is out.
+      const close = dialog.getByRole("button", { name: "Close dialog", exact: true });
       const cancel = dialog.getByRole("button", { name: "Cancel", exact: true });
-      await until(async () => (await close.isDisabled({ timeout: 500 }).catch(() => false)) && (await cancel.isDisabled({ timeout: 500 }).catch(() => false)),
-        "Close and Cancel to be held while the Record was out");
+      await until(async () => await cancel.isDisabled({ timeout: 500 }).catch(() => false), "Cancel to be held while the Record was out");
+      await close.click();
+      await page.keyboard.press("Escape");
+      await page.mouse.click(5, 5);
+      assert.equal(await dialog.count(), 1, "the ×, Escape or a click beside it closed the dialog while the Record was out");
       await shownInTheDialog(page, PT_UNCOVERED_SENTENCE, "the refusal was not shown once the answer came");
-      assert.equal(await close.isDisabled(), false, "Close stayed held after the answer");
       assert.equal(await cancel.isDisabled(), false, "Cancel stayed held after the answer");
     },
   },

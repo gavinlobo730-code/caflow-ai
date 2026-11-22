@@ -27,6 +27,7 @@ import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
 import { readWindow } from "@/lib/lists/readWindow";
 import { windowDescription } from "@/lib/lists/window";
@@ -499,10 +500,14 @@ function EditCodeModal({ row, onClose, onSaved, onError }: {
   }
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={(e) => { e.stopPropagation(); if (!saving) onClose(); }} aria-hidden="true" />
-      <div className="relative w-full max-w-md bg-white rounded-xl shadow-xl p-4 space-y-3">
-        <h3 className="text-sm font-semibold text-ps-ink">Edit {row.hsn_code}</h3>
+    // The shared dialog (POST-A-130): named, modal, Tab kept inside, focus given back. Its close is held while the change is being saved.
+    <Modal title={`Edit ${row.hsn_code}`} maxWidthClass="max-w-md" onClose={() => { if (!saving) onClose(); }}
+      footer={<>
+        <button onClick={onClose} disabled={saving} className="text-sm px-3.5 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50">Cancel</button>
+        <Button variant="plain" size="none" onClick={submit} disabled={saving} className="text-sm px-4 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">
+          Save changes
+        </Button>
+      </>}>
         <label className="block space-y-1">
           <span className="block text-xs font-medium text-ps-label">Description</span>
           <input
@@ -522,13 +527,6 @@ function EditCodeModal({ row, onClose, onSaved, onError }: {
             className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
           />
         </label>
-        <div className="flex justify-end gap-2 pt-1">
-          <button onClick={onClose} disabled={saving} className="text-sm px-3.5 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50">Cancel</button>
-          <Button variant="plain" size="none" onClick={submit} disabled={saving} className="text-sm px-4 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">
-            Save changes
-          </Button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

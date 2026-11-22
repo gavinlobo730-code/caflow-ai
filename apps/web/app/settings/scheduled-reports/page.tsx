@@ -9,7 +9,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Plus, Trash2, Mail, Calendar, ToggleLeft, ToggleRight,
-  AlertCircle, Loader2, X,
+  AlertCircle, Loader2,
 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { deleteRowAndConfirm } from "@/lib/data/deleteRowAndConfirm";
@@ -22,6 +22,7 @@ import { EmptyState } from "@/components/ui/states";
 import { selectAll } from "@/lib/supabase/selectAll";
 
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { SectionPlaceholder } from "@/components/ui/page-frame";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -344,14 +345,24 @@ export default function ScheduledReportsPage() {
 
       {/* New Schedule Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-ps-ink">New Schedule</h3>
-              <button disabled={saving} onClick={() => setShowModal(false)} className="text-ps-hint hover:text-ps-label">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+        // The shared dialog (POST-A-130). Its close is held while the schedule is being created.
+        <Modal title="New Schedule" maxWidthClass="max-w-md" onClose={() => { if (!saving) setShowModal(false); }}
+          footer={<>
+            <button disabled={saving}
+              onClick={() => setShowModal(false)}
+              className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <Button variant="plain" size="none" spinner={false}
+              onClick={handleCreate}
+              disabled={actionInFlight}
+              className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40 flex items-center gap-1.5"
+            >
+              {saving && <Loader2 size={12} className="animate-spin" />}
+              {saving ? "Creating…" : "Create Schedule"}
+            </Button>
+          </>}>
 
             <div className="space-y-3">
               <div>
@@ -420,24 +431,7 @@ export default function ScheduledReportsPage() {
               {formError && <Callout tone="problem">{formError}</Callout>}
             </div>
 
-            <div className="flex gap-3 justify-end pt-1">
-              <button disabled={saving}
-                onClick={() => setShowModal(false)}
-                className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg"
-              >
-                Cancel
-              </button>
-              <Button variant="plain" size="none" spinner={false}
-                onClick={handleCreate}
-                disabled={actionInFlight}
-                className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40 flex items-center gap-1.5"
-              >
-                {saving && <Loader2 size={12} className="animate-spin" />}
-                {saving ? "Creating…" : "Create Schedule"}
-              </Button>
-            </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

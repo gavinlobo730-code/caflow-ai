@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { ChevronLeft, Plus, Star, Trash2, Check } from "lucide-react";
@@ -98,12 +99,15 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
-        <div className="px-6 py-4 border-b border-ps-border">
-          <h3 className="text-sm font-semibold text-ps-ink">New Invoice Template</h3>
-        </div>
-        <div className="px-6 py-4 space-y-4">
+    // The shared dialog (POST-A-130). Its close is held while the template is being created.
+    <Modal title="New Invoice Template" maxWidthClass="max-w-md" onClose={() => { if (!saving) onClose(); }}
+      footer={<>
+        <button disabled={saving} onClick={onClose} className="px-4 py-1.5 border border-ps-border text-ps-label text-sm rounded-lg hover:bg-ps-bg disabled:opacity-50">Cancel</button>
+        <Button variant="plain" size="none" spinner={false} onClick={handleCreate} disabled={saving} className="px-4 py-1.5 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark disabled:opacity-50">
+          {saving ? "Creating…" : "Create Template"}
+        </Button>
+      </>}>
+        <div className="space-y-4">
           {error && <Callout tone="problem">{error}</Callout>}
           <div>
             <label className="text-xs font-medium text-ps-label block mb-1">Template Name <span className="text-state-problem">*</span></label>
@@ -153,14 +157,7 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
             <span className="text-sm text-ps-body">Set as default template</span>
           </label>
         </div>
-        <div className="px-6 py-4 border-t border-ps-border flex gap-2 justify-end">
-          <button disabled={saving} onClick={onClose} className="px-4 py-1.5 border border-ps-border text-ps-label text-sm rounded-lg hover:bg-ps-bg">Cancel</button>
-          <Button variant="plain" size="none" spinner={false} onClick={handleCreate} disabled={saving} className="px-4 py-1.5 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark disabled:opacity-50">
-            {saving ? "Creating…" : "Create Template"}
-          </Button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
