@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { useState, useEffect, useId } from "react";
 import { Layers, Plus } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -102,11 +103,15 @@ function LedgerDialog({ account, onClose, onSaved }:
   }
 
   return (
-    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center" onClick={(e) => { e.stopPropagation(); if (!saving) onClose(); }}>
-      <div className="bg-white rounded-xl max-w-md w-full p-6 space-y-3" onClick={e => e.stopPropagation()}>
-        <h3 className="text-sm font-semibold text-ps-ink">
-          {account ? `Edit ${account.account_name}` : "Add a ledger"}
-        </h3>
+    // The shared dialog (POST-A-130). Its close is held while the ledger is being saved.
+    <Modal title={account ? `Edit ${account.account_name}` : "Add a ledger"} maxWidthClass="max-w-md" onClose={() => { if (!saving) onClose(); }}
+      footer={<>
+        <button disabled={saving} onClick={onClose} className="flex-1 text-xs border border-ps-border rounded-lg py-2 text-ps-body hover:bg-ps-bg disabled:opacity-50">Cancel</button>
+        <Button variant="plain" size="none" spinner={false} onClick={save} disabled={saving}
+                className="flex-1 text-xs bg-brand text-white rounded-lg py-2 hover:bg-brand-dark disabled:opacity-50">
+          {saving ? "Saving…" : account ? "Save changes" : "Add ledger"}
+        </Button>
+      </>}>
 
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
@@ -175,15 +180,7 @@ function LedgerDialog({ account, onClose, onSaved }:
 
         {error && <Callout tone="problem">{error}</Callout>}
 
-        <div className="flex gap-2 pt-1">
-          <button disabled={saving} onClick={onClose} className="flex-1 text-xs border border-ps-border rounded-lg py-2 text-ps-body hover:bg-ps-bg">Cancel</button>
-          <Button variant="plain" size="none" spinner={false} onClick={save} disabled={saving}
-                  className="flex-1 text-xs bg-brand text-white rounded-lg py-2 hover:bg-brand-dark disabled:opacity-50">
-            {saving ? "Saving…" : account ? "Save changes" : "Add ledger"}
-          </Button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

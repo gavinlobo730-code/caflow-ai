@@ -110,7 +110,8 @@ export const scenarios = [
       await page.getByRole("button", { name: "+ band", exact: true }).click();
       assert.equal(await page.getByRole("button", { name: "Remove band 1", exact: true }).count(), 1, "the first band's remove button has no name");
       assert.equal(await page.getByRole("button", { name: "Remove band 2", exact: true }).count(), 1, "the second band's remove button has no name");
-      assert.equal(await page.getByRole("button", { name: "Close", exact: true }).count(), 1, "the dialog's close has no name");
+      // The shared dialog since POST-A-130's sixteenth step, whose own close is named "Close dialog".
+      assert.equal(await page.getByRole("dialog", { name: "Record a notification", exact: true }).getByRole("button", { name: "Close dialog", exact: true }).count(), 1, "the dialog's close has no name");
     },
   },
   {

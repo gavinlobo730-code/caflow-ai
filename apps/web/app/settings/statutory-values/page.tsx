@@ -39,8 +39,9 @@
  * page shows the state of play and posts what the CA typed.
  */
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Trash2, Scale, X, AlertTriangle } from "lucide-react";
+import { Plus, Trash2, Scale, AlertTriangle } from "lucide-react";
 import { ReadOnlyNotice, useMayChange } from "@/components/settings/ChangePart";
 import { api, type PTSlabRow } from "@/lib/api/index";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
@@ -393,16 +394,18 @@ export default function StatutoryValuesPage() {
         )}
 
         {showForm && (
-          <div className="fixed inset-0 bg-black/30 flex items-start justify-center p-6 overflow-y-auto z-50">
-            <div className="bg-white rounded-xl w-full max-w-2xl my-8">
-              <div className="px-5 py-4 flex items-center justify-between border-b border-ps-border">
-                <h2 className="text-sm font-semibold text-ps-ink">Record a notification</h2>
-                <button onClick={() => setShowForm(false)} disabled={saving} aria-label="Close" className="text-ps-hint hover:text-ps-ink disabled:opacity-50">
-                  <X size={16} />
-                </button>
-              </div>
+          // The shared dialog (POST-A-130). Its close is held while the notification is being recorded.
+          <Modal title="Record a notification" maxWidthClass="max-w-2xl" onClose={() => { if (!saving) setShowForm(false); }}
+            footer={<>
+              <button onClick={() => setShowForm(false)} disabled={saving}
+                className="px-4 py-1.5 text-sm text-ps-label hover:bg-ps-bg rounded-lg disabled:opacity-50">Cancel</button>
+              <Button variant="plain" size="none" spinner={false} onClick={save} disabled={actionInFlight}
+                className="px-4 py-1.5 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark disabled:opacity-50">
+                {saving ? "Saving…" : "Record"}
+              </Button>
+            </>}>
 
-              <div className="p-5 space-y-4">
+              <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="State code" value={state} onChange={v => setState(v.toUpperCase().slice(0, 2))} placeholder="GJ" />
                   <div>
@@ -485,16 +488,7 @@ export default function StatutoryValuesPage() {
                 )}
               </div>
 
-              <div className="px-5 py-4 flex items-center justify-end gap-2 border-t border-ps-border">
-                <button onClick={() => setShowForm(false)} disabled={saving}
-                  className="px-4 py-1.5 text-sm text-ps-label hover:bg-ps-bg rounded-lg disabled:opacity-50">Cancel</button>
-                <Button variant="plain" size="none" spinner={false} onClick={save} disabled={actionInFlight}
-                  className="px-4 py-1.5 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark disabled:opacity-50">
-                  {saving ? "Saving…" : "Record"}
-                </Button>
-              </div>
-            </div>
-          </div>
+          </Modal>
         )}
       </div>
     </>

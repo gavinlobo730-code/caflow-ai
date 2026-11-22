@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Lock, Unlock, Shield, AlertTriangle, KeyRound, X, Eye, EyeOff } from "lucide-react";
+import { Lock, Unlock, Shield, AlertTriangle, KeyRound, Eye, EyeOff } from "lucide-react";
+import { Modal } from "@/components/ui/modal";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
@@ -114,18 +115,19 @@ function PinModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <KeyRound className="w-5 h-5 text-blue-600" />
-            <h2 className="text-base font-semibold text-ps-ink">
-              {isSettingPin ? "Set Lock PIN" : d.isLocked ? "Unlock Year" : "Lock Year"}
-            </h2>
-          </div>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
-        </div>
-
+    // The shared dialog (POST-A-130): named, modal, Tab kept inside, focus moved to the PIN box and given back. Nothing is in flight while
+    // it is open (confirming closes it and the page then sends the request), so nothing holds its close.
+    <Modal title={isSettingPin ? "Set Lock PIN" : d.isLocked ? "Unlock Year" : "Lock Year"} maxWidthClass="max-w-sm" onClose={onClose}
+      footer={<>
+        <button onClick={onClose}
+          className="flex-1 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg">
+          Cancel
+        </button>
+        <button onClick={submit}
+          className="flex-1 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark">
+          {isSettingPin ? "Set PIN & Lock" : "Confirm"}
+        </button>
+      </>}>
         <p className="text-sm text-ps-label">
           {isSettingPin
             ? "No PIN is set yet. Create a PIN that Partners will use to lock or unlock financial years."
@@ -180,20 +182,8 @@ function PinModal({
           </div>
         )}
 
-        {err && <p className="text-xs text-red-600">{err}</p>}
-
-        <div className="flex gap-2 pt-1">
-          <button onClick={onClose}
-            className="flex-1 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg">
-            Cancel
-          </button>
-          <button onClick={submit}
-            className="flex-1 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark">
-            {isSettingPin ? "Set PIN & Lock" : "Confirm"}
-          </button>
-        </div>
-      </div>
-    </div>
+        {err && <p role="alert" className="text-xs text-state-problem">{err}</p>}
+    </Modal>
   );
 }
 
@@ -336,12 +326,16 @@ function LockYearContent() {
         Locking follows AS-1 (Accounting Standard on Disclosure of Accounting Policies) — once books are closed, entries should not be changed without proper rectification journals in the next open period.
       </p>
 
-      <PinModal
-        dialog={pinDialog}
-        pinSet={pinSet}
-        onConfirm={(fy, isLocked, pin) => toggleLock(fy, isLocked, pin)}
-        onClose={() => setPinDialog(null)}
-      />
+      {/* Mounted only while it is open: the dialog used to stay mounted and merely draw nothing, so a PIN typed into it was still in its
+          box (and behind its "show" eye) the next time anybody opened it on this screen. */}
+      {pinDialog && (
+        <PinModal
+          dialog={pinDialog}
+          pinSet={pinSet}
+          onConfirm={(fy, isLocked, pin) => toggleLock(fy, isLocked, pin)}
+          onClose={() => setPinDialog(null)}
+        />
+      )}
 
       {/* Toast */}
       {toast && (

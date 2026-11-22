@@ -46,10 +46,11 @@
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { editedChoice, removedIdentifierProblem } from "@/lib/forms/editedValue";
 import { useState, useEffect, useCallback } from "react";
-import { Plus, X, Users, IndianRupee } from "lucide-react";
+import { Plus, Users, IndianRupee } from "lucide-react";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { Combobox } from "@/components/ui/combobox";
 import { getClients } from "@/lib/data/clients";
@@ -525,13 +526,13 @@ export default function SuppliersPage() {
 
       {/* Add/Edit Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-5 py-4 border-b">
-              <h2 className="text-sm font-semibold text-ps-ink">{editingId ? "Edit Supplier" : "Add Supplier"}</h2>
-              <button disabled={saving} onClick={() => setShowModal(false)}><X className="w-4 h-4 text-ps-hint" /></button>
-            </div>
-            <div className="px-5 py-4 space-y-4">
+        // The shared dialog (POST-A-130). Its close is held while the supplier is being saved.
+        <Modal title={editingId ? "Edit Supplier" : "Add Supplier"} maxWidthClass="max-w-lg" onClose={() => { if (!saving) setShowModal(false); }}
+          footer={<>
+            <Button disabled={saving} variant="outline" size="sm" onClick={() => setShowModal(false)}>Cancel</Button>
+            <Button size="sm" onClick={handleSave} disabled={saving}>{saving ? "Saving…" : "Save Supplier"}</Button>
+          </>}>
+            <div className="space-y-4">
               {error && <Callout tone="problem">{error}</Callout>}
 
               <div>
@@ -670,12 +671,7 @@ export default function SuppliersPage() {
               )}
             </div>
 
-            <div className="flex justify-end gap-3 px-5 py-4 border-t">
-              <Button disabled={saving} variant="outline" size="sm" onClick={() => setShowModal(false)}>Cancel</Button>
-              <Button size="sm" onClick={handleSave} disabled={saving}>{saving ? "Saving…" : "Save Supplier"}</Button>
-            </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );
