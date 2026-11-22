@@ -671,7 +671,7 @@ const openGoodsBackTwo = (env) => openGoodsBack(env, { second: true });
 const goodsBackRow = (page, no) => page.getByLabel(`Date the goods came back, challan ${no}`).locator("xpath=ancestor::div[contains(@class,'flex-wrap')][1]");
 
 /** The ITR tracker (Income Tax) with one pending return listed: `how` is "single" (its own Mark Filed prompt), "batch" (the bulk prompt, one row ticked) or "add" (the Add ITR Deadline prompt on a chosen client). */
-function openItrTracker(how) {
+export function openItrTracker(how) {
   return async (env) => {
     const { page, stub } = env;
     stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { compliance_record: ["read", "write", "approve"], income_tax: ["read", "write"] } }) });

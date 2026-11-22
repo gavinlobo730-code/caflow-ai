@@ -118,7 +118,7 @@ export const scenarios = [
     },
   },
   ...[
-    { tracker: "GST", open: openGstTracker("add"), heading: "Add GST Filing", save: "Save Filing", close: "Close" },
+    { tracker: "GST", open: openGstTracker("add"), heading: "Add GST Filing", save: "Save Filing", close: "Close dialog" },
     // The shared dialog since POST-A-130's eighth step, whose own close is named "Close dialog".
     { tracker: "MCA", open: openMcaTracker("add"), heading: "Add MCA Filing", save: "Add Filing", close: "Close dialog" },
   ].map((t) => ({
@@ -187,7 +187,7 @@ export const scenarios = [
     { tracker: "MCA", open: openMcaTracker("batch"), box: "#mca-batch-filed-date", write: /mca-workspace\/filings\/m-1\/status$/ },
   ].map((t) => ({
     id: `the-${t.tracker.toLowerCase()}-trackers-batch-mark-filed-holds-its-close-and-cancel-while-it-is-out`,
-    title: `${t.tracker} tracker > Mark Filed (several) > Confirm: while it is out, the prompt's named Close and its Cancel are held`,
+    title: `${t.tracker} tracker > Mark Filed (several) > Confirm: while it is out, the prompt's Cancel is held and its ×, Escape and a click beside it do not close it`,
     async run(env) {
       const { page, stub } = env;
       await t.open(env);
@@ -196,11 +196,14 @@ export const scenarios = [
       const prompt = page.locator("div.fixed").filter({ has: page.getByRole("heading", { name: /^Mark .* as Filed$/ }) }).last();
       stub.setWriteDelay(3000);
       await prompt.getByRole("button", { name: /^Confirm \d+ Filings?$/ }).click();
-      const close = prompt.getByRole("button", { name: "Close", exact: true });
+      // The shared dialog (POST-A-130): its Cancel is greyed out, and its × is not but goes through the same held close as Escape and a
+      // click beside it. All four ways out are tried while the filings are out.
       const cancel = prompt.getByRole("button", { name: "Cancel", exact: true });
-      await until(async () => (await close.isDisabled()) && (await cancel.isDisabled()), `${t.tracker}: the batch prompt's named Close and its Cancel to be held while it is out`, 3000);
+      await until(async () => await cancel.isDisabled(), `${t.tracker}: the batch prompt's Cancel to be held while it is out`, 3000);
+      await prompt.getByRole("button", { name: "Close dialog", exact: true }).click();
       await page.keyboard.press("Escape");
-      assert.equal(await prompt.count(), 1, `${t.tracker}: Escape closed the batch prompt while it was out`);
+      await page.mouse.click(5, 5);
+      assert.equal(await prompt.count(), 1, `${t.tracker}: the ×, Escape or a click beside it closed the batch prompt while it was out`);
       stub.setWriteDelay(700);
       await stub.quiet({ timeoutMs: 15_000 });
       assert.equal(stub.writesTo(t.write).length, 1, `${t.tracker}: the filing was not recorded exactly once`);
