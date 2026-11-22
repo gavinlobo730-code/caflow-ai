@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 // jsx-a11y/alt-text flag this decorative SVG as a real image missing an alt.
 import { Palette, Image as ImageIcon, Globe, Save, Upload, Eye } from "lucide-react";
 import { useAuth } from "@/lib/auth/AuthContext";
-import { RoleGuard } from "@/components/RoleGuard";
+import { ChangePart, ReadOnlyNotice } from "@/components/settings/ChangePart";
 import { api, type ApiResp } from "@/lib/api/index";
 import { UploadProgress } from "@/components/ui/upload-progress";
 import type { UploadProgress as BytesSent } from "@/lib/api/uploadWithProgress";
@@ -233,7 +233,7 @@ export default function BrandingPage() {
   }
 
   return (
-    <RoleGuard allowed={["Partner"]}>
+    <>
       <div className="p-6 max-w-5xl mx-auto space-y-5">
         {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
@@ -242,6 +242,8 @@ export default function BrandingPage() {
           title="Firm Branding"
           subtitle="Set the logo, tagline and primary colour that your practice&apos;s own invoices print. The other settings here are kept on file; no document prints them."
         />
+
+        <ReadOnlyNotice resource="branding" action="write" page="Firm Branding" />
 
         {loadError && !loading && (
           <div className="flex items-center justify-between gap-3 bg-state-problem-surface border border-red-100 rounded-xl px-4 py-3">
@@ -256,7 +258,7 @@ export default function BrandingPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           {/* ── Left: Settings ───────────────────────────────────────────── */}
-          <div className="space-y-4">
+          <ChangePart resource="branding" action="write" className="space-y-4">
 
             {/* Logo */}
             <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
@@ -377,7 +379,7 @@ export default function BrandingPage() {
                 {saving ? "Saving…" : "Save Branding"}
               </button>
             </div>
-          </div>
+          </ChangePart>
 
           {/* ── Right: Live Preview ─────────────────────────────────────── */}
           <div className="space-y-3">
@@ -392,6 +394,6 @@ export default function BrandingPage() {
           </div>
         </div>
       </div>
-    </RoleGuard>
+    </>
   );
 }

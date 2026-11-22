@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Mail, Save } from "lucide-react";
 import { useAuth } from "@/lib/auth/AuthContext";
-import { RoleGuard } from "@/components/RoleGuard";
+import { ChangePart, ReadOnlyNotice } from "@/components/settings/ChangePart";
 import { api, type ApiResp } from "@/lib/api/index";
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
@@ -324,7 +324,7 @@ export default function EmailTemplatesPage() {
   const activeStatus = kindStatus[activeTab];
 
   return (
-    <RoleGuard allowed={["Partner"]}>
+    <>
       <div className="p-6 max-w-3xl mx-auto space-y-5">
         {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
@@ -333,6 +333,8 @@ export default function EmailTemplatesPage() {
           title="Email Templates"
           subtitle="Customize the wording of the emails your practice sends to clients. Each tab says whether that email is sent today."
         />
+
+        <ReadOnlyNotice resource="branding" action="write" page="Email Templates" />
 
         {loadError && !loading && (
           <div className="flex items-center justify-between gap-3 bg-state-problem-surface border border-red-100 rounded-xl px-4 py-3">
@@ -390,17 +392,19 @@ export default function EmailTemplatesPage() {
             {loading ? (
               <SectionPlaceholder label="Loading the template" shape="table" rows={4} />
             ) : (
-              <TemplateEditor
-                key={activeTab}
-                templateType={activeTab}
-                initial={templates[activeTab]}
-                onSave={handleSave}
-                allowedFields={fieldsByKind[activeTab]}
-              />
+              <ChangePart resource="branding" action="write">
+                <TemplateEditor
+                  key={activeTab}
+                  templateType={activeTab}
+                  initial={templates[activeTab]}
+                  onSave={handleSave}
+                  allowedFields={fieldsByKind[activeTab]}
+                />
+              </ChangePart>
             )}
           </div>
         </div>
       </div>
-    </RoleGuard>
+    </>
   );
 }

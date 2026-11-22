@@ -61,7 +61,7 @@ import { X, ShieldAlert, Lock, RotateCcw } from "lucide-react";
 import { api, type MemberAccessGrid } from "@/lib/api";
 import { denialNotice } from "@/lib/team/denialNotice";
 import { LoadingRegion } from "@/components/ui/skeleton";
-import { menuFor, menuGroups, menuPermissionKeys, pairWords, wouldHold } from "@/lib/access/permissionGroups";
+import { SETTINGS_GROUP, menuFor, menuGroups, menuPermissionKeys, pairWords, wouldHold } from "@/lib/access/permissionGroups";
 import { AREA_NAMES } from "@/lib/guide/whereIs";
 import { ALL_SCREENS } from "@/lib/navigation/screens";
 
@@ -94,7 +94,7 @@ function wireValue(choice: Choice): boolean | null {
 const SCREEN_NAME: ReadonlyMap<string, string> = new Map(ALL_SCREENS.filter((s) => s.scope === "firm").map((s) => [s.href, s.name]));
 const MENU_GROUPS = menuGroups();
 const ON_THE_MENU = menuPermissionKeys();
-const names = (ids: readonly string[]) => ids.map((id) => AREA_NAMES[id] ?? id);
+const names = (ids: readonly string[]) => ids.map((id) => (id === SETTINGS_GROUP ? "Settings" : AREA_NAMES[id] ?? id));
 
 /** Title Case from a snake_case resource or action, so no label list is kept here. */
 function humanise(token: string): string {
@@ -372,12 +372,14 @@ export default function MemberAccessDrawer({ userId, onClose, onSaved }: Props) 
               {MENU_GROUPS.map((group) => {
                 const rows = group.permissions.filter((mp) => described.has(`${mp.resource}:${mp.action}`));
                 if (rows.length === 0) return null;
-                const area = AREA_NAMES[group.areaId] ?? group.areaId;
+                const area = group.areaId === SETTINGS_GROUP ? "Settings" : (AREA_NAMES[group.areaId] ?? group.areaId);
                 return (
                   <div key={group.areaId} data-menu-group={group.areaId}>
                     <h3 className="text-xs font-semibold text-ps-ink">{area}</h3>
                     <p className="text-3xs text-ps-hint mb-2">
-                      {group.areaNeeds === "any"
+                      {group.areaId === SETTINGS_GROUP
+                        ? "Settings is on everybody's menu: each person has their own profile and password there. Each permission below opens the Settings pages named beside it. Seeing a page and changing what is on it are two permissions; the one that changes it is under \u201cWhat they may do inside a screen\u201d."
+                        : group.areaNeeds === "any"
                         ? `${area} is on their menu when at least one of the permissions marked "puts ${area} on the menu" is allowed.`
                         : `${area} is on their menu when the permission marked "puts ${area} on the menu" is allowed.`}
                     </p>

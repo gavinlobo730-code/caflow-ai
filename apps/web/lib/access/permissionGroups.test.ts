@@ -4,15 +4,29 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { TICKABLE_AREAS, hasWords, menuFor, menuGroups, menuPermissionKeys, pairWords, wouldHold, type Choice } from "./permissionGroups.ts";
+import { TICKABLE_AREAS, hasWords, menuFor, menuGroups, menuPermissionKeys, pairWords, wouldHold, type Choice, SETTINGS_GROUP } from "./permissionGroups.ts";
 import { AREA_RULES, everyPair } from "./screenAccess.ts";
 
 const MAPS = JSON.parse(readFileSync(join(import.meta.dirname, "..", "..", "scripts", "drive", "role-permissions.json"), "utf8")) as Record<string, Record<string, string[]>>;
 
 test("every area a Partner can tick is there, in the menu's order, and Home and My practice are not", () => {
-  assert.deepEqual(menuGroups().map((g) => g.areaId), [...TICKABLE_AREAS]);
+  assert.deepEqual(menuGroups().map((g) => g.areaId), [...TICKABLE_AREAS, SETTINGS_GROUP], "the areas in the menu's order, then Settings");
   assert.ok(!TICKABLE_AREAS.includes("home") && !TICKABLE_AREAS.includes("practice"));
   assert.deepEqual([...TICKABLE_AREAS].sort(), Object.keys(AREA_RULES).filter((a) => a !== "home" && a !== "practice").sort());
+});
+
+test("Settings is a group and not an area: nothing puts it on the menu, and each permission names the pages it opens (POST-A-545)", () => {
+  const settings = menuGroups().find((g) => g.areaId === SETTINGS_GROUP)!;
+  assert.equal(settings.areaNeeds, "nothing");
+  assert.ok(settings.permissions.every((p) => !p.opensTheArea), "a permission is said to put Settings on the menu, where everybody has it");
+  const opens = Object.fromEntries(settings.permissions.map((p) => [`${p.resource}:${p.action}`, p.screens]));
+  assert.deepEqual(opens["branding:read"], ["/settings/branding", "/settings/email-templates", "/settings/invoice-settings", "/settings/invoice-templates"]);
+  assert.deepEqual(opens["firm:admin"], ["/settings/ai"]);
+  // The audit log opens on the permission that approves in the books: one tick, and the screen says both things it decides.
+  assert.deepEqual(opens["accounting:approve"], ["/settings/audit-log"]);
+  assert.ok(settings.permissions.find((p) => p.resource === "tds" && p.action === "read")!.alsoIn.includes("deadlines"));
+  assert.equal(pairWords("firm", "admin"), "Administer the firm (AI status and how the deployment is set up)");
+  assert.equal(pairWords("branding", "read"), "See branding, the invoice settings and the mail and invoice templates");
 });
 
 test("every permission the table names is shown under an area, and has plain words", () => {

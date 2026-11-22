@@ -12,7 +12,13 @@ const code = (rel: string) => stripComments(fs.readFileSync(path.join(WEB, rel),
 
 test("the drawer groups the ticks by the one table's areas and names them the way the menu does", () => {
   const drawer = code("components/team/MemberAccessDrawer.tsx");
-  assert.match(drawer, /import \{ menuFor, menuGroups, menuPermissionKeys, pairWords, wouldHold \} from "@\/lib\/access\/permissionGroups";/);
+  // The names it uses are read off the import, whatever else is imported beside them (the Settings group's id joined them, POST-A-545).
+  const imported = drawer.match(/import \{ ([^}]*) \} from "@\/lib\/access\/permissionGroups";/)?.[1].split(", ") ?? [];
+  for (const name of ["menuFor", "menuGroups", "menuPermissionKeys", "pairWords", "wouldHold", "SETTINGS_GROUP"]) {
+    assert.ok(imported.includes(name), `the drawer does not take ${name} from the one module that groups the ticks`);
+  }
+  assert.match(drawer, /group\.areaId === SETTINGS_GROUP \? "Settings"/, "the Settings group is named by something other than its own id");
+  assert.match(drawer, /Settings is on everybody's menu/, "the Settings group is said to be put on the menu by a tick");
   assert.match(drawer, /import \{ AREA_NAMES \} from "@\/lib\/guide\/whereIs";/, "the areas are named by a list of the drawer's own");
   assert.match(drawer, /MENU_GROUPS\.map\(\(group\) =>/);
   assert.match(drawer, /pairWords\(mp\.resource, mp\.action\)/, "a permission that decides the menu is shown under a technical name");

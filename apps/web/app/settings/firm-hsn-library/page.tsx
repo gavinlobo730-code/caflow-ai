@@ -12,7 +12,7 @@
  */
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Plus, Pencil, Archive, RotateCcw, Search, Hash, Upload, Download, Trash2, X } from "lucide-react";
-import { RoleGuard } from "@/components/RoleGuard";
+import { ChangePart, ReadOnlyNotice, useMayChange } from "@/components/settings/ChangePart";
 import { api, type ApiResp } from "@/lib/api/index";
 import {
   FirmHsnLibraryQuickAddModal, type FirmHsnLibraryRow,
@@ -48,6 +48,8 @@ const EXPORT_COLUMNS: Column<FirmHsnLibraryRow>[] = [
 ];
 
 export default function FirmHsnLibraryPage() {
+  // Who may add, edit, retire or delete a code: the pair the server asks for those writes (POST-A-545).
+  const mayChange = useMayChange("accounting", "write");
   const [items, setItems] = useState<FirmHsnLibraryRow[]>([]);
   // The server's window over the list on screen. The Archived tab asks the server for retired codes only
   // (`archived_only`), so it is a window over those and not a filter over a window of everything.
@@ -239,7 +241,7 @@ export default function FirmHsnLibraryPage() {
   }
 
   return (
-    <RoleGuard allowed={["Partner", "Manager"]}>
+    <>
       <div className="p-6 max-w-ps-data mx-auto space-y-5">
         {toast && (
           <div className={`fixed top-4 right-4 z-[70] px-4 py-2 rounded-lg text-sm shadow-lg ${toast.kind === "success" ? "bg-emerald-600 text-white" : "bg-red-600 text-white"}`}>
@@ -265,12 +267,12 @@ export default function FirmHsnLibraryPage() {
           }
           actions={
             <>
-              <button
+              {mayChange && <button
                 onClick={() => setImporting(true)}
                 className="flex items-center gap-1.5 text-sm border border-ps-border text-ps-label px-3.5 py-2 rounded-lg hover:bg-ps-bg whitespace-nowrap"
               >
                 <Upload size={15} /> Import
-              </button>
+              </button>}
               <button
                 onClick={() => downloadCsv("firm-hsn-sac-library.csv", toCsv(items, EXPORT_COLUMNS))}
                 // After a failed read the codes on screen are an earlier filter's (POST-A-464).
@@ -279,15 +281,17 @@ export default function FirmHsnLibraryPage() {
               >
                 <Download size={15} /> Export
               </button>
-              <button
+              {mayChange && <button
                 onClick={() => setAdding(true)}
                 className="flex items-center gap-1.5 text-sm bg-brand text-white px-3.5 py-2 rounded-lg hover:bg-brand-dark whitespace-nowrap"
               >
                 <Plus size={15} /> Add Code
-              </button>
+              </button>}
             </>
           }
         />
+
+        <ReadOnlyNotice resource="accounting" action="write" page="Firm HSN/SAC Library" />
 
         {/* Search + filters */}
         <div className="flex items-center gap-2">
@@ -367,14 +371,14 @@ export default function FirmHsnLibraryPage() {
               <p className="text-sm font-medium text-ps-body">
                 {q ? "No codes match your search" : filter === "archived" ? "No retired codes" : "Your library is empty"}
               </p>
-              {!q && filter === "active" && (
+              {!q && filter === "active" && mayChange && (
                 <button onClick={() => setAdding(true)} className="mt-3 text-xs px-3 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark">
                   Add your first code
                 </button>
               )}
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <ChangePart resource="accounting" action="write" className="overflow-x-auto">
               <table className="w-full text-sm min-w-[640px]">
                 <thead>
                   <tr className="text-2xs text-ps-hint border-b border-ps-border">
@@ -433,7 +437,7 @@ export default function FirmHsnLibraryPage() {
                   })}
                 </tbody>
               </table>
-            </div>
+            </ChangePart>
           )}
         </div>
       </div>
@@ -463,7 +467,7 @@ export default function FirmHsnLibraryPage() {
           onError={(msg) => showToast(msg, "error")}
         />
       )}
-    </RoleGuard>
+    </>
   );
 }
 

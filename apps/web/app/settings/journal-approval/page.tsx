@@ -17,7 +17,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, ClipboardCheck } from "lucide-react";
-import { RoleGuard } from "@/components/RoleGuard";
+import { ReadOnlyNotice } from "@/components/settings/ChangePart";
 import { api, type JournalApprovalRule } from "@/lib/api/index";
 import { readJournalApprovalRule } from "@/lib/accounting/journalApprovalRule";
 import { FormSkeleton } from "@/components/ui/skeleton";
@@ -64,7 +64,7 @@ export default function JournalApprovalPage() {
 
   const on = rule?.approval_required ?? false;
   return (
-    <RoleGuard allowed={["Partner"]}>
+    <>
       <div className="max-w-2xl mx-auto space-y-4 p-6">
         <Link href="/settings" className="inline-flex items-center gap-1 text-xs text-ps-label hover:text-ps-body">
           <ChevronLeft size={13} /> Settings
@@ -75,6 +75,9 @@ export default function JournalApprovalPage() {
           title="Journal approval"
           subtitle="Whether a Partner approves every manual journal before it reaches a client's books."
         />
+
+        {/* The box below is switched off by the server's own answer (`may_change_setting`, the same pair); this says why. */}
+        <ReadOnlyNotice resource="settings" action="write" page="Journal approval" />
 
         {error && (
           <Callout tone="problem">
@@ -105,6 +108,6 @@ export default function JournalApprovalPage() {
           </div>
         )}
       </div>
-    </RoleGuard>
+    </>
   );
 }

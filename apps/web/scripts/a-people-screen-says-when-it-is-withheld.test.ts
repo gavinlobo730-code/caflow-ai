@@ -6,31 +6,38 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { PRACTICE_PEOPLE_SECTIONS } from "../lib/workspace/practiceWorkspace.ts";
+import { mayOpen, screenRule } from "../lib/access/screenAccess.ts";
 import { stripComments } from "./stripComments.ts";
 
 const WEB = path.join(import.meta.dirname, "..");
 const code = (rel: string) => stripComments(fs.readFileSync(path.join(WEB, rel), "utf8"));
 
-test("every People screen sits under a layout that asks the gate", () => {
-  // The RULE, over the one list of People screens: a screen added to the list with no gate above it fails here.
+test("every People screen is opened by its own pair in the one table, and by nothing else", () => {
+  // The RULE, over the one list of People screens. These screens had a gate of their own (`PeopleAccessGate`, in a layout
+  // above each) from POST-A-542 until the one gate around every firm page asked the same pairs (POST-A-543); the older gate
+  // was removed under POST-A-545. What must stay true is that a screen added to the list is in the table with ITS pair.
   for (const s of PRACTICE_PEOPLE_SECTIONS) {
     const parts = s.href.split("/").filter(Boolean);
     assert.ok(fs.existsSync(path.join(WEB, "app", ...parts, "page.tsx")), `${s.href} has no page`);
-    let gated = false;
-    for (let depth = parts.length; depth >= 1 && !gated; depth--) {
-      const layout = path.join("app", ...parts.slice(0, depth), "layout.tsx");
-      gated = fs.existsSync(path.join(WEB, layout)) && /<PeopleAccessGate>\{children\}<\/PeopleAccessGate>/.test(code(layout));
-    }
-    assert.ok(gated, `${s.href} has no layout that wraps it in PeopleAccessGate`);
+    assert.deepEqual(screenRule(s.href), { all: [s.requires] }, `${s.href} is not opened by ${s.requires.join(" ")} in the one table`);
+    const holdsIt = { can: (r: string, a: string) => (r === s.requires[0] && a === s.requires[1]) || (r === "team" && a === "read"), isPartner: false };
+    const holdsNothing = { can: () => false, isPartner: false };
+    assert.equal(mayOpen(s.href, holdsIt).allowed, true, `${s.href} is refused to somebody who holds its pair`);
+    const refused = mayOpen(s.href, holdsNothing);
+    assert.equal(refused.allowed, false, `${s.href} opens for somebody who holds nothing`);
+    assert.ok(refused.ask, `${s.href} is refused with nothing to ask for`);
   }
 });
 
-test("the gate asks the screen's own pair from the one list, and waits until the permissions are known", () => {
-  const gate = code("components/team/PeopleAccessGate.tsx");
-  assert.match(gate, /peopleSectionAt\(pathname \?\? ""\)/);
-  assert.match(gate, /resolved && section && !can\(section\.requires\[0\], section\.requires\[1\]\)/);
+test("the one gate is what answers, it waits until the permissions are known, and the older gate is gone", () => {
+  const gate = code("components/auth/ScreenAccessGate.tsx");
+  assert.match(gate, /if \(!answer \|\| answer\.allowed \|\| answer\.partnerOnly \|\| !answer\.ask\) return <>\{children\}<\/>;/);
   assert.doesNotMatch(gate, /userRole|"Partner"|"Manager"/, "the gate asks a role where it should ask the permission the server asks");
-  assert.match(gate, /that is not the same as there being nothing or nobody/);
+  assert.match(gate, /that is not the same as there being nothing/);
+  assert.match(code("components/AppShell.tsx"), /<ScreenAccessGate pathname=\{realPathname\}>\{children\}<\/ScreenAccessGate>/);
+  for (const gone of ["components/team/PeopleAccessGate.tsx", "app/team/layout.tsx", "app/approvals/layout.tsx"]) {
+    assert.equal(fs.existsSync(path.join(WEB, gone)), false, `${gone} is back: two gates on one screen are two answers`);
+  }
 });
 
 test("the Team screen offers Invite Member only to somebody who can invite", () => {

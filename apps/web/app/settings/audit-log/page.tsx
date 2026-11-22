@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { ChevronLeft, Download, ShieldCheck, RefreshCw } from "lucide-react";
 import { api, type AuditEntry } from "@/lib/api";
-import { RoleGuard } from "@/components/RoleGuard";
 import { formatDate } from "@/lib/services/formatting";
 import { todayIstISO } from "@/lib/dates/format";
 import { Skeleton, LoadingRegion } from "@/components/ui/skeleton";
@@ -238,7 +237,7 @@ function AuditLogContent() {
     setError(null);
     try {
       // Reads the authoritative audit_log via the Partner-gated backend endpoint
-      // (RBAC: accounting:approve == Partner-only, matching this page's RoleGuard).
+      // (RBAC: accounting:approve, a Partner's by default; the one access table opens this page on the same pair).
       const res = await api.audit.list(query());
       if (!res.success) throw new Error(res.error || "Failed to load audit log");
       setRows((res.data?.entries ?? []).map(toDisplay));
@@ -478,8 +477,8 @@ function AuditLogContent() {
 
 export default function AuditLogPage() {
   return (
-    <RoleGuard allowed={["Partner"]}>
+    <>
       <AuditLogContent />
-    </RoleGuard>
+    </>
   );
 }

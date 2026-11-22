@@ -103,29 +103,6 @@ test("an unresolved or owed MFA challenge is not bounced by this rule either", (
   assert.equal(bouncesFromLogin({ mfaPending: null }), false);
 });
 
-// ── RoleGuard ────────────────────────────────────────────────────────────────
-// NEGATIVE CONTROL: dropping the `roleLoading` term (the old
-// `!loading && !permitted`) fails "a role still resolving is not a refusal".
-
-import { roleGuardDecision } from "./guardDecision.ts";
-
-test("a role still resolving is not a refusal — the guard waits", () => {
-  // The bug: session known, role not yet, userRole null => hasRole false.
-  assert.equal(roleGuardDecision({ loading: false, roleLoading: true, permitted: false }), "wait");
-});
-
-test("a session still restoring waits too", () => {
-  assert.equal(roleGuardDecision({ loading: true, roleLoading: true, permitted: false }), "wait");
-});
-
-test("a decided role that is allowed renders", () => {
-  assert.equal(roleGuardDecision({ loading: false, roleLoading: false, permitted: true }), "allow");
-});
-
-test("a decided role that is not allowed is refused", () => {
-  assert.equal(roleGuardDecision({ loading: false, roleLoading: false, permitted: false }), "deny");
-});
-
 // ── /signup bounce ───────────────────────────────────────────────────────────
 // sweep-auth-and-public-02: /signup had no mirror of the onLogin bounce, so a
 // fully authenticated Partner with an existing firm still got the live

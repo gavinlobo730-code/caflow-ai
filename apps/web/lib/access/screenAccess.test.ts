@@ -94,6 +94,30 @@ test("the table has no prefix twice, and every screen rule sits in an area that 
   assert.equal(new Set(prefixes).size, prefixes.length, "a prefix is listed twice: which rule wins would be an accident of order");
   for (const [prefix] of SCREEN_RULES) {
     const area = mayOpen(prefix, everything(true)).area;
+    // No area owns the Settings addresses (POST-A-545): a Settings page is opened by its own rule alone.
+    if (prefix.startsWith("/settings/")) { assert.equal(area, null, `${prefix} is a Settings page and an area claims it`); continue; }
     assert.ok(area && area in AREA_RULES, `${prefix} is in no area of the firm menu`);
+  }
+});
+
+test("a Settings page is opened by the pair its own read asks, and the Settings home and a person's own security page by nothing", () => {
+  const holds = (...pairs: string[]) => ({ can: (r: string, a: string) => pairs.includes(`${r}:${a}`), isPartner: false });
+  const cases: Array<[string, string]> = [
+    ["/settings/ai", "firm:admin"], ["/settings/audit-log", "accounting:approve"], ["/settings/branding", "branding:read"],
+    ["/settings/email-templates", "branding:read"], ["/settings/invoice-settings", "branding:read"],
+    ["/settings/invoice-templates", "branding:read"], ["/settings/firm-hsn-library", "accounting:read"],
+    ["/settings/journal-approval", "accounting:read"], ["/settings/multi-currency", "settings:read"],
+    ["/settings/statutory-values", "payroll:read"], ["/settings/treaty-rates", "tds:read"]];
+  for (const [href, pair] of cases) {
+    assert.equal(mayOpen(href, holds(pair)).allowed, true, `${href} is refused to somebody who holds ${pair}`);
+    const refused = mayOpen(`${href}/`, holds());
+    assert.equal(refused.allowed, false, `${href} opens for somebody who holds nothing`);
+    assert.deepEqual(refused.ask?.join(":"), pair, `${href} asks for something other than the pair its read asks`);
+    assert.equal(refused.byArea, false);
+    // The WRITE pair alone does not open a page whose read asks another: the page would be drawn around a refused read.
+  }
+  assert.equal(SCREEN_RULES.filter(([p]) => p.startsWith("/settings/")).length, cases.length, "a Settings rule this test has not read");
+  for (const href of ["/settings", "/settings/security", "/settings/scheduled-reports", "/settings/dsc-tracker"]) {
+    assert.equal(mayOpen(href, holds()).allowed, true, `${href} is every member's and was refused`);
   }
 });
