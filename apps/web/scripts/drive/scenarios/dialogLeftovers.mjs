@@ -251,7 +251,7 @@ export const scenarios = [
   },
   {
     id: "the-add-account-drawers-x-and-backdrop-are-held-while-its-save-is-out-and-the-exemption-dialog-is-not-while-it-reads",
-    title: "Accounting > Chart of accounts > Add Account > save: while it is out, the drawer's × (named Close) is held and a click on the backdrop does not close it; Capital gains > a record > Exemption: while the working is only being READ, the dialog's Close is offered (a read never traps the person)",
+    title: "Accounting > Chart of accounts > Add Account > save: while it is out, the drawer's × (named Close), Escape and a click on the backdrop do not close it; Capital gains > a record > Exemption: while the working is only being READ, the dialog's Close is offered (a read never traps the person)",
     async run(env) {
       const { page, stub } = env;
       stub.route({ method: "POST", re: /api\/accounting\/accounts(\?|$)/, delay: 3000, reply: () => ok({ id: "acc-new" }) });
@@ -260,10 +260,13 @@ export const scenarios = [
       await page.getByPlaceholder("e.g. HDFC Bank — Current A/c").fill("Petty Cash — Branch");
       await page.getByPlaceholder("1001").fill("1099");
       await page.getByRole("button", { name: "Add Account", exact: true }).last().click();
-      const drawer = page.locator("div.fixed").filter({ has: page.getByRole("heading", { name: "Add Account" }) }).last();
-      await until(async () => await drawer.getByRole("button", { name: "Close", exact: true }).isDisabled(), "the drawer's × to be held while the save is out", 3000);
+      // The shared side sheet (POST-A-130): its × is not greyed out, it goes through the same held close as Escape and a click beside it.
+      const drawer = page.getByRole("dialog", { name: "Add Account", exact: true });
+      await drawer.getByRole("button", { name: "Saving…" }).waitFor({ timeout: 3000 });
+      await drawer.getByRole("button", { name: "Close", exact: true }).click();
+      await page.keyboard.press("Escape");
       await page.mouse.click(5, 5);
-      assert.equal(await page.getByRole("heading", { name: "Add Account" }).count(), 1, "a click on the backdrop closed the drawer over its save");
+      assert.equal(await page.getByRole("heading", { name: "Add Account" }).count(), 1, "the ×, Escape or a click on the backdrop closed the drawer over its save");
       await stub.quiet({ timeoutMs: 15_000 });
       // ...and a dialog that is only READING is not held: a different screen, in the same run.
       {

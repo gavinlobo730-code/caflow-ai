@@ -65,6 +65,8 @@ import { windowDescription } from "@/lib/lists/window";
 import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
 import { Field, Input, Select } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
+import { Drawer } from "@/components/ui/drawer";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { DateInput } from "@/components/ui/date-input";
@@ -862,13 +864,10 @@ function AddAccountModal({ clientId, onClose, onSaved }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex justify-end" onClick={(e) => { e.stopPropagation(); if (!saving && e.target === e.currentTarget) onClose(); }}>
-      <div className="bg-white w-[440px] h-full overflow-y-auto shadow-2xl flex flex-col">
-        <div className="px-6 py-4 border-b border-ps-border flex items-center justify-between shrink-0">
-          <h2 className="text-sm font-semibold text-ps-ink">Add Account</h2>
-          <button onClick={onClose} disabled={saving} aria-label="Close" className="text-ps-hint hover:text-ps-ink disabled:opacity-50"><span className="text-lg">×</span></button>
-        </div>
-
+    // The shared side sheet (POST-A-130): named, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it, its ×) is
+    // held while the save is out.
+    <Drawer open title={<span className="font-sans">Add Account</span>} ariaLabel="Add Account" widthClass="sm:max-w-[440px]" onClose={() => { if (!saving) onClose(); }}>
+      <div className="flex min-h-[calc(100%-3rem)] flex-col">
         <div className="flex-1 px-6 py-5 space-y-4 text-xs">
           {error && <Callout tone="problem">{error}</Callout>}
 
@@ -905,14 +904,14 @@ function AddAccountModal({ clientId, onClose, onSaved }: {
           </label>
         </div>
 
-        <div className="px-6 py-4 border-t border-ps-border flex gap-3 shrink-0">
+        <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-ps-border flex gap-3 shrink-0">
           <button disabled={saving} onClick={onClose} className="flex-1 py-2 rounded-lg border border-ps-border text-xs text-ps-label hover:bg-ps-bg">Cancel</button>
           <Button variant="plain" size="none" onClick={save} disabled={saving} className="flex-1 py-2 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand-dark disabled:opacity-50">
             {saving ? "Saving…" : "Add Account"}
           </Button>
         </div>
       </div>
-    </div>
+    </Drawer>
   );
 }
 
@@ -927,12 +926,6 @@ function EditAccountModal({ account, onClose, onSaved }: {
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  // Escape closes the editor, except while its save is out (the ledger behind leaves Escape to it while it is open).
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) { if (e.key === "Escape" && !saving) onClose(); }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, saving]);
   const submittingRef = useRef(false);
 
   async function save() {
@@ -962,20 +955,17 @@ function EditAccountModal({ account, onClose, onSaved }: {
   }
 
   return (
-    // stopPropagation UNCONDITIONALLY, not only on a backdrop click: this
-    // modal renders as a sibling of LedgerDrillDown's own content box (not a
-    // descendant of it), so a click anywhere in here — including on an
-    // input, not just the backdrop — would otherwise bubble up to that
-    // outer modal's own `onClick={onClose}` and close THE LEDGER behind it.
-    <div className="fixed inset-0 bg-brand-dark/60 z-[110] flex items-center justify-center p-4"
-         onClick={(e) => { e.stopPropagation(); if (!saving && e.target === e.currentTarget) onClose(); }}>
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col">
-        <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between shrink-0">
-          <h2 className="text-sm font-semibold text-ps-ink">Edit Account</h2>
-          <button onClick={onClose} disabled={saving} aria-label="Close" className="text-ps-hint hover:text-ps-ink disabled:opacity-50"><span className="text-lg">×</span></button>
-        </div>
-
-        <div className="px-5 py-4 space-y-4 text-xs">
+    // A shared dialog over the ledger's shared dialog (POST-A-130): the top of the stack, so Escape and a click beside it are its own and
+    // never the ledger's. There is no backdrop of the ledger's above it in the component tree any more, so a click inside it closes
+    // nothing. Its close is held while its save is out.
+    <Modal title="Edit Account" maxWidthClass="max-w-md" onClose={() => { if (!saving) onClose(); }}
+      footer={<>
+        <button disabled={saving} onClick={onClose} className="flex-1 py-2 rounded-lg border border-ps-border text-xs text-ps-label hover:bg-ps-bg">Cancel</button>
+        <Button variant="plain" size="none" onClick={save} disabled={saving} className="flex-1 py-2 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand-dark disabled:opacity-50">
+          {saving ? "Saving…" : "Save Changes"}
+        </Button>
+      </>}>
+        <div className="space-y-4 text-xs">
           {error && <Callout tone="problem">{error}</Callout>}
 
           <Field label="Account Name" required>
@@ -997,15 +987,7 @@ function EditAccountModal({ account, onClose, onSaved }: {
             Active
           </label>
         </div>
-
-        <div className="px-5 py-4 border-t border-ps-border flex gap-3 shrink-0">
-          <button disabled={saving} onClick={onClose} className="flex-1 py-2 rounded-lg border border-ps-border text-xs text-ps-label hover:bg-ps-bg">Cancel</button>
-          <Button variant="plain" size="none" onClick={save} disabled={saving} className="flex-1 py-2 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand-dark disabled:opacity-50">
-            {saving ? "Saving…" : "Save Changes"}
-          </Button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -1576,13 +1558,8 @@ function LedgerDrillDown({
   // A different account or window is a different ledger — page one of it.
   useEffect(() => { setPage(0); }, [accountId, startDate, endDate]);
 
-  // Escape closes the ledger only when the account editor is not open over it: the editor owns Escape while it is open and ignores it
-  // while its save is out, so Escape never unmounts it over a save still in flight (POST-A-395, the second review).
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) { if (e.key === "Escape" && !editing) onClose(); }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, editing]);
+  // The ledger is the shared dialog (POST-A-130) and the account editor is a shared dialog over it: the shared stack gives Escape to the
+  // top one alone, so the key listener the hand-built ledger kept for that is gone.
 
   // The side is the SERVER's (`is_debit` on the ledger page), not the sign's:
   // a bank overdraft is a credit balance on an asset ledger.
@@ -1636,27 +1613,19 @@ function LedgerDrillDown({
   ];
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-[100] flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[88vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-        <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between shrink-0">
-          <div>
-            <p className="text-sm font-semibold text-ps-ink">{accountName || "Ledger"}</p>
-            <p className="text-2xs text-ps-hint mt-0.5">Account ledger</p>
-          </div>
-          <div className="flex items-center gap-3">
-            {selectedAccount && (
-              <button
-                onClick={() => setEditing(true)}
-                className="text-xs text-blue-600 hover:underline"
-              >
-                Edit
-              </button>
-            )}
-            <button onClick={onClose} className="text-ps-hint hover:text-ps-body text-xl leading-none" aria-label="Back">×</button>
-          </div>
-        </div>
-
-        <div className="px-5 py-3 border-b border-ps-border flex items-end gap-3 flex-wrap shrink-0">
+    <Modal title={accountName || "Ledger"} maxWidthClass="max-w-5xl" onClose={onClose}
+      note={<>
+        Account ledger
+        {selectedAccount && (
+          <button
+            onClick={() => setEditing(true)}
+            className="ml-3 text-xs text-blue-600 hover:underline"
+          >
+            Edit
+          </button>
+        )}
+      </>}>
+        <div className="pb-3 border-b border-ps-border flex items-end gap-3 flex-wrap">
           <div className="w-64">
             <label className="block text-3xs font-medium text-ps-hint mb-1">Account</label>
             <AccountLookup
@@ -1691,7 +1660,7 @@ function LedgerDrillDown({
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-5">
+        <div>
           {!accountId ? (
             <div className="text-center py-10 text-ps-hint text-sm">Choose an account to view its ledger.</div>
           ) : !loading && ledger && hasActivity ? (
@@ -1788,7 +1757,6 @@ function LedgerDrillDown({
             </div>
           ) : null}
         </div>
-      </div>
 
       {editing && selectedAccount && (
         <EditAccountModal
@@ -1797,7 +1765,7 @@ function LedgerDrillDown({
           onSaved={onAccountUpdated}
         />
       )}
-    </div>
+    </Modal>
   );
 }
 
