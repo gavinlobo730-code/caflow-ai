@@ -162,7 +162,8 @@ for (const e of EDITORS) {
       assert.equal(calls.length, e.bodies, `${e.name}: ${s.key} is sent through editedText ${calls.length} times and the branch builds ${e.bodies} request bodies`);
       assert.ok(!new RegExp(`\\b${s.key}\\s*:[^,\\n]*\\|\\|\\s*undefined`).test(branch), `${e.name}: ${s.key} is still sent as "x || undefined", which sends nothing for an emptied box`);
     }
-    assert.match(stripComments(read(e.file)), /import \{ editedText \} from "@\/lib\/forms\/editedValue";/, `${e.name}: editedText is not imported from lib/forms/editedValue`);
+    // The one module, whichever of its senders the editor also uses (`editedChoice` for what only a draft may take away: POST-A-399, the sixth slice).
+    assert.match(stripComments(read(e.file)), /import \{ (?:editedChoice, )?editedText \} from "@\/lib\/forms\/editedValue";/, `${e.name}: editedText is not imported from lib/forms/editedValue`);
   });
 
   test(`${e.name} judges an emptied box against the record on file, never against a literal or the box itself`, () => {

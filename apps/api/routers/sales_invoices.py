@@ -13,7 +13,7 @@ from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ValidationError as PydanticValidationError
-from models.clearable import patch_dict
+from models.clearable import draft_only_clears, patch_dict, put_back_on_a_draft, without
 from models.common import api_response
 from models.invoices import SalesInvoiceIn, SalesInvoiceUpdateIn
 from domain.gst import discount as gst_discount
@@ -1815,6 +1815,25 @@ def _reject_an_edit_the_invoice_cannot_take(status: str, data: dict) -> None:
                     "lines with it and the totals are worked out again."))
 
 
+def _what_the_edit_sent(model: SalesInvoiceUpdateIn) -> tuple[dict, dict, Optional[dict]]:
+    """What an invoice edit writes, what only a draft may take away, and the per-line units, read off the request once.
+
+    A reference or a note SENT AS NULL is cleared (POST-A-399); every other null (the due date and the credit days included) still reads as
+    "not sent". What only a DRAFT may take away (its place of supply) is held aside until the stored invoice is read: on an issued invoice
+    it is frozen and a null for it reads "not sent", as it always did.
+    """
+    draft_clears = draft_only_clears(model)
+    data = without(patch_dict(model), draft_clears)
+    # The request model field is is_inter_state; the DB column is is_interstate.
+    # Map it so the flag (the form's IGST checkbox) both drives the GST recompute
+    # below and persists correctly — without this the column write would 400.
+    if "is_inter_state" in data:
+        data["is_interstate"] = data.pop("is_inter_state")
+    # Always allowed regardless of status — unit alone never touches
+    # rate/quantity/amount/GST, unlike a full `lines` replace.
+    return data, draft_clears, data.pop("line_units", None)
+
+
 @router.patch("/{invoice_id}")
 def update_invoice(
     invoice_id: str,
@@ -1827,16 +1846,7 @@ def update_invoice(
     _reject_locked_invoice_fields. CANCELLED: cannot be updated at all."""
     _assert_invoice_scope(current_user, invoice_id)
     try:
-        # A reference or a note SENT AS NULL is cleared (POST-A-399); every other null (the due date and the credit days included) still reads as "not sent".
-        data = patch_dict(data)
-        # The request model field is is_inter_state; the DB column is is_interstate.
-        # Map it so the flag (the form's IGST checkbox) both drives the GST recompute
-        # below and persists correctly — without this the column write would 400.
-        if "is_inter_state" in data:
-            data["is_interstate"] = data.pop("is_inter_state")
-        # Always allowed regardless of status — unit alone never touches
-        # rate/quantity/amount/GST, unlike a full `lines` replace.
-        line_units = data.pop("line_units", None)
+        data, draft_clears, line_units = _what_the_edit_sent(data)
 
         if _USE_MOCK:
             for i, inv in enumerate(MOCK_SALES_INVOICES):
@@ -1844,6 +1854,7 @@ def update_invoice(
                     status = inv.get("status")
                     if status == "cancelled":
                         raise HTTPException(status_code=422, detail="Cancelled invoices cannot be updated")
+                    put_back_on_a_draft(data, draft_clears, status)
                     _reject_an_edit_the_invoice_cannot_take(status, data)
                     if "invoice_no" in data:
                         _assert_invoice_no_available(
@@ -1873,6 +1884,7 @@ def update_invoice(
         status = resp.data[0]["status"]
         if status == "cancelled":
             raise HTTPException(status_code=422, detail="Cancelled invoices cannot be updated")
+        put_back_on_a_draft(data, draft_clears, status)
         _reject_an_edit_the_invoice_cannot_take(status, data)
         if "invoice_no" in data:
             _assert_invoice_no_available(

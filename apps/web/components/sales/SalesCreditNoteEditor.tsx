@@ -48,7 +48,7 @@ import {
   previewTotals, isValidLine,
   type Customer, type InvoiceLine,
 } from "@/lib/invoices/shared";
-import { editedText } from "@/lib/forms/editedValue";
+import { editedChoice, editedText } from "@/lib/forms/editedValue";
 import { validateSalesCreditNoteEditor } from "@/lib/sales/salesCreditNoteEditor";
 
 import { todayIstISO } from "@/lib/dates/format";
@@ -325,8 +325,10 @@ export function SalesCreditNoteEditor({
           : {
               customer_id: customerId,
               credit_note_date: cnDate,
-              sales_invoice_id: invoiceId || undefined,
-              reason: reason.trim() || undefined,
+              // A DRAFT may take these two away (POST-A-399, the sixth slice): an emptied box that had a value on file is sent as null and the server clears it
+              // on a draft. `x || undefined` sent nothing, so a note whose party was changed (which empties this box) went on pointing at the old party's document.
+              sales_invoice_id: editedChoice(invoiceId, existing.sales_invoice_id),
+              reason: editedText(reason, existing.reason),
               goods_returned: goodsAnswer,
               is_interstate: isInterstate,
               notes: editedText(notes, existing.notes),

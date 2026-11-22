@@ -455,6 +455,10 @@ class SalesInvoiceUpdateIn(BaseModel):
     on file. Every other field reads null as "not sent" too.
     """
     CLEARABLE: ClassVar[FrozenSet[str]] = frozenset({"reference_no", "notes"})
+    #: What a DRAFT may take away and an issued invoice may not (POST-A-399, the sixth slice): its place of supply. A draft may be without
+    #: one (the server refuses to ISSUE without one and resolves one from the customer when none is stored); once issued it is Rule 46(n)
+    #: content, frozen, and a null still reads "not sent".
+    CLEARABLE_ON_A_DRAFT: ClassVar[FrozenSet[str]] = frozenset({"supply_state_code"})
     customer_id: Optional[str] = None
     # Editable only while the invoice is a draft (enforced by the router,
     # which already blocks any update once issued) — same manual, CA-owned

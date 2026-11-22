@@ -34,7 +34,7 @@ import { apiCall, getAuthToken, cessInputsFromStored, fmt, gstRateOptions, gstRa
 import { cessPayload } from "@/lib/invoices/lineItemPayload";
 import { blockedCreditFromStored, blockedCreditPayload } from "@/lib/purchases/noteBlockedCredit";
 import { NoteLineBlockedCredit } from "@/components/purchases/NoteLineBlockedCredit";
-import { editedText } from "@/lib/forms/editedValue";
+import { editedChoice, editedText } from "@/lib/forms/editedValue";
 import { failureSentence, jsonPlain, type UntypedJson, LONG_REQUEST_BOUND_MS } from "@/lib/api/failureSentence";
 import { fetchUpload, type UploadProgress as BytesSent } from "@/lib/api/uploadWithProgress";
 import { UploadProgress } from "@/components/ui/upload-progress";
@@ -375,8 +375,10 @@ export function DebitNoteEditor({
           : {
               vendor_id: vendorId,
               debit_note_date: dnDate,
-              purchase_bill_id: billId || undefined,
-              reason: reason.trim() || undefined,
+              // A DRAFT may take these two away (POST-A-399, the sixth slice): an emptied box that had a value on file is sent as null and the server clears it
+              // on a draft. `x || undefined` sent nothing, so a note whose party was changed (which empties this box) went on pointing at the old party's document.
+              purchase_bill_id: editedChoice(billId, existing.purchase_bill_id),
+              reason: editedText(reason, existing.reason),
               goods_returned: goodsAnswer,
               is_interstate: isInterstate,
               is_reverse_charge: isReverseCharge,

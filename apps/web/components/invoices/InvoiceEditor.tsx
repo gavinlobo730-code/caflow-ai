@@ -61,8 +61,9 @@ import { DateInput } from "@/components/ui/date-input";
 import { useSingleFlight } from "@/lib/async/useSingleFlight";
 import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { removedDateProblem } from "@/lib/dates/removedDate";
+import { removedEvidenceProblem } from "@/lib/forms/removedEvidence";
 import { todayIstISO } from "@/lib/dates/format";
-import { editedText } from "@/lib/forms/editedValue";
+import { editedChoice, editedText } from "@/lib/forms/editedValue";
 
 type SaveAction = "draft" | "issue" | "send";
 
@@ -737,6 +738,19 @@ export function InvoiceEditor({
     if (shippingBillRefusal.shown) shippingBillRefusalRef.current?.scrollIntoView?.({ block: "nearest" });
   }, [shippingBillRefusal.shown]);
 
+  // The shipping bill's NUMBER and its PORT CODE are the same evidence in text, and were the same defect (POST-A-399, the remainder): an emptied box sent nothing, the stored value stayed and the
+  // screen said the invoice was saved. They are corrected and not removed, said the same way and for the same reason as the date; one sentence at a time, the number's first. A box that is not
+  // drawn is not one the person can empty.
+  const shippingEvidenceCleared = showsShippingBill
+    ? removedEvidenceProblem("The shipping bill number", initialSnapshot.current.shippingBillNo, shippingBillNo, "number")
+      ?? removedEvidenceProblem("The port code", initialSnapshot.current.portCode, portCode, "code")
+    : null;
+  const shippingEvidenceRefusal = useDateRefusal(shippingEvidenceCleared);
+  const shippingEvidenceRefusalRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (shippingEvidenceRefusal.shown) shippingEvidenceRefusalRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [shippingEvidenceRefusal.shown]);
+
   // A due date on file is corrected and not emptied either (POST-A-399), for a different reason than the shipping bill's. Every invoice carries a due date (a create that names none resolves one
   // from the customer's terms, or thirty days), the collections queue and the ageing read it, and the PATCH route reads an omitted or null date as "not sent": a box the person emptied would leave
   // the stored date exactly as it was and the screen would say the invoice was updated. So the screen says so beside the button, the same way, and a date the invoice never had (nothing on file) is
@@ -767,6 +781,7 @@ export function InvoiceEditor({
     if (dates.first) { dates.refuseWith(setError); return; }
     // The date on file cannot be emptied (above). Said beside the button as a derived sentence; a server answer left over from an earlier press is not shown next to it.
     if (shippingBillCleared) { setError(null); shippingBillRefusal.refuse(); return; }
+    if (shippingEvidenceCleared) { setError(null); shippingEvidenceRefusal.refuse(); return; }
     if (dueDateCleared) { setError(null); dueDateRefusal.refuse(); return; }
     const shippingBillSent = showsShippingBill ? {
       shipping_bill_no: shippingBillNo.trim() || undefined,
@@ -849,7 +864,9 @@ export function InvoiceEditor({
           due_date: dueDate || undefined,
           reference_no: editedText(referenceNo, initialSnapshot.current.referenceNo),
           credit_days: creditDays !== "" ? parseInt(creditDays, 10) : undefined,
-          supply_state_code: supplyStateCode || undefined,
+          // A DRAFT may be without a place of supply (the server refuses to ISSUE without one and resolves one from the customer when none is stored), so an
+          // emptied box that had one on file is sent as null and cleared (POST-A-399, the sixth slice); `x || undefined` sent nothing and the old state stayed.
+          supply_state_code: editedChoice(supplyStateCode, initialSnapshot.current.supplyStateCode),
           notes: editedText(notes, initialSnapshot.current.notes),
           is_inter_state: isInterstate,
           round_off_enabled: roundOffEnabled,
@@ -1690,6 +1707,7 @@ export function InvoiceEditor({
 
         {error && <Callout tone="problem">{error}</Callout>}
         {shippingBillRefusal.shown && <div ref={shippingBillRefusalRef}><Callout tone="problem">{shippingBillRefusal.shown}</Callout></div>}
+        {shippingEvidenceRefusal.shown && <div ref={shippingEvidenceRefusalRef} data-removed-evidence><Callout tone="problem">{shippingEvidenceRefusal.shown}</Callout></div>}
         {dueDateRefusal.shown && <div ref={dueDateRefusalRef}><Callout tone="problem">{dueDateRefusal.shown}</Callout></div>}
       </div>
       {(() => {
