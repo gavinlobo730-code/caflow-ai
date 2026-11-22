@@ -34,6 +34,7 @@ import { NrvReviewPanel } from "@/components/inventory/NrvReviewPanel";
 import { daysBetweenLocalISO } from "@/lib/dateMath";
 import { Callout } from "@/components/ui/callout";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { formatDate, todayIstISO } from "@/lib/dates/format";
@@ -639,40 +640,25 @@ function StockLedgerDrillDown({
 
   useEffect(() => { load(); }, [load]);
 
-  // Escape closes the ledger only when no dialog of its own is open over it: a dialog owns Escape while it is open (and ignores it while
-  // its write is out), so Escape never unmounts a dialog over a posting still in flight (POST-A-395, the second review).
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) { if (e.key === "Escape" && !adjustOpen && !writedownOpen) onClose(); }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, adjustOpen, writedownOpen]);
-
+  // The ledger is the shared dialog (POST-A-130), and the two dialogs it opens are shared dialogs drawn over it: the shared dialogs keep a
+  // stack, so Escape and a click outside reach only the top one, and a dialog over a posting still in flight holds its own close. The key
+  // listener the hand-built ledger kept for this (and the one its dialogs kept) is gone with the layers it worked round.
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-[100] flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[88vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-        <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between shrink-0">
-          <div>
-            <p className="text-sm font-semibold text-ps-ink">{item.name}</p>
-            <p className="text-2xs text-ps-hint mt-0.5">Stock movement ledger</p>
+    <Modal title={item.name} note="Stock movement ledger" maxWidthClass="max-w-4xl" onClose={onClose}>
+        {mayWriteBooks && (
+          <div className="flex items-center justify-end gap-3">
+            <button onClick={() => setAdjustOpen(true)}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-label">
+              <ClipboardEdit size={13} /> Adjust Stock
+            </button>
+            <button onClick={() => setWritedownOpen(true)}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-label">
+              <TrendingDown size={13} /> Write Down to NRV
+            </button>
           </div>
-          <div className="flex items-center gap-3">
-            {mayWriteBooks && (
-              <>
-                <button onClick={() => setAdjustOpen(true)}
-                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-label">
-                  <ClipboardEdit size={13} /> Adjust Stock
-                </button>
-                <button onClick={() => setWritedownOpen(true)}
-                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-label">
-                  <TrendingDown size={13} /> Write Down to NRV
-                </button>
-              </>
-            )}
-            <button onClick={onClose} className="text-ps-hint hover:text-ps-body text-xl leading-none" aria-label="Back">×</button>
-          </div>
-        </div>
+        )}
 
-        <div className="px-5 py-3 border-b border-ps-border flex items-end gap-3 flex-wrap shrink-0">
+        <div className="pb-3 border-b border-ps-border flex items-end gap-3 flex-wrap">
           <div>
             <label className="block text-3xs font-medium text-ps-hint mb-1">From</label>
             <DateInput aria-label="Stock ledger from" value={startDate} onChange={(v) => setStartDate(v)}
@@ -689,7 +675,7 @@ function StockLedgerDrillDown({
           {loading && <RefreshCw size={13} className="animate-spin text-ps-hint mb-1.5" />}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-5">
+        <div>
           {loading ? (
             <TableSkeleton cols={7} rows={4} />
           ) : windowReversed ? (
@@ -771,7 +757,6 @@ function StockLedgerDrillDown({
             </table>
           )}
         </div>
-      </div>
 
       {adjustOpen && (
         <AdjustStockModal
@@ -790,17 +775,8 @@ function StockLedgerDrillDown({
           onSaved={() => { setWritedownOpen(false); load(); onAdjusted(); }}
         />
       )}
-    </div>
+    </Modal>
   );
-}
-
-/** A dialog over the ledger closes on Escape, except while its write is out. */
-function useEscapeUnlessSaving(onClose: () => void, saving: boolean) {
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) { if (e.key === "Escape" && !saving) onClose(); }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, saving]);
 }
 
 function AdjustStockModal({
@@ -820,7 +796,6 @@ function AdjustStockModal({
   const [referenceNo, setReferenceNo] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
-  useEscapeUnlessSaving(onClose, saving);
   const [error, setError] = useState<string | null>(null);
   // Text that is not a date reads as blank to the form (frontend_ux-19).
   const dates = useDateProblems();
@@ -871,14 +846,10 @@ function AdjustStockModal({
   }
 
   return (
-    // Drawn inside the ledger's own click-to-close backdrop: the click is stopped here always, so it can never reach the ledger behind.
-    <div className="fixed inset-0 bg-brand-dark/60 z-[110] flex items-center justify-center p-4" onClick={(e) => { e.stopPropagation(); if (!saving) onClose(); }}>
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-        <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between">
-          <p className="text-sm font-semibold text-ps-ink">Adjust Stock — {item.name}</p>
-          <button disabled={saving} onClick={onClose} className="text-ps-hint hover:text-ps-body text-xl leading-none" aria-label="Close">×</button>
-        </div>
-        <div className="p-5 space-y-3">
+    // A shared dialog over the ledger's shared dialog: it is the top of the stack, so Escape and a click outside are its own, and its close
+    // is held while its posting is out.
+    <Modal title={`Adjust Stock — ${item.name}`} maxWidthClass="max-w-md" onClose={() => { if (!saving) onClose(); }}>
+        <div className="space-y-3">
           <p className="text-2xs text-ps-hint">
             Currently {fmtQty(item.stock_qty_units)} on hand. This posts a journal entry immediately — review the details before saving.
           </p>
@@ -946,8 +917,7 @@ function AdjustStockModal({
             </Button>
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -965,7 +935,6 @@ function NrvWritedownModal({
   const [referenceNo, setReferenceNo] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
-  useEscapeUnlessSaving(onClose, saving);
   const [error, setError] = useState<string | null>(null);
   // Text that is not a date reads as blank to the form (frontend_ux-19).
   const dates = useDateProblems();
@@ -1029,14 +998,10 @@ function NrvWritedownModal({
   }
 
   return (
-    // Drawn inside the ledger's own click-to-close backdrop: the click is stopped here always, so it can never reach the ledger behind.
-    <div className="fixed inset-0 bg-brand-dark/60 z-[110] flex items-center justify-center p-4" onClick={(e) => { e.stopPropagation(); if (!saving) onClose(); }}>
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-        <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between">
-          <p className="text-sm font-semibold text-ps-ink">Write Down to NRV — {item.name}</p>
-          <button disabled={saving} onClick={onClose} className="text-ps-hint hover:text-ps-body text-xl leading-none" aria-label="Close">×</button>
-        </div>
-        <div className="p-5 space-y-3">
+    // A shared dialog over the ledger's shared dialog: it is the top of the stack, so Escape and a click outside are its own, and its close
+    // is held while its posting is out.
+    <Modal title={`Write Down to NRV — ${item.name}`} maxWidthClass="max-w-md" onClose={() => { if (!saving) onClose(); }}>
+        <div className="space-y-3">
           <p className="text-2xs text-ps-hint">
             AS-2 / Ind AS 2 / ICDS-II: inventory must be carried at the lower of cost or net realisable value. Quantity
             never changes — only the recorded value. Current average cost is {formatServicePrice(item.avg_cost_paise) || "₹0"}/unit
@@ -1108,7 +1073,6 @@ function NrvWritedownModal({
             </Button>
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
