@@ -13,9 +13,10 @@ import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useCallback, useRef, ChangeEvent } from "react";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { Combobox } from "@/components/ui/combobox";
-import { Plus, X, Upload, Download, Trash2, FileText, AlertTriangle, CheckCircle, Clock, Loader2 } from "lucide-react";
+import { Plus, Upload, Download, Trash2, FileText, AlertTriangle, CheckCircle, Clock, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { TableSkeleton } from "@/components/ui/skeleton";
@@ -162,13 +163,15 @@ function AddModal({ clients, presetClientId, onClose, onAdded }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white flex items-center justify-between px-6 py-4 border-b border-ps-border">
-          <h3 className="text-sm font-semibold text-ps-ink">Add IT Notice</h3>
-          <button disabled={saving} aria-label="Close" onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
-        </div>
-        <div className="px-6 py-4 space-y-3">
+    // The shared dialog (POST-A-130). Its close (Escape, a click beside it, its ×) is held while the notice is being saved.
+    <Modal title="Add IT Notice" maxWidthClass="max-w-md" onClose={() => { if (!saving) onClose(); }}
+      footer={<>
+        <button disabled={saving} onClick={onClose} className="px-4 py-2 text-sm text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg disabled:opacity-50">Cancel</button>
+        <Button variant="plain" size="none" spinner={false} onClick={handleSave} disabled={saving} className="px-4 py-2 text-sm text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-60">
+          {saving ? "Saving…" : "Add Notice"}
+        </Button>
+      </>}>
+        <div className="space-y-3">
           {error && <Callout tone="problem">{error}</Callout>}
           <div>
             <label className={lbl}>Client *</label>
@@ -227,14 +230,7 @@ function AddModal({ clients, presetClientId, onClose, onAdded }: {
               placeholder="Additional details…" />
           </div>
         </div>
-        <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-ps-border flex gap-2 justify-end">
-          <button disabled={saving} onClick={onClose} className="px-4 py-2 text-sm text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg">Cancel</button>
-          <Button variant="plain" size="none" spinner={false} onClick={handleSave} disabled={saving} className="px-4 py-2 text-sm text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-60">
-            {saving ? "Saving…" : "Add Notice"}
-          </Button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

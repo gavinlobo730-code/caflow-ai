@@ -40,9 +40,10 @@
 
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Calculator, Info, BookOpen, Plus, X, Trash2, ShieldCheck, AlertTriangle } from "lucide-react";
+import { Calculator, Info, BookOpen, Plus, Trash2, AlertTriangle } from "lucide-react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
@@ -1002,21 +1003,11 @@ export default function CapitalGainsPage() {
               a claim is in time, s.54F's proportion and s.54EC's cap are all
               domain/income_tax/reinvestment_exemption.py's answers. */}
           {exemptFor && (
-            <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-              <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
-                <div className="flex items-center justify-between px-5 py-4 border-b sticky top-0 bg-white">
-                  <div className="flex items-center gap-2">
-                    <ShieldCheck className="w-4 h-4 text-state-ready" />
-                    <h2 className="text-sm font-semibold text-ps-ink">
-                      Reinvestment exemption — {exemptFor.asset_description}
-                    </h2>
-                  </div>
-                  <button disabled={exemptSaving} onClick={() => { exemptionSeq.current += 1; setExemptFor(null); setExemption(null); setExemptLoading(false); }} aria-label="Close">
-                    <X className="w-4 h-4 text-ps-hint" />
-                  </button>
-                </div>
-
-                <div className="px-5 py-4 space-y-4">
+            // The shared dialog (POST-A-130). Its close (Escape, a click beside it, its ×) is held while a claim is being saved or removed,
+            // and NOT while the working is only being read: leaving then drops the answer (the sequence number is moved on).
+            <Modal title={`Reinvestment exemption — ${exemptFor.asset_description}`} maxWidthClass="max-w-3xl"
+              onClose={() => { if (exemptSaving) return; exemptionSeq.current += 1; setExemptFor(null); setExemption(null); setExemptLoading(false); }}>
+                <div className="space-y-4">
                   {/* The newest answer is shown: saveClaim clears `exemptError` before it refuses a date, so one that is here came after the date's sentence (a refused delete, say). */}
                   {(exemptError || claimRefusal.shown) && <Callout tone="problem">{exemptError || claimRefusal.shown}</Callout>}
 
@@ -1213,19 +1204,17 @@ export default function CapitalGainsPage() {
                     before relying on them.
                   </p>
                 </div>
-              </div>
-            </div>
+            </Modal>
           )}
 
           {/* Add Transaction Modal */}
           {showModal && (
-            <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-              <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-                <div className="flex items-center justify-between px-5 py-4 border-b">
-                  <h2 className="text-sm font-semibold text-ps-ink">Add Capital Gains Transaction</h2>
-                  <button disabled={saving} onClick={() => setShowModal(false)}><X className="w-4 h-4 text-ps-hint" /></button>
-                </div>
-                <div className="px-5 py-4 space-y-4">
+            <Modal title="Add Capital Gains Transaction" maxWidthClass="max-w-lg" onClose={() => { if (!saving) setShowModal(false); }}
+              footer={<>
+                <Button disabled={saving} variant="outline" size="sm" onClick={() => setShowModal(false)}>Cancel</Button>
+                <Button size="sm" onClick={handleSaveRecord} disabled={saving}>{saving ? "Saving…" : "Save Transaction"}</Button>
+              </>}>
+                <div className="space-y-4">
                   {regError && <Callout tone="problem">{regError}</Callout>}
 
                   <div>
@@ -1403,12 +1392,7 @@ export default function CapitalGainsPage() {
                     </ul>
                   )}
                 </div>
-                <div className="flex justify-end gap-3 px-5 py-4 border-t">
-                  <Button disabled={saving} variant="outline" size="sm" onClick={() => setShowModal(false)}>Cancel</Button>
-                  <Button size="sm" onClick={handleSaveRecord} disabled={saving}>{saving ? "Saving…" : "Save Transaction"}</Button>
-                </div>
-              </div>
-            </div>
+            </Modal>
           )}
         </div>
       )}

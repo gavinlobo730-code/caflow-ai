@@ -30,6 +30,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Plus, Info } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
@@ -490,16 +491,17 @@ function AddBlockDialog({ clientId, fy, itrRows, onClose, onSaved }: {
   const input = "w-full mt-1 px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-light";
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/50 z-50 flex items-center justify-center p-4" onClick={(e) => { e.stopPropagation(); if (!saving) onClose(); }}>
-      <div className="bg-white rounded-xl max-w-lg w-full p-6 space-y-4" onClick={e => e.stopPropagation()}>
-        <div>
-          <h3 className="text-sm font-semibold text-ps-ink">Add a §32 block — FY {fy}</h3>
-          <p className="text-2xs text-ps-label mt-1">
-            A block is a group of assets of the same nature carrying the same rate (§2(11)),
-            so its name and its rate are one decision. Its opening written-down value comes
-            off last year&apos;s return.
-          </p>
-        </div>
+    // The shared dialog (POST-A-130). Its close (Escape, a click beside it, its ×) is held while the block is being saved.
+    <Modal title={`Add a §32 block — FY ${fy}`} maxWidthClass="max-w-lg" onClose={() => { if (!saving) onClose(); }}
+      note={<>
+        A block is a group of assets of the same nature carrying the same rate (§2(11)),
+        so its name and its rate are one decision. Its opening written-down value comes
+        off last year&apos;s return.
+      </>}
+      footer={<>
+        <button disabled={saving} onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50">Cancel</button>
+        <Button size="sm" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save block"}</Button>
+      </>}>
 
         <label className="block text-xs font-medium text-ps-label">
           Block
@@ -559,12 +561,6 @@ function AddBlockDialog({ clientId, fy, itrRows, onClose, onSaved }: {
         </label>
 
         {error && <Callout tone="problem">{error}</Callout>}
-
-        <div className="flex gap-2 justify-end pt-1">
-          <button disabled={saving} onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
-          <Button size="sm" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save block"}</Button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
