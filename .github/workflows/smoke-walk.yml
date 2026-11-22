@@ -44,7 +44,11 @@
 #     minutes of drive when the group was cut in two. On 7 November 2026 (POST-A-399) the drive held 583 scenarios and the
 #     worst night was estimated at 21.1 minutes against the 21 that its deadline leaves, so the group is cut in three and the
 #     worst night is about 16.5 (the allowance is still not raised). On 17 November 2026 (POST-A-386) 25 more date rows put the worst night at 21.3, so the
-#     group is cut in four (the allowance is still not raised), and the whole matrix asked for by name has a deadline of 100 minutes, inside its unchanged cap of 120. The rotation is keyed on the Indian day because GitHub runs this job hours after its 02:00
+#     group is cut in four (the allowance is still not raised), and the whole matrix asked for by name has a deadline of 100 minutes, inside its unchanged cap of 120.
+#     On 22 November 2026 a night was STOPPED AT ITS DEADLINE with 490 of 499 runs driven and none failed (run 44967231176), while the estimate still passed: it priced a run of the other
+#     groups at 1.7 s and by then one took 2.59 s (390 of them in 1,011 s, by the runner's own lines; a date run took 4.30 s). At the real figures the other groups alone are 17 minutes of a
+#     night, which no finer cut of the date group answers, so THE OTHER GROUPS ARE CUT IN TWO HALVES, on alternate nights (the allowance is still not raised): each of their scenarios is
+#     driven every second night, a night is about 16 minutes of drive, and the estimate now uses that night's seconds. The whole matrix on request still drives everything. The rotation is keyed on the Indian day because GitHub runs this job hours after its 02:00
 #     IST schedule (its drive step began between 05:10 and 08:08 IST in the eight nights before this was written),
 #     which straddles UTC midnight (05:30 IST): keyed on the UTC day those eight nights drove one zone twice
 #     running and left another undriven for five.
@@ -57,8 +61,8 @@
 #     uploads the report and ends inside its allowance. For a night that is 24 minutes: the part before the drive
 #     took 8 min 8 s on the 5th and 16 min 26 s on the 6th (17 is used), a scenario in flight may take up to 90
 #     seconds more, and the steps after the drive took 4 seconds (1 minute is kept): 17 + 24 + 1.5 + 1 = 43.5 of 45.
-#     The whole matrix is an on-demand choice (Run workflow > zones: all): about 96 minutes of drive (77 when this was
-#     written; 85 on 7 November 2026 and 96 on 17 November 2026, by the guard's own constants), a deadline of 100 minutes and a cap of 120; it runs only when a person asks for it, and the default of that choice is the
+#     The whole matrix is an on-demand choice (Run workflow > zones: all): about 92 minutes of drive (77 when this was
+#     written; 85 on 7 November 2026 and 96 on 17 November 2026, by the guard's constants of those days; 92 at the seconds read off the night of 22 November 2026), a deadline of 100 minutes and a cap of 120; it runs only when a person asks for it, and the default of that choice is the
 #     night's. `the-nightly-drive-fits-its-allowance-and-visits-each-zone-in-turn.test.ts` holds the rotation (over
 #     three years, and over the real start instants of those eight nights), the runner's own use of it (through
 #     `--list`), the deadline arithmetic above, and the estimate of a night as a budget that FAILS ONE RUN when the
@@ -125,7 +129,7 @@ on:
   workflow_dispatch:
     inputs:
       zones:
-        description: "Which part of the drive's date scenarios to run: the night's zone and quarter of the group (about 19 minutes of drive), or every zone and the whole group (about 96 minutes of drive, a cap of 120 minutes)"
+        description: "Which part of the drive's date scenarios to run: the night's zone and quarter of the group, with the night's half of the other scenarios (about 16 minutes of drive), or every zone and every scenario (about 92 minutes of drive, a cap of 120 minutes)"
         type: choice
         options: ["rotate", "all"]
         default: "rotate"
@@ -240,7 +244,7 @@ jobs:
       # it is not in the required checks. `--shots` keeps a picture of a scenario that failed, in the .smoke/
       # folder the failed-run artifact below uploads.
       #
-      # THE PART OF THE DRIVE AND ITS DEADLINE (POST-A-397). `rotate` is the night's choice and the label's: ONE of the three zones and ONE quarter of the date group, by the Indian day, with a
+      # THE PART OF THE DRIVE AND ITS DEADLINE (POST-A-397). `rotate` is the night's choice and the label's: ONE of the three zones, ONE quarter of the date group and ONE half of the other groups, by the Indian day, with a
       # deadline of 24 minutes. An on-demand run takes what it is asked for: `rotate`, or `all` (every zone, the whole group, a deadline of 100 minutes under the job's 120). The runner STOPS
       # ITSELF at the deadline and exits 1 (its report says what it did not drive), because a job that times out is cancelled and the steps after this one never run.
       - name: Drive the money editors
