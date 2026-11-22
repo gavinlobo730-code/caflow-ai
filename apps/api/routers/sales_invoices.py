@@ -652,6 +652,7 @@ def _resolve_credit_terms(
     try:
         inv_d: Optional[date] = date.fromisoformat(str(invoice_date)[:10])
     except (ValueError, TypeError):
+        # 'Never raises on malformed input' (docstring): with no readable invoice date, no due date or credit days are derived from it.
         inv_d = None
 
     if due_date:
@@ -660,6 +661,7 @@ def _resolve_credit_terms(
             try:
                 cd = (date.fromisoformat(str(due_date)[:10]) - inv_d).days
             except (ValueError, TypeError):
+                # The due date given is not a date: it is passed through as given and no credit days are derived from it.
                 cd = None
         return str(due_date)[:10], (int(cd) if cd is not None else None)
 

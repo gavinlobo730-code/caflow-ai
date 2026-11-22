@@ -187,6 +187,7 @@ def _section_34_2_warning(db, firm_id: str, client_id: str, note_date: str,
         supply = date.fromisoformat(str(raw_supply)[:10])
         note = date.fromisoformat(str(note_date)[:10])
     except (TypeError, ValueError):
+        # Without two readable dates the s.34(2) window cannot be measured: no warning is invented.
         return None
     filed_on = None
     if db is not None:

@@ -423,11 +423,14 @@ def _to_paise(val) -> int:
     try:
         raw = Decimal(s)
     except InvalidOperation:
+        # An amount cell that is not a number reads as nil, like a blank one. The row then carries no movement on that leg and is NOT named: recorded
+        # as open on the ledger (POST-A-551).
         return 0
     explicit_neg = raw < 0
     try:
         paise = int((abs(raw) * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
     except (InvalidOperation, ValueError):
+        # A figure Decimal cannot scale (NaN, Infinity typed in a cell) reads as nil for the same reason as above (POST-A-551).
         return 0
     if drcr == "dr":
         neg = True

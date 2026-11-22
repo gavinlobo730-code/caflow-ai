@@ -285,6 +285,7 @@ def class_thresholds_in_force(fy: str | None = None) -> bool:
     try:
         return int(str(key)[:4]) >= int(SECTION_194A_CLASS_THRESHOLDS_FIRST_FY[:4])
     except (TypeError, ValueError):
+        # A year that cannot be read is not shown to hold the raised limits: False, the ordinary ones.
         return False
 
 

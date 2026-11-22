@@ -78,6 +78,8 @@ def paise(value: Any) -> int:
     try:
         return int((Decimal(str(value or 0)) * 100).to_integral_value(rounding=ROUND_HALF_UP))
     except (InvalidOperation, ValueError, TypeError):
+        # The portal writes its figures as JSON numbers. One that is not a number counts as nil, and the document then fails to match its bill on
+        # amount, which the reconciliation shows.
         return 0
 
 
@@ -109,6 +111,7 @@ def _rate_bps(value: Any) -> Optional[int]:
     try:
         bps = Decimal(str(value)) * 100
     except (InvalidOperation, ValueError, TypeError):
+        # A rate the portal file does not state as a number is no rate (None), never 0%.
         return None
     if bps != bps.to_integral_value() or bps < 0:
         return None

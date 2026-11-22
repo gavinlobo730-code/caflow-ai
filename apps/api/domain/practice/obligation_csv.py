@@ -53,6 +53,7 @@ def _day(value: object) -> str:
     try:
         return date.fromisoformat(str(value or "")[:10]).isoformat()
     except ValueError:
+        # No date a person could read (docstring): an empty cell, never a made-up day.
         return ""
 
 

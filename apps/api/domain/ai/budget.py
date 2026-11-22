@@ -217,6 +217,7 @@ def _int(value: Any) -> int:
     try:
         return int(value or 0)
     except (TypeError, ValueError):
+        # Token and page counts are integer columns of ai_usage_events; NULL or absent is none used.
         return 0
 
 

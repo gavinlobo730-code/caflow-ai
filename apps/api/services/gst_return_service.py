@@ -709,6 +709,8 @@ def _as_instant(value) -> Optional[datetime]:
     try:
         got = datetime.fromisoformat(text.replace("Z", "+00:00"))
     except ValueError:
+        # Not a timestamp. A timestamptz column always reads back as ISO text, so a stored instant never lands here: this is an absent value or a
+        # hand-built one, and None says there is no instant.
         return None
     return got if got.tzinfo else got.replace(tzinfo=timezone.utc)
 
@@ -1097,6 +1099,7 @@ def _late_fee_turnover(db, firm_id: str, client_id: str,
     try:
         period_start = date(int(period[2:]), int(period[:2]), 1)
     except (ValueError, IndexError):
+        # FAILS TO None, NEVER TO ZERO (docstring): no readable period, no turnover, and the engine assumes the lowest cap and says so.
         return None
     try:
         return client_gst_turnover_service.turnover_governing_period(

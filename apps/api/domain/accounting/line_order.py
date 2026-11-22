@@ -58,6 +58,7 @@ def _key(row: dict) -> tuple:
     try:
         ordered = raw is not None and int(raw) >= 0
     except (TypeError, ValueError):
+        # line_order is an integer column or absent; anything else sorts as a line with no recorded order, after the ordered ones.
         ordered = False
     return (
         # A line WITH an order sorts before one without. Within one voucher

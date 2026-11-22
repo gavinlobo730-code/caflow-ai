@@ -35,6 +35,7 @@ def resolve_credit_terms(
     try:
         doc_d: Optional[date] = date.fromisoformat(str(doc_date)[:10])
     except (ValueError, TypeError):
+        # 'Never raises on malformed input' (docstring): with no readable document date, no due date or credit days are derived from it.
         doc_d = None
 
     if due_date:
@@ -43,6 +44,7 @@ def resolve_credit_terms(
             try:
                 cd = (date.fromisoformat(str(due_date)[:10]) - doc_d).days
             except (ValueError, TypeError):
+                # The due date given is not a date: it is passed through as given and no credit days are derived from it.
                 cd = None
         return str(due_date)[:10], (int(cd) if cd is not None else None)
 

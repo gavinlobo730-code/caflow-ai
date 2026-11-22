@@ -82,6 +82,8 @@ def compute_compliance_risk(
                 try:
                     due = date.fromisoformat(str(due_raw)[:10])
                 except ValueError:
+                    # due_date is a DATE column; unreadable text is no due date, so the row is not counted as due soon (overdue is asked of the row
+                    # itself).
                     due = None
             if is_overdue(r, today):
                 overdue.append(r)

@@ -27,6 +27,7 @@ def _is_ecommerce_year(financial_year: str) -> bool:
     try:
         start_year = int(financial_year[:4])
     except (ValueError, TypeError):
+        # A label that does not start with a year is not shown to be FY 2024-25 or later: the answer is no.
         return False
     return start_year >= 2024
 

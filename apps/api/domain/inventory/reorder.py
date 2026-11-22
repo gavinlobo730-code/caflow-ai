@@ -74,6 +74,7 @@ def _decimal(value) -> Optional[Decimal]:
     try:
         d = Decimal(str(value))
     except (InvalidOperation, ValueError, TypeError):
+        # Not a number: None, no figure. A reorder level of None is reported as not set, never as a level of 0.
         return None
     return d if d.is_finite() else None
 

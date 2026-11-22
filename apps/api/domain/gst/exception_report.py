@@ -86,6 +86,7 @@ def rupees_to_paise(value: Any) -> int:
     try:
         return int(round(float(value) * 100))
     except (TypeError, ValueError):
+        # The payload's rupee figures are numbers this product wrote (paise_to_rupees_2dp); anything else is an absent figure and counts as nil.
         return 0
 
 
