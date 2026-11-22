@@ -8,7 +8,7 @@
 
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useCallback } from "react";
-import { Plus, RefreshCw, X, MessageCircle, IndianRupee, Download, Clock } from "lucide-react";
+import { Plus, RefreshCw, MessageCircle, IndianRupee, Download, Clock } from "lucide-react";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { SectionPlaceholder } from "@/components/ui/page-frame";
@@ -31,6 +31,7 @@ import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 import { formatPaise as fmtPaise } from "@/lib/money/format";
 import { isOwedFeeInvoice, type FeeInvoiceStatus } from "@/lib/constants/feeInvoiceStatus";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { PageHeader } from "@/components/ui/page-header";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
@@ -169,12 +170,7 @@ function AddEngagementModal({ clients, onClose, onSaved }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-ps-ink">Add Fee Engagement</h3>
-          <button disabled={saving} aria-label="Close" onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
-        </div>
+    <Modal title="Add Fee Engagement" maxWidthClass="max-w-md" onClose={() => { if (!saving) onClose(); }}>
         {error && <Callout tone="problem">{error}</Callout>}
         <div className="space-y-3">
           <div>
@@ -227,8 +223,7 @@ function AddEngagementModal({ clients, onClose, onSaved }: {
             {saving ? "Saving…" : "Save Engagement"}
           </Button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -282,12 +277,7 @@ function AddReceiptModal({ invoices, onClose, onSaved }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-ps-ink">Record Receipt</h3>
-          <button disabled={saving} aria-label="Close" onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
-        </div>
+    <Modal title="Record Receipt" maxWidthClass="max-w-md" onClose={() => { if (!saving) onClose(); }}>
         {error && <Callout tone="problem">{error}</Callout>}
         <div className="space-y-3">
           <div>
@@ -339,8 +329,7 @@ function AddReceiptModal({ invoices, onClose, onSaved }: {
             {saving ? "Saving…" : "Record Receipt"}
           </Button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

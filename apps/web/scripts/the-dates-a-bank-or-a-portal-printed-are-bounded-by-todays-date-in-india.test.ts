@@ -380,8 +380,10 @@ test("Record this lot, Record goods back and the two TDS challan forms say a dat
   assert.match(itc.slice(itc.lastIndexOf("<button", toggleAt), toggleAt), /disabled=\{saving\}/, "\"Record a lot\" is live while a lot is being recorded");
   // A lot form opened (or closed) holds nothing of the last one: its boxes, its answer and its latched sentence.
   assert.match(itc, /setLotFor\(lotFor === l\.challan_line_id \? null : l\.challan_line_id\);\s*setLot\(\{ \.\.\.BLANK_LOT \}\);\s*setLotError\(null\);\s*lotRefusal\.clear\(\);/, "a lot form is opened again with the last answer or sentence on it");
-  // The firm dialog cannot be left while Add is out, by its X or by Cancel (the client tab holds its Cancel in the same way).
-  assert.equal((tdsFirm.match(/onClick=\{onClose\} disabled=\{saving\}/g) ?? []).length, 2, "the firm TDS challan dialog can be closed while Add is out");
+  // The firm dialog cannot be left while Add is out: by Cancel, or by the shared dialog's own X, Escape and backdrop, which all go through its
+  // `onClose` (the client tab holds its Cancel in the same way). Before POST-A-130's eighth step the X was a second button of the dialog's own.
+  assert.equal((tdsFirm.match(/onClick=\{onClose\} disabled=\{saving\}/g) ?? []).length, 1, "the firm TDS challan dialog's Cancel is live while Add is out");
+  assert.match(tdsFirm, /<Modal title="Add Challan 281" onClose=\{\(\) => \{ if \(!saving\) onClose\(\); \}\}>/, "the firm TDS challan dialog can be closed while Add is out");
   assert.match(tdsClient, /<button onClick=\{closeForm\} disabled=\{saving\}/, "the client TDS challan form can be cancelled while Save is out");
   // The server's refusal reaches the screen as the sentence it is (the catch used to throw it away; FastAPI answers a refusal with an error status, which arrives as a thrown sentence).
   assert.match(bodyOf(itc, "async function record("), /catch \(e\) \{[^}]*setLotError\(\{ line: line\.challan_line_id, text: e instanceof Error \? e\.message/, "Record this lot throws away the sentence of a refusal that arrives as an error status");

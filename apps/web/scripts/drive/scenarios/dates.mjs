@@ -5308,20 +5308,27 @@ export const scenarios = [
   // and the ITC-04 panel's "Record a lot" (the panel's `saving` is for any line, and a form opened for another line meanwhile would be closed by this one's success).
   {
     id: "firm-tds-challan-close-and-cancel-are-held-while-add-is-out",
-    title: "TDS > Add Challan: while Add is out the dialog's Close and Cancel are held, and live again once the answer is a refusal",
+    title: "TDS > Add Challan: while Add is out the dialog cannot be left (Cancel is held, and its Close, Escape and a click outside do nothing), and it can be once the answer is a refusal",
     async run(env) {
+      // The dialog is the shared one since POST-A-130's eighth step: its X is the shared dialog's own ("Close dialog"), which is not greyed
+      // out but goes through the same close as Escape and the backdrop, and that close is held while Add is out. So the promise is driven
+      // as what a person can DO, not as one button's attribute: nothing they press while the request is out leaves the dialog.
       const { page, stub } = env;
       const form = await openTdsChallanForm(env);
       await typeAndLeave(form.locator("#tds-challan-date"), "07/10/2026");
       stub.route({ method: "POST", re: /tds-workspace\/challans$/, delay: 1800, ...refuse("A stub refusal of the challan.", 422) });
       await form.getByRole("button", { name: "Add", exact: true }).click();
-      const close = form.getByRole("button", { name: "Close", exact: true });
+      const close = form.getByRole("button", { name: "Close dialog", exact: true });
       const cancel = form.getByRole("button", { name: "Cancel", exact: true });
-      await until(async () => (await close.isDisabled({ timeout: 500 }).catch(() => false)) && (await cancel.isDisabled({ timeout: 500 }).catch(() => false)),
-        "Close and Cancel to be held while Add was out");
+      await until(async () => cancel.isDisabled({ timeout: 500 }).catch(() => false), "Cancel to be held while Add was out");
+      await close.click();
+      await page.keyboard.press("Escape");
+      await page.mouse.click(12, 500);
+      assert.equal(await form.count(), 1, "the dialog was left while Add was out");
       await shownInTheDialog(page, "A stub refusal of the challan.", "the refusal was not shown once the answer came");
-      assert.equal(await close.isDisabled(), false, "Close stayed held after the answer");
       assert.equal(await cancel.isDisabled(), false, "Cancel stayed held after the answer");
+      await close.click();
+      await form.waitFor({ state: "detached" });
     },
   },
   {

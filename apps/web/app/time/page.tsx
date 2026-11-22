@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -609,14 +610,7 @@ export default function TimeTrackingPage() {
 
       {/* Start Timer Dialog */}
       {showStart && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="font-semibold text-ps-ink">Start Timer</h2>
-              <button onClick={() => setShowStart(false)} className="text-ps-hint hover:text-ps-label">
-                <X size={18} />
-              </button>
-            </div>
+        <Modal title="Start Timer" onClose={() => { if (!starting) setShowStart(false); }}>
             <div className="space-y-3">
               <div>
                 <label className="block text-xs font-medium text-ps-body mb-1">Client</label>
@@ -666,20 +660,12 @@ export default function TimeTrackingPage() {
                 Start
               </Button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* Manual Entry Dialog */}
       {showManual && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="font-semibold text-ps-ink">Manual Time Entry</h2>
-              <button disabled={manualSaving} onClick={() => setShowManual(false)} className="text-ps-hint hover:text-ps-label">
-                <X size={18} />
-              </button>
-            </div>
+        <Modal title="Manual Time Entry" onClose={() => { if (!manualSaving) setShowManual(false); }}>
             <div className="space-y-3">
               <div>
                 <label className="block text-xs font-medium text-ps-body mb-1">Client</label>
@@ -764,8 +750,7 @@ export default function TimeTrackingPage() {
                 Save Entry
               </Button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

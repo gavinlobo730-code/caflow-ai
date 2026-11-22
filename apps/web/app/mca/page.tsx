@@ -33,6 +33,7 @@ import { isCompaniesActCompany } from "@/lib/entityObligations";
 import { Callout } from "@/components/ui/callout";
 import { formatCroreLakh } from "@/lib/money/format";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { PageHeader } from "@/components/ui/page-header";
@@ -363,12 +364,7 @@ function AddFilingModal({ clients, onClose, onAdded }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-ps-ink">Add MCA Filing</h3>
-          <button onClick={onClose} disabled={saving} aria-label="Close" className="disabled:opacity-50"><X className="w-4 h-4 text-ps-hint" /></button>
-        </div>
+    <Modal title="Add MCA Filing" maxWidthClass="max-w-md" onClose={() => { if (!saving) onClose(); }}>
         {err && <Callout tone="problem">{err}</Callout>}
         <div className="space-y-3">
           <div>
@@ -500,8 +496,7 @@ function AddFilingModal({ clients, onClose, onAdded }: {
           {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
           All filings must be submitted manually on MCA21 portal (mca.gov.in) after CA review.
         </p>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

@@ -31,7 +31,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { recentFirst, useRecentPartyIds } from "@/lib/lookups/recentParties";
 import Link from "next/link";
 import {
-  IndianRupee, Calendar, AlertCircle, Plus, X, FileText, Award, Upload, ArrowRight,
+  IndianRupee, Calendar, AlertCircle, Plus, FileText, Award, Upload, ArrowRight,
 } from "lucide-react";
 import CsvImportModal from "@/components/LazyCsvImportModal";
 import type { ImportRow } from "@/components/CsvImportModal";
@@ -83,6 +83,7 @@ import { RetractChallanModal } from "@/components/tds/RetractChallanModal";
 import { MatchChallanToLedgerModal } from "@/components/tds/MatchChallanToLedgerModal";
 import { UnlinkedChallansPanel } from "@/components/tds/UnlinkedChallansPanel";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 // The engine, reached through the API. Rates, thresholds, the
 // individual-vs-company split, §206AA and the year's aggregate are all
 // resolved server-side — CLAUDE.md: zero business logic in the frontend.
@@ -391,12 +392,7 @@ function AddDeductionModal({ clientId, choices, onClose, onAdded }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-ps-ink">Add TDS Deduction</h3>
-          <button disabled={saving} onClick={onClose} className="text-ps-hint hover:text-ps-label"><X className="w-4 h-4" /></button>
-        </div>
+    <Modal title="Add TDS Deduction" maxWidthClass="max-w-md" onClose={() => { if (!saving) onClose(); }}>
         {err && <Callout tone="problem">{err}</Callout>}
 
         <div className="grid grid-cols-2 gap-3">
@@ -542,8 +538,7 @@ function AddDeductionModal({ clientId, choices, onClose, onAdded }: {
           {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
           Deposit TDS to the government account via e-Pay Tax on incometax.gov.in (challan ITNS 281). PracticeSync does not auto-submit.
         </p>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -810,13 +805,7 @@ function AddChallanModal({ clientId, choices, onClose, onAdded }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-ps-ink">Add Challan 281</h3>
-          {/* Held while a request is out, as Add is: a challan recorded after the dialog was closed (and perhaps opened again) looks like one that was cancelled. */}
-          <button onClick={onClose} disabled={saving} aria-label="Close" className="disabled:opacity-50"><X className="w-4 h-4 text-ps-hint" /></button>
-        </div>
+    <Modal title="Add Challan 281" onClose={() => { if (!saving) onClose(); }}>
         <div className="space-y-3">
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">BSR Code</label>
@@ -930,8 +919,7 @@ function AddChallanModal({ clientId, choices, onClose, onAdded }: {
             {saving ? "Saving…" : "Add"}
           </Button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
