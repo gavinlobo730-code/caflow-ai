@@ -28,6 +28,7 @@
 # 705 closes compliance_records (POST-A-461): the obligation store is written by the API's privileged client, naming the firm and the client, since the change that shipped before it.
 # 707 closes compliance_calendar (POST-A-208): the filing calendar is written by the API's privileged client (the add and Mark Filed), naming the firm and the client, since the change that shipped before it.
 # 715 creates gstr2b_bulk_drops and gstr2b_bulk_drop_files (POST-A-057) with no signed-in privilege at all: the API's privileged client is their one reader and writer.
+# 778 closes time_entries (POST-A-546): its three writers moved to the server's own client in the change before it.
 account_group_mappings
 account_period_balances
 activity_logs
@@ -236,6 +237,7 @@ tds_lower_deduction_certificates
 tds_returns
 tds_section_limits
 team_members
+time_entries
 user_capacity
 workflow_action_logs
 workflow_approvals

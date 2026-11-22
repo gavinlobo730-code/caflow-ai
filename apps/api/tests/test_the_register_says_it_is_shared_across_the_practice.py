@@ -10,12 +10,12 @@ shown an entity only when it holds a role at one of their clients, or no role at
 which is why this was not built in October, has an answer now: one PAN is one entity in a firm, so a PAN that a hidden entity holds is
 refused in a sentence that says a Partner can attach it. The screen says which answer the server gave, in two sentences keyed on `scoped`.
 
-WHAT IS STILL TRUE OF THE DATABASE, AND WHY THIS FILE STILL READS THE CATALOG. The three tables are still `firm_wide` in the catalog, and
-that category is checked against the policies by `test_a_table_with_no_client_is_firm_level_on_purpose_pg`: a hand-made request to the
-database's own API, by a signed-in member of staff, is still answered with the whole register. Closing that needs the server's reads moved
-to its own client and then a migration, and is the open half of POST-A-544. So this file holds three things together: the screen's two
-sentences, the server's `scoped`, and, WHILE the catalog says `firm_wide`, a ledger line that says the database half is open. Whoever
-narrows the database changes the category and closes the line in the same commit, and this test is what makes them.
+THE DATABASE HALF IS CLOSED (POST-A-544, migration 777, 22-11-2026). The three tables were `firm_wide` in the catalog of firm-level tables
+(a hand-made request to the database's own API, by any signed-in member of staff, was answered with the whole register) until the
+server's own statements were moved to its own client and then the signed-in role's every privilege on the three was revoked. No signed-in
+session reaches them now, so they are in NO list of tables a session reaches, and the ledger line is closed. This file holds that together:
+the screen's two sentences, the server's `scoped`, and the three tables out of both lists with the line gone. Whoever gives the signed-in
+role a read of the register back fails here and has to say on the screen, in the same commit, who reads it.
 
 WHY A SOURCE GUARD ON THE PYTHON SIDE. A guard written in `apps/web` would assert the screen against a copy of itself. This one reads the
 catalog and the route (the sides that own the facts) and the screen (the side that says them).
@@ -46,20 +46,24 @@ LEDGER = API.parent.parent / "docs" / "open-items" / "new-findings.md"   # docs/
 ROUTER = API / "routers" / "relationships.py"
 
 
-def test_while_the_database_still_answers_the_whole_register_the_ledger_says_that_half_is_open():
-    tables = json.loads(CATALOG.read_text())["tables"]
+REACHED_OUTSIDE_THE_MATRIX = API / "tests" / "fixtures" / "tables_a_signed_in_session_reaches_outside_the_matrix.txt"
+
+
+def test_no_signed_in_session_reaches_the_register_and_the_ledger_line_is_closed():
+    """The lists of what a signed-in session reaches are held to the database itself by their own real-Postgres tests
+    (`test_a_table_with_no_client_is_firm_level_on_purpose_pg`, `test_every_table_a_signed_in_session_reaches_is_observed_or_named_pg`),
+    so reading them here is reading the privileges."""
+    firm_level = json.loads(CATALOG.read_text())["tables"]
+    reached = {line.split("\t")[0] for line in REACHED_OUTSIDE_THE_MATRIX.read_text().splitlines() if line and not line.startswith("#")}
     for name in REGISTER_TABLES:
-        assert name in tables, f"{name} left the firm-level catalog: the screen's sentences about it need a new basis"
-    still_firm_wide = [name for name in REGISTER_TABLES if tables[name]["category"] == "firm_wide"]
-    line_open = any(line.startswith("- **POST-A-544**") for line in LEDGER.read_text().splitlines())
-    if still_firm_wide:
-        assert line_open, (
-            f"{still_firm_wide} are still `firm_wide` in the catalog (a hand-made request to the database reads the whole register) "
-            "and the ledger line that says so, POST-A-544, is gone: reopen it, or narrow the database and change the category")
-        assert "server" in tables["entities"]["why"] and "POST-A-544" in tables["entities"]["why"], (
-            "the catalog's reason for `entities` no longer says that the server narrows the read and the database does not yet")
-    else:
-        assert not line_open, "the database is narrowed and POST-A-544 is still open: close the line in the same commit"
+        assert name not in firm_level, (
+            f"{name} is in the catalog of firm-level tables a signed-in session reaches again: the screen must say who reads the register")
+        assert name not in reached, f"{name} is reached by a signed-in session again: the screen must say who reads the register"
+    migration = API / "migrations" / "777_no_signed_in_session_reads_the_related_party_register.sql"
+    assert migration.exists() and "REVOKE ALL ON public.%I FROM PUBLIC, authenticated, anon" in migration.read_text(), (
+        "the migration that took the signed-in role's read of the register away is gone or no longer revokes it")
+    assert not any(line.startswith("- **POST-A-544**") for line in LEDGER.read_text().splitlines()), (
+        "the database is narrowed and POST-A-544 is still open: close the line in the same commit")
 
 
 def test_the_server_says_whether_it_answered_with_the_whole_register_or_the_callers_part():

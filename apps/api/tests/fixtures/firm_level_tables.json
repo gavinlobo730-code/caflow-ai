@@ -76,21 +76,6 @@
       "writes": "",
       "why": "The wording of the firm's engagement letters, shared by all clients. The signed-in role holds no write; the server writes it."
     },
-    "entities": {
-      "category": "firm_wide",
-      "writes": "",
-      "why": "The people and companies the firm keeps on record (PAN, GSTIN, date of birth), one record per person because one person can stand behind several clients. The server narrows what a member who is not firm-wide is shown to the entities of their own clients; the database read is still the whole firm's, which is the open half of POST-A-544. The signed-in role holds no write."
-    },
-    "entity_relationships": {
-      "category": "firm_wide",
-      "writes": "",
-      "why": "A relationship between two entities, with its type and dates; part of the firm's own record of who stands behind whom. The signed-in role holds no write."
-    },
-    "entity_to_entity_relationships": {
-      "category": "firm_wide",
-      "writes": "",
-      "why": "An ownership link between two entities, with a percentage and dates; part of the firm's own record. The signed-in role holds no write."
-    },
     "escalation_rules": {
       "category": "firm_wide",
       "writes": "",

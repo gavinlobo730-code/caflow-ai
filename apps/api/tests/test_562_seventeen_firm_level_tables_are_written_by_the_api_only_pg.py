@@ -45,6 +45,12 @@ SEVENTEEN = ("account_group_mappings", "firm_hsn_library", "firm_hsn_rate_histor
              "recurring_purchase_bill_templates", "recurring_journal_templates", "task_escalations")
 #: Never held DELETE for the signed-in role in production, so the rollback does not give it.
 NEVER_DELETABLE = {"firm_hsn_rate_history"}
+#: Migration 777 (22-11-2026, POST-A-544) took the READ of the related-party register from the signed-in role as well, once the server
+#: read it with its own client: the register holds a PAN, a date of birth and an address, and the row rule answered the whole of it to
+#: any member of staff. So of the seventeen, these three are no longer read by a signed-in session, and the assertions below say so
+#: by name where they used to say "still reads". Held from its own side by
+#: tests/test_777_778_the_register_is_read_and_a_time_entry_is_written_by_the_api_only_pg.py.
+READ_TAKEN_BY_777 = {"entities", "entity_relationships", "entity_to_entity_relationships"}
 WRITES = ("INSERT", "UPDATE", "DELETE")
 
 FIRM = "56200000-0000-0000-0000-000000000001"
@@ -145,9 +151,12 @@ def test_the_migration_names_exactly_the_seventeen_tables_and_not_fx_rates():
 
 # ── the privileges ────────────────────────────────────────────────────────────────────────────────────────────────
 def test_a_signed_in_role_holds_no_write_on_the_seventeen_and_still_reads_them(db):
+    """Fourteen are still read; the three register tables are not, since migration 777."""
     assert _effective_writes(db) == set()
+    assert READ_TAKEN_BY_777 <= set(SEVENTEEN)
     for t in _present(db):
-        assert _ok(db, f"SELECT has_table_privilege('authenticated', 'public.{t}', 'SELECT');") == "t", t
+        expected = "f" if t in READ_TAKEN_BY_777 else "t"
+        assert _ok(db, f"SELECT has_table_privilege('authenticated', 'public.{t}', 'SELECT');") == expected, t
 
 
 def test_the_service_role_keeps_its_writes_on_the_seventeen(db):
@@ -171,6 +180,10 @@ def test_an_assigned_manager_still_reads_each_table(db, table):
     if table not in _present(db):
         pytest.skip(f"{table} is not built by the migrations")
     r = _as("authenticated", f"SELECT count(*) FROM public.{table};", db)
+    if table in READ_TAKEN_BY_777:
+        assert r.returncode != 0 and f"permission denied for table {table}" in r.stderr, (
+            f"{table}: migration 777 took the read of the register and a signed-in Manager still read it: {r.stderr or 'it succeeded'}")
+        return
     assert r.returncode == 0, r.stderr
 
 
@@ -236,6 +249,13 @@ def test_its_own_rollback_gives_the_verbs_back_and_the_refusals_stop(db):
     for table in _present(db):
         for verb in WRITES:
             again = _as("authenticated", _statement(db, table, verb), db)
+            if table in READ_TAKEN_BY_777 and verb in ("INSERT", "UPDATE"):
+                # This rollback gives the WRITE verbs back and no more. The INSERT and the UPDATE of `_statement` also READ the table
+                # (`SELECT col FROM t`, `SET col = col`), and migration 777 took that read, so on the register the verb is held again
+                # and the statement stays refused until 777 is rolled back too. The DELETE names no column and goes through below.
+                assert _ok(db, f"SELECT has_table_privilege('authenticated', 'public.{table}', '{verb}');") == "t", (table, verb)
+                assert again.returncode != 0 and f"permission denied for table {table}" in again.stderr, (table, verb, again.stderr)
+                continue
             if verb == "DELETE" and table in NEVER_DELETABLE:
                 assert again.returncode != 0, (table, "the rollback invented a DELETE production never granted")
             else:

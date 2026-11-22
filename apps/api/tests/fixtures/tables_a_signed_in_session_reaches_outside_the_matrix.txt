@@ -68,11 +68,8 @@ engagement_events	write
 engagement_letters	write
 engagement_templates	read
 engagements	write
-entities	read
 entity_client_links	write
-entity_relationships	read
 entity_roles	write
-entity_to_entity_relationships	read
 escalation_rules	read
 eway_bill_records	read
 filings	read
@@ -189,7 +186,7 @@ tds_certificates	read
 tds_deductions	read
 tds_lower_deduction_certificates	read
 tds_section_limits	read
-time_entries	write
+time_entries	read
 user_capacity	read
 user_notification_preferences	write
 workflow_action_logs	read
