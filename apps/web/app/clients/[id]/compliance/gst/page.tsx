@@ -38,6 +38,7 @@ import {
 import { Probable2BMatches } from "@/components/gst/Probable2BMatches";
 import { CreateDraftBillFrom2B } from "@/components/gst/CreateDraftBillFrom2B";
 import { Button } from "@/components/ui/button";
+import { Drawer } from "@/components/ui/drawer";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { todayIstISO } from "@/lib/dates/format";
@@ -263,21 +264,15 @@ function GSTR3BDetailDrawer({
     : totals.tax === expectedPaise;
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/30">
-      <div className="bg-white w-full max-w-4xl h-full overflow-y-auto shadow-xl">
-        <div className="sticky top-0 bg-white border-b px-5 py-3 flex items-center justify-between">
-          <div>
-            <p className="text-sm font-semibold text-ps-ink">{label}</p>
-            <p className="text-xs text-ps-label">Period {period} · the documents behind this figure</p>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={exportCsv} disabled={!rows?.length}
-              className="text-xs px-3 py-1.5 border rounded hover:bg-ps-bg disabled:opacity-40">
-              Export CSV
-            </button>
-            <button onClick={onClose}
-              className="text-xs px-3 py-1.5 border rounded hover:bg-ps-bg">Close</button>
-          </div>
+    // The shared side sheet (POST-A-130): named for the figure, modal, Tab kept inside, Escape closes it and focus goes back to the figure
+    // it was opened from. It only reads, so nothing holds its close.
+    <Drawer open title={<span className="font-sans">{label}</span>} ariaLabel={label} widthClass="sm:max-w-4xl" onClose={onClose}>
+        <div className="px-5 pt-3 flex items-center justify-between gap-3">
+          <p className="text-xs text-ps-label">Period {period} · the documents behind this figure</p>
+          <button onClick={exportCsv} disabled={!rows?.length}
+            className="text-xs px-3 py-1.5 border rounded hover:bg-ps-bg disabled:opacity-40">
+            Export CSV
+          </button>
         </div>
 
         <div className="p-5 space-y-3">
@@ -348,8 +343,7 @@ function GSTR3BDetailDrawer({
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </Drawer>
   );
 }
 

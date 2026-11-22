@@ -22,10 +22,11 @@
  * /api/client-gst-registrations.
  */
 import { Button } from "@/components/ui/button";
+import { Drawer } from "@/components/ui/drawer";
 import { EmptyState } from "@/components/ui/states";
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
-import { Plus, AlertTriangle, X, Info } from "lucide-react";
+import { Plus, AlertTriangle, Info } from "lucide-react";
 import { api, type ClientGstRegistration, type GstRegistrationKinds,
          type ClientGstTurnover } from "@/lib/api";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
@@ -510,15 +511,12 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
       )}
 
       {showForm && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-black/20">
-          <div className="w-full max-w-md h-full bg-white shadow-xl flex flex-col">
-            <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between">
-              <p className="text-sm font-semibold text-ps-ink">Add a GST registration</p>
-              <button disabled={busy} onClick={() => setShowForm(false)} aria-label="Close"
-                className="p-1 rounded hover:bg-ps-muted text-ps-label"><X size={16} /></button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+        // The shared side sheet (POST-A-130): named, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it, its ×)
+        // is held while the registration is being added.
+        <Drawer open title={<span className="font-sans">Add a GST registration</span>} ariaLabel="Add a GST registration" widthClass="sm:max-w-md"
+          onClose={() => { if (!busy) setShowForm(false); }}>
+          <div className="flex min-h-[calc(100%-3rem)] flex-col">
+            <div className="flex-1 px-5 py-4 space-y-4">
               <label className="text-xs block">
                 <span className="block text-ps-body font-medium mb-1">GSTIN *</span>
                 <input value={form.gstin} maxLength={15}
@@ -623,9 +621,9 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
               )}
             </div>
 
-            <div className="px-5 py-3 border-t border-ps-border flex justify-end gap-2">
+            <div className="sticky bottom-0 bg-white px-5 py-3 border-t border-ps-border flex justify-end gap-2">
               <button disabled={busy} onClick={() => setShowForm(false)}
-                className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg">
+                className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50">
                 Cancel
               </button>
               <Button variant="plain" size="none" spinner={false} onClick={handleSave} disabled={busy || !form.gstin.trim()}
@@ -634,7 +632,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
               </Button>
             </div>
           </div>
-        </div>
+        </Drawer>
       )}
     </div>
   );

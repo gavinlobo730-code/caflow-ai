@@ -1000,7 +1000,7 @@ export function openStockLocations(how) {
 }
 
 /** A client's GST > Registrations tab with the primary registration and one other listed: `how` is "add" (the Add a registration prompt, with a GSTIN typed) or "close" (the Cancelled… date box on the other registration). */
-function openGstRegistrations(how) {
+export function openGstRegistrations(how) {
   return async (env) => {
     const { page, stub } = env;
     stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { gst: ["read", "write", "approve"], client: ["read", "write"] } }) });
@@ -1301,7 +1301,7 @@ export async function atGstr1(env) {
 
 /** GST > GSTR-1 built for a client and period, approved, with "Mark as Filed" open on an ARN: only the date is left. The opener's own writes
  *  (the build's save, the approval) are forgotten, so a row counts what the prompt writes. */
-async function openGstr1MarkFiled(env) {
+export async function openGstr1MarkFiled(env) {
   const { page, stub } = env;
   await atGstr1(env);
   await page.getByRole("button", { name: "Build GSTR-1", exact: true }).click();
@@ -1397,7 +1397,7 @@ export async function atTdsReturns(env) {
 }
 
 /** TDS > Returns computed for a client and quarter, approved, with "Mark as Filed" open on a PRN: only the date is left. */
-async function openTdsReturnMarkFiled(env) {
+export async function openTdsReturnMarkFiled(env) {
   const { page, stub } = env;
   await atTdsReturns(env);
   await page.getByRole("button", { name: "Compute 26Q", exact: true }).click();

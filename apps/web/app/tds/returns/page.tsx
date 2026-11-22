@@ -35,6 +35,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { formatDate } from "@/lib/dates/format";
 
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { TypedDeductionsNote } from "@/components/tds/TypedDeductionsNote";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import { TypedDeductionsOnStatementNote } from "@/components/tds/TypedDeductionsOnStatementNote";
@@ -766,11 +767,20 @@ export default function TDSReturnsPage() {
 
       {/* Mark as Filed Modal */}
       {showFiledModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-brand-dark/60" onClick={(e) => { e.stopPropagation(); if (!filing) setShowFiledModal(false); }} />
-          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-            <h3 className="font-semibold text-ps-ink">Mark {returnType} as Filed</h3>
-            <p className="text-sm text-ps-label">Enter the details from the e-filing portal acknowledgement after successful upload on incometax.gov.in.</p>
+        // The shared dialog (POST-A-130): named, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it, its ×) and
+        // its Cancel are held while the filing is being recorded.
+        <Modal title={`Mark ${returnType} as Filed`} maxWidthClass="max-w-md" onClose={() => { if (!filing) setShowFiledModal(false); }}
+          note="Enter the details from the e-filing portal acknowledgement after successful upload on incometax.gov.in."
+          footer={<>
+            <button onClick={() => setShowFiledModal(false)} disabled={filing}
+              className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-ps-body hover:bg-ps-bg disabled:opacity-50">
+              Cancel
+            </button>
+            <Button variant="plain" size="none" onClick={handleMarkFiled} disabled={!prn || !filingDate || filing}
+              className="flex-1 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
+              Confirm Filed
+            </Button>
+          </>}>
             <div>
               <label className="block text-xs font-medium text-ps-body mb-1">PRN (Provisional Receipt Number) *</label>
               <input aria-label="PRN (Provisional Receipt Number)" value={prn} onChange={e => setPrn(e.target.value.toUpperCase())}
@@ -794,18 +804,7 @@ export default function TDSReturnsPage() {
               <RecordAnywayAsk sentence={heldBack.sentence} what="filed" busy={filing}
                 onConfirm={() => markFiled(true)} onLeave={() => setHeldBack(null)} />
             )}
-            <div className="flex gap-3 pt-1">
-              <button onClick={() => setShowFiledModal(false)} disabled={filing}
-                className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-ps-body hover:bg-ps-bg disabled:opacity-50">
-                Cancel
-              </button>
-              <Button variant="plain" size="none" onClick={handleMarkFiled} disabled={!prn || !filingDate || filing}
-                className="flex-1 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
-                Confirm Filed
-              </Button>
-            </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );
