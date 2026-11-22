@@ -1,35 +1,22 @@
 "use client";
 
-/** Employee portal access — invite, re-invite, revoke.
+/** Employee portal access: invite, invite again, revoke.
  *
- *  The activation link comes back ONCE, from this call. Only its sha256 is
- *  stored server-side, so it can never be fetched again — which is why the link
- *  is shown here for copying, not just emailed and forgotten. Re-inviting mints
- *  a fresh link and invalidates this one.
+ *  THE LINK IS NEVER ON THIS SCREEN (POST-A-552, 22-11-2026). The invitation's link signs its holder in as the
+ *  invitation's address: the activation page turns the bare token into a sign-in, and for an address that already has
+ *  an account the server asks for that account's sign-in. This dialog used to be handed the link back and show it
+ *  "to copy if the email does not arrive", so whoever could invite an employee could type the address of an existing
+ *  account (a Partner, a member of another practice, a client's portal contact), copy the link and be signed in as
+ *  that person. It also asked Supabase, from this browser, to mail a second sign-in link that came back to the same
+ *  address with the token in it.
  *
- *  THE BROWSER ALSO SENDS THE REAL SIGN-IN EMAIL, THE SAME WAY THE CLIENT
- *  PORTAL DOES (apps/web/app/clients/[id]/portal/page.tsx:handleSendInvite).
- *  `POST .../portal-invite` only records the invite server-side and mints the
- *  single-use token — it does not, and cannot, make Supabase Auth send
- *  anything, and `_send_invite_email` on the backend sends a plain HTML link
- *  with no Supabase session behind it at all. Opening that bare link (or the
- *  identical one shown below for copying) used to poll for a magic-link
- *  session that was never coming and always end in "This invitation cannot
- *  be used" — the activation page waits for `detectSessionInUrl` to parse an
- *  auth hash fragment, and only a URL Supabase's own Auth API produced ever
- *  carries one. `signInWithOtp({ email, options: { emailRedirectTo } })` is
- *  what asks Supabase to actually send that email, redirecting back to this
- *  same activation URL with the session attached — it does not touch or
- *  require the CA's own signed-in session on this browser, exactly as it
- *  does not on the client-portal invite. The backend's own email keeps
- *  working as the courtesy fallback if this send fails (rate limits, mainly)
- *  — the invite record itself is already committed either way. */
+ *  Now the server mails the one link itself and returns it to nobody, and this dialog is told only whether that mail
+ *  went (`mail.sent`, and one sentence when it did not). A mail that did not arrive is answered by sending the
+ *  invitation again, which makes a new link and stops the earlier one. */
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
-import { getSupabaseClient } from "@/lib/supabase/client";
-import { portalInviteEmailFailureMessage } from "@/lib/portal/inviteError";
 import { type Employee } from "@/components/payroll/shared";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 
@@ -41,10 +28,10 @@ export function PortalAccessModal({ employee, onClose, onChanged }: {
   const [status, setStatus] = useState<{ activated: boolean; invite_pending: boolean;
                                          email: string | null } | null>(null);
   const [email, setEmail] = useState("");
-  const [link, setLink] = useState<string | null>(null);
+  /** The address the server's mail went to, once it has gone: what the dialog then says, and nothing to copy. */
+  const [sentTo, setSentTo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -64,22 +51,17 @@ export function PortalAccessModal({ employee, onClose, onChanged }: {
       const trimmed = email.trim();
       const res = await api.payroll.invitePortal(employee.id, trimmed);
       if (!res.success) throw new Error(res.error ?? "Couldn't send the invitation.");
-      const activationUrl = res.data?.activation_url ?? null;
-      setLink(activationUrl);
-
-      // The record is already committed server-side at this point — only the
-      // sign-in email itself can still fail below (most often Supabase
-      // Auth's own send-rate limit), which is why a failure here still
-      // leaves the invite usable via the copyable link and a later re-send.
-      if (activationUrl) {
-        const { error: otpErr } = await getSupabaseClient().auth.signInWithOtp({
-          email: trimmed, options: { emailRedirectTo: activationUrl },
-        });
-        if (otpErr) throw new Error(portalInviteEmailFailureMessage(otpErr.message));
-      }
-
-      onChanged(`Invitation sent to ${trimmed}.`);
+      // The invitation exists either way, so the roster is told and the status says one is pending.
       setStatus((s) => s ? { ...s, invite_pending: true, email: trimmed } : s);
+      // Only the server's own yes is "sent". An answer with no word about the mail (an older server) is not one.
+      if (res.data?.mail?.sent !== true) {
+        onChanged(`The invitation for ${employee.name} was created, but its email was not sent.`);
+        setErr(res.data?.mail?.problem
+          ?? "The invitation was created, but this screen was not told whether its email was sent. Send the invitation again.");
+        return;
+      }
+      setSentTo(trimmed);
+      onChanged(`Invitation sent to ${trimmed}.`);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Couldn't send the invitation.");
     } finally { setBusy(false); }
@@ -106,7 +88,7 @@ export function PortalAccessModal({ employee, onClose, onChanged }: {
           balance. They see nothing else.
         </p>
 
-        {err && <p className="text-sm text-red-600 mb-3">{err}</p>}
+        {err && <p role="alert" className="text-sm text-state-problem mb-3">{err}</p>}
 
         {status?.activated ? (
           <div>
@@ -119,21 +101,13 @@ export function PortalAccessModal({ employee, onClose, onChanged }: {
               </Button>
             </div>
           </div>
-        ) : link ? (
-          <div>
-            <p className="text-sm text-ps-label mb-2">
-              Invitation sent. If the email does not arrive, share this link —
-              it works once and expires in 14 days.
+        ) : sentTo ? (
+          <div data-invitation-sent>
+            <p className="text-sm text-ps-label mb-4">
+              Invitation sent to <span className="font-medium text-ps-ink">{sentTo}</span>. The link in the email
+              signs them in, works once and lasts 14 days. If it does not arrive, open this again and send a new
+              invitation: the earlier link then stops working.
             </p>
-            <div className="flex gap-2 mb-4">
-              <input aria-label="Invitation link" readOnly value={link}
-                     className="flex-1 border border-ps-border rounded-lg px-3 py-2 text-xs font-mono" />
-              <Button variant="outline" onClick={() => {
-                navigator.clipboard?.writeText(link);
-                setCopied(true);
-                setTimeout(() => setCopied(false), 2000);
-              }}>{copied ? "Copied" : "Copy"}</Button>
-            </div>
             <Button onClick={onClose} disabled={busy}>Done</Button>
           </div>
         ) : (

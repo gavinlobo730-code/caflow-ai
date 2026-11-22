@@ -7784,11 +7784,11 @@ def invite_employee_portal(
     data: EmployeePortalInviteIn,
     current_user: dict = Depends(rbac("payroll", "write"))
 ):
-    """Issue a single-use activation link for one employee.
+    """Invite one employee to the payslip portal: the server mails them a single-use activation link.
 
-    The plaintext token is returned ONCE, here — only its sha256 is stored — so
-    the caller can deliver the link if the email does not arrive. It is not
-    retrievable afterwards; re-inviting mints a new one and invalidates this.
+    THE LINK IS RETURNED TO NOBODY (POST-A-552). It signs its holder in as the invitation's address, so it exists only
+    in the mail the server sends; the answer says whether that mail went (`mail.sent`, and `mail.problem` in one
+    sentence when it did not). Re-inviting mints a new link and the earlier one stops working.
     """
     _assert_employee_scope(_db(), current_user, employee_id)
     result = employee_portal_service.invite_employee(

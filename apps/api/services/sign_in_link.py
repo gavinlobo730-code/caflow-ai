@@ -17,8 +17,11 @@ somebody who has never signed in. What happens when the address ALREADY has a si
 two callers choose differently on purpose:
 
   * the employee portal retries as `type="magiclink"` (an employee re-invited after a revoke keeps the Supabase user
-    `revoke_employee_portal` left behind). Its token is hashed and never returned to anybody, so only the mailbox that
-    received it can present it;
+    `revoke_employee_portal` left behind). Its token is kept hashed and returned to nobody, so only the mailbox that
+    received it can present it. THAT SENTENCE WAS FALSE UNTIL 22-11-2026 (POST-A-552): the invite's route handed the
+    token and the link back to the member of staff who sent it, and the dialog showed it for copying, so whoever could
+    invite an employee could be signed in as any existing account by typing its address. The route returns neither
+    now, and the service opens a sign-in only for an invitation issued since (`employee_portal_service.opens_a_sign_in`);
   * a staff invitation passes `existing_account_refusal` and is REFUSED in those words (409): the person signs in the
     way they always do and opens the link again, and accept-invite links that session. A link that could sign its
     holder in as an address with an existing account would make whoever held the link that person, in whatever

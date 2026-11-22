@@ -20,6 +20,19 @@ WHAT THIS GUARDS
 
     Plus one property the client flow does NOT have: the token is never stored,
     only its sha256, so reading the table cannot yield a usable invite.
+
+THE TOKEN EXISTS ONLY IN THE MAIL (POST-A-552, 22-11-2026)
+    The invite used to hand the token and the activation link back to the member
+    of staff who sent it, and since POST-A-445 that link opens a Supabase sign-in
+    for the invitation's address (a magic link where the address already has an
+    account). So whoever could invite an employee could be signed in as any
+    existing account by typing its address and copying the link. The tests below
+    hold: the answer carries no token and no link, in any field; the mail is the
+    one place the link is; a mail that did not go is said and the invitation is
+    kept; and an invitation issued BEFORE this (its hash stored bare, its link
+    shown to the inviter) can be accepted by its own signed-in address and can
+    never open a sign-in. So every test here reads the token where the mail would
+    carry it (`_invite` adds it to what it returns, under `token`).
 """
 import hashlib
 from datetime import datetime, timedelta, timezone
@@ -27,7 +40,11 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from fastapi import HTTPException
 
+import services.employee_portal_service as _the_service
 from tests.e2e_harness import FakeDB, wire_e2e
+
+#: The real mailer, kept before any test stands it in.
+_REAL_SEND = _the_service._send_invite_email
 
 FIRM = "FIRM-A"
 CALLER = {"firm_id": FIRM, "auth_user_id": "ca-1", "email": "ca@firma.test", "role": "Partner"}
@@ -43,8 +60,9 @@ def _setup(monkeypatch):
     wire_e2e(monkeypatch, db, [pr])
     monkeypatch.setattr(eps, "_USE_MOCK", False)
     monkeypatch.setattr(eps, "_db", lambda: db)
-    # No real email in tests; the send is best-effort anyway.
-    monkeypatch.setattr(eps, "_send_invite_email", lambda *a, **k: None)
+    # No real email in tests. The mail is the ONLY place the token goes, so the stand-in keeps what it was handed.
+    MAILED.clear()
+    monkeypatch.setattr(eps, "_send_invite_email", lambda email, name, token: MAILED.append((email, token)) or True)
     db.seed("payroll_employees", {
         "id": EMP, "firm_id": FIRM, "client_id": "CLI", "name": "Asha",
         "auth_user_id": None, "portal_enabled": False,
@@ -52,8 +70,16 @@ def _setup(monkeypatch):
     return eps, db
 
 
+#: What the stand-in mailer was handed, newest last: (address, token).
+MAILED: list = []
+
+
 def _invite(eps, email=EMP_EMAIL):
-    return eps.invite_employee(FIRM, EMP, email, actor=CALLER)
+    """Invite, and add the token THE MAIL carried under `token` (the service's own answer has none: see
+    `test_the_answer_carries_no_token_and_no_link`)."""
+    answer = eps.invite_employee(FIRM, EMP, email, actor=CALLER)
+    assert "token" not in answer and "activation_url" not in answer
+    return {**answer, "token": MAILED[-1][1]}
 
 
 def _row(db):
@@ -85,15 +111,135 @@ def test_the_token_is_never_stored_only_its_hash(monkeypatch):
     row = _row(db)
 
     assert invite["token"] not in str(row), "the plaintext token reached the database"
-    assert row["portal_invite_token_hash"] == hashlib.sha256(
+    # The stored form of an invitation the server mailed: a prefix, then the sha256.
+    assert row["portal_invite_token_hash"] == "mailed:" + hashlib.sha256(
         invite["token"].encode()).hexdigest()
+    assert eps.opens_a_sign_in(row) is True
 
 
-def test_the_activation_url_carries_the_token(monkeypatch):
-    eps, _ = _setup(monkeypatch)
-    invite = _invite(eps)
-    assert invite["token"] in invite["activation_url"]
-    assert "/portal/employee/activate" in invite["activation_url"]
+def _strings(value):
+    """Every string anywhere inside `value`, keys included."""
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for k, v in value.items():
+            yield from _strings(k)
+            yield from _strings(v)
+    elif isinstance(value, (list, tuple, set)):
+        for v in value:
+            yield from _strings(v)
+
+
+def test_the_answer_carries_no_token_and_no_link(monkeypatch):
+    """The hole: the member of staff who invites must never hold the link, because the link signs its holder in as the
+    invitation's address. Scanned by VALUE over the service's answer and the route's, so a renamed key is still a leak."""
+    import routers.payroll as pr
+    eps, db = _setup(monkeypatch)
+    answer = eps.invite_employee(FIRM, EMP, EMP_EMAIL, actor=CALLER)
+    token = MAILED[-1][1]
+    assert set(answer) == {"employee_id", "email", "mail"}, sorted(answer)
+    assert answer["mail"] == {"sent": True, "problem": None}
+
+    monkeypatch.setattr(pr, "_assert_employee_scope", lambda *a, **k: None)
+    # The route's own model refuses a reserved domain, so the route is tried with an ordinary address.
+    routed = pr.invite_employee_portal(EMP, pr.EmployeePortalInviteIn(email="asha@acme-traders.com"), current_user=CALLER)
+    routed_token = MAILED[-1][1]
+    assert routed["success"] is True and set(routed["data"]) == {"employee_id", "email", "mail"}
+
+    for held, secret in ((answer, token), (routed, routed_token)):
+        for text in _strings(held):
+            assert secret not in text, "the invitation's token is in the answer"
+            assert "activate?token" not in text and "/portal/employee/activate" not in text, "the activation link is in the answer"
+            assert hashlib.sha256(secret.encode()).hexdigest() not in text, "the token's hash is in the answer"
+    # ...and the status the same screen reads carries neither.
+    for text in _strings(eps.portal_status(FIRM, EMP)):
+        assert routed_token not in text and hashlib.sha256(routed_token.encode()).hexdigest() not in text
+
+
+def test_the_mail_is_the_one_place_the_link_is(monkeypatch):
+    """The real mailer, with only the transport stood in: the link in the mail carries the token, it goes to the
+    invitation's address and to nobody else, and the answer the screen gets does not hold it."""
+    import re
+    import services.email_service as email_service
+    eps, db = _setup(monkeypatch)
+    sent = []
+    monkeypatch.setattr(email_service, "_send", lambda **kw: sent.append(kw) or True)
+    monkeypatch.setattr(eps, "_send_invite_email", _REAL_SEND)
+    answer = eps.invite_employee(FIRM, EMP, EMP_EMAIL, actor=CALLER)
+    assert answer["mail"] == {"sent": True, "problem": None}
+    assert len(sent) == 1 and sent[0]["to"] == EMP_EMAIL
+    found = re.search(r"/portal/employee/activate\?token=([A-Za-z0-9_\-]+)", sent[0]["html"])
+    assert found, sent[0]["html"]
+    token = found.group(1)
+    assert _row(db)["portal_invite_token_hash"] == eps.stored_form(token)
+    for text in _strings(answer):
+        assert token not in text
+
+
+def test_a_mail_that_did_not_go_is_said_and_the_invitation_is_kept(monkeypatch):
+    eps, db = _setup(monkeypatch)
+    monkeypatch.setattr(eps, "_send_invite_email", lambda email, name, token: (MAILED.append((email, token)), False)[1])
+    answer = eps.invite_employee(FIRM, EMP, EMP_EMAIL, actor=CALLER)
+    assert answer["mail"]["sent"] is False
+    assert answer["mail"]["problem"] == eps.MAIL_NOT_SENT and "could not be sent" in answer["mail"]["problem"]
+    # The invitation is saved: sending again replaces it, and the screen's status says one is pending.
+    assert _row(db)["portal_invite_token_hash"].startswith("mailed:")
+    assert eps.portal_status(FIRM, EMP)["invite_pending"] is True
+
+
+def test_the_mailer_answers_what_the_mail_service_answered(monkeypatch):
+    """`_send_invite_email` itself: True only when the mail service took the mail, False when it refused or raised."""
+    import services.email_service as email_service
+    import services.employee_portal_service as eps
+    monkeypatch.setattr(email_service, "_send", lambda **kw: True)
+    assert _REAL_SEND("a@b.test", "Asha", "tok") is True
+    monkeypatch.setattr(email_service, "_send", lambda **kw: False)
+    assert _REAL_SEND("a@b.test", "Asha", "tok") is False
+
+    def boom(**kw):
+        raise RuntimeError("mail service down")
+    monkeypatch.setattr(email_service, "_send", boom)
+    monkeypatch.setattr(eps, "capture_soft_failure", lambda *a, **k: None)
+    assert _REAL_SEND("a@b.test", "Asha", "tok") is False
+
+
+def test_a_name_in_the_mail_cannot_carry_markup(monkeypatch):
+    import services.email_service as email_service
+    seen = []
+    monkeypatch.setattr(email_service, "_send", lambda **kw: seen.append(kw) or True)
+    _REAL_SEND("a@b.test", '<a href="https://evil.test">Asha</a>', "tok")
+    assert "<a href=\"https://evil.test\">" not in seen[0]["html"]
+    assert "&lt;a href=" in seen[0]["html"]
+
+
+def test_an_invitation_issued_before_can_be_accepted_and_never_opens_a_sign_in(monkeypatch):
+    """One whose hash is stored bare was shown to the member of staff who sent it. Its own signed-in address can still
+    accept it; the server does not open a sign-in from it, and never asks Supabase for one."""
+    eps, db = _setup(monkeypatch)
+    old_token = "an-old-token-the-inviter-saw"
+    db.rows("payroll_employees")[0].update({
+        "email": EMP_EMAIL, "portal_invite_token_hash": eps.token_hash(old_token),
+        "portal_invite_expires_at": (datetime.now(timezone.utc) + timedelta(days=3)).isoformat()})
+    assert eps.opens_a_sign_in(_row(db)) is False
+    admin = _wire_admin(db)
+    with pytest.raises(HTTPException) as refused:
+        eps.mint_activation_session(old_token)
+    assert refused.value.status_code == 404 and refused.value.detail == "Invalid or expired invite."
+    assert admin.calls == [], "Supabase was asked for a sign-in from a link the inviter held"
+    # ...and the address it was sent to, signed in by its own means, still accepts it.
+    eps.accept_employee_invite(old_token, "auth-asha", EMP_EMAIL)
+    assert _row(db)["auth_user_id"] == "auth-asha" and _row(db)["portal_enabled"] is True
+
+
+def test_a_stored_hash_presented_as_the_token_finds_nothing(monkeypatch):
+    """A value read out of the column, in either form, is not the token."""
+    eps, db = _setup(monkeypatch)
+    _invite(eps)
+    stored = _row(db)["portal_invite_token_hash"]
+    for presented in (stored, stored.split(":", 1)[1]):
+        with pytest.raises(HTTPException) as refused:
+            eps.accept_employee_invite(presented, "auth-mallory", EMP_EMAIL)
+        assert refused.value.status_code == 404
 
 
 # ─── the rejections, each a real attack ─────────────────────────────────────

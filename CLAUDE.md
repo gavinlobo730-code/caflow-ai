@@ -471,7 +471,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - s.194A HAS TWO RAISED LIMITS AND THEY HANG ON THE PAYER AS WELL AS THE PAYEE
 - A 2025-ACT DEDUCTEE ROW CARRIES ITS s.393 PAYMENT CODE, OR NAMES WHY NOT
 
-### `docs/design-record/tenancy-and-security.md` (93 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
+### `docs/design-record/tenancy-and-security.md` (94 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
 
 - EVERY QUERY ON A FIRM TABLE CARRIES ITS FIRM'S SCOPE OR IS NAMED ON A FROZEN LIST, THE TABLE SET IS THE SNAPSHOT'S, AND HOW LITTLE
 - ACCESS IS DECIDED PER PERSON, AND A ROLE IS THE TEMPLATE IT FALLS BACK TO
@@ -566,6 +566,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - AN UNSIGNED REQUEST TO THE PUBLIC WEBHOOK WRITES NOTHING DURABLE
 - A SIGN-UP LINK IS HELD BY THE SERVER, OPENS ON ITS OWN PAGE, USES NOTHING UP, AND CARRIES WHAT IT WAS ASKED FOR
 - A PURGED FIRM'S PEOPLE ARE TOLD THEIR FIRM IS CLOSED BY A MARKER THAT OUTLIVES THEIR MEMBER ROW
+- AN EMPLOYEE'S PORTAL INVITATION LINK EXISTS ONLY IN THE MAIL THE SERVER SENDS, AND THE SCREEN IS TOLD ONLY WHETHER THAT MAIL WENT
 
 ### `docs/design-record/workflow-and-team.md` (4 entries): Workflow engine slices and the Team screen's permission notice
 

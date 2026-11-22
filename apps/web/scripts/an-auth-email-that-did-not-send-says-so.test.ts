@@ -51,10 +51,22 @@ function calls() {
 test("the sweep finds the calls it is about", () => {
   const found = calls();
   // POST-A-485: the SERVER mails the sign-up link, so the sign-up form and the wizard no longer call it (the second test below holds that).
-  // What is left are the two screens that mail a client's portal sign-in from the browser.
-  assert.ok(found.length >= 2, `only ${found.length} signInWithOtp calls found — bad roots?`);
+  // POST-A-552: the SERVER mails an employee's portal invitation too, and returns its link to nobody, so the payroll dialog no longer
+  // calls it either (the test below holds that). What is left is the one screen that mails a client's portal sign-in from the browser.
+  assert.ok(found.length >= 1, `only ${found.length} signInWithOtp calls found — bad roots?`);
   assert.ok(found.some((c) => c.file === path.join("app", "clients", "[id]", "portal", "page.tsx")));
-  assert.ok(found.some((c) => c.file === path.join("components", "payroll", "PortalAccessModal.tsx")));
+});
+
+test("the employee portal dialog mails nothing of its own and holds no link: the server mails the invitation and says whether it went", () => {
+  const rel = path.join("components", "payroll", "PortalAccessModal.tsx");
+  const src = stripComments(fs.readFileSync(path.join(WEB, rel), "utf8"));
+  // The link signs its holder in as the invitation's address (POST-A-552). A browser-sent sign-in mail needed the link in the browser
+  // to come back to, which is how the dialog came to hold it.
+  assert.doesNotMatch(src, CALL, `${rel} sends an auth email itself: that needs the invitation's link in the browser`);
+  assert.doesNotMatch(src, /activation_url|\.token\b|clipboard/, `${rel} reads the invitation's link or token, or offers something to copy`);
+  // What it shows is the server's answer about the mail: only the server's own yes is "sent", and its sentence is shown when it is not.
+  assert.match(src, /mail\?\.sent !== true/, `${rel} does not ask the server's answer whether the mail went`);
+  assert.match(src, /mail\?\.problem/, `${rel} does not show the server's sentence when the mail did not go`);
 });
 
 test("the sign-up form and the wizard mail nothing of their own: the server keeps and mails the sign-up link", () => {

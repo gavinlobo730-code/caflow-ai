@@ -44,7 +44,6 @@ const STILL_RAW = new Set<string>([
   "app/clients/[id]/portal/page.tsx otpErr.message",
   "app/platform/page.tsx cErr.message",
   "app/platform/page.tsx fErr.message",
-  "components/payroll/PortalAccessModal.tsx otpErr.message",
 ]);
 
 // The screens a new CA passes through on the way in. These must be clean

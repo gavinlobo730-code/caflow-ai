@@ -6855,12 +6855,12 @@ export const api = {
                   { method: "POST", body: JSON.stringify(body) }),
 
     // ── Employee portal provisioning ──────────────────────────────────────
-    // The activation link is returned ONCE, here. Only its sha256 is stored,
-    // so it cannot be fetched again — a caller that needs to re-send must
-    // re-invite, which mints a fresh token and invalidates this one.
+    // The activation link is returned to NOBODY (POST-A-552): it signs its holder in as the invitation's
+    // address, so the server mails it and says here only whether that mail went. Sending again makes a
+    // new link and stops the earlier one.
     invitePortal: (employeeId: string, email: string) =>
       request<ApiResp<{ employee_id: string; email: string;
-                        token: string; activation_url: string }>>(
+                        mail?: { sent: boolean; problem: string | null } }>>(
         `/api/payroll/employees/${employeeId}/portal-invite`,
         { method: "POST", body: JSON.stringify({ email }) }),
     revokePortal: (employeeId: string) =>
