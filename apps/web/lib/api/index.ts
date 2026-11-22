@@ -7174,7 +7174,9 @@ export const api = {
     // above: an employee is neither firm staff nor a client contact, so it is
     // guarded by the JWT alone and the token is what authorises the bind.
     acceptEmployeeInvite: (token: string) =>
-      request<ApiResp<{ employee_id: string; name?: string; client_id?: string }>>(
+      request<ApiResp<{ employee_id: string; name?: string; client_id?: string;
+                        /** True when this sign-in is already a member of staff (POST-A-549): no password is asked for. */
+                        staff_sign_in?: boolean }>>(
         "/api/portal/employee/accept-invite",
         { method: "POST", body: JSON.stringify({ token }) }),
     // Turns a bare invite token into the ingredients for a real Supabase

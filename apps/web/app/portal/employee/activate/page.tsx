@@ -59,7 +59,9 @@ import { authErrorMessage } from "@/lib/auth/authErrorMessage";
 const SESSION_WAIT_ATTEMPTS = 10;
 const SESSION_WAIT_INTERVAL_MS = 500;
 
-type Stage = "verifying" | "invalid" | "form" | "reauth" | "done";
+/** "linked": the invitation was accepted by a sign-in that is already a member of staff (POST-A-549). No password is asked
+ *  for: the one they have is the one they sign in to the practice with, and setting one here would replace it. */
+type Stage = "verifying" | "invalid" | "form" | "reauth" | "done" | "linked";
 
 /** Does this identity already have employee-portal access? A spent single-use
  *  token is only an error if they have no access yet, so this decides whether
@@ -135,8 +137,8 @@ export default function EmployeeActivatePage() {
       }
 
       try {
-        await api.portalSelf.acceptEmployeeInvite(token);
-        if (!cancelled) setStage("form");
+        const accepted = await api.portalSelf.acceptEmployeeInvite(token);
+        if (!cancelled) setStage(accepted?.data?.staff_sign_in === true ? "linked" : "form");
       } catch {
         const active = await alreadyActivated();
         if (cancelled) return;
@@ -237,15 +239,22 @@ export default function EmployeeActivatePage() {
     );
   }
 
-  if (stage === "done") {
+  // "done" (a password was set) and "linked" (the sign-in is already a member of staff, so none was asked for: POST-A-549) are the
+  // same step with different words, and one heading: this page's own headings are a frozen list that only shrinks.
+  if (stage === "done" || stage === "linked") {
+    const linked = stage === "linked";
     return shell(
-      <div>
+      <div {...(linked ? { "data-activation-linked": "" } : {})}>
         <div className="flex items-start gap-2 mb-4">
           <ShieldCheck className="w-5 h-5 text-state-ready shrink-0 mt-0.5" />
           <div>
-            <h1 className="text-base font-semibold text-ps-ink">You&apos;re all set</h1>
+            <h1 className="text-base font-semibold text-ps-ink">
+              {linked ? "Your payslips are linked to your sign-in" : "You\u2019re all set"}
+            </h1>
             <p className="text-sm text-ps-label mt-1">
-              You can now view your payslips and leave balance any time.
+              {linked
+                ? "You already sign in to PracticeSync with this email address, so there is no new password to set: you sign in the same way as before. Your own payslips and leave balance are under My payslips in the account menu."
+                : "You can now view your payslips and leave balance any time."}
             </p>
           </div>
         </div>
