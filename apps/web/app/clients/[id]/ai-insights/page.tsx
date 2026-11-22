@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { useEffect, useState } from "react";
 import { Sparkles, AlertTriangle, RefreshCw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -120,7 +121,7 @@ export default function AiInsightsPage() {
               </span>
             </CardTitle>
             {mayGenerate && (
-              <button
+              <Button variant="plain" size="none" spinner={false}
                 onClick={generate}
                 disabled={generating || loading}
                 className="shrink-0 flex items-center gap-1.5 text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-label disabled:opacity-50"
@@ -129,7 +130,7 @@ export default function AiInsightsPage() {
                   ? <RefreshCw size={12} className="animate-spin" />
                   : <Sparkles size={12} />}
                 {generating ? "Generating…" : "Generate"}
-              </button>
+              </Button>
             )}
           </div>
           {generateError && (

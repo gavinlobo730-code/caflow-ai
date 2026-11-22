@@ -799,14 +799,14 @@ export default function ClientPortalPage() {
                                 {req.status === "fulfilled" ? "Fulfilled" : "Pending"}
                               </Badge>
                               {mayWritePortal && (
-                              <button
+                              <Button variant="plain" size="none" spinner={false}
                                 onClick={() => handleDeleteRequest(req.id)}
                                 disabled={actionInFlight}
                                 className="p-1.5 text-ps-hint hover:text-state-problem hover:bg-state-problem-hover rounded transition-colors disabled:opacity-50"
                                 title="Delete request"
                               >
                                 <Trash2 size={13} />
-                              </button>
+                              </Button>
                               )}
                             </div>
                           </div>
@@ -897,14 +897,14 @@ export default function ClientPortalPage() {
                                 <Download size={13} />
                               </button>
                               {mayDeleteFile && (
-                              <button
+                              <Button variant="plain" size="none" spinner={false}
                                 onClick={() => handleDeleteSharedDoc(doc)}
                                 disabled={actionInFlight}
                                 className="p-1.5 text-ps-hint hover:text-state-problem hover:bg-state-problem-hover rounded transition-colors disabled:opacity-50"
                                 title="Delete"
                               >
                                 <Trash2 size={13} />
-                              </button>
+                              </Button>
                               )}
                             </div>
                           </div>
@@ -1169,14 +1169,14 @@ export default function ClientPortalPage() {
                         className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand resize-none"
                       />
                       <div className="flex justify-end">
-                        <button
+                        <Button variant="plain" size="none" spinner={false}
                           onClick={handleSendMessage}
                           disabled={actionInFlight || !newMessageText.trim()}
                           className="flex items-center gap-1.5 px-3 py-1.5 bg-brand text-white text-xs font-medium rounded-lg hover:bg-brand-dark disabled:opacity-50 transition-colors"
                         >
                           <MessageSquare size={12} />
                           {sendingMessage ? "Sending…" : "Send Message"}
-                        </button>
+                        </Button>
                       </div>
                     </div>
                     )}
@@ -1246,13 +1246,13 @@ export default function ClientPortalPage() {
               >
                 Cancel
               </button>
-              <button
+              <Button variant="plain" size="none" spinner={false}
                 onClick={handleCreateRequest}
                 disabled={actionInFlight || !newRequest.title.trim()}
                 className="px-4 py-2 text-sm bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 font-medium"
               >
                 {savingRequest ? "Creating…" : "Create Request"}
-              </button>
+              </Button>
             </div>
           </div>
         </div>

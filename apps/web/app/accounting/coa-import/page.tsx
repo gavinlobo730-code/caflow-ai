@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { Upload, CheckCircle, AlertCircle, X, FileText } from "lucide-react";
@@ -295,9 +296,9 @@ export default function CoaImportPage() {
             <button onClick={() => { setStep("upload"); setPreview([]); setFileName(null); }} className="text-sm text-ps-label border border-ps-border px-4 py-2 rounded-md hover:bg-ps-bg">
               Cancel
             </button>
-            <button onClick={runImport} disabled={importing} className="text-sm bg-brand text-white px-5 py-2 rounded-md hover:bg-brand-dark disabled:opacity-50">
+            <Button variant="plain" size="none" spinner={false} onClick={runImport} disabled={importing} className="text-sm bg-brand text-white px-5 py-2 rounded-md hover:bg-brand-dark disabled:opacity-50">
               {importing ? "Importing…" : `Import ${preview.length} Accounts`}
-            </button>
+            </Button>
           </div>
         </div>
       )}

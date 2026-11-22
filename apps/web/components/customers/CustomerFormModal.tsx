@@ -13,6 +13,7 @@
  * the import resolver can use its id immediately; the Customers-tab caller
  * derives its own toast text from the returned record.
  */
+import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { forgetCustomerLists } from "@/lib/data/partyLists";
 import { gstinProblem } from "@/lib/gst/gstin";
@@ -402,9 +403,9 @@ export function CustomerFormModal({
       {localError && !onError && <p className="text-xs text-red-600 bg-state-problem-surface rounded px-3 py-2">{localError}</p>}
       <div className="flex gap-3 justify-end">
         <button onClick={onClose} disabled={saving} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50">Cancel</button>
-        <button onClick={handleSave} disabled={saving} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 inline-flex items-center gap-1.5">
+        <Button variant="plain" size="none" spinner={false} onClick={handleSave} disabled={saving} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 inline-flex items-center gap-1.5">
           {saving && <Loader2 size={13} className="animate-spin" />} {saving ? "Saving…" : existing ? "Update Customer" : "Add Customer"}
-        </button>
+        </Button>
       </div>
     </Modal>
   );

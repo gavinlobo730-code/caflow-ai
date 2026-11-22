@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { useState, useEffect } from "react";
 import {
@@ -883,13 +884,13 @@ function ConvertModal({ lead, onClose, onConverted }: ConvertModalProps) {
               >
                 Cancel
               </button>
-              <button
+              <Button variant="plain" size="none" spinner={false}
                 onClick={handleConvert}
                 disabled={converting}
                 className="flex-1 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50 transition-colors"
               >
                 {converting ? "Converting…" : "Convert to Client"}
-              </button>
+              </Button>
             </div>
           </>
         )}

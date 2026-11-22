@@ -38,6 +38,7 @@
  * effective-date selection and whether a recorded set may be used at all. This
  * page shows the state of play and posts what the CA typed.
  */
+import { Button } from "@/components/ui/button";
 import { useState, useEffect, useCallback } from "react";
 import { Plus, Trash2, Scale, X, AlertTriangle } from "lucide-react";
 import { ReadOnlyNotice, useMayChange } from "@/components/settings/ChangePart";
@@ -327,11 +328,11 @@ export default function StatutoryValuesPage() {
                           {first.note && <p className="text-xs text-ps-hint mt-0.5">{first.note}</p>}
                         </div>
                         {mayChange && (
-                          <button disabled={actionInFlight} onClick={() => remove(first)}
+                          <Button variant="plain" size="none" spinner={false} disabled={actionInFlight} onClick={() => remove(first)}
                             className="text-ps-hint hover:text-red-600 shrink-0"
                             aria-label="Remove this version">
                             <Trash2 size={15} />
-                          </button>
+                          </Button>
                         )}
                       </div>
                       <table className="w-full text-sm">
@@ -487,10 +488,10 @@ export default function StatutoryValuesPage() {
               <div className="px-5 py-4 flex items-center justify-end gap-2 border-t border-ps-border">
                 <button onClick={() => setShowForm(false)} disabled={saving}
                   className="px-4 py-1.5 text-sm text-ps-label hover:bg-ps-bg rounded-lg disabled:opacity-50">Cancel</button>
-                <button onClick={save} disabled={actionInFlight}
+                <Button variant="plain" size="none" spinner={false} onClick={save} disabled={actionInFlight}
                   className="px-4 py-1.5 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark disabled:opacity-50">
                   {saving ? "Saving…" : "Record"}
-                </button>
+                </Button>
               </div>
             </div>
           </div>

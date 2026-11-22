@@ -6,6 +6,7 @@
  * and Income Tax returns. Expire every 1-2 years.
  */
 
+import { Button } from "@/components/ui/button";
 import { useState, useEffect, useCallback } from "react";
 import { Shield, Plus, X, AlertCircle, AlertTriangle, CheckCircle, RefreshCw } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -206,10 +207,10 @@ function RenewDSCModal({ record, onClose, onRenewed }: {
             className="px-3 py-1.5 text-xs border border-ps-border rounded-lg text-ps-body hover:bg-ps-bg">
             Cancel
           </button>
-          <button onClick={submit} disabled={saving}
+          <Button variant="plain" size="none" spinner={false} onClick={submit} disabled={saving}
             className="px-3 py-1.5 text-xs bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
             {saving ? "Saving…" : "Record the renewal"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -320,10 +321,10 @@ function CorrectDSCModal({ record, onClose, onSaved }: {
             className="px-3 py-1.5 text-xs border border-ps-border rounded-lg text-ps-body hover:bg-ps-bg">
             Cancel
           </button>
-          <button onClick={submit} disabled={saving}
+          <Button variant="plain" size="none" spinner={false} onClick={submit} disabled={saving}
             className="px-3 py-1.5 text-xs bg-brand-dark text-white rounded-lg disabled:opacity-40">
             {saving ? "Saving…" : "Save the correction"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -433,9 +434,9 @@ function AddDSCModal({ onClose, onAdded }: {
         </div>
         <div className="flex gap-2">
           <button disabled={saving} onClick={onClose} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg">Cancel</button>
-          <button onClick={handleSubmit} disabled={saving} className="flex-1 bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50">
+          <Button variant="plain" size="none" spinner={false} onClick={handleSubmit} disabled={saving} className="flex-1 bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50">
             {saving ? "Saving…" : "Add DSC"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

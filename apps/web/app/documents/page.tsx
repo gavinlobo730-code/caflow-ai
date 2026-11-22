@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { UploadProgress } from "@/components/ui/upload-progress";
 import type { UploadProgress as BytesSent } from "@/lib/api/uploadWithProgress";
 import { useState, useEffect, useRef, useMemo, useCallback, ChangeEvent } from "react";
@@ -276,7 +277,7 @@ function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
           >
             Cancel
           </button>
-          <button
+          <Button variant="plain" size="none" spinner={false}
             onClick={handleUpload}
             disabled={uploading || !file}
             className="flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-50"
@@ -292,7 +293,7 @@ function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
                 Upload
               </>
             )}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -536,7 +537,7 @@ export default function DocumentsPage() {
             >
               <Download size={15} />
             </button>
-            <button
+            <Button variant="plain" size="none" spinner={false}
               onClick={() => handleDelete(doc)}
               disabled={deleting === doc.id}
               title="Delete"
@@ -547,7 +548,7 @@ export default function DocumentsPage() {
               ) : (
                 <Trash2 size={15} />
               )}
-            </button>
+            </Button>
           </div>
         )}
       />

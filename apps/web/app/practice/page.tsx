@@ -172,10 +172,10 @@ function TaxIdentity({ identity, entityTypes, onSaved }: {
           </p>
           {error && <p className="text-2xs text-red-600">{error}</p>}
           <div className="flex gap-2">
-            <button onClick={save} disabled={saving}
+            <Button variant="plain" size="none" spinner={false} onClick={save} disabled={saving}
               className="text-2xs px-3 py-1 rounded-md bg-brand text-white font-medium disabled:opacity-50 inline-flex items-center gap-1">
               {saving && <Loader2 size={11} className="animate-spin" />}Save
-            </button>
+            </Button>
             <button onClick={() => { setOpen(false); setError(null); }}
               className="text-2xs px-3 py-1 rounded-md border border-gray-200 text-gray-600">
               Cancel

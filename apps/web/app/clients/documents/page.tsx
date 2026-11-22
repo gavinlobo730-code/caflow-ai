@@ -7,6 +7,7 @@
  * Expiry alerts for certificates expiring within 60 days
  */
 
+import { Button } from "@/components/ui/button";
 import { UploadProgress } from "@/components/ui/upload-progress";
 import type { UploadProgress as BytesSent } from "@/lib/api/uploadWithProgress";
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -162,10 +163,10 @@ function UploadModal({ onClose, onUploaded, clientId }: UploadModalProps) {
             className="flex-1 border border-ps-border text-ps-body rounded-lg py-2 text-sm hover:bg-ps-bg">
             Cancel
           </button>
-          <button onClick={handleUpload} disabled={uploading}
+          <Button variant="plain" size="none" spinner={false} onClick={handleUpload} disabled={uploading}
             className="flex-1 bg-brand text-white rounded-lg py-2 text-sm hover:bg-brand-dark disabled:opacity-60">
             {uploading ? "Uploading…" : "Upload"}
-          </button>
+          </Button>
         </div>
         <UploadProgress progress={sent} what="the document" />
       </div>
@@ -355,10 +356,10 @@ export default function ClientDocumentsPage() {
                     <Download size={12} /> Download
                   </a>
                 )}
-                <button onClick={() => handleDelete(doc)} disabled={deleting}
+                <Button variant="plain" size="none" spinner={false} onClick={() => handleDelete(doc)} disabled={deleting}
                   className="flex items-center justify-center gap-1 px-3 py-1.5 border border-red-100 rounded-lg text-xs text-red-600 hover:bg-state-problem-hover disabled:opacity-50">
                   <Trash2 size={12} /> Delete
-                </button>
+                </Button>
               </div>
             </div>
           );

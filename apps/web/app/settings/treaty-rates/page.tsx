@@ -20,6 +20,7 @@
  * owns §90(2), which gives the assessee whichever of this and the Act TOTAL is
  * lower.
  */
+import { Button } from "@/components/ui/button";
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { ChevronLeft, Plus, Trash2, Globe2, X } from "lucide-react";
@@ -225,9 +226,9 @@ export default function TreatyRatesPage() {
             </div>
             <div className="flex justify-end gap-2">
               <button onClick={() => setShowForm(false)} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
-              <button onClick={save} disabled={actionInFlight || !country || !nature} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
+              <Button variant="plain" size="none" spinner={false} onClick={save} disabled={actionInFlight || !country || !nature} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
                 {saving ? "Saving…" : "Save reading"}
-              </button>
+              </Button>
             </div>
           </div>
         )}
@@ -273,8 +274,8 @@ export default function TreatyRatesPage() {
                     <td className="px-4 py-2 text-xs text-ps-hint">{formatDate(r.verified_on)}</td>
                     <td className="px-4 py-2 text-right">
                       {mayChange && (
-                        <button disabled={actionInFlight} onClick={() => remove(r)} aria-label={`Remove ${r.country_code} ${r.nature}`}
-                          className="text-ps-hint hover:text-red-600"><Trash2 size={14} /></button>
+                        <Button variant="plain" size="none" spinner={false} disabled={actionInFlight} onClick={() => remove(r)} aria-label={`Remove ${r.country_code} ${r.nature}`}
+                          className="text-ps-hint hover:text-red-600"><Trash2 size={14} /></Button>
                       )}
                     </td>
                   </tr>

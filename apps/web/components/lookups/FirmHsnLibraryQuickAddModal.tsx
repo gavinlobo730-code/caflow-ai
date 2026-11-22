@@ -17,6 +17,7 @@
  * shape (digits, non-blank description). The CA is asserting this code into
  * their own library; Caflow neither owns nor confirms that judgement.
  */
+import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
@@ -154,13 +155,13 @@ export function FirmHsnLibraryQuickAddModal({
           <button onClick={onClose} disabled={saving} className="text-sm px-3.5 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50">
             Cancel
           </button>
-          <button
+          <Button variant="plain" size="none" spinner={false}
             onClick={submit}
             disabled={!canSave}
             className="text-sm px-4 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 inline-flex items-center gap-1.5"
           >
             {saving && <Loader2 size={14} className="animate-spin" />} Add to library
-          </button>
+          </Button>
         </div>
       </div>
     </Modal>

@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { useState, useEffect, useCallback } from "react";
 import { Link2, Search, Check, Loader2, ShieldAlert } from "lucide-react";
 import { api, type ApiResp } from "@/lib/api";
@@ -150,7 +151,7 @@ export default function AssignmentsPage() {
                   {shownClients.map((c) => {
                     const on = assigned.has(c.id);
                     return (
-                      <button
+                      <Button variant="plain" size="none" spinner={false}
                         key={c.id}
                         disabled={!canAssign || busy === c.id}
                         onClick={() => toggle(c.id)}
@@ -165,7 +166,7 @@ export default function AssignmentsPage() {
                         }`}>
                           {busy === c.id ? <Loader2 size={12} className="animate-spin" /> : on ? <Check size={12} /> : null}
                         </span>
-                      </button>
+                      </Button>
                     );
                   })}
                   {shownClients.length === 0 && <p className="px-4 py-6 text-xs text-ps-hint">No clients.</p>}

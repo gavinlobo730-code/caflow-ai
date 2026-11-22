@@ -229,9 +229,9 @@ function AddModal({ clients, presetClientId, onClose, onAdded }: {
         </div>
         <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-ps-border flex gap-2 justify-end">
           <button disabled={saving} onClick={onClose} className="px-4 py-2 text-sm text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg">Cancel</button>
-          <button onClick={handleSave} disabled={saving} className="px-4 py-2 text-sm text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-60">
+          <Button variant="plain" size="none" spinner={false} onClick={handleSave} disabled={saving} className="px-4 py-2 text-sm text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-60">
             {saving ? "Saving…" : "Add Notice"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -515,22 +515,22 @@ export default function ITNoticesPage() {
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-1.5">
                           {n.status === "pending" && (
-                            <button onClick={() => updateStatus(n.id, "responded")}
+                            <Button variant="plain" size="none" spinner={false} onClick={() => updateStatus(n.id, "responded")}
                               className="text-xs px-2 py-1 bg-state-attention-surface text-state-attention rounded hover:bg-state-attention-hover">
                               Responded
-                            </button>
+                            </Button>
                           )}
                           {n.status === "responded" && (
-                            <button onClick={() => updateStatus(n.id, "closed")}
+                            <Button variant="plain" size="none" spinner={false} onClick={() => updateStatus(n.id, "closed")}
                               className="text-xs px-2 py-1 bg-state-ready-surface text-state-ready rounded hover:bg-state-ready-hover">
                               Close
-                            </button>
+                            </Button>
                           )}
                           {(n.status === "pending" || n.status === "responded") && (
-                            <button onClick={() => updateStatus(n.id, "appeal")}
+                            <Button variant="plain" size="none" spinner={false} onClick={() => updateStatus(n.id, "appeal")}
                               className="text-xs px-2 py-1 bg-brand-surface text-brand rounded hover:bg-brand-light">
                               Appeal
-                            </button>
+                            </Button>
                           )}
                           <Button variant="plain" size="none" onClick={() => deleteNotice(n.id)}
                             className="p-1 text-ps-disabled hover:text-state-problem">

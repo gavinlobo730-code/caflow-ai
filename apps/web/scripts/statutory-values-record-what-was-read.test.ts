@@ -114,6 +114,7 @@ test("the screen opens on payroll read, and recording or removing a set is offer
   assert.doesNotMatch(code, /RoleGuard/);
   assert.match(code, /const mayChange = useMayChange\("payroll", "write"\);/);
   assert.match(code, /actions=\{mayChange \? \(/, "Record a notification is offered to somebody who cannot record one");
-  assert.match(code, /\{mayChange && \(\s*<button disabled=\{actionInFlight\} onClick=\{\(\) => remove\(first\)\}/, "Remove is offered to somebody who cannot remove");
+  // The Remove button is the guarded one since POST-A-144 (it ignores a second click); what is held is that it sits under `mayChange`.
+  assert.match(code, /\{mayChange && \(\s*<Button variant="plain" size="none" spinner=\{false\} disabled=\{actionInFlight\} onClick=\{\(\) => remove\(first\)\}/, "Remove is offered to somebody who cannot remove");
   assert.match(code, /<ReadOnlyNotice resource="payroll" action="write" page="Statutory values"/);
 });

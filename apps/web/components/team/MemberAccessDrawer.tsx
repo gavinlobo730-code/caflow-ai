@@ -56,6 +56,7 @@
  *     somebody who is not a Partner: no tick opens it.
  */
 
+import { Button } from "@/components/ui/button";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { X, ShieldAlert, Lock, RotateCcw } from "lucide-react";
 import { api, type MemberAccessGrid } from "@/lib/api";
@@ -435,14 +436,14 @@ export default function MemberAccessDrawer({ userId, onClose, onSaved }: Props) 
             <span className="text-xs text-ps-hint">
               {dirty ? `${Object.keys(changes).length} change${Object.keys(changes).length === 1 ? "" : "s"}` : "No changes"}
             </span>
-            <button
+            <Button variant="plain" size="none" spinner={false}
               type="button"
               onClick={save}
               disabled={!dirty || saving}
               className="px-3 py-1.5 text-xs font-medium rounded-md bg-brand text-white disabled:bg-ps-disabled"
             >
               {saving ? "Saving…" : "Save"}
-            </button>
+            </Button>
           </div>
         </div>
       </div>

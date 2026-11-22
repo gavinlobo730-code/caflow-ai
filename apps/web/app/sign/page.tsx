@@ -10,6 +10,7 @@
 // Electronic acceptance (typed name + explicit consent) is a valid contract
 // under the Information Technology Act, 2000, Section 10A.
 
+import { Button } from "@/components/ui/button";
 import { useEffect, useState } from "react";
 import { CheckCircle2, Loader2, AlertCircle, FileText, XCircle } from "lucide-react";
 import { formatDateTime } from "@/lib/dates/format";
@@ -239,14 +240,14 @@ export default function SignPage() {
                     )}
 
                     <div className="flex flex-wrap gap-2">
-                      <button
+                      <Button variant="plain" size="none" spinner={false}
                         disabled={submitting || !name.trim() || !consent}
                         onClick={() => post("/sign", { signer_name: name.trim(), consent })}
                         className="flex items-center gap-1.5 rounded-lg bg-brand px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-50 transition-colors"
                       >
                         {submitting ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
                         Accept &amp; Sign
-                      </button>
+                      </Button>
                       <button
                         disabled={submitting}
                         onClick={() => { setShowDecline(true); setActionErr(null); }}
@@ -278,14 +279,14 @@ export default function SignPage() {
                       </div>
                     )}
                     <div className="flex gap-2">
-                      <button
+                      <Button variant="plain" size="none" spinner={false}
                         disabled={submitting}
                         onClick={() => post("/reject", { reason: declineReason || undefined })}
                         className="flex items-center gap-1.5 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
                       >
                         {submitting ? <Loader2 size={14} className="animate-spin" /> : <XCircle size={14} />}
                         Confirm Decline
-                      </button>
+                      </Button>
                       <button
                         disabled={submitting}
                         onClick={() => setShowDecline(false)}

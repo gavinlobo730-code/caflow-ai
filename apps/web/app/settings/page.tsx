@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -464,13 +465,13 @@ function SettingsHome() {
               </div>
             </div>
             <div className="px-5 py-3 border-t border-ps-border flex justify-end">
-              <button
+              <Button variant="plain" size="none" spinner={false}
                 onClick={savePersonalProfile}
                 disabled={actionInFlight}
                 className="px-4 py-1.5 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {savingPersonal ? "Saving…" : "Save Profile"}
-              </button>
+              </Button>
             </div>
           </div>
         </>
@@ -587,13 +588,13 @@ function SettingsHome() {
 
             {!profileLocked && (
             <div className="px-5 py-3 border-t border-ps-border flex justify-end">
-              <button
+              <Button variant="plain" size="none" spinner={false}
                 onClick={handleSave}
                 disabled={actionInFlight || loading}
                 className="px-4 py-1.5 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {saving ? "Saving…" : "Save Changes"}
-              </button>
+              </Button>
             </div>
             )}
           </div>

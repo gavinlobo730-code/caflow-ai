@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { useState, useEffect, useCallback } from "react";
 import { Hash, CreditCard, Save } from "lucide-react";
 import { useAuth } from "@/lib/auth/AuthContext";
@@ -415,14 +416,14 @@ export default function InvoiceSettingsPage() {
         </div>
 
         <div className="flex justify-end">
-          <button
+          <Button variant="plain" size="none" spinner={false}
             onClick={handleSave}
             disabled={saving || loading}
             className="flex items-center gap-2 px-5 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors disabled:opacity-50"
           >
             <Save size={14} />
             {saving ? "Saving…" : "Save Settings"}
-          </button>
+          </Button>
         </div>
         </ChangePart>
       </div>

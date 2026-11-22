@@ -160,14 +160,14 @@ function DependenciesSection({ taskId, allTasks }: { taskId: string; allTasks: T
               <span className="text-xs text-ps-body line-clamp-1">
                 {d.depends_on_title ?? titleMap.get(d.depends_on_task_id) ?? d.depends_on_task_id}
               </span>
-              <button
+              <Button variant="plain" size="none" spinner={false}
                 onClick={() => handleRemove(d.id)}
                 disabled={busy}
                 className="p-0.5 rounded text-ps-hint hover:text-state-problem shrink-0"
                 title="Remove dependency"
               >
                 <X size={12} />
-              </button>
+              </Button>
             </div>
           ))}
         </div>
@@ -185,13 +185,13 @@ function DependenciesSection({ taskId, allTasks }: { taskId: string; allTasks: T
           searchPlaceholder="Search tasks…"
           clearable
         />
-        <button
+        <Button variant="plain" size="none" spinner={false}
           onClick={handleAdd}
           disabled={!addId || busy}
           className="px-3 py-1.5 text-xs bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 font-medium disabled:opacity-50"
         >
           Add
-        </button>
+        </Button>
       </div>
     </div>
   );
