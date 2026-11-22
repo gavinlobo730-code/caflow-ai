@@ -36,6 +36,7 @@ import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state
 import { AiDisclosure } from "@/components/ai/AiDisclosure";
 import { SavedColumnMappings } from "@/components/banking/SavedColumnMappings";
 import { formatDate } from "@/lib/dates/format";
+import { unreadHeading, unreadRowsOf, whatStopped, type UnreadRow } from "@/lib/banking/unreadRows";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { removedDateProblem } from "@/lib/dates/removedDate";
@@ -678,6 +679,29 @@ interface TotalsCheck {
   ambiguous?: boolean;
 }
 
+/**
+ * The rows of the file that look like transactions and were not read (POST-A-551): each with its date where that was read, its
+ * narration and the cell as the bank printed it, so the row can be found in the file. Drawn in the preview, before the CA
+ * imports under a mapping, and beside the import's result, where "42 imported" over a file of 43 has to say which is missing.
+ */
+function UnreadRows({ rows, className }: { rows: UnreadRow[]; className?: string }) {
+  if (rows.length === 0) return null;
+  return (
+    <div role="status" data-unread-rows={rows.length}
+      className={`text-xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2 ${className ?? ""}`}>
+      <p className="font-medium">{unreadHeading(rows.length)}</p>
+      <ul className="mt-1 space-y-0.5">
+        {rows.map((r, i) => (
+          <li key={i}>
+            {r.date ? `${formatDate(r.date)} · ` : ""}{r.description || "(no description)"}: {whatStopped(r)}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-1">Correct {rows.length === 1 ? "it" : "them"} in the file, or check the column mapping, and upload it again.</p>
+    </div>
+  );
+}
+
 interface ImportResult {
   imported: number;
   duplicates_skipped: number;
@@ -1029,6 +1053,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                 Compare the totals against the statement before you rely on these figures.
               </p>
             )}
+            <UnreadRows rows={unreadRowsOf(result)} />
             <div className="flex justify-end">
               <button onClick={onImported} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark">Done</button>
             </div>
@@ -1243,6 +1268,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                       {preview.parsed_count} of {preview.total_rows} rows read
                       {preview.skipped_count > 0 && <span className="text-state-attention"> · {preview.skipped_count} skipped</span>}
                     </p>
+                    <UnreadRows rows={unreadRowsOf(preview)} />
                     <div className="overflow-x-auto border border-ps-border rounded-lg">
                       <table className="w-full text-2xs">
                         <thead className="bg-ps-bg text-ps-label">
