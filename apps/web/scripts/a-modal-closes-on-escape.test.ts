@@ -78,9 +78,16 @@ test("ClientFormModal does not close on Escape while saving", () => {
 });
 
 test("engagements/page.tsx: CreateEngagementModal, TemplateModal and DetailModal each close on Escape", () => {
-  const src = read("app/engagements/page.tsx");
-  for (const name of ["CreateEngagementModal", "TemplateModal", "DetailModal"]) {
-    assertClosesOnEscape(functionBody(src, name), name);
+  // Since POST-A-130's fourteenth step each is the shared Modal, which closes on Escape by calling its `onClose` (and only as the top
+  // dialog). The rule held here is that each one's `onClose` is held while its own request is out, and that none keeps the key listener
+  // it used to have: the Modal stops the key before a window listener hears it, so one here would be dead code that reads as the thing
+  // closing the dialog.
+  const src = stripComments(read("app/engagements/page.tsx"));
+  for (const [name, flag] of [["CreateEngagementModal", "saving"], ["TemplateModal", "saving"], ["DetailModal", "actionLoading"]]) {
+    const body = functionBody(src, name);
+    assert.match(body, /<Modal\s+title=/, `${name} is not the shared Modal`);
+    assert.doesNotMatch(body, /addEventListener\("keydown"/, `${name} listens for keys itself again`);
+    assert.ok(body.includes(`onClose={() => { if (!${flag}) onClose(); }}`), `${name} can be closed while its request is in flight`);
   }
 });
 

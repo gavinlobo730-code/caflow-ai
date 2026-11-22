@@ -7,8 +7,9 @@
  */
 
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { useState, useEffect, useCallback } from "react";
-import { Shield, Plus, X, AlertCircle, AlertTriangle, CheckCircle, RefreshCw } from "lucide-react";
+import { Shield, Plus, AlertCircle, AlertTriangle, CheckCircle, RefreshCw } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 import { daysBetweenLocalISO } from "@/lib/dateMath";
@@ -153,19 +154,19 @@ function RenewDSCModal({ record, onClose, onRenewed }: {
 
   const field = "w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-sm outline-none focus:border-brand";
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl w-full max-w-md p-5 space-y-3">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-base font-semibold text-ps-ink">Renew this DSC</p>
-            <p className="text-2xs text-ps-label mt-0.5">
-              {record.holder_name} · {record.dsc_type} · expires {formatDate(record.expiry_date)}
-            </p>
-          </div>
-          <button disabled={saving} onClick={onClose} className="text-ps-hint hover:text-ps-body">
-            <X size={16} />
-          </button>
-        </div>
+    // The shared dialog (POST-A-130): named, modal, Tab kept inside, focus given back. Its close is held while the renewal is being saved.
+    <Modal title="Renew this DSC" maxWidthClass="max-w-md" onClose={() => { if (!saving) onClose(); }}
+      note={<>{record.holder_name} · {record.dsc_type} · expires {formatDate(record.expiry_date)}</>}
+      footer={<>
+        <button disabled={saving} onClick={onClose}
+          className="px-3 py-1.5 text-xs border border-ps-border rounded-lg text-ps-body hover:bg-ps-bg disabled:opacity-50">
+          Cancel
+        </button>
+        <Button variant="plain" size="none" spinner={false} onClick={submit} disabled={saving}
+          className="px-3 py-1.5 text-xs bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
+          {saving ? "Saving…" : "Record the renewal"}
+        </Button>
+      </>}>
 
         <div>
           <label className="block text-2xs text-ps-label mb-0.5">
@@ -201,19 +202,7 @@ function RenewDSCModal({ record, onClose, onRenewed }: {
         </p>
 
         {err && <Callout tone="problem">{err}</Callout>}
-
-        <div className="flex justify-end gap-2 pt-1">
-          <button disabled={saving} onClick={onClose}
-            className="px-3 py-1.5 text-xs border border-ps-border rounded-lg text-ps-body hover:bg-ps-bg">
-            Cancel
-          </button>
-          <Button variant="plain" size="none" spinner={false} onClick={submit} disabled={saving}
-            className="px-3 py-1.5 text-xs bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
-            {saving ? "Saving…" : "Record the renewal"}
-          </Button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -276,20 +265,22 @@ function CorrectDSCModal({ record, onClose, onSaved }: {
 
   const field = "w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-sm outline-none focus:border-brand";
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl w-full max-w-md p-5 space-y-3">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-base font-semibold text-ps-ink">Correct this record</p>
-            <p className="text-2xs text-ps-label mt-0.5">
-              For something keyed wrongly. To record a NEW certificate for the
-              same holder, use Renew.
-            </p>
-          </div>
-          <button disabled={saving} onClick={onClose} className="text-ps-hint hover:text-ps-body">
-            <X size={16} />
-          </button>
-        </div>
+    // The shared dialog (POST-A-130). Its close is held while the correction is being saved.
+    <Modal title="Correct this record" maxWidthClass="max-w-md" onClose={() => { if (!saving) onClose(); }}
+      note={<>
+        For something keyed wrongly. To record a NEW certificate for the
+        same holder, use Renew.
+      </>}
+      footer={<>
+        <button disabled={saving} onClick={onClose}
+          className="px-3 py-1.5 text-xs border border-ps-border rounded-lg text-ps-body hover:bg-ps-bg disabled:opacity-50">
+          Cancel
+        </button>
+        <Button variant="plain" size="none" spinner={false} onClick={submit} disabled={saving}
+          className="px-3 py-1.5 text-xs bg-brand-dark text-white rounded-lg disabled:opacity-40">
+          {saving ? "Saving…" : "Save the correction"}
+        </Button>
+      </>}>
 
         <div>
           <label className="block text-2xs text-ps-label mb-0.5">Holder name</label>
@@ -315,19 +306,7 @@ function CorrectDSCModal({ record, onClose, onSaved }: {
         </div>
 
         {err && <Callout tone="problem">{err}</Callout>}
-
-        <div className="flex justify-end gap-2 pt-1">
-          <button disabled={saving} onClick={onClose}
-            className="px-3 py-1.5 text-xs border border-ps-border rounded-lg text-ps-body hover:bg-ps-bg">
-            Cancel
-          </button>
-          <Button variant="plain" size="none" spinner={false} onClick={submit} disabled={saving}
-            className="px-3 py-1.5 text-xs bg-brand-dark text-white rounded-lg disabled:opacity-40">
-            {saving ? "Saving…" : "Save the correction"}
-          </Button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -385,12 +364,14 @@ function AddDSCModal({ onClose, onAdded }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-ps-ink">Add DSC Record</h3>
-          <button disabled={saving} onClick={onClose}><X className="w-4 h-4 text-ps-hint" /></button>
-        </div>
+    // The shared dialog (POST-A-130). Its close is held while the record is being saved.
+    <Modal title="Add DSC Record" maxWidthClass="max-w-md" onClose={() => { if (!saving) onClose(); }}
+      footer={<>
+        <button disabled={saving} onClick={onClose} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg disabled:opacity-50">Cancel</button>
+        <Button variant="plain" size="none" spinner={false} onClick={handleSubmit} disabled={saving} className="flex-1 bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50">
+          {saving ? "Saving…" : "Add DSC"}
+        </Button>
+      </>}>
         {err && <Callout tone="problem">{err}</Callout>}
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
@@ -432,14 +413,7 @@ function AddDSCModal({ onClose, onAdded }: {
             <input aria-label="Notes" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional" />
           </div>
         </div>
-        <div className="flex gap-2">
-          <button disabled={saving} onClick={onClose} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg">Cancel</button>
-          <Button variant="plain" size="none" spinner={false} onClick={handleSubmit} disabled={saving} className="flex-1 bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50">
-            {saving ? "Saving…" : "Add DSC"}
-          </Button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

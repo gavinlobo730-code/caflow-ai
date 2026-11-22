@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { useState, useEffect } from "react";
 import {
@@ -401,21 +402,9 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand/60 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-ps-border">
-          <h2 className="text-base font-semibold text-ps-ink">
-            {initial ? "Edit Lead" : "Add Lead"}
-          </h2>
-          <button disabled={saving} aria-label="Close"
-            onClick={onClose}
-            className="text-ps-hint hover:text-ps-label"
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+    // The shared dialog (POST-A-130): named, modal, Tab kept inside, focus given back. Its close is held while the lead is being saved.
+    <Modal title={initial ? "Edit Lead" : "Add Lead"} maxWidthClass="max-w-lg" onClose={() => { if (!saving) onClose(); }}>
+        <form onSubmit={handleSubmit} className="space-y-4">
           {/* Inline error — shown in-place so the user sees it without the modal closing */}
           {err && (
             <div
@@ -617,8 +606,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -811,18 +799,10 @@ function ConvertModal({ lead, onClose, onConverted }: ConvertModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand/60 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
-            <UserCheck size={18} className="text-green-700" />
-          </div>
-          <div>
-            <h2 className="text-base font-semibold text-ps-ink">Convert to Client</h2>
-            <p className="text-xs text-ps-label">{lead.name} · {lead.businessName}</p>
-          </div>
-        </div>
-
+    // The shared dialog (POST-A-130). Its close (Escape, a click beside it, its ×, Cancel) is held while the conversion is out: the
+    // hand-built one could be closed over it, and the client was then created with nothing on the screen to say so.
+    <Modal title="Convert to Client" maxWidthClass="max-w-md" note={<>{lead.name} · {lead.businessName}</>}
+      onClose={() => { if (!converting) onClose(); }}>
         {done ? (
           <div className="space-y-4">
             <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm text-green-700">
@@ -880,7 +860,8 @@ function ConvertModal({ lead, onClose, onConverted }: ConvertModalProps) {
             <div className="flex gap-3 pt-1">
               <button
                 onClick={onClose}
-                className="flex-1 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg transition-colors"
+                disabled={converting}
+                className="flex-1 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -894,8 +875,7 @@ function ConvertModal({ lead, onClose, onConverted }: ConvertModalProps) {
             </div>
           </>
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }
 

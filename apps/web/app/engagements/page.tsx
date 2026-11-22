@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -257,18 +258,6 @@ function CreateEngagementModal({ open, onClose, templates, onCreated, initialLea
     }
   }, [open, initialName, initialFeePaise, initialEmail, clearRefusal]);
 
-  // Escape closes the dialog, matching the shared Modal (components/ui/modal.tsx)
-  // — guarded on `open` and on `saving` so a create in flight can't be
-  // abandoned mid-request.
-  useEffect(() => {
-    if (!open) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape" && !saving) onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, saving, onClose]);
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
@@ -309,15 +298,10 @@ function CreateEngagementModal({ open, onClose, templates, onCreated, initialLea
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand/60 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-ps-border">
-          <h2 className="text-base font-semibold text-ps-ink">New Engagement Letter</h2>
-          <button onClick={onClose} disabled={saving} aria-label="Close" className="text-ps-hint hover:text-ps-label disabled:opacity-50">
-            <X size={18} />
-          </button>
-        </div>
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+    // The shared dialog (POST-A-130): named, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it, its ×) is held
+    // while the letter is being created, so a create in flight cannot be abandoned mid-request.
+    <Modal title="New Engagement Letter" maxWidthClass="max-w-lg" onClose={() => { if (!saving) onClose(); }}>
+        <form onSubmit={handleSubmit} className="space-y-4">
           {sentence && <div ref={sentenceRef}><Callout tone="problem">{sentence}</Callout></div>}
 
           <div>
@@ -425,8 +409,7 @@ function CreateEngagementModal({ open, onClose, templates, onCreated, initialLea
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -456,18 +439,6 @@ function TemplateModal({ open, onClose, initial, onSaved }: TemplateModalProps) 
       }
     }
   }, [open, initial]);
-
-  // Escape closes the dialog, matching the shared Modal (components/ui/modal.tsx)
-  // — guarded on `open` and on `saving` so a save in flight can't be
-  // abandoned mid-request.
-  useEffect(() => {
-    if (!open) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape" && !saving) onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, saving, onClose]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -500,17 +471,9 @@ function TemplateModal({ open, onClose, initial, onSaved }: TemplateModalProps) 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand/60 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-ps-border">
-          <h2 className="text-base font-semibold text-ps-ink">
-            {initial ? "Edit Template" : "New Template"}
-          </h2>
-          <button onClick={onClose} disabled={saving} aria-label="Close" className="text-ps-hint hover:text-ps-label disabled:opacity-50">
-            <X size={18} />
-          </button>
-        </div>
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+    // The shared dialog (POST-A-130). Its close is held while the template is being saved.
+    <Modal title={initial ? "Edit Template" : "New Template"} maxWidthClass="max-w-2xl" onClose={() => { if (!saving) onClose(); }}>
+        <form onSubmit={handleSubmit} className="space-y-4">
           {err && <Callout tone="problem">{err}</Callout>}
 
           <div>
@@ -577,8 +540,7 @@ function TemplateModal({ open, onClose, initial, onSaved }: TemplateModalProps) 
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -622,18 +584,6 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
       setShowRegenConfirm(false);
     }
   }, [letter]);
-
-  // Escape closes the dialog, matching the shared Modal (components/ui/modal.tsx)
-  // — guarded on `letter` (this modal's own "open") and on `actionLoading` so
-  // an action in flight can't be abandoned mid-request.
-  useEffect(() => {
-    if (!letter) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape" && !actionLoading) onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [letter, actionLoading, onClose]);
 
   async function doAction(path: string, body?: Record<string, unknown>) {
     setActionLoading(true);
@@ -830,22 +780,14 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
   if (!letter) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand/60 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-ps-border">
-          <div>
-            <p className="text-3xs font-mono text-ps-hint">{letter.engagement_number}</p>
-            <h2 className="text-base font-semibold text-ps-ink">{letter.title}</h2>
-          </div>
-          <div className="flex items-center gap-3">
-            <StatusBadge status={shownStatus(letter)} />
-            <button onClick={onClose} disabled={actionLoading} aria-label="Close" className="text-ps-hint hover:text-ps-label disabled:opacity-50">
-              <X size={18} />
-            </button>
-          </div>
-        </div>
-
-        <div className="p-5 space-y-4">
+    // The shared dialog (POST-A-130), named for the letter, with its number and status under the name. Its close is held while one of its
+    // steps (send, sign, reject, regenerate, delete) is out, so an action in flight cannot be abandoned mid-request.
+    <Modal title={letter.title} maxWidthClass="max-w-2xl" onClose={() => { if (!actionLoading) onClose(); }}
+      note={<span className="flex items-center gap-3">
+        <span className="font-mono text-ps-hint">{letter.engagement_number}</span>
+        <StatusBadge status={shownStatus(letter)} />
+      </span>}>
+        <div className="space-y-4">
           {/* Meta row */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 text-sm">
             <div>
@@ -1194,8 +1136,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

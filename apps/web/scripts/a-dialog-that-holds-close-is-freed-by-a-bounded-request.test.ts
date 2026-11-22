@@ -24,10 +24,11 @@ test("the engagement letters page's requests are bounded at lib/api's 45 seconds
 
 test("each dialog's Close and Cancel are held while its request is out", () => {
   const template = page.slice(page.indexOf("function TemplateModal("), page.indexOf("function DetailModal("));
-  assert.match(template, /onClick=\{onClose\} disabled=\{saving\} aria-label="Close"/, "the template dialog's Close is not held or not named");
+  // The shared Modal since POST-A-130's fourteenth step: its close (Escape, a click beside it, its named ×) goes through one held `onClose`.
+  assert.match(template, /<Modal title=\{initial \? "Edit Template" : "New Template"\}[^>]*onClose=\{\(\) => \{ if \(!saving\) onClose\(\); \}\}/, "the template dialog's close is not held");
   assert.match(template, /onClick=\{onClose\}\s*disabled=\{saving\}/, "the template dialog's Cancel is not held");
   const detail = page.slice(page.indexOf("function DetailModal("), page.indexOf("function EngagementsPageInner("));
-  assert.match(detail, /onClick=\{onClose\} disabled=\{actionLoading\} aria-label="Close"/, "the detail dialog's Close is not held or not named");
+  assert.match(detail, /<Modal title=\{letter\.title\}[^>]*onClose=\{\(\) => \{ if \(!actionLoading\) onClose\(\); \}\}/, "the detail dialog's close is not held");
   const cancels = detail.match(/onClick=\{\(\) => setShow\w+\(false\)\}( disabled=\{actionLoading\})?/g) ?? [];
   assert.ok(cancels.length >= 5, `the detail dialog's step Cancels were not found (${cancels.length})`);
   assert.deepEqual(cancels.filter((c) => !c.includes("disabled={actionLoading}")), [], "a step's Cancel is live while the step is out");
