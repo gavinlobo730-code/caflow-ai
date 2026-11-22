@@ -104,7 +104,8 @@ export function ProductServiceFormModal({
     setSaving(true);
     setSaveError(null);
     try {
-      const payload = serviceFormToPayload(form, clientId);
+      // The item as it was opened goes with an edit, so a box the person emptied is sent as "take this away" (POST-A-399).
+      const payload = serviceFormToPayload(form, clientId, existing);
       const res = existing
         ? ((await api.serviceCatalogue.update(existing.id, payload)) as ApiResp<ServiceCatalogueItem>)
         : ((await api.serviceCatalogue.create(payload)) as ApiResp<ServiceCatalogueItem>);
@@ -205,7 +206,15 @@ export function ProductServiceFormModal({
         {form.kind === "good" && (
           <div className="grid grid-cols-3 gap-3">
             <Field label="Alternate unit (optional)">
-              <select value={form.alternateUnit} onChange={(e) => set("alternateUnit", e.target.value)} className={inputCls}>
+              {/* Choosing None empties the factor with it. The factor's box is disabled while there is no alternate unit, so a
+                  factor left in it could not be cleared by the person, and Save refused with "pick the unit, or clear the
+                  factor" pointing at a box they could not type in: the alternate unit could not be removed from the form. */}
+              <select value={form.alternateUnit} className={inputCls}
+                onChange={(e) => {
+                  const unit = e.target.value;
+                  setForm((p) => ({ ...p, alternateUnit: unit, unitsPerAlternate: unit ? p.unitsPerAlternate : "" }));
+                  setSaveError(null);
+                }}>
                 <option value="">— None —</option>
                 {UQC_CODES.filter((u) => u.code !== form.unit)
                   .map((u) => <option key={u.code} value={u.code}>{u.code} — {u.label}</option>)}

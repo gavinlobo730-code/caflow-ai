@@ -11,7 +11,7 @@ CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
-from typing import Annotated, Optional, List
+from typing import Annotated, ClassVar, FrozenSet, Optional, List
 from datetime import datetime, timezone
 import uuid
 
@@ -28,6 +28,7 @@ from core.db_paging import fetch_all, fetch_all_ordered, fetch_window
 from core.list_window import probe, split
 from core.db_provider import privileged_for
 from models.iso_date import OptionalIsoDate, PatchIsoDate
+from models.clearable import drop_empty, patch_dict, removed_identifier_problem
 from core.observability import capture_soft_failure
 
 router = APIRouter(prefix="/api/relationships", tags=["relationships"])
@@ -256,7 +257,18 @@ class EntityIn(BaseModel):
     notes: Optional[str] = None
 
 
+#: An entity's identifiers, with the words a person reads. An edit corrects one and never removes it (POST-A-399, fifth slice).
+ENTITY_IDENTIFIERS = {"pan": "PAN", "gstin": "GSTIN"}
+ENTITY_IDENTIFIER_WHY = "The register tells one person or company from another across the firm's clients by it."
+
+
 class EntityUpdateIn(BaseModel):
+    #: What an edit may CLEAR (POST-A-399, fifth slice; read through `models.clearable.patch_dict`): the contact particulars and the
+    #: note, which are soft and optional. NOT the PAN or the GSTIN: the register matches one person across clients on them, so an
+    #: edit corrects one and does not remove it (the route refuses in a sentence). NOT the name or the kind, which every entity has,
+    #: and not the date of birth, which no screen edits.
+    CLEARABLE: ClassVar[FrozenSet[str]] = frozenset({"email", "phone", "address", "notes"})
+
     full_name: Optional[str] = None
     entity_type: Optional[str] = None
     pan: Optional[str] = None
@@ -482,6 +494,13 @@ def create_entity(
     return api_response(True, created)
 
 
+def _refuse_a_removed_identifier(data: "EntityUpdateIn", stored: dict) -> None:
+    """422 when the edit EMPTIES a PAN or a GSTIN the entity carries. One sent empty over nothing is not refused (nothing is written)."""
+    problem = removed_identifier_problem(data, stored, ENTITY_IDENTIFIERS, why=ENTITY_IDENTIFIER_WHY)
+    if problem:
+        raise HTTPException(status_code=422, detail=problem)
+
+
 @router.patch("/entities/{entity_id}")
 def update_entity(
     entity_id: str,
@@ -490,20 +509,24 @@ def update_entity(
 ):
     db = _db()
     firm_id = current_user["firm_id"]
-    update = data.model_dump(exclude_none=True)
+    # POST-A-399. An emptied email, phone, address or note is cleared (written NULL); every other null still reads "not sent".
+    update = patch_dict(data)
     update["updated_at"] = datetime.now(timezone.utc).isoformat()
 
     _assert_entity_visible(db, current_user, entity_id)
     if not db:
         for i, e in enumerate(_MOCK_ENTITIES):
             if e["id"] == entity_id and e.get("firm_id") == firm_id:
-                _MOCK_ENTITIES[i].update(update)
+                _refuse_a_removed_identifier(data, e)
+                _MOCK_ENTITIES[i].update(drop_empty(update, ENTITY_IDENTIFIERS))
                 return api_response(True, _MOCK_ENTITIES[i])
         raise HTTPException(status_code=404, detail="Entity not found")
 
-    existing = privileged_for(db).table("entities").select("id").eq("id", entity_id).eq("firm_id", firm_id).maybe_single().execute().data
+    existing = privileged_for(db).table("entities").select("id, pan, gstin").eq("id", entity_id).eq("firm_id", firm_id).maybe_single().execute().data
     if not existing:
         raise HTTPException(status_code=404, detail="Entity not found")
+    _refuse_a_removed_identifier(data, existing)
+    drop_empty(update, ENTITY_IDENTIFIERS)
 
     res = privileged_for(db).table("entities").update(update).eq("id", entity_id).eq("firm_id", firm_id).execute()
     return api_response(True, (res.data or [{}])[0])

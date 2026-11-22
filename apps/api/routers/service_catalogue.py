@@ -36,6 +36,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ValidationError as PydanticValidationError
 from models.common import api_response
 from models.service_catalogue import ServiceCatalogueIn, ServiceCatalogueUpdateIn
+from models.clearable import patch_dict
 from core import db_provider
 from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client
@@ -769,7 +770,10 @@ def _alternate_unit_problem(data, existing: dict) -> "tuple[dict, str | None]":
                  else existing.get("alternate_unit"))
     factor = (data.units_per_alternate if "units_per_alternate" in sent
               else existing.get("units_per_alternate"))
-    unit = data.unit if "unit" in sent and data.unit else existing.get("unit")
+    # A unit that was SENT is the unit the row will have, including none: an emptied unit is a clear now (the model's CLEARABLE), so
+    # the pair is judged against NO primary and an alternate unit left behind is refused in the pair's own words. Reading the stored
+    # unit there (as this did while a null meant "not sent") would pass the pair and then remove the unit from under it.
+    unit = data.unit if "unit" in sent else existing.get("unit")
     if "alternate_unit" not in sent and "units_per_alternate" not in sent and "unit" not in sent:
         return extra, None
     return extra, problem_with_pair(unit, alternate, factor)
@@ -787,10 +791,15 @@ def update_service(
     _assert_service_scope(current_user, service_id)
     try:
         firm_id = current_user.get("firm_id")
-        patch = {k: v for k, v in data.model_dump().items() if v is not None}
-        if not patch:
+        # What was sent, with an emptied box of the model's CLEARABLE set as None, which is "write NULL" (POST-A-399): the form used
+        # to send nothing for a box the person emptied and this read dropped every null, so the old description, code, unit, price
+        # or reorder level stayed and the screen said it was saved. A cleared code has nothing to look up in the library.
+        patch = patch_dict(data)
+        # An alternate unit sent EMPTY is the clear of the pair (`_alternate_unit_problem`, below), and it is something to do even when
+        # it is the only thing sent: it normalises to None, so it is not in `patch` yet.
+        if not patch and "alternate_unit" not in data.model_fields_set:
             raise HTTPException(status_code=422, detail="No fields to update.")
-        if "hsn_sac" in patch and not _hsn_in_library(firm_id, patch["hsn_sac"]):
+        if patch.get("hsn_sac") and not _hsn_in_library(firm_id, patch["hsn_sac"]):
             return api_response(
                 False, None,
                 "That HSN/SAC code is not in your firm's library. Add it under "
