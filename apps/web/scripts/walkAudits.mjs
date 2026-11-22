@@ -89,6 +89,16 @@ export async function auditNamedScreens({
  * word for word and ONCE on the page; no Retry is offered yet; a Retry appears (about twenty seconds in);
  * pressing it asks the server again and quiets the notice; and when the first answer lands the notice is gone
  * from the page altogether. Returns the problems found, empty when every step held.
+ *
+ * "ASKS THE SERVER AGAIN" IS COUNTED IN THE PAGE, NOT AT THE STUB (22-11-2026). It used to be read off the stub's own list
+ * of requests received, and the nightly walk of 22 November failed on it with a Retry that works: by then the Tasks screen
+ * and the shell held SIX answers open at once (the permissions, the sign-in policy, the device ping, the status moves, the
+ * clients and the tasks), which is Chromium's limit of connections to one host over HTTP/1.1, and the stub is one host for
+ * the API and the database alike. The screen's second read was asked for at once and waited in the browser's queue until
+ * an answer came back, four seconds later, so nothing reached the stub in the 300 ms this allowed. That is a fact about
+ * this harness (the product's API and database are two hosts, both over HTTP/2, which has no such limit), so what is
+ * measured is what the rule is about: that the screen CALLED `fetch` again. `window.fetch` is counted from before the
+ * page's first script, and the count must rise on the press.
  */
 export async function slowServerScenario({ context, port, stub, sealOff, escaped }) {
   const problems = [];
@@ -102,6 +112,12 @@ export async function slowServerScenario({ context, port, stub, sealOff, escaped
   stub.requests.length = 0;
   try {
     await sealOff(page, escaped);
+    // Every read the page asks for, counted where it is asked (see the note above: a request can wait in the browser's queue).
+    await page.addInitScript(() => {
+      const real = window.fetch;
+      window.__readsAsked = 0;
+      window.fetch = function countedFetch(...args) { window.__readsAsked += 1; return real.apply(this, args); };
+    });
     await page.goto(`http://127.0.0.1:${port}/tasks/`, { waitUntil: "domcontentloaded", timeout: 30_000 });
     // The region is mounted, and silent.
     await anyNotice.first().waitFor({ state: "attached", timeout: 15_000 });
@@ -118,10 +134,16 @@ export async function slowServerScenario({ context, port, stub, sealOff, escaped
     // About twenty seconds in: a Retry, and it asks the server again.
     const retry = page.locator('[data-slow-server-notice="stalled"] button', { hasText: "Retry" });
     await retry.waitFor({ state: "visible", timeout: 25_000 });
-    const before = stub.requests.length;
+    const asked = () => page.evaluate(() => window.__readsAsked);
+    const settled = await asked();
+    if (typeof settled !== "number" || settled === 0) note("the page's reads were not counted, so this cannot say whether Retry asked again");
+    // The control: a waiting page asks for nothing by itself in the same 300 ms, so a rise after the press is the press's.
+    await page.waitForTimeout(300);
+    const before = await asked();
+    if (before !== settled) note(`the waiting page asked for ${before - settled} read(s) by itself in 300 ms, so a read after Retry cannot be put down to Retry`);
     await retry.click();
     await page.waitForTimeout(300);
-    if (stub.requests.length <= before) note("pressing Retry sent no request");
+    if (!((await asked()) > before)) note("pressing Retry sent no request");
     if (await page.locator('[data-slow-server-notice="stalled"]').count()) note("the notice was still offering Retry after it was pressed");
 
     // The first answer lands: nothing about waiting stays on the page.

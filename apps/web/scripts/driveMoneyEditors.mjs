@@ -37,9 +37,11 @@
  *                  a new one each INDIAN day, with the part below) or the id of one zone (`Asia/Kolkata`). A scenario with no context in the
  *                  chosen zone runs all of its own.
  * --shard <which>  which quarter of the date group to drive: `all` (the default for a zone that is not `rotate`), `rotate` (the default for
- *                  `--zone rotate`: one quarter, a new one every third Indian day) or 0, 1, 2 or 3. The other groups run in full whatever the part.
+ *                  `--zone rotate`: one quarter, a new one every third Indian day) or 0, 1, 2 or 3. The part cuts the date group only.
  *                  What the nightly asks for is `--zone rotate`: a zone and a quarter a night, so a night fits its allowance and over twelve
  *                  nights every zone sees every date scenario once (`drive/kit.mjs` holds the rule, `the-nightly-drive-...test.ts` the proof).
+ *                  THE OTHER GROUPS follow the zone, with no flag of their own: under `--zone rotate` a night drives ONE HALF of them, the two
+ *                  halves on alternate Indian days (each scenario every second night, since 22-11-2026); under any other zone, all of them.
  * --stop-after <minutes>  a deadline for the drive: after it the runner STARTS NO MORE scenarios, writes its report (`complete: false`, the runs it did not drive named in
  *                  `not_driven`) and exits 1. The workflow's job has an allowance, and a job that runs past it is cancelled WITHOUT running its later steps, the one that uploads
  *                  this report among them: the run of 6 November 2026 ran 55 minutes against 45 and left nothing. A runner that stops itself leaves the report and the job red.
@@ -87,7 +89,7 @@ import { parseRules, resolve as resolveRule, rulesCloudflareKeeps } from "./chec
 import { headersFor, parseHeadersFile } from "./security-headers.mjs";
 import { ACCOUNTS, CLIENT_ID, CLIENT_ROW, CUSTOMER, FAKE_FIRM_ROW, FAKE_SESSION, FAKE_USERS_ROW, ITEM, JOURNAL_ENTRIES, NOW, VENDOR } from "./drive/fixtures.mjs";
 import {
-  SHARDS, contextsFor, deadlinePassed, inShard, installedChromium, loadBrowserType, matchesOnly, parseArgs, resolveBrowser, resolveWidth, viewportFor, partOfTheNight, reportOf, resolveNow, resolveShard, resolveStopAfter, resolveZone,
+  HALVES, SHARDS, contextsFor, deadlinePassed, inShard, installedChromium, loadBrowserType, matchesOnly, parseArgs, resolveBrowser, resolveWidth, viewportFor, partOfTheNight, reportOf, resolveHalf, resolveNow, resolveShard, resolveStopAfter, resolveZone,
 } from "./drive/kit.mjs";
 import { createStub, ok } from "./drive/stub.mjs";
 
@@ -123,6 +125,8 @@ const OUT = path.resolve(flags["--out"] ?? path.join(WEB, "out"));
  *  `--shard` chose (`rotate`, which a rotating zone implies, is chosen by the same day). The nightly drives one of each. `--now` moves the instant the rotation is read at. */
 let zone = "all";
 let shard = "all";
+/** The half of the OTHER groups: the night's under `--zone rotate`, every one of them otherwise (`drive/kit.mjs`, HALVES). */
+let half = "all";
 let stopAfter = null;
 /** The browser the drive runs in and the width of its window (POST-A-387). The nightly drive is Chromium at 1440; the weekly other-browsers run asks for Firefox, WebKit and a phone. */
 let browserName = "chromium";
@@ -133,6 +137,7 @@ try {
   chosenAt = resolveNow(flags["--now"], realNow);
   zone = flags["--zone"] === undefined ? "all" : resolveZone(flags["--zone"], chosenAt);
   shard = resolveShard(flags["--shard"], flags["--zone"] ?? "all", chosenAt);
+  half = resolveHalf(flags["--zone"] ?? "all", chosenAt);
   stopAfter = resolveStopAfter(flags["--stop-after"]);
   browserName = resolveBrowser(flags["--browser"]);
   width = resolveWidth(flags["--width"]);
@@ -144,6 +149,7 @@ const night = partOfTheNight(chosenAt);
 console.log(
   `Date scenarios: ${zone === "all" ? "every zone of the matrix" : `${zone} only`}, ${shard === "all" ? "the whole group" : `part ${shard + 1} of ${SHARDS}`}` +
   `${flags["--zone"] === "rotate" ? ` (the Indian day ${night.day}, by --zone rotate${flags["--now"] ? `, read at ${flags["--now"]}` : ""})` : ""}` +
+  `${half === "all" ? "" : `; the other groups: half ${half + 1} of ${HALVES}`}` +
   `${stopAfter === null ? "" : `; a deadline of ${stopAfter} minutes for the drive`}.`);
 
 // ── The scenarios: every module in scripts/drive/scenarios/ ─────────────────────────────────────────────
@@ -165,7 +171,7 @@ for (const file of scenarioFiles.filter((f) => f.endsWith(".mjs")).sort()) {
 /** Expand a scenario into the runs it asks for: one, or one per browser context under the matrix. */
 function runsOf(group, scenario) {
   const base = { group, id: `${group}/${scenario.id}`, title: scenario.title, run: scenario.run };
-  if (!inShard(group, scenario.id, shard)) return [];
+  if (!inShard(group, scenario.id, shard, half)) return [];
   if (!scenario.contexts) return [{ ...base, context: null }];
   const inZone = contextsFor(scenario.contexts, zone);
   const contexts = noTzMatrix ? inZone.slice(0, 1) : inZone;
@@ -296,7 +302,7 @@ function writeReport(complete, final = false) {
   if (!final && Date.now() - reportWrittenAt < 20_000) return;
   reportWrittenAt = Date.now();
   const report = reportOf({
-    complete, stoppedAtDeadline, only, tzMatrix: !noTzMatrix, zone, shard, stopAfter, chosenAtMs: chosenAt, csp: cspState, pinnedClock: NOW,
+    complete, stoppedAtDeadline, only, tzMatrix: !noTzMatrix, zone, shard, half, stopAfter, chosenAtMs: chosenAt, csp: cspState, pinnedClock: NOW,
     commit: process.env.GITHUB_SHA || null, browser: browserName, width, selected, results, escaped: [...escaped], startedMs: started, nowMs: Date.now(),
   });
   fs.mkdirSync(path.dirname(path.resolve(reportPath)), { recursive: true });
@@ -455,7 +461,7 @@ if (reportPath) {
     const lines = [
       `### Money-editor drive: ${stoppedAtDeadline ? "STOPPED AT ITS DEADLINE" : failed.length ? "FAILED" : "clean"}`,
       "",
-      `${results.length} of ${selected.length} scenarios driven in ${browserName[0].toUpperCase()}${browserName.slice(1)} at ${width} pixels against the smoke build, ${failed.length} failed. Date scenarios: ${zone === "all" ? "every zone of the matrix" : `${zone} only`}, ${shard === "all" ? "the whole group" : `part ${shard + 1} of ${SHARDS}`}.` +
+      `${results.length} of ${selected.length} scenarios driven in ${browserName[0].toUpperCase()}${browserName.slice(1)} at ${width} pixels against the smoke build, ${failed.length} failed. Date scenarios: ${zone === "all" ? "every zone of the matrix" : `${zone} only`}, ${shard === "all" ? "the whole group" : `part ${shard + 1} of ${SHARDS}`}${half === "all" ? "" : `; the other groups: half ${half + 1} of ${HALVES}`}.` +
         `${stoppedAtDeadline ? ` It was stopped at its deadline of ${stopAfter} minutes: ${selected.length - results.length} not driven (named in the report).` : ""}`,
       "",
     ];
