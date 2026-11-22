@@ -29,8 +29,8 @@ WHAT IS A CHAIN
     The call site is read as the query it stands for (table `repo:client_repo.update`),
     keyed on the id it passes and scoped when it passes the firm. The same is done
     for a function whose firm filter is CONDITIONAL on an optional `firm_id`
-    argument (table `call:get_risk`): the filter is there when the caller asks for
-    it, so the caller is what is judged.
+    argument (table `call:<function>`; first written for `get_risk`, retired on 22-11-2026):
+    the filter is there when the caller asks for it, so the caller is what is judged.
 
 WHEN A CHAIN IS SCOPED  (`scoped_by`, in the order tried)
     filter      .eq / .in_ / .filter("firm_id", ...), .match({"firm_id": ...}) or an

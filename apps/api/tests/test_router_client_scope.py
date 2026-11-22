@@ -771,28 +771,15 @@ AUDITED: dict[str, tuple[str, ...]] = {
     # access to a client outside your own book is the escalation Module 9
     # exists to prevent. Same convention as billing.py's Partner-only routes.
     "/api/assignments": ("assert_client_access", "effective_client_ids"),
-    # risks.py — the risk register (document_risks.client_id NOT NULL,
-    # migration 004, plus risks derived from compliance_records).
-    # list_risks took client_id from the query string and only ever narrowed
-    # it INTO the firm-scoped query; with client_id omitted — the default —
-    # it returned every client's risks in the firm, each row carrying
-    # client_id AND client_name. filter_by_client covers both. client_risks
-    # is addressed directly by client_id and had no check at all.
-    # update_risk_status is row-addressed by risk_id (so main.py's
-    # _CLIENT_GUARD never fires on it) and domain/risk_engine.update_risk
-    # scopes its UPDATE by id+firm_id only; new get_risk lookup in the engine
-    # + _assert_risk_scope resolver in the router (can_access_client, one
-    # fixed "Risk not found" message — already the pre-existing text) closes
-    # it. risk_stats and firm_score are EXEMPT below.
+    # risks.py — the firm-wide statutory risk register, and nothing else since 22-11-2026 (POST-A-548): the five routes over
+    # the risks recorded against documents (the list, the counts, one client's, the firm's score and the route that marked
+    # one resolved) were retired with their tests, because no screen called them and nothing records such a risk.
     # GET /register is a LIST across the caller's whole book rather than a row
     # addressed by a named client_id, so it narrows with `effective_client_ids`
     # the way the reporting endpoints and /api/mca-workspace/calendar/firm do
     # (ACC-17) instead of asserting access to one id it was handed. None means
     # firm-wide and an EMPTY set means nothing — never "no filter".
-    "/api/risks": (
-        "assert_client_access", "filter_by_client", "_assert_risk_scope",
-        "effective_client_ids",
-    ),
+    "/api/risks": ("effective_client_ids",),
     # notifications.py — the in-app notification feed. notifications.client_id
     # is nullable (migration 004): a notification is EITHER about a client or
     # firm-level. This router mounts no client guard at all, and
@@ -1849,7 +1836,7 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/public/engagement-letters": 3,
               "/api/receipts": 5, "/api/purchase-payments": 5,
               "/api/document-intelligence-v2": 5, "/api/payments": 6,
-              "/api/insights": 2, "/api/assignments": 5, "/api/risks": 5,
+              "/api/insights": 2, "/api/assignments": 5, "/api/risks": 1,
               "/api/notifications": 9, "/api/documents": 5, "/api/workload": 4,
               "/api/team": 1, "/api/ai-copilot": 3,
               "/api/einvoice": 4, "/api/form-26as": 5, "/api/fixed-assets": 5,
