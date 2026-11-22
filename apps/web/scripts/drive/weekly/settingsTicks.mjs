@@ -76,10 +76,10 @@ export const scenarios = [
       await page.goto(`${env.base}/settings/?tab=security`, { waitUntil: "networkidle" });
       assert.ok(!(await settingsLinks(page)).includes("/settings/audit-log"), "a Manager is listed the audit log, which they hold nothing for");
       await page.goto(`${env.base}/settings/audit-log/`, { waitUntil: "networkidle" });
-      await gate(page, "accounting:approve").waitFor();
-      assert.match(await gate(page, "accounting:approve").innerText(), /Audit log is not part of your access/);
+      await gate(page, "audit:read").waitFor();
+      assert.match(await gate(page, "audit:read").innerText(), /Audit log is not part of your access/);
       assert.match(page.url(), /\/settings\/audit-log\/$/, "the person was sent somewhere else instead of being told");
-      await gate(page, "accounting:approve").getByRole("button", { name: /Request access/ }).waitFor();
+      await gate(page, "audit:read").getByRole("button", { name: /Request access/ }).waitFor();
     },
   },
   {

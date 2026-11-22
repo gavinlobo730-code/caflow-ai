@@ -224,7 +224,7 @@ Who is offered each link, which is who may open the page. Changing what is on a 
 | Your authenticator app and password | `/settings/security` | nothing: every member's | yes | yes | yes | yes |
 | How this deployment is set up | `/settings/security#deployment` | `firm` `admin` (the card) | yes | - | - | - |
 | Team access | `/team` | `team` `read` or `assignment` `read` or `approval` `read` or `workload` `read` and `team` `read` | yes | yes | - | - |
-| Audit log | `/settings/audit-log` | `accounting` `approve` | yes | - | - | - |
+| Audit log | `/settings/audit-log` | `audit` `read` | yes | - | - | - |
 | Branding | `/settings/branding` | `branding` `read` | yes | yes | - | - |
 | Invoice numbering and payment details | `/settings/invoice-settings` | `branding` `read` | yes | yes | - | - |
 | Invoice templates | `/settings/invoice-templates` | `branding` `read` | yes | yes | - | - |

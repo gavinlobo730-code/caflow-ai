@@ -172,6 +172,16 @@ PERMISSIONS: dict[str, dict[str, set[str]]] = {
         # services/journal_approval_rule).
         "approve": _PARTNER_ONLY,
     },
+    # ── The audit log, a permission of its own (POST-A-550) ─────────────────────
+    # The firm's audit log says who changed which client, document and ledger entry, and when. It was read on
+    # `accounting` `approve`, the permission that approves a manual journal and locks a year, so a Partner who let a
+    # Manager approve journals had also handed them the whole log, and the tick screen had to say so beside the tick.
+    # Approving in the books and reading who did what are two decisions; this is the second one's own pair. A Partner's to
+    # start with, like the pair it was read on, so a firm that has ticked nothing sees no change. Asked by BOTH audit
+    # routes (the firm's log and the history of one record): one record's history is the same log asked about one row.
+    "audit": {
+        "read": _PARTNER_ONLY,
+    },
     # ── Banking — deliberately looser than `accounting`, and the reason matters.
     # Categorising a bank statement is the work a practice HIRES someone to do:
     # mechanical, high-volume, and reversible (a correction is an append-only
