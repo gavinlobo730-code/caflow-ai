@@ -5,14 +5,14 @@ THE DEFECT
     Executive or Manager who is assigned seven of the firm's sixty clients was told the firm's overdue tasks, overdue
     compliance, high-risk clients and open risks. The AI copilot put those counts into the model's prompt (`/api/ai-copilot/chat`
     and `/api/ai-copilot/firm-context`), and `/api/risks/stats` and `/api/risks/firm/score` served them to the caller as they
-    were. No client is named in a count, and no screen reads these routes today, so the exposure was small: but the executive
+    were (those two routes were retired on 22-11-2026, POST-A-548: no screen called them). No client is named in a count, and no screen reads these routes today, so the exposure was small: but the executive
     dashboard, the compliance summary and the client list beside them all answer for the caller's clients, and a figure that
     disagrees with the list next to it is a figure nobody can check.
 
 WHAT IS HELD
     * with a client set, every figure counts only those clients (a row with no client is firm-level and stays); an EMPTY set is
       "no clients" and not "no filter"; `None` is unrestricted and is unchanged;
-    * the four router doors pass the caller's `effective_client_ids` to the count functions (behaviour), and a call site that
+    * the copilot's two doors pass the caller's `effective_client_ids` to the count functions (behaviour), and a call site that
       forgets the keyword fails the scan (rule), with a negative control and a floor so the scan cannot go vacuous.
 """
 from __future__ import annotations
@@ -148,32 +148,15 @@ def test_scoped_risk_stats_count_the_callers_clients(risks):
     assert risk_engine.get_risk_dashboard_stats(firm_id=FIRM, allowed_client_ids=set())["total_open"] == 0
 
 
-def test_the_firm_score_is_scoped_too(risks):
-    full = risk_engine.compute_firm_risk_score(firm_id=FIRM)
-    only_c2 = risk_engine.compute_firm_risk_score(firm_id=FIRM, allowed_client_ids={"c2"})
-    nobody = risk_engine.compute_firm_risk_score(firm_id=FIRM, allowed_client_ids=set())
-    assert nobody == 0 and only_c2 != 0 and full != 0
-    assert only_c2 == risk_engine.compute_firm_risk_score(
-        firm_id=FIRM, allowed_client_ids={"c2"}), "the same scope must give the same score"
-
-
 # ── the doors ─────────────────────────────────────────────────────────────────────────────────────────
 
 SCOPED_USER = {"id": "u1", "auth_user_id": "a1", "firm_id": FIRM, "role": "Executive", "email": "e@f"}
 SCOPE = {"c1"}
 
 
-def test_the_risk_routes_pass_the_callers_clients(monkeypatch):
-    import routers.risks as mod
-    seen = {}
-    monkeypatch.setattr(mod, "effective_client_ids", lambda u: SCOPE)
-    monkeypatch.setattr(mod, "get_risk_dashboard_stats",
-                        lambda firm_id=None, allowed_client_ids="unset": seen.setdefault("stats", allowed_client_ids) and {})
-    monkeypatch.setattr(mod, "compute_firm_risk_score",
-                        lambda firm_id=None, allowed_client_ids="unset": seen.setdefault("score", allowed_client_ids) and 0)
-    mod.risk_stats(current_user=SCOPED_USER)
-    mod.firm_score(current_user=SCOPED_USER)
-    assert seen == {"stats": SCOPE, "score": SCOPE}
+# The two routes that served the document-risk counts and the firm's score (`/api/risks/stats`, `/api/risks/firm/score`) were
+# RETIRED on 22-11-2026 with the score's function (POST-A-548): no screen called them and nothing records a document risk.
+# The counts' one remaining door is the copilot's firm context, tried next, and the rule below still holds over every router.
 
 
 def test_the_copilot_doors_pass_the_callers_clients(monkeypatch):
@@ -212,7 +195,7 @@ def test_the_copilot_doors_pass_the_callers_clients(monkeypatch):
 
 # ── the rule: no door asks for these counts without a scope ───────────────────────────────────────────
 
-COUNT_FUNCTIONS = {"get_dashboard_summary", "get_risk_dashboard_stats", "compute_firm_risk_score"}
+COUNT_FUNCTIONS = {"get_dashboard_summary", "get_risk_dashboard_stats"}
 
 
 def _unscoped_calls(source: str) -> list[int]:
@@ -243,7 +226,9 @@ def test_the_scan_has_something_to_scan():
             if isinstance(n, ast.Call)
             and (getattr(n.func, "attr", None) or getattr(n.func, "id", None)) in COUNT_FUNCTIONS)
         for src in _router_sources().values())
-    assert total >= 6, f"expected the six router call sites, found {total}: the scan has gone vacuous"
+    # Four since 22-11-2026 (POST-A-548): the two routes that served the risk counts and the score were retired, and the
+    # copilot's two doors ask for the task counts and the risk counts each.
+    assert total >= 4, f"expected the four router call sites, found {total}: the scan has gone vacuous"
 
 
 def test_negative_control_a_call_without_the_scope_is_found():

@@ -6178,13 +6178,9 @@ export const api = {
   // /api/document-intelligence-v2 (called directly via fetch() from the
   // pages that use them, e.g. app/clients/[id]/purchases/page.tsx).
   risks: {
-    list: (params?: Record<string, string>) => request(`/api/risks${params ? "?" + new URLSearchParams(params) : ""}`),
-    stats: () => request("/api/risks/stats"),
-    clientRisks: (clientId: string) => request(`/api/risks/client/${clientId}`),
-    update: (riskId: string, data: unknown) => request(`/api/risks/${riskId}`, { method: "PATCH", body: JSON.stringify(data) }),
-    firmScore: () => request("/api/risks/firm/score"),
-    // The firm-wide statutory register. A SEPARATE endpoint from `list`, which
-    // reads `document_risks`; see routers/risks.py for why they are not one.
+    // The firm-wide statutory register, and the only route on this prefix: the five over the risks recorded against
+    // documents (list, stats, one client's, the firm's score and the update) were retired on 22-11-2026 (POST-A-548).
+    // No screen called them and nothing records such a risk; see routers/risks.py.
     register: () => request("/api/risks/register"),
   },
   aiInsights: {

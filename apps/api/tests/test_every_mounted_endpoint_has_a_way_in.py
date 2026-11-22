@@ -167,8 +167,10 @@ BUDGET: dict[str, int] = {
     # /api/risks 5 -> 3 on 24-09-2026: `app/risks/page.tsx` derived its
     # whole register in the browser from six PostgREST reads and called no
     # endpoint on this prefix at all. It asks GET /register now, and the
-    # ratchet credits what that screen reaches.
-    "/api/risks": 4,
+    # ratchet credits what that screen reaches. 4 -> 0 on 22-11-2026 (POST-A-548):
+    # the five routes over the risks recorded against documents were RETIRED with
+    # their tests (no screen called them and nothing records such a risk), so the
+    # prefix holds the register alone and its line is gone.
     # /api/compliance 4 -> 3 on 01-10-2026 (practice_management-17):
     # `GET /obligations/calendar` had a `lib/api` method and no screen — the
     # firm Calendar built its deadlines in the browser instead. It is that
@@ -225,9 +227,9 @@ BUDGET: dict[str, int] = {
     # Delete, as a GSTR-3B's always did), and four reads of one record that no screen opens were DELETED with their tests:
     # `GET /notices/{notice_id}`, `GET /gstr2b/{upload_id}`, `GET /form26as/{upload_id}` and `GET /api/approvals/{request_id}`. So
     # /api/document-intelligence-v2 2 -> 1, /api/gst-workspace 2 -> 0 (its line is gone), /api/tds-workspace 2 -> 1, /api/approvals 2 -> 1.
-    # STILL OWED, each on a line that says why: `PATCH /api/risks/{risk_id}` is one of five document-risk routes with no screen, and a
-    # screen for them or their retirement is one decision (POST-A-548); `GET` and `DELETE /api/invoices/{invoice_id}` are the earlier fee
-    # engine's, whose routes are retired together under POST-B-193.
+    # STILL OWED, on a line that says why: `GET` and `DELETE /api/invoices/{invoice_id}` are the earlier fee engine's, whose routes are
+    # retired together under POST-B-193. (`PATCH /api/risks/{risk_id}` was one of five document-risk routes with no screen; all five were
+    # retired on 22-11-2026, POST-A-548.)
     # /api/gst-workspace and /api/workload 1 -> 0 on 7-11-2026 (POST-A-374): the two routes that had raised them from 0 to 1 on 2-11-2026 were
     # DELETED, not wired. `GET /gstr1/{return_id}` (read one return) and `GET /api/workload/{user_id}` (read one member's workload) had no
     # screen that called them (their static siblings `/gstr1/advances`, `/gstr1/exceptions`, `/gstr1/amendments`; `/capacity`,
@@ -339,7 +341,8 @@ NOT_REACHED_BY_A_SCREEN: dict[tuple[str, str], str] = {
 # was there and the number could not see it.
 # 194 -> 193 on 21-11-2026 (POST-B-194): `POST /api/invoices/from-time/{engagement_id}` deleted, and `/api/invoices` fell 4 -> 3.
 # 193 -> 188 on 21-11-2026 (POST-A-547 closed): one route wired and four deleted, as the note in BUDGET says.
-TOTAL_BUDGET = 188
+# 188 -> 184 on 22-11-2026 (POST-A-548): the document-risk routes retired, and `/api/risks` fell 4 -> 0 (its line is gone).
+TOTAL_BUDGET = 184
 
 
 # ---------------------------------------------------------------------------
