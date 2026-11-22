@@ -52,7 +52,8 @@ def test_calling_it_end_to_end_returns_something_the_browser_can_redeem(monkeypa
     eps.MOCK_EMPLOYEES.append({
         "id": "emp-1", "firm_id": "f1", "client_id": "c1", "name": "Test Employee",
         "email": "employee@example.test", "auth_user_id": None,
-        "portal_invite_token_hash": eps.token_hash("tok-1"),
+        # The stored form of an invitation the server mailed (POST-A-552): the only kind a sign-in is opened for.
+        "portal_invite_token_hash": eps.stored_form("tok-1"),
         "portal_invite_expires_at": "2099-01-01T00:00:00+00:00",
     })
     body = portal_self.MintEmployeeActivationSessionBody(token="tok-1")
