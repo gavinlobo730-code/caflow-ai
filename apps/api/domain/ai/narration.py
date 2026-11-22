@@ -46,6 +46,7 @@ def _canonical(token: str) -> str | None:
     try:
         d = Decimal(token.replace(",", ""))
     except InvalidOperation:
+        # The token is not a number: it is not one of the figures a narration is checked against.
         return None
     text = format(d.normalize(), "f")
     return text

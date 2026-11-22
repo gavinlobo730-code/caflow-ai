@@ -415,6 +415,7 @@ def _to_role(role: str) -> Role:
         try:
             return Role(candidate)
         except ValueError:
+            # This spelling is not the enum's: try the next. A role none of them match is RAISED below, not swallowed.
             continue
     # Legacy/foreign vocabulary.
     mapped = LEGACY_ROLE_MAP.get(role.strip().lower())
@@ -434,6 +435,7 @@ def canonical_role(role: str | None) -> str | None:
     try:
         return _to_role(role).value
     except ValueError:
+        # The stated contract (docstring): None for anything that is not a role, never a guessed one.
         return None
 
 
@@ -450,6 +452,7 @@ def can(role: str, resource: str, action: str) -> bool:
     try:
         r = _to_role(role)
     except ValueError:
+        # An unknown role holds no permission: the answer is no.
         return False
     resource_perms = PERMISSIONS.get(resource, {})
     allowed_roles = resource_perms.get(action, set())
@@ -612,6 +615,7 @@ def is_at_least(role: str, minimum: str) -> bool:
     try:
         return ROLE_HIERARCHY.index(_to_role(role)) >= ROLE_HIERARCHY.index(_to_role(minimum))
     except ValueError:
+        # A role that is not a role is below every minimum: the answer is no.
         return False
 
 

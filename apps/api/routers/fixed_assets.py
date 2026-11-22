@@ -245,6 +245,7 @@ def _wdv_residual_at_end_of_life(asset: dict, rate: Decimal) -> int:
     try:
         life = int(asset.get("useful_life_years") or 0)
     except (TypeError, ValueError):
+        # No usable life: 0, no floor of its own (docstring); register-integrity names those rows.
         return 0
     if life < 1:
         return 0
@@ -2290,6 +2291,7 @@ def _marker_claimed_at(asset: dict) -> Optional[datetime]:
     try:
         claimed = datetime.fromisoformat(str(asset.get("depreciation_reversal_claimed_at")).replace("Z", "+00:00"))
     except (TypeError, ValueError):
+        # The marker's stamp cannot be read: None (docstring), and the reader says the start time could not be read and lets the reversal be finished.
         return None
     return claimed if claimed.tzinfo else claimed.replace(tzinfo=timezone.utc)
 
@@ -2546,6 +2548,7 @@ def _was_passed(asset: dict, period: str) -> bool:
     try:
         monthly, annual, _fy, _open = _month_charge(asset, period)
     except ValueError:
+        # The month's charge cannot be worked out for this row: it is not shown as a month passed with no journal.
         return False
     return annual > 0 and monthly <= 0
 

@@ -52,6 +52,7 @@ def rate_percent_violation(v: Optional[float]) -> Optional[str]:
     try:
         rate = float(v)
     except (TypeError, ValueError):
+        # Not a number: the answer IS the sentence saying so.
         return "A GST rate must be a number."
     if rate != rate:  # NaN, which every comparison below would pass
         return "A GST rate must be a number."

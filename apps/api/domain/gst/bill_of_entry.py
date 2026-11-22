@@ -119,6 +119,7 @@ def assessment_of(row: dict[str, Any]) -> Assessment:
         try:
             return int(row.get(key) or 0)
         except (TypeError, ValueError):
+            # An integer column, or its absence: NULL counts as 0 and nothing else is stored there.
             return 0
 
     return Assessment(

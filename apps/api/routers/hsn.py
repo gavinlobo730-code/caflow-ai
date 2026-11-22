@@ -46,6 +46,7 @@ def _pct_to_bps(pct) -> Optional[int]:
     try:
         return int(round(float(pct) * 100))
     except (TypeError, ValueError):
+        # gst_rate_pct is NUMERIC or NULL; anything else is no rate (None), never 0%.
         return None
 
 

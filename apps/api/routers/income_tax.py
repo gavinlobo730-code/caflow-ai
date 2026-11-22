@@ -111,6 +111,7 @@ def _chapter_vi_a_claims(inp: "ChapterVIAInput") -> ChapterVIAClaims:
         try:
             sanctioned = _date.fromisoformat(raw[:10])
         except ValueError:
+            # Text that is not a date: no sanction date is passed on. The docstring says why none is assumed: there is no safe default.
             sanctioned = None
     return ChapterVIAClaims(
         education_loan_interest_paise=inp.education_loan_interest_paise,

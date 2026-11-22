@@ -435,6 +435,7 @@ def _as_uuid(value: Optional[str]) -> Optional[str]:
     try:
         return str(uuid.UUID(str(value)))
     except (ValueError, AttributeError):
+        # Not a UUID (a test's stand-in user): the usage row is written with no person rather than refused by the column's type.
         return None
 
 

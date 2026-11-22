@@ -146,6 +146,7 @@ def _day_of(value) -> Optional[date]:
     try:
         return date.fromisoformat(str(value or "")[:10])
     except ValueError:
+        # No date a calendar can use (docstring): the row has no day in the feed, never a made-up one.
         return None
 
 

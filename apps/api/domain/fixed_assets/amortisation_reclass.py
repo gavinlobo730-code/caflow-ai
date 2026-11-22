@@ -57,6 +57,7 @@ def month_end_problem(iso: str) -> Optional[str]:
     try:
         d = date.fromisoformat(iso)
     except ValueError:
+        # Not a date: the answer IS the sentence asking for one, which the caller shows.
         return "Say the date the reclassification is as at, as YYYY-MM-DD."
     if d.day != calendar.monthrange(d.year, d.month)[1]:
         return ("The reclassification is as at a month end, for example 31 March or 30 September: depreciation is posted at month ends, "

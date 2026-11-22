@@ -14,13 +14,16 @@ THE RULE (stated, not spelled)
     WHOLE body is a constant substitution (`pass`, `continue`, `return <constant>`, `name = <constant>`) must carry a comment inside it
     of ten characters or more saying why that is right (a value that is optional by design, not read from a stored record), or
     report through `core.observability.capture_soft_failure`, which makes it no longer a constant substitution. One that does neither
-    is a finding. The tree today holds `BASELINE` of them, frozen BY FILE AND FUNCTION; the list may only shrink: a handler that is
-    fixed or commented is deleted from it, and a new one is refused.
+    is a finding. On 20-11-2026 the tree held 146 of them, frozen BY FILE AND FUNCTION in a baseline that could only shrink. On
+    22-11-2026 each was read: 142 carry their reason inside the handler, and four that guarded a stored record report now (an
+    invoice's date in two places, a member of a recorded ECR, and the answer of the unrecorded-stock function). THE BASELINE IS
+    EMPTY, so a new one is refused outright.
 
 WHAT IT DOES NOT CLAIM
-    It does not say the frozen ones are right. They were counted by shape and not read one by one (about a hundred and fifty), and
-    each is a candidate for the same fix, which is why the baseline names them; the ledger line POST-A-505 stays open for reading
-    them. A handler that returns a computed value, or calls anything, is not this shape and is not judged here.
+    A reason written inside a handler is a person's reading, and the scan checks that one is there (ten characters), not that it is
+    true. One reading found a real defect that a comment could only name: a bank statement's amount cell that is not a number is
+    read as nil and the row is not named (POST-A-551). A handler that returns a computed value, or calls anything, is not this shape
+    and is not judged here.
 """
 from __future__ import annotations
 
@@ -83,8 +86,11 @@ def _function_name(tree: ast.AST, target: ast.ExceptHandler) -> str:
     return best
 
 
-def silent_substitutions(relative: str, source: str) -> list[tuple[str, str, int]]:
-    """(file, function, line) of each narrow handler that is only a constant substitution and says nothing why."""
+def silent_substitutions(relative: str, source: str, *, include_explained: bool = False) -> list[tuple[str, str, int]]:
+    """(file, function, line) of each narrow handler that is only a constant substitution and says nothing why.
+
+    With `include_explained`, the ones that DO carry their reason are returned too: the shape itself, which is what the check that
+    the scan still sees the tree counts now that the unexplained ones are none."""
     tree = ast.parse(source)
     lines = source.splitlines()
     out = []
@@ -95,18 +101,18 @@ def silent_substitutions(relative: str, source: str) -> list[tuple[str, str, int
             continue
         end = n.end_lineno or n.lineno
         inside = "\n".join(lines[n.lineno - 1:end])
-        if re.search(r"#[^\n]{10,}", inside):
+        if re.search(r"#[^\n]{10,}", inside) and not include_explained:
             continue
         out.append((relative, _function_name(tree, n), n.lineno))
     return out
 
 
-def _tree_findings() -> list[tuple[str, str, int]]:
+def _tree_findings(*, include_explained: bool = False) -> list[tuple[str, str, int]]:
     found: list[tuple[str, str, int]] = []
     for top in TREE:
         for path in sorted((API_ROOT / top).rglob("*.py")):
             relative = path.relative_to(API_ROOT).as_posix()
-            found.extend(silent_substitutions(relative, path.read_text(encoding="utf-8")))
+            found.extend(silent_substitutions(relative, path.read_text(encoding="utf-8"), include_explained=include_explained))
     return found
 
 
@@ -148,8 +154,23 @@ def test_a_computed_return_is_still_not_this_shape():
 
 
 def test_the_scan_sees_the_tree_it_claims_to():
-    now = _counts(_tree_findings())
-    assert sum(now.values()) >= 100, "the scan stopped recognising the shape: the baseline is no longer a count of anything"
+    """The shape is still in the tree and still recognised: counted WITH the handlers that say why, because since 22-11-2026 the ones
+    that do not are none, and a scan that found nothing because it had gone blind would look exactly like that."""
+    shape = _tree_findings(include_explained=True)
+    assert len(shape) >= 100, "the scan stopped recognising the shape: an empty list of findings would then mean nothing"
+
+
+def test_every_handler_of_the_shape_was_read_and_none_is_frozen():
+    """POST-A-505's reading is done: the baseline is empty, and nothing of the shape is left without its reason."""
+    assert json.loads(BASELINE_FILE.read_text(encoding="utf-8"))["frozen"] == {}
+    assert _tree_findings() == []
+
+
+def test_a_handler_that_says_why_is_the_shape_and_is_not_a_finding():
+    explained = ("def f(x):\n    try:\n        return int(x)\n    except ValueError:\n"
+                 "        # not a number: there is no figure, which the caller says\n        return None\n")
+    assert silent_substitutions("x.py", explained) == []
+    assert silent_substitutions("x.py", explained, include_explained=True) == [("x.py", "f", 4)]
 
 
 # ── negative controls: the rule finds the shape it was written for ─────────────────────────────────────────────────────────────

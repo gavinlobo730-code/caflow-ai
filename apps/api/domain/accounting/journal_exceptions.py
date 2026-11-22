@@ -157,6 +157,8 @@ def _date(value) -> Optional[date]:
     try:
         return date.fromisoformat(str(value)[:10])
     except (TypeError, ValueError):
+        # Not a date. A DATE or timestamp column always reads back as ISO text, so a stored one never lands here: this is an absent value or text that
+        # was never a date, and None says there is none.
         return None
 
 
@@ -167,6 +169,8 @@ def _instant(value) -> Optional[datetime]:
     try:
         got = datetime.fromisoformat(text.replace("Z", "+00:00"))
     except ValueError:
+        # Not a timestamp. A timestamptz column always reads back as ISO text, so a stored instant never lands here: this is an absent value or a
+        # hand-built one, and None says there is no instant.
         return None
     return got if got.tzinfo else got.replace(tzinfo=timezone.utc)
 

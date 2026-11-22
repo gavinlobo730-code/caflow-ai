@@ -33,6 +33,7 @@ def months_before(first_month: date, fy: str, joining_date: Optional[str]) -> Op
         try:
             joined = date.fromisoformat(str(joining_date)[:10])
         except ValueError:
+            # The joining date cannot be read: None, and the caller bounds by the months from April instead (docstring).
             return None
         if joined > fy_start:
             begin = date(joined.year, joined.month, 1)

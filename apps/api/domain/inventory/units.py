@@ -107,6 +107,7 @@ def _decimal(value) -> Optional[Decimal]:
     try:
         d = Decimal(str(value))
     except (InvalidOperation, ValueError, TypeError):
+        # Not a number: None, and problem_with_pair answers 'The conversion factor must be a number.'
         return None
     return d if d.is_finite() else None
 

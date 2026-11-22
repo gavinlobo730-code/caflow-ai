@@ -207,6 +207,7 @@ def _working_days(db, *, firm_id: str, accounting_year: str,
         try:
             pair = (int(r.get("year")), int(r.get("month")))
         except (TypeError, ValueError):
+            # year and month are integer columns; a row without them belongs to no month and is not counted.
             continue
         if pair not in wanted:
             continue

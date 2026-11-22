@@ -50,6 +50,7 @@ def _role(user: dict) -> Optional[Role]:
     try:
         return _to_role(str(user.get("role", "")))
     except ValueError:
+        # An unknown role is no role: None is in no set of firm-wide roles, so the caller is assignment-scoped (the narrower answer).
         return None
 
 

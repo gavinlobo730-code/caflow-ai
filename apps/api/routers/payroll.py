@@ -135,6 +135,7 @@ def _fy_for_month(month: str) -> Optional[str]:
     try:
         y, m = int(month[:4]), int(month[5:7])
     except (ValueError, IndexError):
+        # Not a YYYY-MM month: None, no financial year, never a guessed one.
         return None
     start = y if m >= 4 else y - 1
     return f"{start}-{str(start + 1)[2:]}"
@@ -2522,6 +2523,7 @@ def _payroll_retention_refusal(db, firm_id: str, slips: list[dict]) -> str:
             year, month = str(run.get("month") or "").split("-")[:2]
             starts.append(date(int(year), int(month), 1))
         except (ValueError, TypeError):
+            # An unreadable month is dropped rather than guessed (the note above the loop says why it is parsed).
             continue
 
     fy = ist_fy_label(max(starts)) if starts else None
@@ -3276,6 +3278,8 @@ def _parse_timestamp(value) -> Optional[datetime]:
     try:
         return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
     except ValueError:
+        # Not a timestamp. A timestamptz column always reads back as ISO text, so a stored instant never lands here: this is an absent value or a
+        # hand-built one, and None says there is no instant.
         return None
 
 
@@ -3311,6 +3315,7 @@ def _stamp_attendance_staleness(db, run: dict, slips: list[dict]) -> None:
     try:
         year, month = int(month_str[:4]), int(month_str[5:7])
     except (ValueError, IndexError):
+        # The run's month cannot be read: every slip keeps the False set above (no staleness is claimed).
         return
 
     emp_ids = [s.get("employee_id") for s in slips if s.get("employee_id")]
@@ -8638,6 +8643,7 @@ def _fixed_term_for_gratuity(emp: dict, on: date, stated_expired: bool = False) 
     try:
         end_date = date.fromisoformat(str(end)[:10]) if end else None
     except ValueError:
+        # fixed_term_end_date is a DATE column; unreadable text is no recorded end date, so expiry rests on what the person stated.
         end_date = None
     return {
         "fixed_term": recorded,

@@ -37,6 +37,7 @@ from typing import Optional
 from core import db_provider
 from core.db_paging import fetch_all
 from core.db_provider import privileged_for
+from core.observability import capture_soft_failure
 from domain.inventory import stock_effect as stock_effects
 from domain.inventory import stock_settlement
 
@@ -119,7 +120,10 @@ def unrecorded_documents(db, *, firm_id: str, client_id: str) -> Optional[dict]:
         return None
     try:
         total = int(data.get("total"))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError) as unreadable:
+        # The database function answered in a shape this reader does not know. That is "could not check" (None), never an empty
+        # list, and it is said: every screen that asks would otherwise show nothing for as long as the shape stays wrong (POST-A-505).
+        capture_soft_failure(unreadable, operation="stock_effect.unrecorded_documents_shape", firm_id=firm_id, client_id=client_id)
         return None
     return {"total": total, "documents": data["documents"]}
 

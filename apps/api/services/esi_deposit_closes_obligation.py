@@ -141,6 +141,8 @@ def _as_date(value: Any) -> Optional[date]:
     try:
         return date.fromisoformat(str(value or "")[:10])
     except ValueError:
+        # Not a date. A DATE or timestamp column always reads back as ISO text, so a stored one never lands here: this is an absent value or text that
+        # was never a date, and None says there is none.
         return None
 
 
@@ -234,6 +236,7 @@ def note_after_retraction(*, db, firm_id: str, client_id: str, remittance: dict)
     try:
         month_start = date(int(wage_month[:4]), int(wage_month[5:7]), 1)
     except (ValueError, IndexError):
+        # No readable wage month on the remittance: there is no obligation to look up, so no sentence is added.
         return None
     record = next((r for r in compliance_records_repo.find_all(firm_id=firm_id, client_id=client_id, compliance_type=COMPLIANCE_TYPE)
                    if r.get("obligation_type") == OBLIGATION_TYPE and str(r.get("period_start") or "")[:10] == month_start.isoformat()),

@@ -100,6 +100,7 @@ def _as_ip(value: str) -> Optional[str]:
     try:
         return str(ipaddress.ip_address(host))
     except ValueError:
+        # Not an address (a name, or text a client typed into a forwarding header): None, and the caller falls back to the socket's own peer.
         return None
 
 

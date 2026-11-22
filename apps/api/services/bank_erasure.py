@@ -56,6 +56,8 @@ def _parse(value: str | None) -> date | None:
     try:
         return date.fromisoformat(value[:10])
     except ValueError:
+        # Not a date. A DATE or timestamp column always reads back as ISO text, so a stored one never lands here: this is an absent value or text that
+        # was never a date, and None says there is none.
         return None
 
 

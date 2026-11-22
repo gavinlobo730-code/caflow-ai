@@ -166,6 +166,7 @@ def invoice_is_payable(status: Optional[str], outstanding_paise: Optional[int]) 
     try:
         owed = int(outstanding_paise or 0)
     except (TypeError, ValueError):
+        # An amount owed that cannot be read is not payable: Pay online is offered only on a known figure.
         return False
     return (status or "").strip().lower() in PAYABLE_STATUSES and owed > 0
 
@@ -205,6 +206,8 @@ def _parse_instant(value: object) -> Optional[datetime]:
     try:
         parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
     except ValueError:
+        # Not a timestamp. A timestamptz column always reads back as ISO text, so a stored instant never lands here: this is an absent value or a
+        # hand-built one, and None says there is no instant.
         return None
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 

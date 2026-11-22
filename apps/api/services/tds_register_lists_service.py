@@ -127,6 +127,7 @@ def _days_since(payment_date, today) -> Optional[int]:
     try:
         days = (today - date.fromisoformat(paid)).days if paid else None
     except ValueError:
+        # The payment date cannot be read: None (docstring), no count of days, never 0 days.
         return None
     return days if days is not None and days >= 0 else None
 

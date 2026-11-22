@@ -43,6 +43,7 @@ def _role_gte(role: str, minimum: str) -> bool:
     try:
         return _ROLE_HIERARCHY.index(role) >= _ROLE_HIERARCHY.index(minimum)
     except ValueError:
+        # A role outside the hierarchy is below every minimum: the answer is no.
         return False
 
 

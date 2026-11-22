@@ -363,6 +363,8 @@ class TDSComputer:
             resolution = self.resolve_tds(
                 section, payment_amount_paise, is_company=is_company, fy=fy)
         except ValueError:
+            # 0 for a section the engine cannot answer for is this calculator's stated contract (docstring); bill posting goes through resolve_tds,
+            # which refuses with its reason.
             return 0
         return resolution.tds_paise
 
@@ -553,6 +555,7 @@ class TDSComputer:
         try:
             return quarter_dates(financial_year, quarter)[1]
         except (ValueError, IndexError):
+            # Bad input: an empty header date here; validation reports the real error (docstring).
             return ""
 
     def _validate_26q(self, payload: TDS26QPayload) -> list[str]:

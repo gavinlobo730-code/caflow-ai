@@ -34,6 +34,7 @@ from typing import Optional
 from core.ist_clock import ist_now, ist_today
 from domain.payroll import ecr_sequence as seq
 from core.db_provider import privileged_for
+from core.observability import capture_soft_failure
 
 _logger = logging.getLogger("caflow.epfo_ecr")
 
@@ -80,7 +81,11 @@ def _members_from_row(raw) -> tuple[seq.FiledMember, ...]:
                 epf_wages=int(m.get("epf_wages") or 0),
                 epf_contribution=int(m.get("epf_contribution") or 0),
                 eps_contribution=int(m.get("eps_contribution") or 0)))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError) as unreadable:
+            # A member of a recorded filing whose figures are not whole numbers was not written by this product's ECR build, which
+            # stores integers. The member is left out of the comparison, and that is said, because a member missing from it can hide
+            # a gap in the sequence. The UAN is not sent with the report (POST-A-505).
+            capture_soft_failure(unreadable, operation="epfo_ecr.filed_member_unreadable")
             continue
     return tuple(out)
 

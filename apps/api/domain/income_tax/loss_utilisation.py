@@ -116,6 +116,7 @@ def _paise(value: Any) -> int:
     try:
         return max(0, int(value or 0))
     except (TypeError, ValueError):
+        # A stored integer count of paise; anything else is 0 (docstring): a missing or NULL column is not a negative.
         return 0
 
 

@@ -77,6 +77,7 @@ def _as_ip(text: str):
     try:
         return ipaddress.ip_address(text)
     except ValueError:
+        # A name and not an address literal: None is the answer the docstring describes, not a failure.
         return None
 
 

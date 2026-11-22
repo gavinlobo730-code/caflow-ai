@@ -61,6 +61,8 @@ def _p(extracted: dict, key: str) -> int:
     try:
         return int(extracted.get(key) or 0)
     except (TypeError, ValueError):
+        # A figure a model garbled is not a whole number of paise: it counts as nil here, which is below the one-rupee floor these checks treat as
+        # nil.
         return 0
 
 

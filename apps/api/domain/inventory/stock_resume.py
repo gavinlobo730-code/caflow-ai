@@ -142,6 +142,7 @@ def _paise(row: dict) -> int:
     try:
         return int(row.get("value_delta_paise") or 0)
     except (TypeError, ValueError):
+        # An integer column, or its absence: NULL counts as 0 and nothing else is stored there.
         return 0
 
 
@@ -158,6 +159,7 @@ def _same_value(row: dict, cost_paise: int) -> bool:
     try:
         return int(row.get("value_delta_paise")) == int(cost_paise)
     except (TypeError, ValueError):
+        # A row with no readable value is not shown to hold the line's whole cost: the stricter answer.
         return False
 
 

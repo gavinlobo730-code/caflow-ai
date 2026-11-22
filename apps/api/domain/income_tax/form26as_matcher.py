@@ -298,6 +298,7 @@ def _date_distance(a: Optional[str], b: Optional[str]) -> int:
         try:
             return _date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
         except ValueError:
+            # Shaped like a date and not one (2026-02-30): no date for this row.
             return None
     da, db = _parse(a), _parse(b)
     if da is None or db is None:

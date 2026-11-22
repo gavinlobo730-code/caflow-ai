@@ -135,6 +135,7 @@ def _days_between(a: str, b: str) -> Optional[int]:
     try:
         return abs((date.fromisoformat(a[:10]) - date.fromisoformat(b[:10])).days)
     except (ValueError, TypeError):
+        # One of the two days cannot be read: there is no gap to measure (None), never a gap of 0.
         return None
 
 
