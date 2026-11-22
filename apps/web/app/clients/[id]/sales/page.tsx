@@ -88,6 +88,7 @@ import { StateLookup } from "@/components/lookups/StateLookup";
 import { DrCr, sideOf } from "@/components/ui/drcr";
 import { formatPaiseBare } from "@/lib/money/format";
 import { Callout } from "@/components/ui/callout";
+import { RowMenu } from "@/components/ui/row-menu";
 import { Modal } from "@/components/ui/modal";
 import { objectWithLists } from "@/lib/api/shape";
 import { readOnlinePayment } from "@/lib/payments/onlinePayment";
@@ -2242,12 +2243,7 @@ function SalesInvoices({
         const inv = scoped.find((x) => x.id === menu.id);
         if (!inv) return null;
         return (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
-            <div
-              className="fixed z-50 w-48 bg-white rounded-lg border border-ps-border shadow-lg py-1 text-xs"
-              style={{ top: menu.top, bottom: menu.bottom, left: menu.left }}
-            >
+          <RowMenu place={menu} widthClass="w-48" onClose={() => setMenu(null)}>
               <button onClick={() => { setMenu(null); setDetailId(inv.id); }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                 <Eye size={13} /> View details
@@ -2303,8 +2299,7 @@ function SalesInvoices({
                   )}
                 </>
               )}
-            </div>
-          </>
+          </RowMenu>
         );
       })()}
 
@@ -2419,6 +2414,7 @@ function SalesInvoices({
             )}
             <button
               onClick={(e) => openMenuFor(e, inv)}
+              aria-haspopup="true" aria-expanded={menu?.id === inv.id}
               aria-label={`Actions for invoice ${inv.invoice_no}`}
               className="p-1 rounded hover:bg-ps-muted text-ps-label"
             >
@@ -3450,12 +3446,7 @@ function Customers({
         const c = customers.find((x) => x.id === menu.id);
         if (!c) return null;
         return (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
-            <div
-              className="fixed z-50 w-44 bg-white rounded-lg border border-ps-border shadow-lg py-1 text-xs"
-              style={{ top: menu.top, bottom: menu.bottom, left: menu.left }}
-            >
+          <RowMenu place={menu} widthClass="w-44" onClose={() => setMenu(null)}>
               {mayEditParty && (
                 <button onClick={() => { setMenu(null); setEditCustomer(c); setShowForm(true); }}
                   className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
@@ -3488,8 +3479,7 @@ function Customers({
                   <Trash2 size={13} /> Delete
                 </button>
               )}
-            </div>
-          </>
+          </RowMenu>
         );
       })()}
 
@@ -3549,6 +3539,7 @@ function Customers({
         rowActions={(c) => (
           <button
             onClick={(e) => openMenuFor(e, c)}
+            aria-haspopup="true" aria-expanded={menu?.id === c.id}
             aria-label={`Actions for ${c.name}`}
             className="p-1 rounded hover:bg-ps-muted text-ps-label"
           >
@@ -4714,12 +4705,7 @@ function CreditNotes({
         const c = creditNotes.find((x) => x.id === menu.id);
         if (!c) return null;
         return (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
-            <div
-              className="fixed z-50 w-44 bg-white rounded-lg border border-ps-border shadow-lg py-1 text-xs"
-              style={{ top: menu.top, bottom: menu.bottom, left: menu.left }}
-            >
+          <RowMenu place={menu} widthClass="w-44" onClose={() => setMenu(null)}>
               <button onClick={() => { setMenu(null); setDetailId(c.id); }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                 View details
@@ -4737,8 +4723,7 @@ function CreditNotes({
                   </Button>
                 </>
               )}
-            </div>
-          </>
+          </RowMenu>
         );
       })()}
 
@@ -4843,6 +4828,7 @@ function CreditNotes({
             )}
             <button
               onClick={(e) => openMenuFor(e, cn)}
+              aria-haspopup="true" aria-expanded={menu?.id === cn.id}
               aria-label={`Actions for credit note ${cn.credit_note_no || cn.id}`}
               className="p-1 rounded hover:bg-ps-muted text-ps-label"
             >
@@ -5143,12 +5129,7 @@ function SalesDebitNotes({
         const d = debitNotes.find((x) => x.id === menu.id);
         if (!d) return null;
         return (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
-            <div
-              className="fixed z-50 w-44 bg-white rounded-lg border border-ps-border shadow-lg py-1 text-xs"
-              style={{ top: menu.top, bottom: menu.bottom, left: menu.left }}
-            >
+          <RowMenu place={menu} widthClass="w-44" onClose={() => setMenu(null)}>
               <button onClick={() => { setMenu(null); setDetailId(d.id); }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                 View details
@@ -5166,8 +5147,7 @@ function SalesDebitNotes({
                   </Button>
                 </>
               )}
-            </div>
-          </>
+          </RowMenu>
         );
       })()}
 
@@ -5272,6 +5252,7 @@ function SalesDebitNotes({
             )}
             <button
               onClick={(e) => openMenuFor(e, dn)}
+              aria-haspopup="true" aria-expanded={menu?.id === dn.id}
               aria-label={`Actions for debit note ${dn.debit_note_no || dn.id}`}
               className="p-1 rounded hover:bg-ps-muted text-ps-label"
             >

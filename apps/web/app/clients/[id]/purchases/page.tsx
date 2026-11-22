@@ -67,6 +67,7 @@ import { postingAccountNotice } from "@/lib/accounting/postingAccountNotice";
 
 import { PossibleDuplicatesNotice, type PossibleDuplicate } from "@/components/parties/PossibleDuplicatesNotice";
 import { Callout } from "@/components/ui/callout";
+import { RowMenu } from "@/components/ui/row-menu";
 import { Modal } from "@/components/ui/modal";
 import { gstinProblem } from "@/lib/gst/gstin";
 import { Button } from "@/components/ui/button";
@@ -1122,6 +1123,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
             )}
             <button
               onClick={(e) => openMenuFor(e, b)}
+              aria-haspopup="true" aria-expanded={menu?.id === b.id}
               aria-label={`Actions for bill ${b.bill_no || b.id}`}
               className="p-1 rounded hover:bg-ps-muted text-ps-label"
             >
@@ -1139,12 +1141,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
         const b = bills.find((x) => x.id === menu.id);
         if (!b) return null;
         return (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
-            <div
-              className="fixed z-50 w-44 bg-white rounded-lg border border-ps-border shadow-lg py-1 text-xs"
-              style={{ top: menu.top, bottom: menu.bottom, left: menu.left }}
-            >
+          <RowMenu place={menu} widthClass="w-44" onClose={() => setMenu(null)}>
               <button onClick={() => { setMenu(null); setDetailId(b.id); }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                 View details
@@ -1190,8 +1187,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
                   </Button>
                 </>
               )}
-            </div>
-          </>
+          </RowMenu>
         );
       })()}
 
@@ -2100,12 +2096,7 @@ function Vendors({ clientId }: { clientId: string }) {
         const v = vendors.find((x) => x.id === menu.id);
         if (!v) return null;
         return (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
-            <div
-              className="fixed z-50 w-44 bg-white rounded-lg border border-ps-border shadow-lg py-1 text-xs"
-              style={{ top: menu.top, bottom: menu.bottom, left: menu.left }}
-            >
+          <RowMenu place={menu} widthClass="w-44" onClose={() => setMenu(null)}>
               {/* apex-sales-purchases-05: the only way back into a vendor's
                   own record — the create form was drop-only, so a GSTIN
                   typo, a §195 residency status or a TDS section could never
@@ -2133,8 +2124,7 @@ function Vendors({ clientId }: { clientId: string }) {
                   <Trash2 size={13} /> Delete
                 </button>
               )}
-            </div>
-          </>
+          </RowMenu>
         );
       })()}
 
@@ -2521,6 +2511,7 @@ function Vendors({ clientId }: { clientId: string }) {
         rowActions={(v) => (
           <button
             onClick={(e) => openMenuFor(e, v)}
+            aria-haspopup="true" aria-expanded={menu?.id === v.id}
             aria-label={`Actions for ${v.name}`}
             className="p-1 rounded hover:bg-ps-muted text-ps-label"
           >
@@ -3670,12 +3661,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
         const d = debitNotes.find((x) => x.id === menu.id);
         if (!d) return null;
         return (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
-            <div
-              className="fixed z-50 w-44 bg-white rounded-lg border border-ps-border shadow-lg py-1 text-xs"
-              style={{ top: menu.top, bottom: menu.bottom, left: menu.left }}
-            >
+          <RowMenu place={menu} widthClass="w-44" onClose={() => setMenu(null)}>
               <button onClick={() => { setMenu(null); setDetailId(d.id); }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                 View details
@@ -3693,8 +3679,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
                   </Button>
                 </>
               )}
-            </div>
-          </>
+          </RowMenu>
         );
       })()}
 
@@ -3782,6 +3767,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
             )}
             <button
               onClick={(e) => openMenuFor(e, d)}
+              aria-haspopup="true" aria-expanded={menu?.id === d.id}
               aria-label={`Actions for debit note ${d.debit_note_no || d.id}`}
               className="p-1 rounded hover:bg-ps-muted text-ps-label"
             >
@@ -4134,12 +4120,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
         const d = creditNotes.find((x) => x.id === menu.id);
         if (!d) return null;
         return (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
-            <div
-              className="fixed z-50 w-44 bg-white rounded-lg border border-ps-border shadow-lg py-1 text-xs"
-              style={{ top: menu.top, bottom: menu.bottom, left: menu.left }}
-            >
+          <RowMenu place={menu} widthClass="w-44" onClose={() => setMenu(null)}>
               <button onClick={() => { setMenu(null); setDetailId(d.id); }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                 View details
@@ -4157,8 +4138,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
                   </Button>
                 </>
               )}
-            </div>
-          </>
+          </RowMenu>
         );
       })()}
 
@@ -4246,6 +4226,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
             )}
             <button
               onClick={(e) => openMenuFor(e, d)}
+              aria-haspopup="true" aria-expanded={menu?.id === d.id}
               aria-label={`Actions for credit note ${d.credit_note_no || d.id}`}
               className="p-1 rounded hover:bg-ps-muted text-ps-label"
             >
