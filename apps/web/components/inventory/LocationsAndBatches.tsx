@@ -31,6 +31,7 @@ import { TableSkeleton } from "@/components/ui/skeleton";
 import { Callout } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
@@ -654,12 +655,19 @@ function GodownModal({ clientId, onClose, onSaved }: {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-      <div className="bg-white rounded-xl w-full max-w-lg shadow-xl">
-        <div className="px-5 py-4 border-b border-ps-border">
-          <h3 className="text-sm font-semibold text-ps-ink">New godown</h3>
-        </div>
-        <div className="px-5 py-4 space-y-3">
+    // The shared dialog (POST-A-130). Its close is held while the godown is being created.
+    <Modal title="New godown" maxWidthClass="max-w-lg" onClose={() => { if (!saving) onClose(); }}
+      footer={<>
+        <button onClick={onClose} disabled={saving}
+          className="px-3 py-1.5 rounded-lg border border-ps-border text-xs text-ps-label disabled:opacity-50">
+          Cancel
+        </button>
+        <Button variant="plain" size="none" onClick={save} disabled={saving || !name.trim()}
+          className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs disabled:opacity-40">
+          Create
+        </Button>
+      </>}>
+        <div className="space-y-3">
           {error && <Callout tone="problem">{error}</Callout>}
           <label className="block text-xs">
             <span className="block text-ps-hint mb-1">Name</span>
@@ -698,18 +706,7 @@ function GodownModal({ clientId, onClose, onSaved }: {
             Stock movements default to this godown
           </label>
         </div>
-        <div className="px-5 py-3 border-t border-ps-border flex justify-end gap-2">
-          <button onClick={onClose} disabled={saving}
-            className="px-3 py-1.5 rounded-lg border border-ps-border text-xs text-ps-label disabled:opacity-50">
-            Cancel
-          </button>
-          <Button variant="plain" size="none" onClick={save} disabled={saving || !name.trim()}
-            className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs disabled:opacity-40">
-            Create
-          </Button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -756,13 +753,20 @@ function BatchModal({ clientId, items, onClose, onSaved }: {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-      {/* The card is bounded by the window and its body scrolls, so on a short window the buttons stay on the screen (POST-A-395). */}
-      <div className="bg-white rounded-xl w-full max-w-lg shadow-xl max-h-[90vh] flex flex-col">
-        <div className="px-5 py-4 border-b border-ps-border">
-          <h3 className="text-sm font-semibold text-ps-ink">New lot</h3>
-        </div>
-        <div className="px-5 py-4 space-y-3 overflow-y-auto">
+    // The shared dialog (POST-A-130), which is bounded by the window and scrolls with its buttons in a footer that stays in view, so on a
+    // short window they stay on the screen (POST-A-395). Its close is held while the lot is being created.
+    <Modal title="New lot" maxWidthClass="max-w-lg" onClose={() => { if (!saving) onClose(); }}
+      footer={<>
+        <button onClick={onClose} disabled={saving}
+          className="px-3 py-1.5 rounded-lg border border-ps-border text-xs text-ps-label disabled:opacity-50">
+          Cancel
+        </button>
+        <Button variant="plain" size="none" onClick={save} disabled={saving || !item || !batchNo.trim()}
+          className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs disabled:opacity-40">
+          Create
+        </Button>
+      </>}>
+        <div className="space-y-3">
           {(refusal.shown ?? error) && <Callout tone="problem">{refusal.shown ?? error}</Callout>}
           <label className="block text-xs">
             <span className="block text-ps-hint mb-1">Item</span>
@@ -791,17 +795,6 @@ function BatchModal({ clientId, items, onClose, onSaved }: {
             </label>
           </div>
         </div>
-        <div className="px-5 py-3 border-t border-ps-border flex justify-end gap-2">
-          <button onClick={onClose} disabled={saving}
-            className="px-3 py-1.5 rounded-lg border border-ps-border text-xs text-ps-label disabled:opacity-50">
-            Cancel
-          </button>
-          <Button variant="plain" size="none" onClick={save} disabled={saving || !item || !batchNo.trim()}
-            className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs disabled:opacity-40">
-            Create
-          </Button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

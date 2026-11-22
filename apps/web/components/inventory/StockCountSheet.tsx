@@ -18,13 +18,14 @@
  * is a fact about the count date.
  */
 import { useCallback, useEffect, useState } from "react";
-import { X, ClipboardCheck, AlertTriangle, Check } from "lucide-react";
+import { AlertTriangle, Check } from "lucide-react";
 import { api, type StockCountSheet as Sheet, type StockCountLine,
          type StockCountPostResult } from "@/lib/api";
 import { parseQuantity } from "@/lib/money/rupeeInput";
 import { Callout } from "@/components/ui/callout";
 import { objectOrNull, objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { formatDate } from "@/lib/dates/format";
 
 /** The sheet is read for `session.status`, `session.reference_no` and `session.count_date` (POST-A-360): a sheet without its session is
@@ -122,25 +123,12 @@ export function StockCountSheetPanel({
   const open = sheet?.session.status === "open";
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-5xl max-h-[92vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white flex items-center justify-between px-5 py-4 border-b">
-          <div className="flex items-center gap-2">
-            <ClipboardCheck size={16} className="text-emerald-600" />
-            <div>
-              <p className="text-sm font-semibold text-ps-ink">
-                Physical stock count — {sheet?.session.reference_no ?? ""}
-              </p>
-              <p className="text-2xs text-ps-hint">
-                Counted as at {formatDate(sheet?.session.count_date)} · {sheet?.session.status ?? ""}
-              </p>
-            </div>
-          </div>
-          {/* Held over a save or a post, not over the first read: the sheet is null until it has been read. */}
-          <button disabled={busy && sheet !== null} onClick={onClose} aria-label="Close"><X size={16} className="text-ps-hint" /></button>
-        </div>
-
-        <div className="px-5 py-4 space-y-3">
+    // The shared dialog (POST-A-130): named for the count, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it,
+    // its ×) is held over a save or a post, not over the first read: the sheet is null until it has been read.
+    <Modal title={`Physical stock count — ${sheet?.session.reference_no ?? ""}`} maxWidthClass="max-w-5xl"
+      note={<>Counted as at {formatDate(sheet?.session.count_date)} · {sheet?.session.status ?? ""}</>}
+      onClose={() => { if (!(busy && sheet !== null)) onClose(); }}>
+        <div className="space-y-3">
           {error && <Callout tone="problem">{error}</Callout>}
 
           {result && (
@@ -291,7 +279,6 @@ export function StockCountSheetPanel({
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
