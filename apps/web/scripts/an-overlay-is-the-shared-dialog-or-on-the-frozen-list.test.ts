@@ -110,11 +110,6 @@ export function problems(found: Record<string, number>, frozen: Record<string, n
  * a time (POST-A-130). It never gains a file or a count.
  */
 const FROZEN: Record<string, number> = {
-  "app/client-portal/page.tsx": 1,
-  "app/clients/[id]/documents/page.tsx": 1,
-  "app/clients/[id]/portal/page.tsx": 1,
-  "app/clients/documents/page.tsx": 1,
-  "app/documents/page.tsx": 1,
   "app/platform/page.tsx": 2,
   "app/tasks/page.tsx": 1,
   "app/team/page.tsx": 1,
