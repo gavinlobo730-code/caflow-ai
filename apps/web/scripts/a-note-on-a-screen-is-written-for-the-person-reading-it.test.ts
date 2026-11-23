@@ -1,0 +1,111 @@
+// A NOTE ON A SCREEN IS WRITTEN FOR THE PERSON READING IT (23-11-2026). Run with:
+//   node --experimental-strip-types --test scripts/a-note-on-a-screen-is-written-for-the-person-reading-it.test.ts
+//
+// Two kinds of sentence were found on screens while the hand-built dialogs were being converted, and neither was true for its reader.
+//
+// 1. "THIS ENVIRONMENT". Four notes that say a figure has not been checked against its primary source said why in the words of the
+//    container the code was written in: "this environment cannot reach incometax.gov.in", "not independently verified ... in this
+//    environment". A CA reading that on the live product is in no such environment, and the sentence reads as a fault in their own
+//    set-up. What the note is for is one fact, that nobody has read the figure against the Act, the rule or the portal, and one
+//    instruction, to check it before relying on it. The rule: no text a screen draws talks about an environment, a container, a proxy
+//    or egress. Its list of exceptions is empty.
+//
+// 2. "PARTNER ONLY". Since 21 November 2026 the permissions a Partner ticks decide what each member of staff can open and do, and a
+//    role is only what a person starts with. Five sentences still said a role decides: the year lock ("Partner-only", "Only Partners
+//    can lock or unlock", and its tile on Accounting), the audit log ("Partner-only view") and login history ("visible to Managers and
+//    Partners only"). Each of those screens is opened by a permission in the one access table, so the sentence was false for anybody a
+//    Partner had ticked. The rule: a screen says "only a Partner" (in any of the spellings below) only where it is on the list in this
+//    file, and the list says of each entry whether the claim is TRUE (the server asks the role and no tick opens it) or NOT YET CHECKED
+//    against what the server asks. The list only shrinks: a new claim fails here until somebody has read the server's rule for it.
+//
+// What this does not see: a sentence the SERVER writes and a screen shows as it came (those are apps/api's, and its own are on the
+// ledger as POST-A-554), and a sentence assembled from pieces at run time.
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { stripComments } from "./stripComments.ts";
+
+const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+function walk(dir: string): string[] {
+  return fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true }).flatMap((e) => {
+    const rel = `${dir}/${e.name}`;
+    if (e.isDirectory()) return walk(rel);
+    return /\.tsx?$/.test(e.name) && !/\.test\.ts$/.test(e.name) ? [rel] : [];
+  });
+}
+
+/** Every screen and component, comments removed, as [file, line number, line]. `lib/` draws nothing by itself and is not read. */
+const LINES: Array<[string, number, string]> = ["app", "components"].flatMap(walk).sort().flatMap((file) =>
+  stripComments(fs.readFileSync(path.join(ROOT, file), "utf8")).split("\n").map((line, i): [string, number, string] => [file, i + 1, line]));
+
+const hits = (re: RegExp) => LINES.filter(([, , line]) => re.test(line));
+
+/** The container's words. `sandbox=""` on the signing page's frame is an HTML attribute and not a sentence, so the word is not on this list. */
+const BUILD_WORDS = /\bthis environment\b|\bthis container\b|\begress\b|\benvironment(?:'s|&apos;s)? proxy\b/i;
+
+/** Every spelling found of "a role decides this". "the firm's only Partner" (the one Partner a firm has) is a different sentence and does not match. */
+const ROLE_CLAIM = /\bPartners?[- ]only\b|\bOnly (?:a )?Partners?\b(?! of\b)|\bManagers and Partners only\b|\bPartners and Managers only\b|\bonly a Partner (?:can|sees|may)\b/;
+
+/**
+ * Where a screen may say "only a Partner", and why. `true`: the server asks the ROLE and no tick opens it. `unchecked`: the sentence was
+ * there before this rule and nobody has yet read what the server asks for it (POST-A-554). Remove an entry when its sentence goes.
+ */
+const ROLE_CLAIMS_ALLOWED: Record<string, { claim: "true" | "unchecked"; why: string }> = {
+  "app/practice/page.tsx": { claim: "true", why: "My practice is the Partner's alone (guardrail G1); the access table's rule for it is the role, which no tick opens" },
+  "components/practice/PartnerGuard.tsx": { claim: "true", why: "the notice of the same rule (G1)" },
+  "components/onboarding/FirstRunChecklist.tsx": { claim: "true", why: "the first-day steps that live in My practice (G1)" },
+  "components/payroll/StaffLinksPanel.tsx": { claim: "unchecked", why: "the list of members linked to the firm's own payroll; the server's rule for it has not been read against this sentence" },
+  "components/fixed-assets/AmortisationReclassification.tsx": { claim: "unchecked", why: "posting or undoing the move between amortisation ledgers" },
+  "app/team/assignments/page.tsx": { claim: "unchecked", why: "changing who is assigned to which client" },
+  "app/clients/[id]/payroll/page.tsx": { claim: "unchecked", why: "the fallback sentence when switching payroll on for a client is refused without words" },
+  "app/payroll/attendance/page.tsx": { claim: "unchecked", why: "the same fallback sentence" },
+};
+
+test("no text a screen draws talks about the environment the code was written in", () => {
+  const found = hits(BUILD_WORDS).map(([file, n, line]) => `${file}:${n}: ${line.trim().slice(0, 160)}`);
+  assert.deepEqual(found, [],
+    "say what the reader needs: that the figure has not been checked against its source, and to check it before relying on it");
+});
+
+test("a screen says only a Partner may do something only where it is on the list, and the list holds no entry that has gone", () => {
+  const files = [...new Set(hits(ROLE_CLAIM).map(([file]) => file))];
+  const unlisted = files.filter((f) => !(f in ROLE_CLAIMS_ALLOWED));
+  assert.deepEqual(unlisted, [],
+    "the permissions a Partner ticks decide what a member can open and do; a sentence that names a role is true only where the server asks the role. " +
+    "Read what the server asks, then either name the permission or add the file here as `true` with the reason");
+  const gone = Object.keys(ROLE_CLAIMS_ALLOWED).filter((f) => !files.includes(f));
+  assert.deepEqual(gone, [], "these files no longer make the claim; remove them from the list so it only shrinks");
+});
+
+test("the five screens a permission opens no longer say a role does", () => {
+  for (const file of ["app/accounting/lock-year/page.tsx", "app/accounting/page.tsx", "app/settings/audit-log/page.tsx", "app/team/login-history/page.tsx"]) {
+    assert.equal(hits(ROLE_CLAIM).some(([f]) => f === file), false, `${file} says a role decides`);
+  }
+  // Each is opened by a permission in the one table, which is what makes the old sentences false and not merely blunt.
+  const table = fs.readFileSync(path.join(ROOT, "lib/access/screenAccess.ts"), "utf8");
+  for (const [route, pair] of [["/accounting/lock-year", '["accounting", "approve"]'], ["/settings/audit-log", 'read("audit")'], ["/team/login-history", 'read("team")']] as const) {
+    const at = table.indexOf(`["${route}",`);
+    assert.ok(at > 0, `${route} is no longer in the access table`);
+    const rule = table.slice(at, table.indexOf("\n", at));
+    assert.ok(rule.includes(pair), `${route} is no longer opened by ${pair}: read its sentence again`);
+    assert.doesNotMatch(rule, /partnerOnly/, `${route} became a Partner-only rule: its sentence may name the role again`);
+  }
+});
+
+test("the rule's two patterns catch the sentences that were on the screens, and let the nearby true ones through", () => {
+  for (const was of ["off the bare Act — this environment cannot reach incometax.gov.in.", "against a primary source in this environment.",
+    "refused at this environment&apos;s proxy", "the egress rule"]) {
+    assert.match(was, BUILD_WORDS, `not caught: ${was}`);
+  }
+  assert.doesNotMatch('<iframe sandbox="" title="Engagement letter" />', BUILD_WORDS);
+  for (const was of ["Partner-only — lock closed years", "Only Partners can lock or unlock.", "accidental edits — Partner only", "Partner-only view — immutable trail",
+    "Login history is visible to Managers and Partners only.", "View only — only a Partner can change assignments.", "Only a Partner sees these."]) {
+    assert.match(was, ROLE_CLAIM, `not caught: ${was}`);
+  }
+  for (const fine of ["you are the firm&apos;s only Partner, you approve it yourself.", "a Partner and a Manager are asked for a second factor"]) {
+    assert.doesNotMatch(fine, ROLE_CLAIM, `caught a sentence that names no rule: ${fine}`);
+  }
+});
