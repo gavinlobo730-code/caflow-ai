@@ -111,19 +111,14 @@ export function problems(found: Record<string, number>, frozen: Record<string, n
  */
 const FROZEN: Record<string, number> = {
   "app/platform/page.tsx": 2,
-  "app/tasks/page.tsx": 1,
-  "app/team/page.tsx": 1,
-  "app/team/workload/page.tsx": 1,
   "components/CsvImportModal.tsx": 1,
   "components/FilingDemoWizard.tsx": 1,
   "components/LazyCsvImportModal.tsx": 1,
   "components/SearchModal.tsx": 1,
   "components/catalogue/ProductServiceManagerPanel.tsx": 1,
-  "components/payroll/EmployeeDrawer.tsx": 1,
   "components/shell/ClientTopBar.tsx": 1,
   "components/shell/UtilityCluster.tsx": 1,
   "components/shell/WorkspaceTopBar.tsx": 1,
-  "components/team/MemberAccessDrawer.tsx": 1,
 };
 
 test("no source file builds a full-screen overlay that is not on the frozen list", () => {

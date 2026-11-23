@@ -3,12 +3,13 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   AlertTriangle, TrendingDown, Activity, Users,
-  Loader2, RefreshCw, Pencil, X, UserPlus,
+  Loader2, RefreshCw, Pencil, UserPlus,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { getTeamWorkload } from "@/lib/data/analytics";
 import { getClients } from "@/lib/data/clients";
 import { OpenWorkPanel } from "@/components/team/OpenWorkPanel";
@@ -80,44 +81,38 @@ function CapacityModal({ member, onClose, onSaved }: {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="font-semibold text-ps-ink">Edit Capacity — {member.user_name}</h2>
-          <button disabled={saving} onClick={onClose} className="text-ps-hint hover:text-ps-label">
-            <X size={18} />
-          </button>
-        </div>
-        {error && <Callout tone="problem">{error}</Callout>}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-medium text-ps-body mb-1">Weekly Hours</label>
-            <input aria-label="Weekly Hours"
-              type="number" min="1" max="100"
-              value={weeklyHours}
-              onChange={e => setWeeklyHours(e.target.value)}
-              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-ps-body mb-1">Max Concurrent Tasks</label>
-            <input aria-label="Max Concurrent Tasks"
-              type="number" min="1" max="100"
-              value={maxTasks}
-              onChange={e => setMaxTasks(e.target.value)}
-              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
-            />
-          </div>
-        </div>
-        <div className="flex gap-2 justify-end pt-1">
-          <Button disabled={saving} variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" onClick={handleSave} disabled={saving}>
-            {saving ? <Loader2 className="animate-spin mr-1" size={13} /> : null}
-            Save
-          </Button>
-        </div>
+    // The shared dialog (POST-A-130): named, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it, its ×) and its
+    // Cancel are held while its own request is out.
+    <Modal title={`Edit Capacity — ${member.user_name}`} maxWidthClass="max-w-sm" onClose={() => { if (!saving) onClose(); }}
+      footer={<>
+        <Button disabled={saving} variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+        <Button size="sm" onClick={handleSave} disabled={saving}>
+          {saving ? <Loader2 className="animate-spin mr-1" size={13} /> : null}
+          Save
+        </Button>
+      </>}>
+    {error && <Callout tone="problem">{error}</Callout>}
+    <div className="grid grid-cols-2 gap-3">
+      <div>
+        <label className="block text-xs font-medium text-ps-body mb-1">Weekly Hours</label>
+        <input aria-label="Weekly Hours"
+          type="number" min="1" max="100"
+          value={weeklyHours}
+          onChange={e => setWeeklyHours(e.target.value)}
+          className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-ps-body mb-1">Max Concurrent Tasks</label>
+        <input aria-label="Max Concurrent Tasks"
+          type="number" min="1" max="100"
+          value={maxTasks}
+          onChange={e => setMaxTasks(e.target.value)}
+          className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
+        />
       </div>
     </div>
+    </Modal>
   );
 }
 
