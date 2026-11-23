@@ -1881,7 +1881,7 @@ async function openTaskFromTemplate(env) {
   await pick(page, page.locator('button[aria-label="Client"]').last(), CLIENT_ROW.client_name);
 }
 
-async function openUploadDocument(env) {
+export async function openUploadDocument(env) {
   const { page, stub } = env;
   stub.route({ method: "GET", re: /api\/client-documents\?/, reply: () => ok({ documents: [], returned: 0, has_more: false }) });
   stub.route({ method: "POST", re: /api\/client-documents\/upload$/, reply: () => ok({ document: { id: "d-1" } }) });
@@ -1919,7 +1919,7 @@ export async function openAddRenewal(env) {
   await page.getByLabel("Financial Year", { exact: true }).fill("2026-27");
 }
 
-async function openPortalRequest(env) {
+export async function openPortalRequest(env) {
   const { page, stub } = env;
   stub.route({ method: "POST", re: /api\/portal\/document-requests$/, reply: () => ok({ id: "dr-1" }) });
   await page.goto(`${env.base}/client-portal/?client=${CLIENT_ID}`, { waitUntil: "networkidle" });
