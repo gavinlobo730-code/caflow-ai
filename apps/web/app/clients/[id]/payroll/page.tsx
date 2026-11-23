@@ -2271,7 +2271,9 @@ function PayrollEnablementLine({ clientId }: { clientId: string }) {
         success?: boolean; error?: string | null; detail?: string;
       };
       if (res?.success === false) {
-        setMsg(res.error || res.detail || "Only a Partner can switch payroll on for a client.");
+        // A refusal that came without words is reported as what happened. It used to say "Only a Partner can switch payroll on", a reason
+        // nobody had read off the answer, and untrue since the switch is a permission a Partner can tick for somebody else.
+        setMsg(res.error || res.detail || "Payroll could not be switched on for this client.");
         return;
       }
       setEnabled(true);

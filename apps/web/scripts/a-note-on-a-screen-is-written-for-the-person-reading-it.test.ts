@@ -17,6 +17,11 @@
 //    Partner had ticked. The rule: a screen says "only a Partner" (in any of the spellings below) only where it is on the list in this
 //    file, and the list says of each entry whether the claim is TRUE (the server asks the role and no tick opens it) or NOT YET CHECKED
 //    against what the server asks. The list only shrinks: a new claim fails here until somebody has read the server's rule for it.
+//    The five entries that began as NOT YET CHECKED were read against the server the same day: one is true (the staff links of the
+//    firm's own payroll, which the server answers by role) and four were not (the move between amortisation ledgers and changing
+//    assignments ask a permission a Partner can tick for somebody else, so each now names the permission; and the payroll switch's
+//    fallback gave "only a Partner" as the reason for a refusal that had come without one, so it now says only what happened). No
+//    entry is unchecked, and a test holds that.
 //
 // What this does not see: a sentence the SERVER writes and a screen shows as it came (those are apps/api's, and its own are on the
 // ledger as POST-A-554), and a sentence assembled from pieces at run time.
@@ -57,11 +62,7 @@ const ROLE_CLAIMS_ALLOWED: Record<string, { claim: "true" | "unchecked"; why: st
   "app/practice/page.tsx": { claim: "true", why: "My practice is the Partner's alone (guardrail G1); the access table's rule for it is the role, which no tick opens" },
   "components/practice/PartnerGuard.tsx": { claim: "true", why: "the notice of the same rule (G1)" },
   "components/onboarding/FirstRunChecklist.tsx": { claim: "true", why: "the first-day steps that live in My practice (G1)" },
-  "components/payroll/StaffLinksPanel.tsx": { claim: "unchecked", why: "the list of members linked to the firm's own payroll; the server's rule for it has not been read against this sentence" },
-  "components/fixed-assets/AmortisationReclassification.tsx": { claim: "unchecked", why: "posting or undoing the move between amortisation ledgers" },
-  "app/team/assignments/page.tsx": { claim: "unchecked", why: "changing who is assigned to which client" },
-  "app/clients/[id]/payroll/page.tsx": { claim: "unchecked", why: "the fallback sentence when switching payroll on for a client is refused without words" },
-  "app/payroll/attendance/page.tsx": { claim: "unchecked", why: "the same fallback sentence" },
+  "components/payroll/StaffLinksPanel.tsx": { claim: "true", why: "the members linked to the firm's own payroll (G4): the server answers a non-Partner 404 by ROLE on both routes (`practice_staff` asks `is_partner`, the link asks `assert_practice_payroll_is_the_partners`), read 23-11-2026" },
 };
 
 test("no text a screen draws talks about the environment the code was written in", () => {
@@ -78,6 +79,26 @@ test("a screen says only a Partner may do something only where it is on the list
     "Read what the server asks, then either name the permission or add the file here as `true` with the reason");
   const gone = Object.keys(ROLE_CLAIMS_ALLOWED).filter((f) => !files.includes(f));
   assert.deepEqual(gone, [], "these files no longer make the claim; remove them from the list so it only shrinks");
+});
+
+test("no entry on the list is still unchecked, and the four sentences a tick makes false are gone", () => {
+  assert.deepEqual(Object.entries(ROLE_CLAIMS_ALLOWED).filter(([, e]) => e.claim !== "true").map(([f]) => f), [],
+    "an entry is added as `true` once the server's rule has been read and it is the role; there is no 'later'");
+  for (const file of ["components/fixed-assets/AmortisationReclassification.tsx", "app/team/assignments/page.tsx",
+    "app/clients/[id]/payroll/page.tsx", "app/payroll/attendance/page.tsx"]) {
+    assert.equal(hits(ROLE_CLAIM).some(([f]) => f === file), false, `${file} says a role decides`);
+  }
+  // What makes the two permission sentences true: the screens decide on the permission, and say so.
+  const amort = fs.readFileSync(path.join(ROOT, "components/fixed-assets/AmortisationReclassification.tsx"), "utf8");
+  assert.match(amort, /const canPost = can\("accounting", "approve"\);/);
+  assert.match(amort, /needs the permission to approve the books/);
+  const assign = fs.readFileSync(path.join(ROOT, "app/team/assignments/page.tsx"), "utf8");
+  assert.match(assign, /const canAssign = can\("assignment", "write"\);/);
+  assert.match(assign, /needs the permission to change who is assigned to which client/);
+  // The fallback for a refusal with no words says what happened and gives no reason of its own.
+  for (const file of ["app/clients/[id]/payroll/page.tsx", "app/payroll/attendance/page.tsx"]) {
+    assert.match(fs.readFileSync(path.join(ROOT, file), "utf8"), /Payroll could not be switched /, `${file} lost its fallback sentence`);
+  }
 });
 
 test("the five screens a permission opens no longer say a role does", () => {
