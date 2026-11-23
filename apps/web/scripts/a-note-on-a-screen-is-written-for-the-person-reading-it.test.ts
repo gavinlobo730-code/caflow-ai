@@ -65,6 +65,62 @@ const ROLE_CLAIMS_ALLOWED: Record<string, { claim: "true" | "unchecked"; why: st
   "components/payroll/StaffLinksPanel.tsx": { claim: "true", why: "the members linked to the firm's own payroll (G4): the server answers a non-Partner 404 by ROLE on both routes (`practice_staff` asks `is_partner`, the link asks `assert_practice_payroll_is_the_partners`), read 23-11-2026" },
 };
 
+/**
+ * THE SOFTER SPELLINGS OF THE SAME CLAIM (found 23-11-2026, after the list above held no unchecked entry). A sentence can name a role as
+ * the one who may without the word "only": "Payroll is open to Partners and Managers", "a PIN that Partners will use", "A Manager or
+ * Partner can remove it". Where the server asks a permission, that is a role's DEFAULT and not the rule: it is false for a member a
+ * Partner has ticked, and for a Manager whose tick was taken away. Four were read against the server that day and corrected (the payroll
+ * side panel, which also sent the reader to "Settings → Team", a place the Team screen has not been since it moved into My practice;
+ * the year-lock PIN prompt; and the two "a Partner switches it on" sentences of the payroll switch). The rest are counted here, per file,
+ * as NOT YET READ against the server (POST-A-556). The counts are an equality in both directions: a new one fails, and so does a
+ * corrected one whose count is left behind, so the list only shrinks.
+ */
+const ROLE_NAMED = /\b(?:open|visible|available|limited|restricted) to (?:Partners?|Managers?)\b|\bthat Partners will use\b|\b[Aa] Partner (?:switches|turns|sets|locks|unlocks|approves|posts)\b|\bPartners? and Managers?\b(?! are asked)|\bManagers? and Partners?\b|\bfor Partners\b|\bPartners can\b|\bPartner or Manager\b|\bManager or (?:a )?Partner\b/;
+
+/** True by role: My practice is the Partner's alone (G1), which no tick opens. */
+const ROLE_NAMED_TRUE: Record<string, number> = { "components/practice/PartnerGuard.tsx": 1 };
+
+const ROLE_NAMED_UNREAD: Record<string, number> = {
+  "app/accounting/loans/page.tsx": 2,
+  "app/approvals/page.tsx": 1,
+  "app/clients/[id]/purchases/page.tsx": 1,
+  "app/income-tax/tax-audit/page.tsx": 2,
+  "app/knowledge/page.tsx": 1,
+  "app/payroll/page.tsx": 2,
+  "app/practice/profitability/page.tsx": 1,
+  "app/settings/journal-approval/page.tsx": 2,
+  "app/tds/page.tsx": 1,
+  "components/banking/RulesTab.tsx": 3,
+  "components/payroll/StatutoryHandoff.tsx": 1,
+  "components/security/MyDevicesCard.tsx": 1,
+  "components/tds/RetractChallanModal.tsx": 1,
+};
+
+test("a sentence that names a role as the one who may, in softer words, is counted on a list that only shrinks", () => {
+  const found: Record<string, number> = {};
+  for (const [file] of hits(ROLE_NAMED)) found[file] = (found[file] ?? 0) + 1;
+  assert.deepEqual(found, { ...ROLE_NAMED_TRUE, ...ROLE_NAMED_UNREAD },
+    "read what the server asks before naming a role: where it asks a permission, name the permission (or say nothing about who); " +
+    "where it asks the role, add the file to ROLE_NAMED_TRUE with the reason. A corrected sentence lowers its file's count here.");
+  assert.deepEqual(Object.keys(ROLE_NAMED_TRUE).filter((f) => f in ROLE_NAMED_UNREAD), []);
+});
+
+test("the four softer sentences read on 23 November no longer name a role, and the pattern would have caught each", () => {
+  for (const file of ["components/panels/PayrollPanel.tsx", "app/accounting/lock-year/page.tsx", "app/clients/[id]/payroll/page.tsx",
+    "app/payroll/attendance/page.tsx"]) {
+    assert.equal(hits(ROLE_NAMED).some(([f]) => f === file), false, `${file} names a role as the one who may`);
+  }
+  for (const was of ["Payroll is open to Partners and Managers. Ask a Partner to grant", "Create a PIN that Partners will use to lock or unlock financial years.",
+    " A Partner switches it on here.", "be created for them until a Partner turns it on; anything"]) {
+    assert.match(was, ROLE_NAMED, `not caught: ${was}`);
+  }
+  // The stale menu path went with the first of them: the Team screen is in My practice, not in Settings.
+  assert.equal(hits(/Settings → Team/).length, 0, "a screen still sends its reader to Settings → Team");
+  for (const fine of ["a Partner and a Manager are asked for a second factor", "A Partner decides which parts of PracticeSync each person can open, on the Team screen."]) {
+    assert.doesNotMatch(fine, ROLE_NAMED, `caught a sentence that names no rule: ${fine}`);
+  }
+});
+
 test("no text a screen draws talks about the environment the code was written in", () => {
   const found = hits(BUILD_WORDS).map(([file, n, line]) => `${file}:${n}: ${line.trim().slice(0, 160)}`);
   assert.deepEqual(found, [],
