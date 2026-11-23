@@ -37,7 +37,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { tdsDecisionPending } from "@/lib/banking/tdsDecision";
 import { useRouter } from "next/navigation";
-import { BookOpen, CheckCircle, Landmark, Loader2, Paperclip, RotateCcw, Sparkles, Undo2, Upload, X } from "lucide-react";
+import { BookOpen, CheckCircle, Landmark, Loader2, Paperclip, RotateCcw, Sparkles, Undo2, Upload } from "lucide-react";
 import { api, type EntryListState, type EntryState } from "@/lib/api";
 import { DataTable } from "@/components/ui/data-table";
 import type { BulkAction, Column } from "@/lib/table/types";
@@ -1049,21 +1049,14 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
         />
       )}
 
-      {/* The Accounts panel: setup, not a step. z-40 so the panel's own
-          modals (add account, import) float above it at z-50. */}
+      {/* The Accounts panel: setup, not a step. The shared dialog (POST-A-130): named, modal, Tab kept inside, focus given back. The
+          panel's own dialogs (add an account, import a statement) are shared dialogs too and open over it; Escape or a click beside one
+          closes that one alone. */}
       {showAccounts && (
-        <div className="fixed inset-0 bg-ps-ink/60 z-40 flex items-start justify-center p-4 overflow-y-auto" onClick={() => setShowAccounts(false)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-5xl my-6 p-5 space-y-4" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Bank accounts and statements">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h3 className="text-sm font-semibold text-ps-ink">Bank accounts and statements</h3>
-                <p className="text-2xs text-ps-hint mt-0.5">Add an account once; import a statement when the bank sends one. New lines are proposed for the moment an import finishes.</p>
-              </div>
-              <button onClick={() => setShowAccounts(false)} className="text-ps-hint hover:text-ps-label" aria-label="Close"><X size={16} /></button>
-            </div>
-            <BankAccounts clientId={clientId} onChanged={afterSetupChange} />
-          </div>
-        </div>
+        <Modal title="Bank accounts and statements" maxWidthClass="max-w-5xl" onClose={() => setShowAccounts(false)}
+          note="Add an account once; import a statement when the bank sends one. New lines are proposed for the moment an import finishes.">
+          <BankAccounts clientId={clientId} onChanged={afterSetupChange} />
+        </Modal>
       )}
 
       {detailId && (

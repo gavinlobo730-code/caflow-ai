@@ -53,17 +53,26 @@ test("the file cannot be swapped out from under a running request", () => {
     "while a request is in flight leaves the dialog describing a different file");
 });
 
-/** Everything that CLOSES the import dialog — the footer's Cancel and the
- *  header's ✕ are two doors out of the same room, and the first version of this
- *  fix guarded only one. */
+/** Everything that CLOSES the import dialog. It is the shared dialog now (POST-A-130), so there are two doors out of the room: the
+ *  dialog's own close, which is its ×, Escape and a click beside it in one handler, and the footer's Cancel. The first version of this
+ *  fix guarded only one door, and a frame that closes on Escape has made the first door wider, not narrower. */
 const dialog = src.slice(src.indexOf("Import Bank Statement"));
 
-for (const [which, at] of [
-  ["the header's ✕", dialog.indexOf("onClick={onClose}")],
-  ["the footer's Cancel", dialog.indexOf("onClick={onClose}", dialog.indexOf("onClick={onClose}") + 1)],
-] as const) {
-test(`${which} is blocked while IMPORTING, and live while only reading`, () => {
-  assert.ok(at > 0, `${which} is gone`);
+test("the dialog's own close (its ×, Escape, a click beside it) is held while IMPORTING, and live while only reading", () => {
+  const frame = dialog.slice(0, dialog.indexOf("footer="));
+  assert.match(frame, /onClose=\{\(\) => \{ if \(!importing\) onClose\(\); \}\}/,
+    "closing mid-import unmounts the dialog with the upload still in flight: " +
+    "the write continues server-side and the CA never learns whether the " +
+    "transactions landed");
+  assert.doesNotMatch(frame, /if \(!busy\)/,
+    "a READ is abandonable — nothing has been written — so closing must stay " +
+    "live during it rather than trapping the CA in the dialog");
+});
+
+test("the footer's Cancel is blocked while IMPORTING, and live while only reading", () => {
+  const at = dialog.indexOf("onClick={onClose}");
+  assert.ok(at > 0, "the footer's Cancel is gone");
+  assert.equal(dialog.indexOf("onClick={onClose}", at + 1), -1, "a second button closes the import dialog; say here what holds it");
   const button = dialog.slice(at, at + 260);
   assert.match(button, /disabled=\{importing\}/,
     "closing mid-import unmounts the dialog with the upload still in flight: " +
@@ -73,7 +82,6 @@ test(`${which} is blocked while IMPORTING, and live while only reading`, () => {
     "a READ is abandonable — nothing has been written — so closing must stay " +
     "live during it rather than trapping the CA in the dialog");
 });
-}
 
 // ─── What the outcome panel says ────────────────────────────────────────────
 //
@@ -86,7 +94,12 @@ test(`${which} is blocked while IMPORTING, and live while only reading`, () => {
 // CA's head is "is this statement in?".
 
 test("a re-upload leads with the outcome, not with a zero", () => {
-  const panel = src.slice(src.indexOf("{result ? ("), src.indexOf("{result ? (") + 2200);
+  // The dialog asks `result ? (` twice: once for which buttons its footer holds, and then for its body. The outcome panel is the body's.
+  const footerAt = src.indexOf("footer={result ? (");
+  assert.ok(footerAt > 0, "the import dialog's footer no longer chooses its buttons by the outcome");
+  const bodyAt = src.indexOf("{result ? (", footerAt + "footer={result ? (".length);
+  assert.ok(bodyAt > 0, "the import dialog's body no longer has an outcome panel");
+  const panel = src.slice(bodyAt, bodyAt + 2200);
   assert.match(panel, /result\.imported === 0 && result\.duplicates_skipped > 0/,
     "nothing-new-to-add is a different sentence from nothing-happened, and " +
     "the panel has to tell them apart");

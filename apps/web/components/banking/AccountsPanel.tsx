@@ -30,6 +30,7 @@ import { getBankStatements, getBankTransactions, BankStatement, BankTransaction 
 import { fmt, BankAccount } from "@/components/banking/shared";
 import { objectWithLists, objectOrNull } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
@@ -544,12 +545,15 @@ export function BankAccountModal({ clientId, account, onClose, onSaved }: {
   const labelCls = "block text-xs font-medium text-ps-label mb-1";
 
   return (
-    <div className="fixed inset-0 bg-ps-ink/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-ps-ink">{editing ? "Edit Bank Account" : "Add Bank Account"}</h3>
-          <button disabled={saving} onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
-        </div>
+    // The shared dialog (POST-A-130): named, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it, its ×) and its
+    // Cancel are held while the account is being saved.
+    <Modal title={editing ? "Edit Bank Account" : "Add Bank Account"} maxWidthClass="max-w-md" onClose={() => { if (!saving) onClose(); }}
+      footer={<>
+        <button disabled={saving} onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-40">Cancel</button>
+        <Button variant="plain" size="none" onClick={save} disabled={saving} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
+          {saving ? "Saving…" : editing ? "Save Changes" : "Add Account"}
+        </Button>
+      </>}>
         <div className="space-y-3">
           <div>
             <label className={labelCls}>Bank Name *</label>
@@ -620,14 +624,7 @@ export function BankAccountModal({ clientId, account, onClose, onSaved }: {
         {error && <p role="alert" className="text-xs text-state-problem bg-state-problem-surface rounded px-3 py-2">{error}</p>}
         {/* The form's own answer to the press comes first: with a balance and no date the older sentence is the true one, and two alerts would say it twice. */}
         {!error && openingRefusal.shown && <p role="alert" className="text-xs text-state-problem bg-state-problem-surface rounded px-3 py-2">{openingRefusal.shown}</p>}
-        <div className="flex gap-3 justify-end">
-          <button disabled={saving} onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
-          <Button variant="plain" size="none" onClick={save} disabled={saving} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
-            {saving ? "Saving…" : editing ? "Save Changes" : "Add Account"}
-          </Button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -990,16 +987,47 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
   const inputCls = "w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand";
 
   return (
-    <div className="fixed inset-0 bg-ps-ink/60 z-50 flex items-center justify-center p-4">
-      <div className={`bg-white rounded-xl shadow-xl w-full p-6 space-y-4 ${inspected ? "max-w-3xl max-h-[90vh] overflow-y-auto" : "max-w-md"}`}>
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-ps-ink">
-            {inspected ? "Map the statement columns" : "Import Bank Statement"}
-          </h3>
-          <button onClick={onClose} disabled={importing} aria-label="Close"
-                  className="text-ps-hint hover:text-ps-label disabled:opacity-40"><X size={16} /></button>
-        </div>
-
+    // The shared dialog (POST-A-130): named, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it, its ×) and its
+    // Cancel are held while the import is out, for the reason written beside Cancel below; a read is abandonable, so they stay live for that.
+    <Modal title={inspected ? "Map the statement columns" : "Import Bank Statement"} maxWidthClass={inspected ? "max-w-3xl" : "max-w-md"}
+      onClose={() => { if (!importing) onClose(); }}
+      footer={result ? (
+        <button onClick={onImported} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark">Done</button>
+      ) : (
+        <>
+          {/* Closing mid-import would unmount the dialog with the upload still
+              in flight: the write continues server-side and the CA never
+              learns whether 292 transactions landed, so the honest thing is
+              to make them wait for the answer. A read is abandonable —
+              nothing has been written — so Cancel stays live for that. */}
+          <button onClick={onClose} disabled={importing}
+                  className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-40">Cancel</button>
+          {!inspected && file && (
+            <button onClick={startMapping} disabled={busy || !account}
+                    className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-40">
+              {checking ? "Reading…" : "Map columns"}
+            </button>
+          )}
+          <Button variant="plain" size="none"
+            onClick={handleImport}
+            disabled={
+              busy || !file || accounts.length === 0
+              // With the mapper open, importing is gated on a check having
+              // been run: the preview IS the safety argument for skipping
+              // the column-label validation, so importing without it would
+              // give up the guard and gain nothing.
+              || (!!inspected && !preview)
+              || (!!preview && preview.balance_check.agrees === false && !overrideBalance)
+              // Refused on the statement's own totals: the button is now
+              // "Import anyway", and it needs the reason first.
+              || (!!totalsRefusal && !ackReady)
+            }
+            className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40"
+          >
+            {importing ? "Importing…" : totalsRefusal ? "Import anyway" : "Import"}
+          </Button>
+        </>
+      )}>
         {result ? (
           <>
             {/* LEAD WITH THE OUTCOME, NOT THE COUNTER.
@@ -1054,9 +1082,6 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
               </p>
             )}
             <UnreadRows rows={unreadRowsOf(result)} />
-            <div className="flex justify-end">
-              <button onClick={onImported} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark">Done</button>
-            </div>
           </>
         ) : (
           <>
@@ -1324,44 +1349,10 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                 </p>
               </div>
             )}
-            <div className="flex gap-3 justify-end">
-              {/* Closing mid-import would unmount the dialog with the upload still
-                  in flight: the write continues server-side and the CA never
-                  learns whether 292 transactions landed, so the honest thing is
-                  to make them wait for the answer. A read is abandonable —
-                  nothing has been written — so Cancel stays live for that. */}
-              <button onClick={onClose} disabled={importing}
-                      className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-40">Cancel</button>
-              {!inspected && file && (
-                <button onClick={startMapping} disabled={busy || !account}
-                        className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-40">
-                  {checking ? "Reading…" : "Map columns"}
-                </button>
-              )}
-              <Button variant="plain" size="none"
-                onClick={handleImport}
-                disabled={
-                  busy || !file || accounts.length === 0
-                  // With the mapper open, importing is gated on a check having
-                  // been run: the preview IS the safety argument for skipping
-                  // the column-label validation, so importing without it would
-                  // give up the guard and gain nothing.
-                  || (!!inspected && !preview)
-                  || (!!preview && preview.balance_check.agrees === false && !overrideBalance)
-                  // Refused on the statement's own totals: the button is now
-                  // "Import anyway", and it needs the reason first.
-                  || (!!totalsRefusal && !ackReady)
-                }
-                className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40"
-              >
-                {importing ? "Importing…" : totalsRefusal ? "Import anyway" : "Import"}
-              </Button>
-            </div>
             <UploadProgress progress={sent} what="the statement" />
           </>
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }
 
