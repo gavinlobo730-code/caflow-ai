@@ -15,6 +15,7 @@ import { StatementSkeleton, LoadingRegion } from "@/components/ui/skeleton";
 import { fmt } from "@/components/banking/shared";
 import { objectOrNull, objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { formatDate } from "@/lib/dates/format";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
@@ -358,6 +359,9 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
   useEffect(() => { if (showHistory) loadHistory(); }, [showHistory, loadHistory]);
   useEffect(() => { setShowHistory(false); setHistory(null); setLineSearch(""); }, [selectedId]);
 
+  /** Leave the Reopen dialog without reopening: what was typed and anything it was told go with it. */
+  function closeReopen() { setReopening(false); setReopenReason(""); setError(null); }
+
   async function doReopen() {
     setBusy(true); setError(null);
     try {
@@ -668,15 +672,18 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
           </div>
 
           {reopening && (
-            <div className="fixed inset-0 bg-ps-ink/60 z-50 flex items-center justify-center p-4">
-              <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-                <div className="px-5 py-4 border-b border-ps-border">
-                  <h3 className="text-sm font-semibold text-ps-ink">Reopen this reconciliation</h3>
-                  <p className="text-xs text-ps-label mt-0.5">
-                    {formatDate(report.reconciliation.statement_start_date)} → {formatDate(report.reconciliation.statement_end_date)}
-                  </p>
-                </div>
-                <div className="px-5 py-4 space-y-3">
+            // The shared dialog (POST-A-130): named, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it, its ×)
+            // and its Cancel are held while the reopening is being recorded.
+            <Modal title="Reopen this reconciliation" maxWidthClass="max-w-md" onClose={() => { if (!busy) closeReopen(); }}
+              note={<>{formatDate(report.reconciliation.statement_start_date)} → {formatDate(report.reconciliation.statement_end_date)}</>}
+              footer={<>
+                <button disabled={busy} onClick={closeReopen}
+                  className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-40">Cancel</button>
+                <Button variant="plain" size="none" onClick={doReopen} disabled={busy || reopenReason.trim().length < 10}
+                  className="text-xs px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-40">
+                  {busy ? "Reopening…" : "Reopen"}
+                </Button>
+              </>}>
                   <p className="text-2xs text-ps-label">
                     This undoes a completed period so it can be corrected. The report as it was
                     certified is kept, the change is recorded against your name, and the period must
@@ -691,17 +698,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
                     <span className="text-3xs text-ps-hint">At least 10 characters — this goes into the audit trail.</span>
                   </label>
                   {error && <p role="alert" className="text-xs text-state-problem bg-state-problem-surface rounded px-3 py-2">{error}</p>}
-                </div>
-                <div className="flex gap-2 justify-end px-5 py-4 border-t border-ps-border">
-                  <button disabled={busy} onClick={() => { setReopening(false); setReopenReason(""); setError(null); }}
-                    className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
-                  <Button variant="plain" size="none" onClick={doReopen} disabled={busy || reopenReason.trim().length < 10}
-                    className="text-xs px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-40">
-                    {busy ? "Reopening…" : "Reopen"}
-                  </Button>
-                </div>
-              </div>
-            </div>
+            </Modal>
           )}
 
           {/* Prior certifications (Tier 2.7). A session can be completed,
