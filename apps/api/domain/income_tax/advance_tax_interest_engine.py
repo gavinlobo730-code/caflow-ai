@@ -185,8 +185,8 @@ _PROVISO_CAVEAT = (
     "arose AFTER that instalment's date, and only where the tax on that income "
     "is then paid in the instalments that remain — or, where none remains, by "
     "31 March. Payments are taken against each such income in the order it "
-    "arose, from the day it arose. The figures behind it ([S]-graded) were not "
-    "read against the Act in this environment.")
+    "arose, from the day it arose. The figures behind it have not been read "
+    "against the Act itself; check them before relying on the interest.")
 
 
 @dataclass(frozen=True)

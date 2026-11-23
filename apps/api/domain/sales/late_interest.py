@@ -400,8 +400,9 @@ STATUTORY_READING = {
         "the value of the supply it arises from, so GST is chargeable on it at "
         "the rate of that supply. The draft therefore carries the GST rate of "
         "the invoice it relates to. Whether to raise it as an invoice or as a "
-        "debit note, and its time of supply, are the CA's decisions. Egress is "
-        "refused here, so the section could not be read against the Act."),
+        "debit note, and its time of supply, are the CA's decisions. The "
+        "section has not been read against the Act itself; check it before "
+        "raising the document."),
 }
 CAVEAT_NOT_POSTED = (
     "Nothing here is posted or invoiced. A prepared draft is an ordinary draft "

@@ -166,7 +166,8 @@ def test_the_independence_wording_says_the_figure_is_not_held():
     them."""
     body = cn.ICAI_FEE_DEPENDENCE
     assert "NOT held here" in body
-    assert "could not be read" in body
+    # Said as the fact a reader needs (nobody has read the proportion off the Code), not as why the code's author could not.
+    assert "not been read from the Code" in body
     assert "Read the Code" in body
 
 

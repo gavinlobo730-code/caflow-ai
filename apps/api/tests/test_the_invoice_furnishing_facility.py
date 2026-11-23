@@ -249,4 +249,4 @@ def test_amendments_are_named_rather_than_emitted():
     built = iff.build_iff(_ONE_OF_EVERYTHING, GSTIN, PERIOD, month_in_quarter=1)
     assert "b2ba" not in built.payload and "cdnra" not in built.payload
     assert any("Amendments" in n for n in built.notes)
-    assert "could not be verified" in iff.AMENDMENTS_NOT_BUILT
+    assert "has not been verified against the portal" in iff.AMENDMENTS_NOT_BUILT

@@ -140,8 +140,8 @@ SECTIONS_NOT_IN_IFF = {
 #: header.
 AMENDMENTS_NOT_BUILT = (
     "Amendments to a document already furnished are not produced here. "
-    "Whether this facility accepts an amendment section could not be verified "
-    "from this environment, and the safe direction is to leave it out: an "
+    "Whether this facility accepts an amendment section has not been verified "
+    "against the portal, and the safe direction is to leave it out: an "
     "amendment omitted is furnished a few weeks later in the quarterly "
     "GSTR-1, while a section the facility does not carry fails at upload or "
     "is accepted against the wrong period."

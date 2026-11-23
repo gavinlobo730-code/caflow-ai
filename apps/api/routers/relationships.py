@@ -1374,8 +1374,8 @@ def related_party_report(
                      or r.get("to_entity_id") in entity_ids)
             ],
             extra_gaps=[
-                "Transactions are not matched in this environment, so no "
-                "figures are shown against any party."
+                "Transactions are not matched here because no database is "
+                "connected, so no figures are shown against any party."
             ],
         )))
 

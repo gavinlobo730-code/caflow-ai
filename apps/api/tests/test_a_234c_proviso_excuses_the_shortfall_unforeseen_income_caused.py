@@ -261,7 +261,8 @@ def test_dividends_carry_their_own_caveat():
 def test_the_proviso_is_graded_as_unconfirmed_and_says_so_on_every_answer():
     assert eng.UNFORESEEN_PROVISO_VERIFIED is False
     out = compute_234c_interest(FY, T, [_pay(U, date(2026, 3, 12))], unforeseen=[_gain()])
-    assert any("[S]" in c for c in out.caveats)
+    # Said in a reader's words: the grade letter is this repository's own shorthand and means nothing on a screen (POST-A-554).
+    assert any("have not been read against the Act itself" in c for c in out.caveats)
     assert eng.UNFORESEEN_KINDS == ("capital_gain", "winnings", "dividend")
 
 
