@@ -4,9 +4,9 @@
 // THE DEFECT (frontend_ux-14, POST-A-130)
 //   147 hand-built overlays (`fixed inset-0`) lived in 85 files against a handful of uses of the shared `Modal` and `Drawer`. The shared
 //   ones give a dialog its name, close it on Escape, move focus in and give it back and, since this change, keep Tab inside and the page
-//   behind it still; a hand-built one has to do each of those itself and almost none does. Migrating them is months of work, file by
-//   file, and each migration is a screen to read and drive. What this holds is the direction: NO NEW OVERLAY, and a migrated file leaves
-//   the list.
+//   behind it still; a hand-built one has to do each of those itself and almost none does. They were migrated file by file, each a screen
+//   read and driven, between 31-10-2026 and 23-11-2026, and the list below is EMPTY. What this holds now is that it stays so: NO NEW
+//   OVERLAY.
 //
 // THE RULE
 //   Outside `components/ui/` (which is where the primitives live), no source file builds a full-screen fixed overlay unless it is listed
@@ -106,17 +106,27 @@ export function problems(found: Record<string, number>, frozen: Record<string, n
 }
 
 /**
- * THE FROZEN LIST: file -> the number of hand-built overlays it still holds. Each is waiting to move onto `Modal` or `Drawer`, one file at
- * a time (POST-A-130). It never gains a file or a count.
+ * THE FROZEN LIST: file -> the number of hand-built overlays it still holds. EMPTY SINCE 23-11-2026: the last two (the search box and the
+ * Products and Services panel) moved onto `Modal` and `Drawer` that day, and POST-A-130 closed. It never gains a file or a count, so it
+ * stays empty: a new full-window layer is a `Modal` or a `Drawer`, or a primitive in `components/ui/` that says why it is neither.
  */
 const FROZEN: Record<string, number> = {
-  "components/SearchModal.tsx": 1,
-  "components/catalogue/ProductServiceManagerPanel.tsx": 1,
 };
 
 test("no source file builds a full-screen overlay that is not on the frozen list", () => {
   assert.deepEqual(problems(foundInTree(), FROZEN), [],
     "A new overlay is a Modal or a Drawer from components/ui; a migrated file lowers its count here.");
+});
+
+test("the frozen list is empty, and stays empty", () => {
+  assert.deepEqual(Object.keys(FROZEN), [],
+    "Every hand-built overlay was migrated by 23-11-2026 (POST-A-130). Do not add one here: use the shared Modal or Drawer.");
+  // The tree is really being read: the primitives themselves are overlays, and they are outside what the list covers.
+  assert.ok(SOURCES.length > 300, `only ${SOURCES.length} source files were read`);
+  // With nothing listed, the "can only shrink" half of the equality has no live entry to prove itself on, so it is proved on a made-up one.
+  const stale = problems({}, { "app/gone/page.tsx": 1 });
+  assert.equal(stale.length, 1);
+  assert.match(stale[0], /can only shrink/);
 });
 
 test("the detector finds an overlay in every spelling and spares what is not one", () => {
