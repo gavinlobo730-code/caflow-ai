@@ -5,6 +5,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ArrowLeft, Building2, ChevronDown, LayoutGrid, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useMenuDismiss } from "@/lib/ui/useMenuDismiss";
+import { MenuScrim } from "@/components/ui/menu-scrim";
 import { useClientNav, CLIENT_SECTIONS } from "@/lib/workspace/ClientNavContext";
 import { getLatestHealthScore } from "@/lib/services/health-score-compute";
 import { HealthBadge } from "@/components/HealthBadge";
@@ -127,13 +129,10 @@ export function ClientTopBar({ onOpenSearch, onOpenGuide, practicePath = false }
 
   useEffect(() => { setGridOpen(false); }, [pathname]);
 
-  useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") setGridOpen(false);
-    }
-    if (gridOpen) window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [gridOpen]);
+  // Escape closes the menu and gives focus back to its button (it used to leave focus on nothing: the link that held it went with the menu).
+  // Opening it moves focus to its first link, so it is the next thing the keyboard reaches and not the rest of the bar.
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  useMenuDismiss(gridOpen, () => setGridOpen(false), { opener: triggerRef, menu: gridRef }, { focusMenu: true });
 
   useEffect(() => {
     // The health score is still the bar's own: nothing else reads it, and it
@@ -293,13 +292,11 @@ export function ClientTopBar({ onOpenSearch, onOpenGuide, practicePath = false }
 
       {gridOpen && (
         <>
-          <div
-            className="fixed inset-0 top-12 z-30 bg-brand/20 backdrop-blur-[2px]"
-            onClick={() => setGridOpen(false)}
-          />
+          <MenuScrim onClose={() => setGridOpen(false)} />
           {/* A disclosure, not role="menu": the panel is a grid of links, not menuitems (frontend_ux-03; the
               same reasoning is on WorkspaceTopBar's menu). */}
           <div
+            ref={gridRef}
             id="client-module-menu"
             role="region"
             aria-label="Modules"

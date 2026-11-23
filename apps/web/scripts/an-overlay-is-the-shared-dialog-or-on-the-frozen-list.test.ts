@@ -112,9 +112,6 @@ export function problems(found: Record<string, number>, frozen: Record<string, n
 const FROZEN: Record<string, number> = {
   "components/SearchModal.tsx": 1,
   "components/catalogue/ProductServiceManagerPanel.tsx": 1,
-  "components/shell/ClientTopBar.tsx": 1,
-  "components/shell/UtilityCluster.tsx": 1,
-  "components/shell/WorkspaceTopBar.tsx": 1,
 };
 
 test("no source file builds a full-screen overlay that is not on the frozen list", () => {
