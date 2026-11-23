@@ -546,7 +546,7 @@ async function openEmployeeForm(env) {
 }
 
 /** An employee's drawer (Profile, Full & final, Salary revisions, Loans & advances) on the client's payroll screen, open at one tab, for a person who may finalise. */
-function openEmployeeDrawer(tab) {
+export function openEmployeeDrawer(tab) {
   return async (env) => {
     const { page, stub } = env;
     stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { payroll: ["read", "write", "approve", "finalize"] } }) });
@@ -1855,7 +1855,7 @@ const TASK_ROW = {
   due_date: "2026-10-20", assignee_id: null, assigned_to: null, created_at: "2026-10-01T05:00:00Z", updated_at: "2026-10-01T05:00:00Z", deleted_at: null,
   clients: { client_name: CLIENT_ROW.client_name },
 };
-async function openEditTask(env) {
+export async function openEditTask(env) {
   const { page, stub } = env;
   stub.setTable("tasks", [TASK_ROW]);
   stub.route({ method: "PATCH", re: /api\/tasks\/t-1$/, reply: () => ok({ task: TASK_ROW }) });

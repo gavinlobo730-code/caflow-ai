@@ -2,7 +2,7 @@
 
 import { EntityLookup } from "@/components/lookups/EntityLookup";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import {
   Plus, Clock, AlertTriangle, RefreshCw, Trash2,
   ChevronRight, X, CheckSquare,
@@ -23,6 +23,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 import { Button } from "@/components/ui/button";
+import { Drawer } from "@/components/ui/drawer";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
@@ -213,6 +214,16 @@ interface DetailPanelProps {
 
 function DetailPanel({ task, clients, teamMembers, allTasks, transitions, onClose, onUpdated }: DetailPanelProps) {
   const [editing, setEditing] = useState(false);
+  // FOCUS FOLLOWS THE SWITCH (found in a browser, 23-11-2026). Edit replaces the view with the form and removes the very button that was
+  // pressed; Cancel and Save do the reverse. Focus used to be left on nothing each time, so the next Tab started from the top of the
+  // document. It goes to the Title box on the way in and back to Edit on the way out.
+  const titleRef = useRef<HTMLInputElement>(null);
+  const editRef = useRef<HTMLButtonElement>(null);
+  const hasEdited = useRef(false);
+  useEffect(() => {
+    if (editing) { hasEdited.current = true; titleRef.current?.focus(); }
+    else if (hasEdited.current) editRef.current?.focus();
+  }, [editing]);
   const [form, setForm] = useState<Partial<Task>>({});
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -261,34 +272,29 @@ function DetailPanel({ task, clients, teamMembers, allTasks, transitions, onClos
     s => s === task.status || !transitions || (transitions[task.status] ?? []).includes(s));
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end pointer-events-none">
-      <div className="absolute inset-0 pointer-events-auto" onClick={(e) => { e.stopPropagation(); if (!saving) onClose(); }} />
-      <div className="relative w-96 h-full bg-white border-l border-ps-border shadow-2xl pointer-events-auto flex flex-col overflow-hidden">
-        {/* Panel header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-ps-border">
-          <h3 className="text-sm font-semibold text-ps-ink">Task Detail</h3>
-          <div className="flex items-center gap-2">
-            {!editing && (
-              <button
-                onClick={() => setEditing(true)}
-                className="px-3 py-1.5 text-xs bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 font-medium"
-              >
-                Edit
-              </button>
-            )}
-            <button disabled={saving} onClick={onClose} className="p-1 rounded text-ps-hint hover:text-ps-label">
-              <X size={16} />
+    // The shared side sheet (POST-A-130): named, modal, Tab kept inside, Escape closes it, focus given back to the task's row. Its close
+    // (Escape, a click beside it, its ×) is held while the task is being saved. Edit sits at the top of the sheet, under its name: a
+    // button does not belong inside a heading.
+    <Drawer open widthClass="sm:max-w-sm" ariaLabel="Task Detail" onClose={() => { if (!saving) onClose(); }}
+      title={<span className="font-sans">Task Detail</span>}>
+        {!editing && (
+          <div className="flex justify-end px-5 pt-3">
+            <button ref={editRef}
+              onClick={() => setEditing(true)}
+              className="px-3 py-1.5 text-xs bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 font-medium"
+            >
+              Edit
             </button>
           </div>
-        </div>
+        )}
 
-        <div className="flex-1 overflow-y-auto p-5 space-y-5">
+        <div className="p-5 space-y-5">
           {editing ? (
             /* Edit mode */
             <div className="space-y-4">
               <div>
                 <label className="block text-xs font-medium text-ps-label mb-1">Title</label>
-                <input aria-label="Title"
+                <input aria-label="Title" ref={titleRef}
                   value={form.title ?? ""}
                   onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand"
@@ -413,8 +419,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, transitions, onClos
             </>
           )}
         </div>
-      </div>
-    </div>
+    </Drawer>
   );
 }
 
