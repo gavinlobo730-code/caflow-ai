@@ -180,8 +180,11 @@ test("the wizard cannot render a result without its SPECIMEN badge and truth lin
   // apps/api/tests/test_one_filing_posture_and_the_browser_echoes_it.py,
   // because a guard written here would compare the browser against a copy of
   // itself.
+  // The wizard is the shared dialog since POST-A-130. That dialog's scrolling panel has 16px of padding and holds a sticky box inside
+  // its content edge, so the banner's offset is minus that padding (`-top-4`), which is what puts it on the panel's own top edge.
+  // That it stays there while the body scrolls is measured in a browser (weekly group `last-dialogs`).
   assert.match(
-    src, /sticky top-0[^"]*bg-amber/,
+    src, /sticky -top-4[^"]*bg-amber/,
     "the DEMO banner is no longer sticky — it must never scroll away, because " +
       "whoever glances at this screen, including somebody who did not watch it " +
       "start, has to see what it is",

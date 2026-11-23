@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { Modal } from "@/components/ui/modal";
 
 /**
  * The import modal, loaded when somebody opens it and not before.
@@ -25,20 +26,19 @@ import dynamic from "next/dynamic";
  *
  * `loading` is a real overlay, not `null`: the click that opens the modal must
  * visibly do something in the tens of milliseconds before its chunk arrives, or
- * a CA on a slow line clicks Import twice.
+ * a CA on a slow line clicks Import twice. It is the shared dialog's own frame
+ * (POST-A-130), so the page behind is held from the click and not from the
+ * moment the importer arrives; there is nothing to close yet, so its close
+ * does nothing.
  */
 const LazyCsvImportModal = dynamic(() => import("@/components/CsvImportModal"), {
   ssr: false,
   loading: () => (
-    <div
-      role="status"
-      aria-live="polite"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ps-bg/60 p-4"
-    >
-      <div className="rounded-2xl bg-white px-6 py-4 text-sm text-ps-label shadow-xl">
+    <Modal title="Import" onClose={() => {}}>
+      <p role="status" aria-live="polite" className="text-sm text-ps-label">
         Opening the importer…
-      </div>
-    </div>
+      </p>
+    </Modal>
   ),
 });
 
