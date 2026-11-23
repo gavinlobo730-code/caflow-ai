@@ -66,10 +66,9 @@ from domain.money_sentence import rupee_text, rupee_whole_text
 VERIFIED = False
 
 UNVERIFIED_NOTE = (
-    "Every limit in this working is recorded from knowledge, not read off the "
-    "Act — this environment refuses outbound requests, incometax.gov.in "
-    "included. Each is pinned exactly by a test. Check the figures against the "
-    "Finance Act before filing."
+    "Every limit in this working is recorded from knowledge and has not been "
+    "read off the Act. Check the figures against the Finance Act before "
+    "filing."
 )
 
 # ── §80E — interest on a loan for higher education ────────────────────────────
