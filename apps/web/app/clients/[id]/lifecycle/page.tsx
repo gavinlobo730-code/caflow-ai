@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { useState, useEffect, useCallback } from "react";
 import { Plus, X, CheckCircle, Clock } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -459,69 +460,65 @@ export default function ClientLifecyclePage() {
 
       {/* Renewal Modal */}
       {renewalModal && (
-        <div className="fixed inset-0 bg-gray-900/60 flex items-center justify-center z-50 px-4">
-          <div className="bg-white border border-gray-200 rounded-xl shadow-xl p-6 w-full max-w-md">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-sm font-semibold text-brand">Add Renewal</h2>
-              <button disabled={actionInFlight} onClick={() => setRenewalModal(false)} className="text-gray-400 hover:text-gray-700"><X size={16} /></button>
-            </div>
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs text-gray-600">Service Type *</label>
-                <input aria-label="Service Type"
-                  value={renewalForm.service_type}
-                  onChange={(e) => setRenewalForm({ ...renewalForm, service_type: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
-                  placeholder="e.g. GST Filing, ITR, Audit"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-gray-600">Financial Year *</label>
-                <input aria-label="Financial Year"
-                  value={renewalForm.financial_year}
-                  onChange={(e) => setRenewalForm({ ...renewalForm, financial_year: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
-                  placeholder="e.g. 2025-26"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-gray-600">Renewal Date</label>
-                <DateInput
-                  aria-label="Renewal date"
-                  value={renewalForm.renewal_date}
-                  financialYear={renewalForm.financial_year || undefined}
-                  onChange={(v) => setRenewalForm({ ...renewalForm, renewal_date: v })}
-                  onStateChange={renewalDates.watch("renewal", "Renewal date")}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-gray-600">Value (₹)</label>
-                <input aria-label="Value (₹)"
-                  type="text"
-                  inputMode="decimal"
-                  value={renewalForm.value_paise}
-                  onChange={(e) => setRenewalForm({ ...renewalForm, value_paise: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
-                  placeholder="e.g. 15000"
-                />
-              </div>
-            </div>
-            {renewalRefusal.shown && (
-              <p role="alert" className="mt-3 text-xs text-state-problem">{renewalRefusal.shown}</p>
-            )}
-            <div className="flex gap-2 mt-5">
-              <button disabled={actionInFlight} onClick={() => setRenewalModal(false)} className="flex-1 text-sm text-gray-600 border border-gray-200 py-2 rounded-md hover:bg-gray-50">Cancel</button>
-              <Button variant="plain" size="none" spinner={false}
-                onClick={handleSaveRenewal}
-                disabled={actionInFlight || !renewalForm.service_type || !renewalForm.financial_year}
-                className="flex-1 text-sm bg-brand text-white py-2 rounded-md hover:bg-brand-dark disabled:opacity-50"
-              >
-                {savingRenewal ? "Saving…" : "Save"}
-              </Button>
-            </div>
+        // The shared dialog (POST-A-130): named, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it, its ×) and its
+        // Cancel are held while its own request is out.
+        <Modal title="Add Renewal" maxWidthClass="max-w-md" onClose={() => { if (!actionInFlight) setRenewalModal(false); }}
+          footer={<>
+            <button disabled={actionInFlight} onClick={() => setRenewalModal(false)} className="flex-1 text-sm text-gray-600 border border-gray-200 py-2 rounded-md hover:bg-gray-50 disabled:opacity-50">Cancel</button>
+            <Button variant="plain" size="none" spinner={false}
+              onClick={handleSaveRenewal}
+              disabled={actionInFlight || !renewalForm.service_type || !renewalForm.financial_year}
+              className="flex-1 text-sm bg-brand text-white py-2 rounded-md hover:bg-brand-dark disabled:opacity-50"
+            >
+              {savingRenewal ? "Saving…" : "Save"}
+            </Button>
+          </>}>
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-gray-600">Service Type *</label>
+            <input aria-label="Service Type"
+              value={renewalForm.service_type}
+              onChange={(e) => setRenewalForm({ ...renewalForm, service_type: e.target.value })}
+              className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
+              placeholder="e.g. GST Filing, ITR, Audit"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-600">Financial Year *</label>
+            <input aria-label="Financial Year"
+              value={renewalForm.financial_year}
+              onChange={(e) => setRenewalForm({ ...renewalForm, financial_year: e.target.value })}
+              className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
+              placeholder="e.g. 2025-26"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-600">Renewal Date</label>
+            <DateInput
+              aria-label="Renewal date"
+              value={renewalForm.renewal_date}
+              financialYear={renewalForm.financial_year || undefined}
+              onChange={(v) => setRenewalForm({ ...renewalForm, renewal_date: v })}
+              onStateChange={renewalDates.watch("renewal", "Renewal date")}
+              className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-600">Value (₹)</label>
+            <input aria-label="Value (₹)"
+              type="text"
+              inputMode="decimal"
+              value={renewalForm.value_paise}
+              onChange={(e) => setRenewalForm({ ...renewalForm, value_paise: e.target.value })}
+              className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
+              placeholder="e.g. 15000"
+            />
           </div>
         </div>
+        {renewalRefusal.shown && (
+          <p role="alert" className="mt-3 text-xs text-state-problem">{renewalRefusal.shown}</p>
+        )}
+        </Modal>
       )}
     </div>
   );
