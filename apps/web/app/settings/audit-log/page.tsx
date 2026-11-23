@@ -306,7 +306,7 @@ function AuditLogContent() {
           <PageHeader
             icon={<ShieldCheck size={16} className="text-blue-600" />}
             title="Audit Log"
-            subtitle="Partner-only view — immutable trail of who changed what across invoices, journals, compliance, clients and users."
+            subtitle="Immutable trail of who changed what across invoices, journals, compliance, clients and users."
           />
         </div>
         <button
