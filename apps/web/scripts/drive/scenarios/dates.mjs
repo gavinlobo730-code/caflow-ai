@@ -1900,7 +1900,7 @@ const HEALTH_SCORE = {
   client_id: CLIENT_ID, overall_score: 72, grade: "B", health_grade: "B", dimensions: {}, last_calculated_at: "2026-10-08T00:30:00Z",
   is_critical: false, is_at_risk: false, hard_override: null, hard_override_reason: null,
 };
-async function openHealthOverride(env, path) {
+export async function openHealthOverride(env, path) {
   const { page, stub } = env;
   stub.setTable("health_scores", [HEALTH_SCORE]);
   stub.route({ method: "POST", re: new RegExp(`api\\/health\\/scores\\/${CLIENT_ID}\\/override$`), reply: () => ok({ id: "ov-1" }) });
@@ -1910,7 +1910,7 @@ async function openHealthOverride(env, path) {
   await page.getByLabel("Reason", { exact: true }).fill("The notice was answered in person");
 }
 
-async function openAddRenewal(env) {
+export async function openAddRenewal(env) {
   const { page, stub } = env;
   stub.route({ method: "POST", re: /api\/lifecycle\/renewals$/, reply: () => ok({ id: "rn-1" }) });
   await page.goto(env.at("/lifecycle/"), { waitUntil: "networkidle" });

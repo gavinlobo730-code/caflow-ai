@@ -1,8 +1,9 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { useState, useEffect, useCallback } from "react";
-import { RefreshCw, Plus, X, Activity, AlertTriangle } from "lucide-react";
+import { RefreshCw, Plus, Activity, AlertTriangle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton, LoadingRegion } from "@/components/ui/skeleton";
@@ -599,71 +600,67 @@ export default function ClientHealthPage() {
 
       {/* Override Modal */}
       {overrideModal && (
-        <div className="fixed inset-0 bg-gray-900/60 flex items-center justify-center z-50 px-4">
-          <div className="bg-white border border-gray-200 rounded-xl shadow-xl p-6 w-full max-w-md">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-sm font-semibold text-brand">Add Override</h2>
-              <button disabled={actionInFlight} onClick={() => setOverrideModal(false)} className="text-gray-400 hover:text-gray-700"><X size={16} /></button>
-            </div>
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs text-gray-600">Dimension</label>
-                <select aria-label="Dimension"
-                  value={overrideForm.dimension}
-                  onChange={(e) => setOverrideForm({ ...overrideForm, dimension: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
-                >
-                  {DIMENSIONS.map((d) => (
-                    <option key={d.key} value={d.key}>{d.label} ({weightLabel(d.weightBp)})</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-gray-600">Override Score (0–100) *</label>
-                <input aria-label="Override Score (0–100)"
-                  type="number" min="0" max="100"
-                  value={overrideForm.override_score}
-                  onChange={(e) => setOverrideForm({ ...overrideForm, override_score: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
-                  placeholder="0–100"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-gray-600">Reason *</label>
-                <textarea aria-label="Reason"
-                  rows={3}
-                  value={overrideForm.reason}
-                  onChange={(e) => setOverrideForm({ ...overrideForm, reason: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 resize-none focus:outline-none focus:ring-2 focus:ring-brand"
-                  placeholder="Explain why…"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-gray-600">Expires At (optional)</label>
-                <DateInput
-                  aria-label="Expires at (optional)"
-                  value={overrideForm.expires_at}
-                  onChange={(v) => setOverrideForm({ ...overrideForm, expires_at: v })}
-                  onStateChange={overrideDates.watch("expires", "Expires at")}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
-                />
-              </div>
-            </div>
-            {overrideRefusal.shown && (
-              <p role="alert" className="mt-3 text-xs text-state-problem">{overrideRefusal.shown}</p>
-            )}
-            <div className="flex gap-2 mt-5">
-              <button disabled={actionInFlight} onClick={() => setOverrideModal(false)} className="flex-1 text-sm text-gray-600 border border-gray-200 py-2 rounded-md hover:bg-gray-50">Cancel</button>
-              <Button variant="plain" size="none" spinner={false}
-                onClick={handleAddOverride}
-                disabled={actionInFlight || !overrideForm.reason.trim() || !overrideForm.override_score}
-                className="flex-1 text-sm bg-brand text-white py-2 rounded-md hover:bg-brand-dark disabled:opacity-50"
-              >
-                {savingOverride ? "Saving…" : "Add Override"}
-              </Button>
-            </div>
+        // The shared dialog (POST-A-130): named, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it, its ×) and its
+        // Cancel are held while its own request is out.
+        <Modal title="Add Override" maxWidthClass="max-w-md" onClose={() => { if (!actionInFlight) setOverrideModal(false); }}
+          footer={<>
+            <button disabled={actionInFlight} onClick={() => setOverrideModal(false)} className="flex-1 text-sm text-gray-600 border border-gray-200 py-2 rounded-md hover:bg-gray-50 disabled:opacity-50">Cancel</button>
+            <Button variant="plain" size="none" spinner={false}
+              onClick={handleAddOverride}
+              disabled={actionInFlight || !overrideForm.reason.trim() || !overrideForm.override_score}
+              className="flex-1 text-sm bg-brand text-white py-2 rounded-md hover:bg-brand-dark disabled:opacity-50"
+            >
+              {savingOverride ? "Saving…" : "Add Override"}
+            </Button>
+          </>}>
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-gray-600">Dimension</label>
+            <select aria-label="Dimension"
+              value={overrideForm.dimension}
+              onChange={(e) => setOverrideForm({ ...overrideForm, dimension: e.target.value })}
+              className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
+            >
+              {DIMENSIONS.map((d) => (
+                <option key={d.key} value={d.key}>{d.label} ({weightLabel(d.weightBp)})</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-gray-600">Override Score (0–100) *</label>
+            <input aria-label="Override Score (0–100)"
+              type="number" min="0" max="100"
+              value={overrideForm.override_score}
+              onChange={(e) => setOverrideForm({ ...overrideForm, override_score: e.target.value })}
+              className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
+              placeholder="0–100"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-600">Reason *</label>
+            <textarea aria-label="Reason"
+              rows={3}
+              value={overrideForm.reason}
+              onChange={(e) => setOverrideForm({ ...overrideForm, reason: e.target.value })}
+              className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 resize-none focus:outline-none focus:ring-2 focus:ring-brand"
+              placeholder="Explain why…"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-600">Expires At (optional)</label>
+            <DateInput
+              aria-label="Expires at (optional)"
+              value={overrideForm.expires_at}
+              onChange={(v) => setOverrideForm({ ...overrideForm, expires_at: v })}
+              onStateChange={overrideDates.watch("expires", "Expires at")}
+              className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
+            />
           </div>
         </div>
+        {overrideRefusal.shown && (
+          <p role="alert" className="mt-3 text-xs text-state-problem">{overrideRefusal.shown}</p>
+        )}
+        </Modal>
       )}
     </div>
   );
