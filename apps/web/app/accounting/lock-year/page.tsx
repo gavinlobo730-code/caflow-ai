@@ -130,7 +130,7 @@ function PinModal({
       </>}>
         <p className="text-sm text-ps-label">
           {isSettingPin
-            ? "No PIN is set yet. Create a PIN that Partners will use to lock or unlock financial years."
+            ? "No PIN is set yet. Create the PIN that is asked for whenever a financial year is locked or unlocked."
             : `Enter the firm PIN to ${d.isLocked ? "unlock" : "lock"} FY ${d.fy}.`}
         </p>
 

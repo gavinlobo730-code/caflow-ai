@@ -1182,7 +1182,7 @@ export default function AttendancePage() {
                       ) : (
                         <>Payroll is <strong>not switched on</strong> for{" "}
                           {clientNames[earnClient] ?? earnClient}. Nothing payroll can
-                          be created for them until a Partner turns it on; anything
+                          be created for them until it is switched on; anything
                           already recorded stays readable.</>
                       )}
                     </span>

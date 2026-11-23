@@ -2313,7 +2313,7 @@ function PayrollEnablementLine({ clientId }: { clientId: string }) {
           <span className="text-ps-body">
             Payroll is <strong>off</strong> for this client — nothing payroll can be
             created for them until it is switched on. Anything already recorded stays readable.
-            {resolved && !mayEnable && " A Partner switches it on here."}
+            {resolved && !mayEnable && " Switching it on needs the permission to switch payroll on, which a Partner holds and can give."}
           </span>
           {mayEnable && (
             <Button variant="plain" size="none" onClick={() => switchOn()} disabled={enableSaving}
