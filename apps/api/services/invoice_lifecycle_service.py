@@ -13,6 +13,7 @@ from typing import Optional
 
 from repositories.invoice_repository import invoice_repo
 from core.ist_clock import ist_today
+from core.observability import capture_soft_failure
 from domain.money_sentence import rupee_whole_text
 
 logger = logging.getLogger("caflow.services")
@@ -62,15 +63,19 @@ def _effective_due_date(invoice: dict) -> Optional[date]:
     if raw:
         try:
             return date.fromisoformat(str(raw)[:10])
-        except ValueError:
-            pass
+        except ValueError as unreadable:
+            # As collections' reference date: the invoice date plus credit days below is used, and the log says the due date was not (POST-A-021).
+            capture_soft_failure(unreadable, operation="invoice_lifecycle.due_date_unreadable", invoice_id=invoice.get("id"))
     raw_inv_date = invoice.get("invoice_date")
     if not raw_inv_date:
         return None
     try:
         from datetime import timedelta
         return date.fromisoformat(str(raw_inv_date)[:10]) + timedelta(days=30)
-    except ValueError:
+    except ValueError as unreadable:
+        # As the due date above: a DATE column that does not read is damage, and the log says the invoice was given no effective due
+        # date at all (None) rather than a guessed one (POST-A-505).
+        capture_soft_failure(unreadable, operation="invoice_lifecycle.invoice_date_unreadable", invoice_id=invoice.get("id"))
         return None
 
 

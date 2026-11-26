@@ -294,7 +294,7 @@ const DRAFT_RUN = { id: "run-1", status: "draft", month: "2026-08", headcount: 3
 
 async function atPayrollRuns(env) {
   const { page, stub } = env;
-  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { payroll: ["read", "write", "approve"] } }) });
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { payroll: ["read", "write", "approve", "finalize"] } }) });
   stub.route({ method: "GET", re: /api\/payroll\/runs\?/, reply: () => ok([DRAFT_RUN]) });
   await page.goto(env.at("/payroll/"), { waitUntil: "networkidle" });
   // the runs are the Register tab
@@ -363,4 +363,31 @@ const payrollAnEmptyAnswerUnderAFailedStatus = {
   },
 };
 
-export const scenarios = [...gstr3bRowActions, gstr3bMarkFiled, gstr3bRecompute, aTdsList, anIncomeTaxCompute, signingPageLoad, signingPageAccept, ...payrollRunActions, payrollAnEmptyAnswerUnderAFailedStatus];
+/** A POST that only ASKS is said as a question (POST-A-414): the leaver's settlement preview answered with a gateway's page says that no result came back, never that
+ *  it is not known whether a change went through, because it changes nothing (`asked: "read"` in lib/api, on the named list of
+ *  scripts/a-post-that-only-asks-is-on-the-named-list.test.ts). Before, `request()` worded every POST as a change. */
+const aSettlementPreviewThatOnlyAsks = {
+  id: "a-settlement-preview-that-gets-a-gateways-page-says-no-result-came-back-not-that-a-change-may-have-gone-through",
+  title: "Full & final: Compute answered with a gateway's page is said as a question that got no answer (it changes nothing)",
+  async run(env) {
+    const { page, stub } = env;
+    stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { payroll: ["read", "write", "approve", "finalize"] } }) });
+    stub.route({ method: "GET", re: /api\/payroll\/employees\?/, reply: () => ok([{
+      id: "emp-1", name: "Asha Rao", designation: "Accountant", basic_paise: 40_000_00, hra_percent: 40, pf_applicable: true, esi_applicable: false,
+      pt_applicable: true, status: "active" }]) });
+    stub.route({ method: "GET", re: /employees\/emp-1\/salary-revisions\?/, reply: () => ok({ revisions: [] }) });
+    stub.route({ method: "GET", re: /employees\/emp-1\/loans\?/, reply: () => ok({ loans: [] }) });
+    stub.route({ method: "POST", re: /employees\/emp-1\/settlement$/, ...notJson() });
+    await page.goto(env.at("/payroll/?tab=inputs"), { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: "Open", exact: true }).first().click();
+    await page.getByRole("button", { name: "Full & final", exact: true }).click();
+    const leaving = page.locator("#drawer-last-working-day");
+    await leaving.fill("30/09/2026");
+    await leaving.blur();
+    await page.getByRole("button", { name: "Compute", exact: true }).click();
+    await saysIt(page, NOT_OURS_READ, "the settlement preview, which changes nothing, was not said as a question that got no answer");
+    assert.equal(await page.getByText(NOT_OURS_WRITE).count(), 0, "the settlement preview was said as a change that may have gone through");
+  },
+};
+
+export const scenarios = [...gstr3bRowActions, gstr3bMarkFiled, gstr3bRecompute, aTdsList, anIncomeTaxCompute, signingPageLoad, signingPageAccept, ...payrollRunActions, payrollAnEmptyAnswerUnderAFailedStatus, aSettlementPreviewThatOnlyAsks];

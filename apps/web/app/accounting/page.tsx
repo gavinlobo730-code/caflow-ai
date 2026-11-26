@@ -2,12 +2,13 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { RefreshCw, Target, FileText, ClipboardCheck, IndianRupee, Scale, Lock, Landmark, Users, Clock, Building2, ArrowRight } from "lucide-react";
+import { RefreshCw, Target, FileText, ClipboardCheck, IndianRupee, Scale, Lock, Landmark, Users, Building2, ArrowRight } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { api } from "@/lib/api";
 import { NAV_GROUPS } from "@/components/panels/AccountingPanel";
 import { usePermissions, useAuth } from "@/lib/auth/AuthContext";
 import { PageHeader } from "@/components/ui/page-header";
+import { useScreenAccess } from "@/lib/access/useScreenAccess";
 
 // Phase 3 consolidation: this is the firm ADMINISTRATION hub only. Day-to-day
 // accounting — journals, ledger, trial balance, P&L, balance sheet, cash flow,
@@ -20,10 +21,8 @@ const ADMIN_CARDS: {
   icon: typeof Users; notShared?: boolean;
 }[] = [
   { label: "Supplier Master", description: "Manage supplier TDS sections, credit limits and payment terms", href: "/accounting/suppliers", icon: Users },
-  // The PRACTICE's fee invoices, not a client's customers — the Sales hub tile
-  // once linked here for those (accounting-hub-2-05); they are the Sales
-  // worklist at /accounting/invoices.
-  { label: "Fee Receivables", description: "What clients owe the practice — your own unpaid fee invoices, by age", href: "/accounting/receivables", icon: Clock },
+  // "Fee Receivables" (the practice's EARLIER fee bills, by age) left this screen on 21-11-2026 with Fee Billing
+  // (POST-B-193): what clients owe the practice is in My practice.
   { label: "Loans & FD", description: "Loans, EMI schedules and FD investments with maturity & TDS flags", href: "/accounting/loans", icon: Landmark },
   // ACC-06 is closed. All three of these kept the CA's work in this browser's
   // localStorage; all three are on the database now — recurring journals on
@@ -39,7 +38,7 @@ const ADMIN_CARDS: {
   { label: "MSME 43B(h) Tracker", description: "Track MSME vendor payments to avoid IT Act §43B(h) disallowance", href: "/accounting/msme-tracker", icon: FileText },
   { label: "Schedule III Statements", description: "Balance Sheet & P&L in Companies Act 2013 Schedule III format for MCA/ROC", href: "/accounting/schedule-iii", icon: ClipboardCheck },
   { label: "Trial Balance Import", description: "Import opening balances from Tally, Busy, QuickBooks, Zoho, Excel CSV", href: "/accounting/trial-balance-import", icon: Scale },
-  { label: "Lock Financial Year", description: "Lock closed years to prevent accidental edits — Partner only", href: "/accounting/lock-year", icon: Lock },
+  { label: "Lock Financial Year", description: "Lock closed years to prevent accidental edits", href: "/accounting/lock-year", icon: Lock },
 ];
 
 // sweep-accounting-hub-1-04: the sidebar (AccountingPanel's NAV_GROUPS) has
@@ -72,6 +71,7 @@ export default function AccountingHubPage() {
   const [practiceId, setPracticeId] = useState<string | null>(null);
   const { can } = usePermissions();
   const { userRole } = useAuth();
+  const { offered } = useScreenAccess();
 
   // Same filter AccountingPanel applies to the same NAV_GROUPS, so a card
   // never offers a link its own sidebar would have hidden.
@@ -81,19 +81,22 @@ export default function AccountingHubPage() {
     heading: g.heading as string,
     items: g.items.filter(
       (i) =>
-        (!i.requires || can(i.requires[0], i.requires[1])) &&
-        (!i.partnerOnly || userRole === "Partner"),
+        offered(i.href) && (!i.requires || can(i.requires[0], i.requires[1])),
     ),
   })).filter((g) => g.items.length > 0);
 
+  // The practice's own client is a Partner's alone (the server reads `practice` `read` and then asks the role), so nobody
+  // else asks for it: the request used to be made by every member of staff and refused for all but one of them.
+  const mayReadPractice = userRole === "Partner";
   useEffect(() => {
+    if (!mayReadPractice) return;
     api.practice.get()
       .then((r) => {
         const res = r as { success: boolean; data: { internal_client_id: string | null } };
         if (res.success) setPracticeId(res.data?.internal_client_id ?? null);
       })
-      .catch(() => { /* practice not provisioned / no access — silently degrade */ });
-  }, []);
+      .catch(() => { /* practice not provisioned: the card below is not drawn */ });
+  }, [mayReadPractice]);
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">

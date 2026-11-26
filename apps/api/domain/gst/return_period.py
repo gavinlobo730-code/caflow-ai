@@ -290,8 +290,8 @@ PAYLOAD_PERIOD_CAVEAT = (
     "This return covers a QRMP quarter (Rule 61A) and its GSTN payload carries "
     "the quarter's FIRST month, {key}, in `fp` / `ret_period` — the same key it "
     "is stored and locked under. Whether the offline utility expects the "
-    "quarter's first or last month there could not be verified from this "
-    "environment; check it against the utility before uploading."
+    "quarter's first or last month there has not been verified against the "
+    "utility; check it there before uploading."
 )
 
 #: Rule 59(2). Named on every quarterly GSTR-1 rather than silently absent —

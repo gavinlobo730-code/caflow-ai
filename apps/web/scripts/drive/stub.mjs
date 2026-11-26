@@ -25,7 +25,49 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { headersFor } from "../security-headers.mjs";
-import { FAKE_SESSION, FAKE_USER } from "./fixtures.mjs";
+import { FAKE_SESSION, FAKE_USER, FAKE_USERS_ROW } from "./fixtures.mjs";
+
+/**
+ * What an UNROUTED `GET /api/identity/permissions` is answered with: the Partner map, the file
+ * `apps/api/scripts/write_drive_permission_fixture.py` writes from `core/permissions.py` (a Python test holds the two
+ * equal, so this is not a second copy of the matrix that can drift). A screen offers a write button only when this
+ * map admits it, and the `[]` every other unrouted read gets is not a map, so before this every scenario that did not
+ * route the endpoint itself saw a screen with no buttons. A scenario that routes it (a restricted role, a missing pair)
+ * still wins: routes are tried before this.
+ */
+const PARTNER_PERMISSIONS = JSON.parse(fs.readFileSync(new URL("./partner-permissions.json", import.meta.url), "utf8"));
+/** Each staff role's map, written by the same script from `core/permissions.py` and held by the same Python test. */
+const ROLE_PERMISSIONS = JSON.parse(fs.readFileSync(new URL("./role-permissions.json", import.meta.url), "utf8"));
+/**
+ * A scenario that routes `GET /api/identity/permissions` usually says only what it is ABOUT (`{ gst: ["read", "approve"] }`) and
+ * nothing of the rest. That was a person nobody has, and it stopped being harmless on 21-11-2026 (POST-A-543): one gate around
+ * every firm and client page now asks the pair that opens the page's AREA (`client` `read` for a client's GST screen), so a
+ * "Partner" holding `gst` alone is told the page is not part of their access and the scenario never reaches its screen.
+ * So the map a scenario serves is completed here, in one place: every resource the scenario NAMES is served exactly as it
+ * wrote it (that is what it is testing, an empty list included), and every resource it does not name is the role's own, read
+ * from the file the server's permission table writes. `signInAs` serves a whole map of its own and is left alone (`whole`), and
+ * so is a scenario that says `whole: true` on its route because the absence is what it is about.
+ *
+ * AN ANSWER THAT NAMES NO ROLE is completed from the role of the person signed in (`signedInRole`, the scenario's own `users`
+ * row): a scenario that wrote `{ permissions: { client: [...] } }` and nothing else was left partial by the first version of
+ * this, and its person lost the Pipeline link (found by running the night's own set, 21-11-2026). A role that IS named and that
+ * the file does not hold is still left alone: that is a scenario about somebody else.
+ */
+export function wholeMapFor(answer, signedInRole) {
+  const data = answer?.data;
+  if (!answer?.success || !data || typeof data.permissions !== "object" || data.permissions === null) return answer;
+  const own = ROLE_PERMISSIONS[data.role === undefined ? signedInRole : data.role];
+  if (!own) return answer;
+  const permissions = { ...structuredClone(own), ...data.permissions };
+  return { ...answer, data: { ...data, permissions } };
+}
+const IS_PERMISSIONS = /\/api\/identity\/permissions$/;
+const IS_SESSION_REPORT = /\/api\/identity\/session-seen$/;
+
+const unroutedGet = (pathname) =>
+  /\/api\/identity\/permissions$/.test(pathname)
+    ? ok({ role: "Partner", permissions: structuredClone(PARTNER_PERMISSIONS), role_defaults: structuredClone(PARTNER_PERMISSIONS), has_overrides: false })
+    : ok([]);
 
 const MIME = {
   ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json",
@@ -66,6 +108,11 @@ export function createStub({ root, port, headerRules, resolveBuilt }) {
   let tables = {};
   /** API routes, first match wins: { method, re, reply(req, body, url), delay, status }. */
   let routes = [];
+  /** table -> ms a PostgREST READ of it is held before it is answered (a slow server, for the cache's first-paint check). Cleared by `reset()`. */
+  let readDelays = {};
+  let authUserDelayMs = 0;
+  // The access token a password grant answers with: a real sign-in service issues a NEW token (a new session) each time.
+  let grantedToken = null;
   /** Every write, in arrival order. */
   let writes = [];
   /** How long a write is held before it is answered. Long enough that a second click lands first. */
@@ -109,9 +156,14 @@ export function createStub({ root, port, headerRules, resolveBuilt }) {
     const siteHeaders = headersFor(headerRules, pathname);
 
     if (pathname.startsWith("/__supabase/auth/v1/")) {
-      if (pathname.endsWith("/user")) return sendJson(res, authUser ?? FAKE_USER);
+      // The sign-in service answers the account lookup after `authUserDelayMs`: what the assurance check waits for in production.
+      if (pathname.endsWith("/user")) {
+        return authUserDelayMs
+          ? void setTimeout(() => { if (!res.destroyed) sendJson(res, authUser ?? FAKE_USER); }, authUserDelayMs)
+          : sendJson(res, authUser ?? FAKE_USER);
+      }
       if (pathname.endsWith("/logout")) return sendJson(res, {});
-      return sendJson(res, { ...FAKE_SESSION, user: authUser ?? FAKE_SESSION.user });
+      return sendJson(res, { ...FAKE_SESSION, access_token: grantedToken ?? FAKE_SESSION.access_token, user: authUser ?? FAKE_SESSION.user });
     }
 
     if (pathname.startsWith("/__supabase/rest/v1/")) {
@@ -134,7 +186,8 @@ export function createStub({ root, port, headerRules, resolveBuilt }) {
         });
         return;
       }
-      return sendJson(res, readTable(table, req, url));
+      const held = readDelays[table] ?? 0;
+      return held ? void setTimeout(() => { if (!res.destroyed) sendJson(res, readTable(table, req, url)); }, held) : sendJson(res, readTable(table, req, url));
     }
 
     if (pathname.startsWith("/__supabase/storage/")) return sendJson(res, []);
@@ -142,21 +195,30 @@ export function createStub({ root, port, headerRules, resolveBuilt }) {
 
     if (pathname.startsWith("/__api/")) {
       let body = "";
-      req.on("data", (d) => { body += d; });
+      const chunks = [];
+      req.on("data", (d) => { body += d; chunks.push(d); });
       req.on("end", () => {
         const target = pathname + url.search;
         const route = routes.find((r) => (!r.method || r.method === req.method) && r.re.test(target));
         const isWrite = req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS";
         const born = generation;
         if (isWrite) {
-          writes.push({ t: Date.now(), via: "api", method: req.method, path: pathname, search: url.search, body });
+          // THE SHELL'S OWN REPORT THAT THE SESSION IS IN USE IS NOT A WRITE A SCENARIO MADE (POST-A-486's `POST /api/identity/session-seen`,
+          // sent once when a sign-in is complete). It is kept out of the log a scenario reads, as the keep-alive's `/health` is never held:
+          // "the screen wrote nothing" is a claim about the screen, and the e-invoice records scenario failed on this request every time.
+          // It still counts as in flight, so `quiet()` waits for it.
+          if (!IS_SESSION_REPORT.test(pathname)) {
+            writes.push({ t: Date.now(), via: "api", method: req.method, path: pathname, search: url.search, body, bytes: Buffer.concat(chunks) });
+          }
           inFlight += 1;
           touch();
         }
-        const out = route
+        const answered = route
           ? route.reply(req, body, url)
           // A route's `status` may be a function of the request, for a door that answers 422 for some bodies and 200 for others (a date before the period ended).
-          : ok(req.method === "GET" ? [] : { id: "new-1" });
+          : (req.method === "GET" ? unroutedGet(pathname) : ok({ id: "new-1" }));
+        const out = route && !route.whole && req.method === "GET" && IS_PERMISSIONS.test(pathname)
+          ? wholeMapFor(answered, tables.users?.[0]?.role) : answered;
         const status = typeof route?.status === "function" ? route.status(req, body, url) : (route?.status ?? 200);
         const delay = !isWrite ? (route?.delay ?? 0) : (route?.delay ?? writeDelayMs);
         // /health is the keep-alive's own ping and never waits.
@@ -198,6 +260,9 @@ export function createStub({ root, port, headerRules, resolveBuilt }) {
     reset(baseline) {
       tables = Object.fromEntries(Object.entries(baseline).map(([k, v]) => [k, structuredClone(v)]));
       routes = [];
+      readDelays = {};
+      authUserDelayMs = 0;
+      grantedToken = null;
       insertAnswers = {};
       writes = [];
       writeDelayMs = 700;
@@ -209,13 +274,39 @@ export function createStub({ root, port, headerRules, resolveBuilt }) {
     },
     refusalsServed: () => refusals,
     setTable(name, rows) { tables[name] = rows; },
+    /**
+     * Sign the scenario in as a staff role: the person's own row says the role AND the permission map served is that
+     * role's own (`role-permissions.json`). Changing the row alone leaves the Partner's map in place, which drives a
+     * screen that asks the map (a button, an access gate) as nobody the product has.
+     */
+    signInAs(role, { grant = [], block = [] } = {}) {
+      const defaults = ROLE_PERMISSIONS[role];
+      if (!defaults) throw new Error(`signInAs: no permission map for the role ${JSON.stringify(role)}`);
+      // What a Partner ticked for this one person, over the role's own start: `grant` adds "resource:action" pairs and
+      // `block` takes them away, which is what the Team screen's Permissions tab does (POST-A-543).
+      const map = structuredClone(defaults);
+      for (const pair of grant) {
+        const [resource, action] = pair.split(":");
+        map[resource] = [...new Set([...(map[resource] ?? []), action])];
+      }
+      for (const pair of block) {
+        const [resource, action] = pair.split(":");
+        map[resource] = (map[resource] ?? []).filter((held) => held !== action);
+      }
+      tables.users = [{ ...FAKE_USERS_ROW, role }];
+      routes.unshift({ method: "GET", re: /\/api\/identity\/permissions$/, delay: undefined, status: undefined, whole: true,
+        reply: () => ok({ role, permissions: structuredClone(map), role_defaults: structuredClone(defaults), has_overrides: grant.length + block.length > 0 }) });
+    },
     /** Answer an insert into `name` with the row `makeRow(sent)` returns (see `insertAnswers`). */
     answerInserts(name, makeRow) { insertAnswers[name] = makeRow; },
     /** Sign in as this auth user from now on (call BEFORE the first navigation of a scenario). */
     setAuthUser(user) { authUser = user; },
+    setAuthUserDelay(ms) { authUserDelayMs = ms; },
+    setGrantedToken(token) { grantedToken = token; },
     /** Register an API route ahead of the defaults. */
     route(spec) { routes.unshift({ method: undefined, delay: undefined, status: undefined, ...spec }); },
     setWriteDelay(ms) { writeDelayMs = ms; },
+    setReadDelay(table, ms) { readDelays[table] = ms; },
 
     /** Every write whose path matches, optionally by method. */
     writesTo(re, method) {

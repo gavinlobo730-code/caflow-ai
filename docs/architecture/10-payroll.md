@@ -19,9 +19,11 @@
 >
 > **No longer current — the sequencing.** The 1 April 2027 cutover and the deliberate
 > non-building of mid-year migration were a calendar device to dodge the
-> opening-position problem. `payroll_opening_positions` is to be built properly
-> instead: a CA firm wins clients year-round. **It is still not built** (there is no
-> such table and no code for it). The deferrals came back into scope under "depth" and
+> opening-position problem. `payroll_opening_positions` was to be built properly
+> instead: a CA firm wins clients year-round. **It is built** (migration 641, POST-A-082):
+> a per-employee record of what was paid and deducted before payroll ran here, read by
+> the §192 spread, the projection and the ESI coverage rule; Annexure II, the 24Q source
+> and Form 16 do not yet print it, and a previous employer's salary and tax is not in it. The deferrals came back into scope under "depth" and
 > have gone different ways: bank advice **shipped** (`domain/payroll/bank_advice.py`);
 > the FVU-validated 24Q file was reconsidered and is **deliberately not built**
 > (`domain/tds/keying_sheet.py` is the answer instead); Form 16 distribution is still
@@ -162,7 +164,7 @@ Payroll becomes the **13th top-level workspace**, not a link inside Accounting.
 Six sections.
 
 > **A hard constraint that shaped this.** `apps/web/public/_redirects` holds
-> **98 dynamic rules against Cloudflare Pages' cap of 100.** Every route below is
+> **99 dynamic rules against Cloudflare Pages' cap of 100.** Every route below is
 > therefore **static**, and per-employee and per-run detail are **drawers on a
 > query parameter**, not routes. A per-client route tree is unbuildable at any
 > price. This is also a standing risk worth its own task, independent of payroll.
@@ -439,9 +441,11 @@ Defects 1–4 above shipped inside items 5, 6 and 1; defect 5 is item 3.
 
 ### Still to build
 
-- **Opening positions for a client mid-year** (`payroll_opening_positions`: no table,
-  no code), with the **previous employer's salary and TDS under §192(2)**. Without
-  them §192 withholds from a position that omits what came before.
+- **The previous employer's salary and TDS under §192(2)** (Form 12B, POST-A-084), a
+  record of its own beside `payroll_opening_positions` (built, migration 641: what THIS
+  employer paid before the product ran; printing it in Annexure II, the 24Q source and
+  Form 16 is still to do). Without the previous employer's figures §192 withholds from a
+  position that omits what came before.
 - **The client portal's payroll surface**: register to review, statutory dues, approve
   or return.
 - **The grade on the client-month queue.** The queue itself shipped (`MonthQueueTab`,

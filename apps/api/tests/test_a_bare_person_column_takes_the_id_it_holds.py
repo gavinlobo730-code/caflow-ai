@@ -8,7 +8,7 @@ WHAT WAS LEFT
     `audit_log.actor_id` and `client_timeline_events.actor_id` are mixed on purpose. A key to `users(id)` is right for the nine and
     WRONG for the eleven. Nothing on a screen is wrong today (a reader that resolves a creator tries both ids), so what a wrong writer
     does is leave a column that two readers now disagree about. The model for this guard is
-    `test_users_fk_columns_take_the_internal_id.py`, which covers the keyed columns from the schema.
+    `test_users_fk_columns_take_the_internal_id_pg.py`, which covers the keyed columns from the schema.
 
 WHAT THIS HOLDS (mock mode, no database)
     * THE MAP. The twenty columns whose data was read are named below with the id each holds. It is data, not a rule written from
@@ -86,6 +86,8 @@ DECIDED_FROM_CODE: dict[tuple[str, str], tuple[str, str]] = {
     ("bank_transaction_splits", "created_by"): ("auth", "the split route passes the sign-in id to the split function (migration 256)"),
     ("billing_schedules", "created_by"): ("auth", "the billing route writes the caller's sign-in id"),
     ("client_portal_users", "invited_by"): ("auth", "the portal invitation writes the inviting member's sign-in id"),
+    ("closed_account_markers", "auth_user_id"): ("auth", "the purge writes each member's own sign-in id (`users.auth_user_id`) and core/auth "
+                                                         "compares it with the caller's verified sign-in id (migration 772)"),
     ("clients", "archived_by"): ("auth", "the archive route writes the caller's sign-in id"),
     ("clients", "deleted_by"): ("auth", "the delete route writes the caller's sign-in id"),
     ("client_timeline_events", "actor_id"): ("auth", "every timeline writer but one passed the sign-in id; that one is changed here"),
@@ -119,6 +121,7 @@ DECIDED_FROM_CODE: dict[tuple[str, str], tuple[str, str]] = {
     ("compliance_records", "reviewer_id"): ("users", "checked to be a member of the firm by users.id before it is written"),
     ("compliance_records", "approver_id"): ("users", "checked to be a member of the firm by users.id before it is written"),
     ("delivery_challan_returns", "created_by"): ("users", "the goods-back route passes users.id to the lot function (migration 585)"),
+    ("delivery_challan_returns", "retracted_by"): ("users", "the retraction route passes users.id to the retraction function (migration 651)"),
     ("documents", "deleted_by"): ("users", "beside uploaded_by and reviewed_by, keys to users; the delete route is changed here (no rows held)"),
     ("fee_engagements", "assigned_to"): ("users", "checked to be a member of the firm by users.id before it is written"),
     ("fee_engagements", "reviewer_id"): ("users", "checked to be a member of the firm by users.id before it is written"),
@@ -179,7 +182,6 @@ UNREAD: set[tuple[str, str, str, str]] = set()      # every write the scan can s
 #: A builder may carry the value under another key (a database function's parameter, `p_actor_id`): then it is named as the third element.
 #: A builder is read for dict literals AND for `<name>["<key>"] = value` assignments.
 BUILT_ELSEWHERE: dict[tuple[str, str], list[tuple[str, ...]]] = {
-    ("login_events", "user_id"): [("repositories/login_events_repository.py", "record")],
     ("time_entries", "user_id"): [("routers/time_tracking.py", "start_timer"), ("routers/time_tracking.py", "create_manual_entry")],
     ("year_end_notes", "created_by"): [("routers/year_end_notes.py", "generate_notes")],
     # POST-A-377: the columns decided from the code whose rows are built away from the write
@@ -198,6 +200,7 @@ BUILT_ELSEWHERE: dict[tuple[str, str], list[tuple[str, ...]]] = {
     ("compliance_records", "approver_id"): [("services/compliance_obligation_service.py", "generate_for_engagement"),
                                             ("services/compliance_obligation_service.py", "assign")],
     ("delivery_challan_returns", "created_by"): [("services/itc_04_service.py", "record_return")],                   # migration 585
+    ("delivery_challan_returns", "retracted_by"): [("services/delivery_challan_writes.py", "retract_lot", "p_by")],   # migration 651
     ("health_overrides", "override_by"): [("routers/health.py", "create_override")],
     ("payroll_employees", "portal_invited_by"): [("services/employee_portal_service.py", "invite_employee")],
     ("purchase_bills", "rate_selected_by"): [("routers/purchase_bills.py", "_create_purchase_bill_core")],
@@ -854,7 +857,7 @@ def test_the_map_names_the_twenty_columns_that_were_read():
 
 
 def test_every_column_decided_from_the_code_says_what_decided_it_and_no_column_is_in_two_lists():
-    assert len(DECIDED_FROM_CODE) == 61, len(DECIDED_FROM_CODE)
+    assert len(DECIDED_FROM_CODE) == 63, len(DECIDED_FROM_CODE)
     for key, (kind, why) in DECIDED_FROM_CODE.items():
         assert kind in ("auth", "users") and len(why) > 20, key
     lists = [set(READ_FROM_ROWS), set(DECIDED_FROM_CODE), set(OTHER_PRINCIPALS), NO_PERSON_WRITTEN_YET]

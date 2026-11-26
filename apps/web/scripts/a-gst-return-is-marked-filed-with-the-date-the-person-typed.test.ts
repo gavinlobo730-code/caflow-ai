@@ -361,7 +361,8 @@ for (const page of FIRM_PAGES) {
     assert.match(src, new RegExp(`htmlFor="${id}"`), "the date field has no label");
     assert.match(field, /onStateChange=\{dates\.watch\(/, "the field does not report an unreadable date");
     // ...and the confirm button is held while the box holds text that is not a date.
-    assert.match(src, /disabled=\{!arn\.trim\(\) \|\| !!dates\.first\}/);
+    // (…and while the filing is being recorded, since POST-A-130's fifteenth step gave the request a flag of its own.)
+    assert.match(src, /disabled=\{!arn\.trim\(\) \|\| !!dates\.first \|\| filedSaving\}/);
     assert.match(src, /if \(!clientId \|\| !yearMonth \|\| !arn\.trim\(\) \|\| dates\.first\) return;/);
   });
 }

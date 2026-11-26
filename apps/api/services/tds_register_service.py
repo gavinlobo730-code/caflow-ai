@@ -78,6 +78,7 @@ from domain.tds.purchase_return import (
 from domain.tds.section_195_rates import rates_are_verified
 from domain.tds.section_rates import rates_are_verified as resident_rates_are_verified
 from core.ist_clock import ist_today
+from core.db_provider import privileged_for
 
 _logger = logging.getLogger("caflow.tds_register")
 
@@ -120,6 +121,8 @@ def _as_date(v) -> Optional[date]:
     try:
         return date.fromisoformat(str(v)[:10]) if v else None
     except (ValueError, TypeError):
+        # Not a date. A DATE or timestamp column always reads back as ISO text, so a stored one never lands here: this is an absent value or text that
+        # was never a date, and None says there is none.
         return None
 
 
@@ -233,8 +236,10 @@ def sync_for_bill(db, firm_id: str, client_id: str, bill: dict,
     try:
         if not live:
             # Draft, cancelled, deleted, or nothing was deducted — no row.
-            db.table("tds_deductions").delete().eq(
-                "purchase_bill_id", bill_id).eq("firm_id", firm_id).execute()
+            # The privileged client writes the register (POST-A-443), naming the firm and the client: the bill's own route asked the role
+            # tier and the client before it called this.
+            privileged_for(db).table("tds_deductions").delete().eq(
+                "purchase_bill_id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()
             return {"synced": True, "action": "removed", "reason": status or "no tds"}
 
         when = _as_date(bill.get("bill_date")) or ist_today()
@@ -337,7 +342,7 @@ def sync_for_bill(db, firm_id: str, client_id: str, bill: dict,
         # Payload written INLINE with literal keys — tests/test_backend_columns_
         # exist_pg.py can only read a query whose table name and payload keys
         # are both string constants.
-        db.table("tds_deductions").upsert({
+        privileged_for(db).table("tds_deductions").upsert({
             "firm_id": firm_id,
             "client_id": client_id,
             "purchase_bill_id": bill_id,
@@ -454,8 +459,9 @@ def sync_for_payment(db, firm_id: str, client_id: str, payment: dict,
 
     try:
         if not live:
-            db.table("tds_deductions").delete().eq(
-                "purchase_payment_id", payment_id).eq("firm_id", firm_id).execute()
+            # The privileged client writes the register (POST-A-443), naming the firm and the client.
+            privileged_for(db).table("tds_deductions").delete().eq(
+                "purchase_payment_id", payment_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()
             return {"synced": True, "action": "removed",
                     "reason": "reversed" if payment.get("is_reversed") else "no tds"}
 
@@ -506,7 +512,7 @@ def sync_for_payment(db, firm_id: str, client_id: str, payment: dict,
         # Payload written INLINE with literal keys — tests/test_backend_columns_
         # exist_pg.py can only read a query whose table name and payload keys
         # are both string constants.
-        db.table("tds_deductions").upsert({
+        privileged_for(db).table("tds_deductions").upsert({
             "firm_id": firm_id,
             "client_id": client_id,
             "purchase_payment_id": payment_id,

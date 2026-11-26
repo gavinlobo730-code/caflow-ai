@@ -1,8 +1,10 @@
 """The marketing site's COPY, as sentences — shared by the claims ledger's guard.
 
-`apps/marketing` has no test runner, so what the public site says is checked from
-here (the Schedule III caption lesson: a guard inside the thing it guards passes
-whenever the thing and its copy drift together).
+What the public site says is checked from here, on the Python side, because the
+facts it is held to are the backend's (the Schedule III caption lesson: a guard
+inside the thing it guards passes whenever the thing and its copy drift together).
+`apps/marketing` has a runner of its own since 16-11-2026 and it cannot import the
+backend; `_marketing_claims.py` says which guards live where and what neither sees.
 
 WHAT COUNTS AS COPY. Every string literal and every run of JSX text in the site's
 `.ts`/`.tsx` under `app/`, `components/` and `lib/`, comments blanked first (a
@@ -11,11 +13,15 @@ into sentences. A fragment of fewer than four words is not a sentence a visitor
 would read as a claim and is dropped, and so is anything that is plainly a CSS
 class list or an import.
 
-WHAT IT CANNOT SEE, and says so. Text assembled at run time — `"a " + b`, a
-template with a `${}` hole — is read as the fragments around the hole, and copy
-that lives in an image or a PDF is not text at all. A claim made that way is
-invisible to every guard built on this module, which is why the ledger's own
-header asks for the sentence to be written out whole.
+TEXT ASSEMBLED AT RUN TIME IS READ JOINED as well as in fragments (POST-A-119). JSX
+text broken by an expression (`Used by {n} firms`) and a `+` join of string literals
+with values (`"Used by " + n + " firms"`) are each read once more as one sentence with
+`…` where the value goes ("Used by … firms"), so a capability sentence written that way
+reaches the claims ledger like any other. A template with a `${}` hole was always read
+whole. A hole at either END is dropped, so a sentence that merely follows an expression
+reads as it did. What it still cannot see: a sentence built in a function from pieces in
+different places, and copy that lives in an image or a PDF, which is not text at all;
+the ledger's own header asks for the sentence to be written out whole.
 """
 from __future__ import annotations
 
@@ -39,8 +45,9 @@ _ENTITIES = {"&apos;": "'", "&#39;": "'", "&amp;": "&", "&quot;": '"', "&nbsp;":
 
 
 def sources() -> list[Path]:
+    # A test file beside the code (`lib/demoRequestWait.test.ts`) is read by the marketing runner, never by a visitor.
     return sorted(p for d in SOURCE_DIRS for p in (MARKETING / d).rglob("*")
-                  if p.suffix in (".tsx", ".ts") and p.is_file())
+                  if p.suffix in (".tsx", ".ts") and p.is_file() and ".test." not in p.name)
 
 
 def blank_comments(src: str) -> str:
@@ -95,12 +102,43 @@ def _looks_like_copy(unit: str) -> bool:
         r"className|=>|\bimport\b.*\bfrom\b|^\s*[#.\w-]+\s*:\s*[\w-]+;|data:image|<svg|\burl\(", unit)
 
 
+# Where a run-time value goes in a sentence read joined.
+HOLE = "…"
+_BRACE = r"\{[^{}<>]*\}"
+# JSX text with at least one `{expression}` in it, between a `>` and the next `<`.
+_JSX_BROKEN = re.compile(r">((?:[^<>{}]|" + _BRACE + r")*" + _BRACE + r"(?:[^<>{}]|" + _BRACE + r")*)<")
+_LITERAL = r'"(?:[^"\\\n]|\\.)*"|`(?:[^`\\$]|\\.)*`'
+_OPERAND = r"(?:" + _LITERAL + r"|[A-Za-z_$][\w$.?]*(?:\([^()\n]*\))?)"
+# A `+` chain with at least one string literal in it.
+_CONCAT = re.compile(r"(?:" + _OPERAND + r"\s*\+\s*)+" + _OPERAND)
+
+
+def _strip_end_holes(text: str) -> str:
+    return re.sub(rf"^(?:\s*{HOLE}\s*)+|(?:\s*{HOLE}\s*)+$", "", text)
+
+
+def _joined_units(src: str):
+    """Sentences broken by a run-time value, read whole with HOLE where the value goes. `src` is already blanked."""
+    for m in _JSX_BROKEN.finditer(src):
+        outside = re.sub(_BRACE, " ", m.group(1))
+        # Code between a `>` and a `<` (an arrow, a comparison, a generic) is not JSX text.
+        if re.search(r"[;=()]", outside) or not re.search(r"[A-Za-z]", outside):
+            continue
+        yield _strip_end_holes(re.sub(_BRACE, f" {HOLE} ", m.group(1)))
+    for m in _CONCAT.finditer(src):
+        parts = re.split(r"\s*\+\s*", m.group(0))
+        if not any(p[:1] in "\"`" for p in parts):
+            continue
+        yield _strip_end_holes("".join(p[1:-1] if p[:1] in "\"`" else f" {HOLE} " for p in parts))
+
+
 def _units(src: str):
     src = _SPACE_EXPR.sub(" ", _INLINE_TAG.sub(" ", blank_comments(src)))
     for m in _STRING.finditer(src):
         yield next(g for g in m.groups() if g is not None)
     for m in _JSX_TEXT.finditer(src):
         yield m.group(1)
+    yield from _joined_units(src)
 
 
 # A full stop that ends an abbreviation does not end a sentence.

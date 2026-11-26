@@ -50,12 +50,17 @@ export default function BooksExportCard({ clientId }: { clientId: string }) {
       <div className="px-5 py-4 space-y-3">
         <p className="text-2xs text-ps-label">
           <span className="font-medium">In it:</span> the chart of accounts, customers and vendors, every journal entry and line, sales invoices, purchase bills, credit and debit
-          notes, receipts and vendor payments with their lines and allocations, and the TDS register. A trial balance made from the ledger files is included so the books can be
-          checked without us.
+          notes, receipts and vendor payments with their lines and allocations, the TDS register, challans and statements, the fixed assets with their movements, verifications and capital work in
+          progress, the item master, godowns, batches, stock ledger, stock counts and landed costs, and the bank accounts, imported statement lines, splits, matches,
+          reconciliations and matching rules, the records beside the books (cost centres, advances and credits, loans and deposits, foreign-currency revaluations, price lists,
+          recurring templates, quotations, orders, delivery and job-work challans, goods receipts, bills of entry and post-dated cheques), and GST (registrations, the returns
+          as built here with their JSON, GST challans, GSTR-2B lines and reconciliations, the ITC reversal register, reverse-charge documents and the e-invoice and e-way bill
+          records). A trial balance made from the ledger files and a stock position made from the stock ledger file are included so the books can be
+          checked without us. A part you are blocked from on the Team screen (the books, TDS, the bank or GST) is left out and named in the manifest.
         </p>
         <p className="text-2xs text-ps-label">
-          <span className="font-medium">Not in it yet:</span> payroll, the bank, uploaded documents, the audit log, GST returns, income tax, fixed assets and stock, PDFs, and
-          records beside the books such as advances, loans, orders and the service catalogue. The manifest lists the files that are here and says anything else is not. The files are read one request at a time, so they are a copy and not a snapshot; a client with a very large ledger is refused in words rather than
+          <span className="font-medium">Not in it yet:</span> payroll, uploaded documents and bank statement files, the audit log, the GST portal&apos;s snapshots and the
+          annual reconciliation&apos;s working tables, income tax, PDFs, and budgets. The manifest lists the files that are here and says anything else is not. The files are read one request at a time, so they are a copy and not a snapshot; a client with a very large ledger is refused in words rather than
           cut short.
         </p>
         <div className="flex items-center gap-3">

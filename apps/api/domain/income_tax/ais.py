@@ -100,6 +100,7 @@ def rupees_to_paise(value: Any) -> Optional[int]:
     try:
         return int((Decimal(text) * 100).to_integral_value())
     except (InvalidOperation, ValueError):
+        # Unreachable after the pattern above; kept so the refusal (None, never 0) holds whatever Decimal does.
         return None
 
 

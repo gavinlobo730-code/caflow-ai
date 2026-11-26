@@ -1,16 +1,55 @@
 name: Marketing CI
 
+# NOT A REQUIRED CHECK, which is the only reason a `paths:` filter may sit in `on:` here (CLAUDE.md, CI: a
+# path-filtered workflow that carries a required check is pending forever when the filter misses).
+#
+# WHAT THE PATHS ARE. Everything under apps/marketing, this file, and THE PRODUCT FILES THE HOME PAGE'S REDRAWN
+# SCREENS WERE COPIED FROM (POST-A-121). `pnpm test` runs
+# apps/marketing/scripts/the-redrawn-screens-match-the-product.test.ts, which reads those files and fails when the
+# drawings no longer carry their words; a change to the product is exactly the change that makes them stale, so it
+# has to run on one. The test holds this list to the files it reads (`FROM` in
+# apps/marketing/components/home/screens/productWords.ts): a file added there and not here fails the test. The
+# plan document and the quality workflow are here because a test reads them too
+# (scripts/the-marketing-quality-pass-is-started-by-hand.test.ts).
 on:
   push:
     branches: [main]
     paths:
       - "apps/marketing/**"
       - ".github/workflows/marketing-ci.yml"
+      - ".github/workflows/marketing-quality.yml"
+      - "docs/marketing/2026-09-16-website-redesign-plan.md"
+      - "apps/web/lib/workspace/ClientNavContext.tsx"
+      - "apps/web/components/shell/ClientTopBar.tsx"
+      - "apps/web/components/HealthBadge.tsx"
+      - "apps/web/app/clients/*/bank/page.tsx"
+      - "apps/web/components/banking/EntriesTab.tsx"
+      - "apps/web/components/ui/data-table.tsx"
+      - "apps/web/app/gst/gstr3b/page.tsx"
+      - "apps/web/app/copilot/page.tsx"
+      - "apps/web/lib/ai/disclosure.ts"
+      - "apps/api/domain/banking/entry.py"
+      - "apps/api/domain/banking/history.py"
+      - "apps/api/models/ai_copilot.py"
   pull_request:
     branches: [main]
     paths:
       - "apps/marketing/**"
       - ".github/workflows/marketing-ci.yml"
+      - ".github/workflows/marketing-quality.yml"
+      - "docs/marketing/2026-09-16-website-redesign-plan.md"
+      - "apps/web/lib/workspace/ClientNavContext.tsx"
+      - "apps/web/components/shell/ClientTopBar.tsx"
+      - "apps/web/components/HealthBadge.tsx"
+      - "apps/web/app/clients/*/bank/page.tsx"
+      - "apps/web/components/banking/EntriesTab.tsx"
+      - "apps/web/components/ui/data-table.tsx"
+      - "apps/web/app/gst/gstr3b/page.tsx"
+      - "apps/web/app/copilot/page.tsx"
+      - "apps/web/lib/ai/disclosure.ts"
+      - "apps/api/domain/banking/entry.py"
+      - "apps/api/domain/banking/history.py"
+      - "apps/api/models/ai_copilot.py"
 
 # One run per branch. Pushing again to an open PR supersedes the previous run,
 # and without this the old one keeps going to completion for a result nobody
@@ -28,7 +67,7 @@ concurrency:
 
 jobs:
   ci:
-    name: lint · typecheck · build (Node 22)
+    name: lint · typecheck · test · build (Node 22)
     runs-on: ubuntu-latest
 
     steps:
@@ -38,6 +77,8 @@ jobs:
         with:
           version: "10"
 
+      # Node >=22.6 for --experimental-strip-types: the *.test.ts suite runs directly on node:test with no
+      # transpile step, the same way apps/web's does.
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
@@ -55,6 +96,16 @@ jobs:
       - name: Type check
         working-directory: apps/marketing
         run: pnpm exec tsc --noEmit
+
+      # tsconfig.json excludes **/*.test.ts and the suite runs on `node --experimental-strip-types`, which erases
+      # types without checking them, so the tests are type-checked as their own program (tsconfig.test.json).
+      - name: Type check the test files
+        working-directory: apps/marketing
+        run: pnpm exec tsc -p tsconfig.test.json
+
+      - name: Test
+        working-directory: apps/marketing
+        run: pnpm test
 
       - name: Build
         working-directory: apps/marketing

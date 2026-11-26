@@ -51,14 +51,19 @@ def reference_due_date(inv: dict, credit_days: int = DEFAULT_CREDIT_DAYS) -> Opt
     if inv.get("due_date"):
         try:
             return date.fromisoformat(str(inv["due_date"])[:10])
-        except ValueError:
-            pass
+        except ValueError as unreadable:
+            # A DATE column that does not read as a date is damage: the invoice falls back to its date plus its credit days below,
+            # and the log says the stored due date was not used (POST-A-021).
+            capture_soft_failure(unreadable, operation="collections.due_date_unreadable", invoice_id=inv.get("id"))
     cd = inv.get("credit_days")
     eff_credit_days = int(cd) if cd is not None else credit_days
     if inv.get("invoice_date"):
         try:
             return date.fromisoformat(str(inv["invoice_date"])[:10]) + timedelta(days=eff_credit_days)
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as unreadable:
+            # The invoice date is a DATE column and the credit days an integer: one that does not read is damage, said as the due
+            # date's is above. There is then no reference date at all (None), and the invoice is not aged by a guessed one (POST-A-505).
+            capture_soft_failure(unreadable, operation="collections.invoice_date_unreadable", invoice_id=inv.get("id"))
             return None
     return None
 
@@ -486,8 +491,10 @@ def flag_overdue_for_internal_followup(firm_id: str, today: Optional[date] = Non
             try:
                 if datetime.fromisoformat(str(last).replace("Z", "+00:00")) > cutoff:
                     continue  # flagged recently — skip (anti-spam)
-            except ValueError:
-                pass
+            except ValueError as unreadable:
+                # The last follow-up's stamp does not read: the invoice is flagged as if it had none, and the log says why (POST-A-021).
+                capture_soft_failure(unreadable, operation="collections.followup_stamp_unreadable", firm_id=firm_id,
+                                     invoice_id=inv.get("id"))
         now_iso = datetime.now(timezone.utc).isoformat()
         count = int(inv.get("internal_followup_count", 0) or 0) + 1
         if _USE_MOCK:

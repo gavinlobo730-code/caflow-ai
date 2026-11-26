@@ -244,8 +244,15 @@ def test_a_receipt_is_settled_by_accounting_write_or_a_bank_match(db):
 
 
 # ── the journal edit and discard ─────────────────────────────────────────────
+#: Migration 682: both wrappers are the server's alone (the API calls them through its privileged client, after asking the firm's
+#: journal-approval rule). Their signed-in branch is driven with the grant handed back, as 546's functions are above.
+HAND_BACK_682 = ("GRANT EXECUTE ON FUNCTION public.edit_posted_journal(uuid, uuid, uuid, jsonb, text, text, date, uuid) TO authenticated; "
+                 "GRANT EXECUTE ON FUNCTION public.discard_posted_journal(uuid, uuid, uuid, uuid, boolean) TO authenticated;")
+
+
 @pytest.mark.parametrize("call", [_edit, _discard], ids=["edit", "discard"])
 def test_a_manual_journal_is_changed_by_accounting_write_on_a_client_the_caller_reaches(db, call):
+    _ok(db, HAND_BACK_682)
     for who in ("partner", "manager"):
         state, _ = _call(db, who, call())
         assert state not in ("42501",), (who, state)
@@ -256,6 +263,7 @@ def test_a_manual_journal_is_changed_by_accounting_write_on_a_client_the_caller_
 
 @pytest.mark.parametrize("call", [_edit, _discard], ids=["edit", "discard"])
 def test_the_actor_recorded_must_be_the_caller(db, call):
+    _ok(db, HAND_BACK_682)
     assert _guard_refuses(db, "manager", call(actor=USER["partner"]))
     assert _guard_refuses(db, "manager", call(actor=AUTH["partner"]))
     for mine in (USER["manager"], AUTH["manager"]):
@@ -329,7 +337,10 @@ def test_the_hub_worklist_never_shows_a_non_partner_the_internal_client(db):
     _ok(db, f"UPDATE clients SET is_internal = true WHERE id = '{CLIENT_A}'; "
             f"UPDATE firms SET internal_client_id = '{CLIENT_A}' WHERE id = '{FIRM}';")
     assert CLIENT_A not in _clients_seen("manager", db)
-    assert CLIENT_A in _clients_seen("partner", db)
+    # Since migration 706 (POST-A-457, guardrail G2) the practice is not on a hub worklist for a Partner either: it is not one of the
+    # firm's clients to count or chase. The Partner still sees every other client.
+    assert CLIENT_A not in _clients_seen("partner", db)
+    assert CLIENT_B in _clients_seen("partner", db)
 
 
 # ── privileges ───────────────────────────────────────────────────────────────
@@ -349,8 +360,9 @@ SIGNATURES = {
 @pytest.mark.parametrize("name,sig", sorted(SIGNATURES.items()))
 def test_the_originals_are_out_of_reach_and_the_wrappers_are_in(db, name, sig):
     q = lambda role, fn: _ok(db, f"SELECT has_function_privilege('{role}', 'public.{fn}({sig})'::regprocedure, 'EXECUTE');")
-    # settle_receipt_atomic has been the server's alone since migration 546 (the API calls it through its privileged client)
-    signed_in = "f" if name == "settle_receipt_atomic" else "t"
+    # settle_receipt_atomic has been the server's alone since migration 546, and the two manual-journal wrappers since 682 (the API
+    # calls each through its privileged client)
+    signed_in = "f" if name in ("settle_receipt_atomic", "edit_posted_journal", "discard_posted_journal") else "t"
     assert q("authenticated", name) == signed_in and q("service_role", name) == "t" and q("anon", name) == "f"
     assert q("authenticated", f"{name}__unguarded") == "f" and q("anon", f"{name}__unguarded") == "f"
     assert q("service_role", f"{name}__unguarded") == "t"

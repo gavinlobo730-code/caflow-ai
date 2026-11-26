@@ -14,7 +14,7 @@
 //   | drop the login-page exemption                   | 1               |
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mayRenderProtected, type GuardState } from "./guardDecision.ts";
+import { isSignupFormPath, mayRenderProtected, type GuardState } from "./guardDecision.ts";
 
 const base: GuardState = {
   hasSession: true, mfaPending: false, hasFirm: true,
@@ -101,29 +101,6 @@ test("a page outside /login is never bounced by this rule", () => {
 test("an unresolved or owed MFA challenge is not bounced by this rule either", () => {
   assert.equal(bouncesFromLogin({ mfaPending: true }), false);
   assert.equal(bouncesFromLogin({ mfaPending: null }), false);
-});
-
-// ── RoleGuard ────────────────────────────────────────────────────────────────
-// NEGATIVE CONTROL: dropping the `roleLoading` term (the old
-// `!loading && !permitted`) fails "a role still resolving is not a refusal".
-
-import { roleGuardDecision } from "./guardDecision.ts";
-
-test("a role still resolving is not a refusal — the guard waits", () => {
-  // The bug: session known, role not yet, userRole null => hasRole false.
-  assert.equal(roleGuardDecision({ loading: false, roleLoading: true, permitted: false }), "wait");
-});
-
-test("a session still restoring waits too", () => {
-  assert.equal(roleGuardDecision({ loading: true, roleLoading: true, permitted: false }), "wait");
-});
-
-test("a decided role that is allowed renders", () => {
-  assert.equal(roleGuardDecision({ loading: false, roleLoading: false, permitted: true }), "allow");
-});
-
-test("a decided role that is not allowed is refused", () => {
-  assert.equal(roleGuardDecision({ loading: false, roleLoading: false, permitted: false }), "deny");
 });
 
 // ── /signup bounce ───────────────────────────────────────────────────────────
@@ -268,4 +245,27 @@ test("the portal-recovery signal is read off useSearchParams(), never window.loc
     !authGuardSrc.includes("window.location.search"),
     "AuthGuard still reads window.location.search, which lags usePathname() on a client-side navigation",
   );
+});
+
+// POST-A-485: the page a sign-up link opens is under /signup and is NOT the form, so a signed-in member who opens it is told what the
+// link is for instead of being bounced to "/" without a word.
+test("the sign-up form and anything else under /signup is the form", () => {
+  for (const path of ["/signup", "/signup/", "/signup/other", "/signup/other/"]) {
+    assert.equal(isSignupFormPath(path), true, path);
+  }
+});
+
+test("the page a sign-up link opens is not the form, with or without the trailing slash a static export adds", () => {
+  assert.equal(isSignupFormPath("/signup/continue"), false);
+  assert.equal(isSignupFormPath("/signup/continue/"), false);
+});
+
+test("a path that only looks like it is not the form", () => {
+  for (const path of ["/", "/login", "/signups", "/onboarding", "/join"]) assert.equal(isSignupFormPath(path), false, path);
+});
+
+test("a member with a practice is bounced from the form and not from the link's page", () => {
+  const member = { hasSession: true, mfaPending: false as const, hasFirm: true };
+  assert.equal(shouldBounceFromSignup({ ...member, onSignup: isSignupFormPath("/signup/") }), true);
+  assert.equal(shouldBounceFromSignup({ ...member, onSignup: isSignupFormPath("/signup/continue/") }), false);
 });

@@ -13,15 +13,19 @@
  * the import resolver can use its id immediately; the Customers-tab caller
  * derives its own toast text from the returned record.
  */
+import { Button } from "@/components/ui/button";
 import { useState } from "react";
+import { forgetCustomerLists } from "@/lib/data/partyLists";
 import { gstinProblem } from "@/lib/gst/gstin";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
+import { editedChoice, editedText, removedIdentifierProblem } from "@/lib/forms/editedValue";
 import { Loader2 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Callout } from "@/components/ui/callout";
 import { StateLookup } from "@/components/lookups/StateLookup";
 import {
   apiCall, getAuthToken, type Customer,
+  HELD_DIALOG_MS,
 } from "@/lib/invoices/shared";
 import { clearReports } from "@/lib/accounting/reportCache";
 import { panProblem, isValidPan as panIsValid } from "@/lib/identifiers/pan";
@@ -155,6 +159,14 @@ export function CustomerFormModal({
     if (panIssue) { fail(panIssue); return; }
     const tanIssue = tanProblem(tan);
     if (tanIssue) { fail(tanIssue); return; }
+    // POST-A-399. The GSTIN and the state code on file are corrected and not removed: every GST return not yet filed reads them for the documents
+    // already issued to this customer. The server refuses the same edit in the same words; this says it beside the button before anything is sent.
+    // The PAN and the TAN are not refused: no return reads either off a customer, so an emptied one is cleared.
+    if (existing) {
+      const removed = removedIdentifierProblem("GSTIN", existing.gstin, gstin)
+        ?? removedIdentifierProblem("state code", existing.state_code, stateCode);
+      if (removed) { fail(removed); return; }
+    }
 
     setSaving(true); setLocalError(null);
     try {
@@ -187,21 +199,24 @@ export function CustomerFormModal({
         // UPDATE via the backend PATCH so an opening-balance change auto-posts
         // to the General Ledger (the backend regenerates the opening
         // journal). No direct Supabase write, no manual "post" step.
+        // POST-A-399. An emptied box that held a value is sent as null and the route clears it (the PAN and the TAN among them); an empty box
+        // over nothing is not sent. The GSTIN and the state code are never sent empty: one emptied over a value on file was refused above, and
+        // one empty over nothing is left out.
         ? await apiCall(`/api/customers/${existing.id}`, "PATCH", {
             name: name.trim(),
-            gstin: gstin.trim(),
-            state_code: stateCode,
-            pan: pan.trim(),
-            tan: tan.trim(),
-            email: email.trim(),
-            phone: phone.trim(),
-            city: city.trim(),
-            state: state.trim(),
+            gstin: gstin.trim() || undefined,
+            state_code: stateCode || undefined,
+            pan: editedText(pan, existing.pan),
+            tan: editedText(tan, existing.tan),
+            email: editedText(email, existing.email),
+            phone: editedText(phone, existing.phone),
+            city: editedText(city, existing.city),
+            state: editedText(state, existing.state),
             opening_balance_paise: openingBalancePaise,
             credit_days: parseInt(creditDays) || 30,
-            credit_limit_paise: creditLimitPaise,
+            credit_limit_paise: editedChoice(creditLimitPaise, existing.credit_limit_paise),
             is_active: true,
-          }, token)
+          }, token, { timeoutMs: HELD_DIALOG_MS })
         : await apiCall("/api/customers/", "POST", {
             client_id: clientId,
             name: name.trim(),
@@ -216,7 +231,8 @@ export function CustomerFormModal({
             opening_balance_paise: openingBalancePaise,
             credit_days: parseInt(creditDays) || 30,
             credit_limit_paise: creditLimitPaise,
-          }, token);
+          }, token, { timeoutMs: HELD_DIALOG_MS });
+      forgetCustomerLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
       if (!result.success || !result.data) throw new Error(result.error ?? "Failed to save customer");
       // A create that matched an active customer by GSTIN (or PAN) RETURNED
       // that customer and saved nothing typed here — it used to close as
@@ -289,7 +305,7 @@ export function CustomerFormModal({
   }
 
   return (
-    <Modal key="form" title={existing ? "Edit Customer" : "Add Customer"} onClose={onClose} maxWidthClass="max-w-2xl">
+    <Modal key="form" title={existing ? "Edit Customer" : "Add Customer"} onClose={() => { if (!saving) (onClose)(); }} maxWidthClass="max-w-2xl">
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         <div className="col-span-2 lg:col-span-1">
           <label className="block text-xs font-medium text-ps-label mb-1">Name *</label>
@@ -387,9 +403,9 @@ export function CustomerFormModal({
       {localError && !onError && <p className="text-xs text-red-600 bg-state-problem-surface rounded px-3 py-2">{localError}</p>}
       <div className="flex gap-3 justify-end">
         <button onClick={onClose} disabled={saving} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50">Cancel</button>
-        <button onClick={handleSave} disabled={saving} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 inline-flex items-center gap-1.5">
+        <Button variant="plain" size="none" spinner={false} onClick={handleSave} disabled={saving} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 inline-flex items-center gap-1.5">
           {saving && <Loader2 size={13} className="animate-spin" />} {saving ? "Saving…" : existing ? "Update Customer" : "Add Customer"}
-        </button>
+        </Button>
       </div>
     </Modal>
   );

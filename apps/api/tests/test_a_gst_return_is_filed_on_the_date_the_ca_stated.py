@@ -118,7 +118,8 @@ def test_a_malformed_date_is_refused_with_the_compliance_doors_wording(db, bad):
     with pytest.raises(FiledDateRefused) as e:
         _record(db, FILING_TYPE_GSTR3B, filed_date=bad)
 
-    assert e.value.sentence == "filed_date must be YYYY-MM-DD"
+    # A sentence that names the date in words, not the column (POST-A-392).
+    assert e.value.sentence == "The date filed is not a date: write it as YYYY-MM-DD."
     assert db.rows("filings") == []
 
 
@@ -126,7 +127,10 @@ def test_a_date_in_the_future_is_refused(db):
     with pytest.raises(FiledDateRefused) as e:
         _record(db, FILING_TYPE_GSTR1, filed_date="2999-01-01")
 
-    assert e.value.sentence == "filed_date cannot be in the future"
+    # Both days, and whose day it is (POST-A-392): it said "filed_date cannot be in the future".
+    today = ist_today().strftime("%d %b %Y")
+    assert e.value.sentence == (f"The date filed, 01 Jan 2999, is after today's date in India, {today}: a return cannot have been filed on a "
+                                f"day that has not come.")
     assert db.rows("filings") == []
 
 
@@ -264,7 +268,7 @@ def test_submitting_with_a_date_records_the_filing_under_that_date(world, kind, 
 @pytest.mark.parametrize("kind,fn,table,ftype", ROUTES, ids=[r[0] for r in ROUTES])
 @pytest.mark.parametrize("bad,fragment", [
     ("11/07/2026", "YYYY-MM-DD"),
-    ("2999-01-01", "future"),
+    ("2999-01-01", "is after today's date in India"),
     ("2026-06-10", "before the period it declares ended on 2026-06-30"),
 ], ids=["malformed", "future", "before-the-period-ended"])
 def test_a_date_that_cannot_be_true_is_refused_before_the_status_moves(

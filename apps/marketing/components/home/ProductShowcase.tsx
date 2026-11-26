@@ -19,22 +19,31 @@ import { ClientOverview } from "./screens/ClientOverview";
  * reader.
  *
  * ⚠️ THE ARGUMENT THAT THEY ARE "HONEST BECAUSE A RECREATION IS CODE IN THE
- * SAME REPOSITORY" WAS WRONG, AND THE PAGE SAID MORE THAN IT KNEW (POST-A-121,
- * 30-10-2026). A recreation goes stale exactly as silently as a screenshot:
- * nothing ties it to the product, and the client Overview here still draws the
- * 17-item sidebar the product replaced on 25-09-2026 with its module grid. The
- * page used to say the screens were made out of the product's own parts and
- * spoke its own words, under a heading that denied they were any kind of
- * impression. They are an impression, and the page now says so; a rule in
- * `apps/api/tests/test_the_marketing_site_does_not_claim_what_the_code_does_not_do.py`
- * refuses the old sentences. Re-copying the four screens from the product, with
- * a check that ties the module list here to the product's, is still open
- * (POST-A-121).
+ * SAME REPOSITORY" WAS WRONG (POST-A-121). A recreation goes stale exactly as
+ * silently as a screenshot: the client workspace here drew the 17-item sidebar
+ * for seven weeks after the product replaced it with a module grid, and the
+ * copilot answered with client names and GSTINs the copilot is never given.
+ * The page said the screens were made of the product's own parts and spoke its
+ * own words; it now says they are redrawn by hand and illustrative, and a rule
+ * in `apps/api/tests/test_the_marketing_site_does_not_claim_what_the_code_does_not_do.py`
+ * refuses the old sentences.
  *
- * Each screen's own file records which product file its strings were first
- * copied from. The FIGURES are invented, and the figures that are meant to add up do add up — the
- * §49(5) set-off in the GSTR-3B screen is worked properly, because the people
- * this page is for will check it.
+ * WHAT HOLDS THEM NOW. All four were re-copied from the product on 16-11-2026,
+ * and the product's wording they carry lives in `screens/productWords.ts`, beside
+ * the file each group was copied from. `scripts/the-redrawn-screens-match-the-product.test.ts`
+ * (run by `pnpm test` in this app, and by Marketing CI on a change to any file
+ * it reads) fails when the client workspace's modules differ from the product's
+ * `CLIENT_SECTIONS`, or when a copied label or sentence is no longer in its
+ * file. The layout, the colours and the sample data are not checked, which is
+ * why the caption below still says a label may differ.
+ *
+ * The FIGURES are invented, and the figures that are meant to add up do add
+ * up — the §49(5) set-off in the GSTR-3B screen is worked properly, because the
+ * people this page is for will check it.
+ *
+ * The bar above each screen shows the product's own route for it, with the
+ * client's id left out. It names no domain: the product has no custom domain
+ * yet, and the one this drawing used to show was not the product's.
  *
  * The frame is deliberately thin. §7: "Use device/browser frames sparingly; the
  * UI itself should be the focus."
@@ -45,7 +54,7 @@ const TABS = [
     key: "bank",
     label: "Banking",
     caption: "A statement line arrives as a voucher you review, not a row you type.",
-    path: "practicesync.app / clients / vaidehi-textiles / bank",
+    path: "/clients/…/bank/",
     screen: <BankQueue />,
   },
   {
@@ -53,21 +62,23 @@ const TABS = [
     label: "GSTR-3B",
     caption:
       "Computed from the books, with the §49(5) set-off worked in order — and reverse charge kept out of it, because credit cannot pay it.",
-    path: "practicesync.app / gst / gstr3b",
+    path: "/gst/gstr3b/",
     screen: <Gstr3bReview />,
   },
   {
     key: "copilot",
     label: "AI Copilot",
-    caption: "Ask about the whole book of clients. Every answer says where it came from.",
-    path: "practicesync.app / copilot",
+    caption:
+      "Ask about the practice as a whole. It answers from counts in your own records, with no client's name added from our side, and the screen says its answers are advisory.",
+    path: "/copilot/",
     screen: <CopilotChat />,
   },
   {
     key: "client",
     label: "Client workspace",
-    caption: "One client, everything about them, and what needs doing next.",
-    path: "practicesync.app / clients / vaidehi-textiles",
+    caption:
+      "Open a client and every module is one click away, under a bar that always says whose books you are in.",
+    path: "/clients/…/",
     screen: <ClientOverview />,
   },
 ];
@@ -115,18 +126,29 @@ export function ProductShowcase() {
               <span className="h-2.5 w-2.5 rounded-full bg-[#CBD5E1]" />
               <span className="h-2.5 w-2.5 rounded-full bg-[#CBD5E1]" />
             </span>
-            <span className="ml-3 truncate font-mono text-[10.5px] text-[#94A3B8]">
+            <span className="ml-3 truncate font-mono text-[10.5px] text-[#475569]">
               {tab.path}
             </span>
           </div>
           {/* The screens are laid out at their real widths; a narrow viewport
               scrolls rather than reflowing them into something the product
-              does not actually look like. */}
-          <div className="overflow-x-auto">{tab.screen}</div>
+              does not actually look like. The scrolling box takes focus so a
+              keyboard can scroll it too (axe's scrollable-region-focusable,
+              found by a trial of the marketing quality pass's axe scan). */}
+          <div
+            className="overflow-x-auto focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-light"
+            tabIndex={0}
+            role="region"
+            aria-label={`${tab.label} screen, redrawn by hand`}
+          >
+            {tab.screen}
+          </div>
         </div>
       </Reveal>
 
-      <p className="mt-6 text-[12.5px] leading-relaxed text-white/40">
+      {/* At /40 this sentence fell below WCAG's 4.5:1 contrast against the section, on the one line that says the
+          screens are not the software (axe, in a trial of the marketing quality pass's scan). */}
+      <p className="mt-6 text-[12.5px] leading-relaxed text-white/60">
         Redrawn by hand, not screenshots, so a label on one may differ from the live
         software. The client names and figures are illustrative — no real client
         appears on this page.

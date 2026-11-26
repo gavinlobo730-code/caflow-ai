@@ -1,12 +1,14 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { useState, useEffect, useCallback } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, Plus, X, ChevronDown, AlertTriangle } from "lucide-react";
+import { ChevronLeft, Plus, ChevronDown, AlertTriangle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton, LoadingRegion } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { formatDate } from "@/lib/dates/format";
 import { Callout } from "@/components/ui/callout";
@@ -14,7 +16,7 @@ import { arrayOrEmpty } from "@/lib/api/shape";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
-import { doingOf, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, fetchBounded, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 import {
   HEALTH_DIMENSIONS, HEALTH_DIMENSION_KEYS, gradeBadgeClass, gradeOf, scoreBarClass, scoreTextClass,
   weightLabel as weightBpToLabel, type HealthDimensionKey, type HealthGrade,
@@ -26,7 +28,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
   const { data: { session } } = await getSupabaseClient().auth.getSession();
   const token = session?.access_token ?? "";
   const doing = doingOf(opts?.method);
-  const res = await fetchPlain(`${API}${path}`, {
+  const res = await fetchBounded(`${API}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
@@ -244,7 +246,7 @@ function DimensionCard({ dimKey, value, clientId }: DimensionCardProps) {
         {expanded && (
           <div className="mt-3 pt-3 border-t border-ps-border">
             {loadingFactors ? (
-              <p className="text-xs text-gray-400 animate-pulse">Loading factors…</p>
+              <LoadingRegion label="Loading the factors"><p className="text-xs text-gray-400 animate-pulse">Loading factors…</p></LoadingRegion>
             ) : factorsFailed ? (
               <div className="flex items-center justify-between gap-3">
                 <p className="text-xs text-red-600">Couldn&apos;t load factors — the request failed or timed out.</p>
@@ -426,9 +428,10 @@ export default function ClientHealthDetailPage() {
 
   async function handleAddOverride() {
     if (!overrideForm.dimension || !overrideForm.reason.trim() || !overrideForm.override_score) return;
-    if (overrideDates.first) { setOverrideSaveError(overrideDates.first); return; }
+    if (overrideDates.first) { overrideDates.refuseWith(setOverrideSaveError); return; }
     setSavingOverride(true);
     setOverrideSaveError(null);
+    let written = false;
     try {
       const json: ApiResponse<HealthOverride> = await apiFetch(
         `/api/health/scores/${clientId}/override`,
@@ -447,13 +450,20 @@ export default function ClientHealthDetailPage() {
       // stored row and carries no `in_force`, so pushing it in would show a
       // brand-new override with no sign of whether it is actually replacing
       // anything — the one question this screen could not answer before.
-      await loadOverrides();
+      // The override IS saved here. The dialog's hold ends with the WRITE and the dialog closes, and the re-read follows outside it:
+      // a failed re-read told as a failed save would invite a second press, which posts a second override (found by the independent
+      // review of the sweep that held this dialog).
+      written = true;
       setOverrideModalOpen(false);
       setOverrideForm(EMPTY_OVERRIDE_FORM);
     } catch (e) {
       setOverrideSaveError(e instanceof Error ? e.message : "Failed to save");
     } finally {
       setSavingOverride(false);
+    }
+    if (written) {
+      try { await loadOverrides(); }
+      catch { setOverrideSaveError("The override was saved, but the list could not be read again. Reload the page to see it."); }
     }
   }
 
@@ -478,7 +488,7 @@ export default function ClientHealthDetailPage() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-6">
+      <LoadingRegion label="Loading the client's health" className="p-6 space-y-6">
         <Skeleton className="h-5 w-24" />
         <div className="rounded-xl border border-gray-200 bg-white p-6">
           <div className="flex items-center gap-6">
@@ -509,7 +519,7 @@ export default function ClientHealthDetailPage() {
             </div>
           ))}
         </div>
-      </div>
+      </LoadingRegion>
     );
   }
 
@@ -764,13 +774,13 @@ export default function ClientHealthDetailPage() {
                       <td className="px-3 py-3 text-gray-500 text-xs">{formatDate(override.expires_at)}</td>
                       <td className="px-3 py-3 text-gray-500 text-xs">{override.created_by}</td>
                       <td className="px-3 py-3 text-right">
-                        <button
+                        <Button variant="plain" size="none" spinner={false}
                           onClick={() => handleRemoveOverride(override.id)}
                           disabled={removingOverride === override.id}
                           className="text-xs text-state-problem hover:underline disabled:opacity-50"
                         >
                           {removingOverride === override.id ? "Removing…" : "Remove"}
-                        </button>
+                        </Button>
                       </td>
                     </tr>
                     );
@@ -778,94 +788,88 @@ export default function ClientHealthDetailPage() {
                 </tbody>
               </table>
             )}
+            {/* What the dialog said while it was open is said here once it has closed: a removal's failure, and a re-read that failed after a save. */}
+            {!overrideModalOpen && overrideSaveError && <div className="mt-3"><Callout tone="problem">{overrideSaveError}</Callout></div>}
           </CardContent>
         </Card>
       </div>
 
       {/* Add Override Modal */}
       {overrideModalOpen && (
-        <div className="fixed inset-0 bg-gray-900/60 flex items-center justify-center z-50 px-4">
-          <div className="bg-white border border-gray-200 rounded-xl shadow-xl p-6 w-full max-w-md">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-sm font-semibold text-brand">Add Score Override</h2>
-              <button
-                onClick={() => setOverrideModalOpen(false)}
-                className="text-gray-400 hover:text-gray-700"
-              >
-                <X size={16} />
-              </button>
-            </div>
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs text-gray-600 font-medium">Dimension *</label>
-                <select aria-label="Dimension"
-                  value={overrideForm.dimension}
-                  onChange={(e) => setOverrideForm({ ...overrideForm, dimension: e.target.value as DimensionKey })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
-                >
-                  {OVERRIDE_DIMENSION_OPTIONS.map((key) => (
-                    <option key={key} value={key}>
-                      {DIMENSION_META[key].label} ({DIMENSION_META[key].weightLabel})
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-gray-600 font-medium">Override Score (0–100) *</label>
-                <input aria-label="Override Score (0–100)"
-                  type="number"
-                  min="0"
-                  max="100"
-                  value={overrideForm.override_score}
-                  onChange={(e) => setOverrideForm({ ...overrideForm, override_score: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder:text-ps-hint focus:outline-none focus:ring-2 focus:ring-brand"
-                  placeholder="e.g. 75"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-gray-600 font-medium">Reason *</label>
-                <textarea aria-label="Reason"
-                  rows={3}
-                  value={overrideForm.reason}
-                  onChange={(e) => setOverrideForm({ ...overrideForm, reason: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder:text-ps-hint focus:outline-none focus:ring-2 focus:ring-brand resize-none"
-                  placeholder="Explain why this score is being overridden…"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-gray-600 font-medium">Expires At (optional)</label>
-                <DateInput
-                  aria-label="Expires at (optional)"
-                  value={overrideForm.expires_at}
-                  onChange={(v) => setOverrideForm({ ...overrideForm, expires_at: v })}
-                  onStateChange={overrideDates.watch("expires", "Expires at")}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
-                />
-              </div>
-            </div>
-            {overrideSaveError && <Callout tone="problem">{overrideSaveError}</Callout>}
-            <div className="flex gap-2 mt-5">
-              <button
-                onClick={() => setOverrideModalOpen(false)}
-                className="flex-1 text-sm text-gray-600 border border-gray-200 py-2 rounded-md hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleAddOverride}
-                disabled={
-                  savingOverride ||
-                  !overrideForm.dimension ||
-                  !overrideForm.reason.trim() ||
-                  !overrideForm.override_score
-                }
-                className="flex-1 text-sm bg-brand text-white py-2 rounded-md hover:bg-brand-dark disabled:opacity-50"
-              >
-                {savingOverride ? "Saving…" : "Add Override"}
-              </button>
-            </div>
+        // The shared dialog (POST-A-130): named, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it, its ×) and its
+        // Cancel are held while its own request is out.
+        <Modal title="Add Score Override" maxWidthClass="max-w-md" onClose={() => { if (!savingOverride) setOverrideModalOpen(false); }}
+          footer={<>
+            <button
+              onClick={() => setOverrideModalOpen(false)}
+              disabled={savingOverride}
+              className="flex-1 text-sm text-gray-600 border border-gray-200 py-2 rounded-md hover:bg-gray-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <Button variant="plain" size="none" spinner={false}
+              onClick={handleAddOverride}
+              disabled={
+                savingOverride ||
+                !overrideForm.dimension ||
+                !overrideForm.reason.trim() ||
+                !overrideForm.override_score
+              }
+              className="flex-1 text-sm bg-brand text-white py-2 rounded-md hover:bg-brand-dark disabled:opacity-50"
+            >
+              {savingOverride ? "Saving…" : "Add Override"}
+            </Button>
+          </>}>
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-gray-600 font-medium">Dimension *</label>
+            <select aria-label="Dimension"
+              value={overrideForm.dimension}
+              onChange={(e) => setOverrideForm({ ...overrideForm, dimension: e.target.value as DimensionKey })}
+              className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
+            >
+              {OVERRIDE_DIMENSION_OPTIONS.map((key) => (
+                <option key={key} value={key}>
+                  {DIMENSION_META[key].label} ({DIMENSION_META[key].weightLabel})
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-gray-600 font-medium">Override Score (0–100) *</label>
+            <input aria-label="Override Score (0–100)"
+              type="number"
+              min="0"
+              max="100"
+              value={overrideForm.override_score}
+              onChange={(e) => setOverrideForm({ ...overrideForm, override_score: e.target.value })}
+              className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder:text-ps-hint focus:outline-none focus:ring-2 focus:ring-brand"
+              placeholder="e.g. 75"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-600 font-medium">Reason *</label>
+            <textarea aria-label="Reason"
+              rows={3}
+              value={overrideForm.reason}
+              onChange={(e) => setOverrideForm({ ...overrideForm, reason: e.target.value })}
+              className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder:text-ps-hint focus:outline-none focus:ring-2 focus:ring-brand resize-none"
+              placeholder="Explain why this score is being overridden…"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-600 font-medium">Expires At (optional)</label>
+            <DateInput
+              aria-label="Expires at (optional)"
+              value={overrideForm.expires_at}
+              onChange={(v) => setOverrideForm({ ...overrideForm, expires_at: v })}
+              onStateChange={overrideDates.watch("expires", "Expires at")}
+              className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
+            />
           </div>
         </div>
+        {overrideSaveError && <Callout tone="problem">{overrideSaveError}</Callout>}
+        </Modal>
       )}
     </div>
   );

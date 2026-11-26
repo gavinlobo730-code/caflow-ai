@@ -1,7 +1,9 @@
 """THE CLAIMS LEDGER — every capability and security sentence on the marketing site,
 what fact it asserts, and the test that proves the fact (market_and_trust-09).
 
-`apps/marketing` has no test runner, and the guard that already existed
+The guards on what `apps/marketing` says live here, on the Python side, because the facts a
+sentence is held to are the backend's (see WHERE THE MARKETING GUARDS LIVE below). The guard
+that already existed
 (`test_the_marketing_site_does_not_claim_what_the_code_does_not_do.py`) is a list of
 sentences somebody had ALREADY found false: a FORBIDDEN regex per past mistake. That is
 a record of drift, not protection from the next one — SSO on the Firm plan, "audit logs"
@@ -49,6 +51,43 @@ who adds an entry is making that judgement, and the reviewer after them can read
 one place. It does not cover images or PDFs. And it covers claims by VOCABULARY, so a
 capability sentence using words nobody listed is the next gap — the answer is to add the
 word to `_marketing_vocabulary.py`, not to loosen anything here.
+
+WHERE THE MARKETING GUARDS LIVE, AND WHAT THEY STILL CANNOT SEE (POST-A-119, 16-11-2026).
+
+  Two runners read the marketing site now. THIS SIDE (pytest) holds every sentence to a fact
+  of the backend: the ledger and its vocabulary, the FORBIDDEN rules, the TDS dates against
+  `compliance_engine`, MFA against `mfa_required_roles`, the hosting sentence against
+  render.yaml. It runs in the backend job, which has no `paths:` filter: the full suite (a
+  required check) when anything outside the two frontends changes, and the browser-contract
+  job (not a required check) on a diff that touches only apps/web or apps/marketing.
+  `apps/marketing`'s OWN runner (`pnpm test`: `node --experimental-strip-types --test`,
+  added on 16-11-2026) holds what is TypeScript against TypeScript: the redrawn product
+  screens against the product files they were copied from
+  (`apps/marketing/scripts/the-redrawn-screens-match-the-product.test.ts`), and the scripts
+  of the marketing quality pass. It runs in Marketing CI, which is path-filtered and not a
+  required check. The guards stayed here rather than moving there because that runner
+  cannot import the backend, so a claim checked there would be checked against a copy.
+
+  What is still unseen, by either:
+
+  1. A SENTENCE BUILT FROM PIECES IN DIFFERENT PLACES. JSX text broken by `{value}` and a `+`
+     join of literals and values are read joined since 18-11-2026 (`_marketing_copy`, POST-A-119),
+     with `…` where the value goes; a sentence put together by a function from pieces that are not
+     side by side in the source is still read as its pieces.
+  2. TEXT IN A PICTURE. The hero artwork (public/hero/space-earth.webp, with its feature
+     cards baked in) and the share image (public/og.jpg) are read by nothing; nor is a PDF.
+  3. THE REDRAWN PRODUCT SCREENS ARE EXEMPT BY FOLDER (`_marketing_vocabulary.EXEMPT_PREFIXES`).
+     Their wording is now held to the product's by the marketing runner, and the FORBIDDEN
+     rules still read them, but their sample data and layout are checked by nothing, and a
+     sentence written into a screen that is not copied from the product would pass both
+     the ledger (exempt) and the parity test (which checks only what `productWords.ts` lists).
+  4. WHAT A VISITOR SEES. No guard renders a page: text hidden or clipped by CSS, contrast,
+     a layout that breaks at a phone width. `.github/workflows/marketing-quality.yml`
+     (Lighthouse and axe, started by hand, POST-A-122) is the one place the pages are
+     rendered, and it records what it finds without failing on it.
+  5. (closed 18-11-2026) The demo form's behaviour under Node runs in the marketing runner,
+     `apps/marketing/lib/demoRequestWait.test.ts`, and no longer depends on the backend job's Node.
+  6. A CLAIM IN WORDS THE VOCABULARY DOES NOT LIST, as said above.
 """
 from __future__ import annotations
 
@@ -387,22 +426,6 @@ CLAIMS: tuple[Claim, ...] = (
         ),
     ),
     Claim(
-        id="support-service",
-        status=COMMITMENT,
-        fact="The vendor answers by email and phone, Monday to Saturday 9am-7pm IST, with priority support on the Practice and Firm plans.",
-        commitment="A service the owner runs, not behaviour of the code, so no test can prove it. It exists only as copy on the Support and Pricing pages; the owner is the one who can keep it true (staffing, the phone line, the hours). If the hours or the channels change, this entry and the Support page change together.",
-        says=(
-            Says("Email support", PRICING, SUPPORT),
-            Says("Priority support", PRICING),
-            Says("Every PracticeSync plan includes real support from people who understand CA workflows.", SUPPORT),
-            Says("Get help with PracticeSync — guides, email and phone support, plus hands-on onboarding and data migration for Indian CA firms moving from Tally, ClearTax or Winman.", SUPPORT),
-            Says("Our support team is available Monday to Saturday, 9am–7pm IST.", SUPPORT),
-            Says("Phone support", SUPPORT),
-            Says("Reach our support line during working hours for a quick hand with anything that needs a conversation.", SUPPORT),
-            Says("Speak to our support team during working hours, Monday to Saturday, 9am–7pm IST.", SUPPORT),
-        ),
-    ),
-    Claim(
         id="onboarding-service",
         status=COMMITMENT,
         fact="The Firm plan includes dedicated onboarding and data migration, Practice and Firm get a dedicated onboarding specialist, and the team will help import client masters and opening balances on any plan.",
@@ -410,7 +433,7 @@ CLAIMS: tuple[Claim, ...] = (
         says=(
             Says("Dedicated onboarding & migration", PRICING),
             Says("The Firm plan includes dedicated onboarding and data migration, and our team can help import client masters and opening balances on any plan.", PRICING),
-            Says("Get help with PracticeSync — guides, email and phone support, plus hands-on onboarding and data migration for Indian CA firms moving from Tally, ClearTax or Winman.", SUPPORT),
+            Says("Get help with PracticeSync — guides you can read any time, plus hands-on onboarding and data migration for Indian CA firms moving from Tally, ClearTax or Winman.", SUPPORT),
             Says("Practice and Firm plans also get a dedicated onboarding specialist to set up your team, templates and compliance calendar.", SUPPORT),
         ),
     ),

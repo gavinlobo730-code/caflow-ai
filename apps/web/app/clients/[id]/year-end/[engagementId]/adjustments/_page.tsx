@@ -22,6 +22,7 @@ import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { formatDate } from "@/lib/dates/format";
 import { objectOrNull } from "@/lib/api/shape";
 import { openedAt } from "@/lib/accounting/sourceDocument";
+import { usePermissions } from "@/lib/auth/AuthContext";
 /** Format paise → ₹ Indian number format */
 function fmt(paise: number): string {
   if (paise === 0) return "₹0";
@@ -84,19 +85,22 @@ export default function AdjustmentsPage() {
   // (migration 570). The two account columns hold a ledger account's ID (uuid), so the form picks one; it used to take free text ("5001 / Salary
   // Expense") that the database refuses, and the list showed the raw id.
   const [accounts, setAccounts] = useState<AccountLike[]>([]);
+  // A chart of accounts that could not be read is not a client with no accounts (POST-A-527): the form says so.
+  const [accountsUnread, setAccountsUnread] = useState(false);
   useEffect(() => {
     if (!clientId || clientId === "_placeholder") return;
     let alive = true;
     (async () => {
       const supabase = getSupabaseClient();
-      const { data } = await selectAll(() => supabase
+      const { data, error } = await selectAll(() => supabase
         .from("chart_of_accounts")
         .select("id, account_code, account_name, account_type, account_subtype, is_active, client_id")
         .or(`client_id.eq.${clientId},client_id.is.null`)
         .eq("is_active", true)
         .order("account_code")
         .order("id"));
-      if (alive) setAccounts((data as AccountLike[]) ?? []);
+      // The pager hands a failure back as `error` and does not throw.
+      if (alive) { setAccountsUnread(!!error); setAccounts(error ? [] : (data as AccountLike[]) ?? []); }
     })();
     return () => { alive = false; };
   }, [clientId]);
@@ -216,6 +220,11 @@ export default function AdjustmentsPage() {
         </button>
       </div>
 
+      {showForm && accountsUnread && (
+        <p role="alert" className="text-xs text-state-problem">
+          The client&apos;s accounts could not be read, so none can be chosen for an adjustment. That is not a client with no accounts: reload this page to read them.
+        </p>
+      )}
       {/* New Adjustment Form */}
       {showForm && (
         <AdjustmentForm
@@ -340,12 +349,19 @@ function AdjActions({
   adj: Adjustment;
   onAction: (action: "submit" | "approve" | "post") => void;
 }) {
+  // Approve and Post to Journal ask `year_end` `approve` (a Manager or a Partner) and were offered to an Executive, who was
+  // refused (POST-A-455). Submit asks `year_end` `write`, which every member who can open this screen holds.
+  const { can, resolved } = usePermissions();
+  const mayApprove = can("year_end", "approve");
   if (adj.status === "draft") {
     return (
       <button onClick={() => onAction("submit")} className="text-xs text-blue-600 hover:underline">
         Submit
       </button>
     );
+  }
+  if ((adj.status === "pending_review" || adj.status === "approved") && !mayApprove) {
+    return <span className="text-3xs text-ps-hint">{resolved ? "Awaiting someone who may approve" : "—"}</span>;
   }
   if (adj.status === "pending_review") {
     return (
@@ -408,7 +424,7 @@ function AdjustmentForm({
     const amount_paise = paiseFromRupeeInput(amountStr.replace(/[,\s₹]/g, ""));
     if (amount_paise === null) { setError("Amount isn't a rupee figure — enter it like 125000 or 125000.50"); return; }
     if (amount_paise <= 0) { setError("Amount must be greater than zero"); return; }
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError); return; }
     if (!adjDate) { setError("Date is required"); return; }
 
     setSaving(true);

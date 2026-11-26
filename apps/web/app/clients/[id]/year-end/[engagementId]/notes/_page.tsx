@@ -5,13 +5,14 @@ import { objectOrNull } from "@/lib/api/shape";
 import { Sparkles, Lock, Unlock, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { yearEndApi, type NoteToAccount, type NoteData } from "@/lib/api/yearEnd";
 import { getSupabaseClient } from "@/lib/supabase/client";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton, LoadingRegion } from "@/components/ui/skeleton";
 import { useEngagementId } from "../_engagementId";
 import { GapList } from "@/components/ui/callout";
 import { formatDate } from "@/lib/dates/format";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { Button } from "@/components/ui/button";
+import { usePermissions } from "@/lib/auth/AuthContext";
 
 const TYPE_BADGE: Record<string, string> = {
   auto: "bg-blue-100 text-blue-700",
@@ -40,6 +41,7 @@ export default function NotesPage() {
   const [editContent, setEditContent] = useState<Record<string, string>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   const [lockingId, setLockingId] = useState<string | null>(null);
+  const mayLock = usePermissions().can("year_end", "approve");
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
 
   const load = useCallback(async () => {
@@ -137,7 +139,7 @@ export default function NotesPage() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-2 max-w-3xl mx-auto">
+      <LoadingRegion label="Loading the notes" className="p-6 space-y-2 max-w-3xl mx-auto">
         {[...Array(4)].map((_, i) => (
           <div key={i} className="bg-white rounded-xl border border-ps-border px-4 py-3 flex items-center gap-3">
             <Skeleton className="h-3.5 w-3.5 rounded-sm shrink-0" />
@@ -146,7 +148,7 @@ export default function NotesPage() {
             <Skeleton className="h-3 flex-1" />
           </div>
         ))}
-      </div>
+      </LoadingRegion>
     );
   }
 
@@ -293,8 +295,9 @@ export default function NotesPage() {
                     </div>
                   )}
 
-                  {/* Lock button */}
-                  {!note.is_locked && (
+                  {/* Lock button. Locking asks `year_end` `approve` (a Manager or a Partner) and was offered to an Executive,
+                      who was refused (POST-A-455). */}
+                  {!note.is_locked && mayLock && (
                     <div className="flex justify-end pt-1">
                       <Button variant="plain" size="none"
                         onClick={() => handleLock(note)}
@@ -312,7 +315,7 @@ export default function NotesPage() {
                   )}
                   {note.is_locked && (
                     <div className="flex items-center gap-1.5 text-3xs text-ps-hint">
-                      <Unlock size={10} /> Note is locked — contact an admin to unlock.
+                      <Unlock size={10} /> Note is locked: it is kept as it is, and is neither edited nor regenerated.
                     </div>
                   )}
 

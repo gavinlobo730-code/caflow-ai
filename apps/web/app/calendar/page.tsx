@@ -37,6 +37,7 @@
  * named in the notice at the top rather than given a plausible one.
  */
 
+import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
 import {
@@ -62,6 +63,7 @@ import { todayIstISO } from "@/lib/dates/format";
 import { isOverdue } from "@/lib/compliance/overdue";
 import { formatDate } from "@/lib/services/formatting";
 import { PageHeader } from "@/components/ui/page-header";
+import { LoadingRegion, Skeleton } from "@/components/ui/skeleton";
 
 // ─── COLOUR SCHEME ────────────────────────────────────────────────────────────
 
@@ -120,6 +122,9 @@ export default function CalendarPage() {
   const [loading, setLoading] = useState(true);
   const [mca, setMca] = useState<McaDeadline[]>([]);
   const [agmGaps, setAgmGaps] = useState<{ company_name: string }[]>([]);
+  // The MCA dates that did not come are not a calendar with no MCA forms due (POST-A-515 (d)): the obligations above still stand, and the
+  // page says the forms are missing from it rather than letting their absence read as "none this month".
+  const [mcaUnread, setMcaUnread] = useState(false);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
 
   const [marking, setMarking] = useState<{ entry: ComplianceEntry; label: string } | null>(null);
@@ -149,13 +154,15 @@ export default function CalendarPage() {
           success: boolean;
           data?: { deadlines?: unknown; without_agm_date?: unknown };
         };
-        if (!live || !res?.success) return;
+        if (!live) return;
+        if (!res?.success) { setMcaUnread(true); return; }
         const d = objectOrNull<{ deadlines?: unknown; without_agm_date?: unknown }>(res.data);
         setMca(arrayOrEmpty<McaDeadline>(d?.deadlines));
         setAgmGaps(arrayOrEmpty<{ company_name: string }>(d?.without_agm_date));
       } catch {
-        // The obligations still stand; the MCA forms are simply absent, which is the
-        // honest degradation — better than dates nobody computed.
+        // The obligations still stand, and the MCA forms are left out rather than shown with dates nobody computed, which is the honest
+        // degradation, and the page says they are missing.
+        if (live) setMcaUnread(true);
       }
     })();
     return () => { live = false; };
@@ -295,6 +302,16 @@ export default function CalendarPage() {
       {/* A company with no AGM date recorded has no AOC-4 or MGT-7 here, and
           silence looks exactly like "nothing due". Named, for the same reason a
           payroll run names its statutory gaps. */}
+      {mcaUnread && (
+        <div role="status" className="bg-state-attention-surface border border-state-attention-border rounded-xl px-4 py-3">
+          <p className="text-xs font-medium text-amber-800">
+            The MCA filing dates could not be read, so none are shown
+          </p>
+          <p className="text-xs text-state-attention mt-0.5">
+            This is not a calendar with no MCA forms due. Reload this page to read them again.
+          </p>
+        </div>
+      )}
       {agmGaps.length > 0 && (
         <div className="bg-state-attention-surface border border-state-attention-border rounded-xl px-4 py-3">
           <p className="text-xs font-medium text-amber-800">
@@ -321,15 +338,14 @@ export default function CalendarPage() {
         subtitle="Each client&apos;s own obligations, on the dates the compliance engine computed for them"
         actions={
           <div className="flex items-center gap-2 flex-wrap">
-            <select
-              aria-label="Client"
+            <ClientLookup
+              ariaLabel="Client"
+              clients={clients}
               value={clientId}
-              onChange={(e) => { setClientId(e.target.value); setSelectedDay(null); }}
-              className="border border-ps-border rounded-lg px-3 py-1.5 text-sm text-ps-body focus:outline-none focus:ring-2 focus:ring-brand/30"
-            >
-              <option value="">All my clients</option>
-              {clients.map((c) => <option key={c.id} value={c.id}>{c.client_name}</option>)}
-            </select>
+              onChange={(id) => { setClientId(id); setSelectedDay(null); }}
+              placeholder="All my clients"
+              clearable
+            />
             <button onClick={goToday} className="px-3 py-1.5 text-sm border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg">
               Today
             </button>
@@ -364,7 +380,6 @@ export default function CalendarPage() {
             <span className="text-xs text-ps-label">{CATEGORY_LABELS[cat]}</span>
           </div>
         ))}
-        {loading && <span className="text-xs text-ps-hint ml-2">Loading…</span>}
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_300px] gap-6">
@@ -375,6 +390,23 @@ export default function CalendarPage() {
               <div key={d} className="py-2 text-center text-xs font-medium text-ps-hint">{d}</div>
             ))}
           </div>
+          {/* While the month is being read its days are drawn with placeholders in them: an empty day is "nothing due", and
+              that is not known until the read lands. */}
+          {loading ? (
+            <LoadingRegion label="Loading the calendar" className="grid grid-cols-7" noticeClassName="col-span-full px-3">
+              {cells.map((day, idx) => (
+                <div key={`wait-${idx}`} className={`min-h-[90px] border-b border-r border-ps-border p-1.5 ${day === null ? "bg-ps-bg/30" : ""}`}>
+                  {day !== null && (
+                    <>
+                      <div className="w-6 h-6 flex items-center justify-center text-xs font-medium mb-1 text-ps-hint">{day}</div>
+                      {idx % 3 === 0 && <Skeleton className="h-4 w-full" />}
+                      {idx % 7 === 2 && <Skeleton className="mt-1 h-4 w-2/3" />}
+                    </>
+                  )}
+                </div>
+              ))}
+            </LoadingRegion>
+          ) : (
           <div className="grid grid-cols-7">
             {cells.map((day, idx) => {
               if (day === null) {
@@ -416,6 +448,7 @@ export default function CalendarPage() {
               );
             })}
           </div>
+          )}
         </div>
 
         {/* Right side */}

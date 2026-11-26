@@ -26,3 +26,29 @@ export function editedText(now: string | null | undefined, onFile: string | null
   if (text) return text;
   return (onFile ?? "").trim() ? null : undefined;
 }
+
+/**
+ * What an EDIT sends for an optional box whose value is not text (a figure, a picked answer), on the same three cases as `editedText`: the value, `null` to clear what
+ * was on file, or `undefined` when the box is empty and nothing was on file. The caller has already read the box (a figure through the money parser, a choice as it is).
+ */
+export function editedChoice<T>(now: T | null | undefined, onFile: T | null | undefined): T | null | undefined {
+  const empty = (v: T | null | undefined) => v === null || v === undefined || (typeof v === "string" && !v.trim());
+  if (!empty(now)) return typeof now === "string" ? ((now as string).trim() as unknown as T) : now;
+  return empty(onFile) ? undefined : null;
+}
+
+/**
+ * The sentence refusing an edit that EMPTIES a tax identifier on file that a return reads (a party's GSTIN or state code, a vendor's PAN or foreign tax number), or null (POST-A-399).
+ *
+ * An identifier is corrected and not removed: every GST return not yet filed reads a party's GSTIN and state code live for the documents already issued to it, so emptying
+ * one would move those documents between the tables of a return. The server refuses the same edit in the same words (`models.clearable.removed_identifier_problem`);
+ * this says it beside the button before anything is sent.
+ */
+export function removedIdentifierProblem(label: string, onFile: string | null | undefined, now: string | null | undefined,
+                                         why?: string): string | null {
+  if ((now ?? "").trim() || !(onFile ?? "").trim()) return null;
+  // `why` replaces the second sentence where the reader is not a return about documents issued to a party, as the server's own `why` does
+  // (an employee's PAN, UAN, ESI number and bank account, POST-A-465).
+  return `The ${label} on file can be corrected but not removed: enter the corrected ${label}. `
+    + (why ?? "Every return not yet filed reads it for the documents already issued to this party.");
+}

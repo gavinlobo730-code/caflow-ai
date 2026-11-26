@@ -21,6 +21,7 @@ from __future__ import annotations
 import logging
 
 from core.ist_clock import ist_today
+from domain.reporting.age_of_document import days_old
 from datetime import date, datetime, timezone
 from typing import Optional
 
@@ -315,10 +316,8 @@ class CustomerStatementService:
             if outstanding <= 0:                     # belt and braces: a stale fake DB
                 continue
             ref = inv.get("due_date") or inv.get("invoice_date")
-            try:
-                days = (today - date.fromisoformat(_d(ref))).days if ref else 0
-            except (ValueError, TypeError):
-                days = 0
+            # A date that cannot be read ages the invoice as current, which understates what is overdue, so it is reported (POST-A-505).
+            days = days_old(ref, today, operation="customer_statement.ar_aging.unreadable_date", invoice_id=str(inv.get("id")))
             bucket = _aging_bucket(days)
             buckets[bucket] += outstanding
             total += outstanding

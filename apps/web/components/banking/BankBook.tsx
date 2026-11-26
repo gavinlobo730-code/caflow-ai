@@ -235,12 +235,12 @@ export function BankRegister({ clientId }: { clientId: string }) {
         </label>
         <label className="block">
           <span className="text-3xs font-medium text-ps-label">From</span>
-          <DateInput key={`from-${clearedTimes}`} value={dateFrom} onChange={setDateFrom}
+          <DateInput key={`from-${clearedTimes}`} aria-label="Bank book from" value={dateFrom} onChange={setDateFrom}
             className="mt-1 block border border-ps-border rounded px-2 py-1.5 text-xs" />
         </label>
         <label className="block">
           <span className="text-3xs font-medium text-ps-label">To</span>
-          <DateInput key={`to-${clearedTimes}`} value={dateTo} onChange={setDateTo} anchor={dateFrom || null} notBefore={dateFrom || null}
+          <DateInput key={`to-${clearedTimes}`} aria-label="Bank book to" value={dateTo} onChange={setDateTo} anchor={dateFrom || null} notBefore={dateFrom || null}
             className="mt-1 block border border-ps-border rounded px-2 py-1.5 text-xs" />
         </label>
         <label className="block">
@@ -267,7 +267,7 @@ export function BankRegister({ clientId }: { clientId: string }) {
             className="text-2xs px-2 py-1.5 border border-ps-border rounded hover:bg-ps-bg text-ps-label inline-flex items-center gap-1">
             <RefreshCw size={11} className={loading ? "animate-spin" : ""} /> Refresh
           </button>
-          <button onClick={exportCsv} disabled={!data || data.lines.length === 0}
+          <button onClick={exportCsv} disabled={!data || (data.lines ?? []).length === 0}
             className="text-2xs px-2 py-1.5 border border-ps-border rounded hover:bg-ps-bg text-ps-label inline-flex items-center gap-1 disabled:opacity-40">
             <Download size={11} /> CSV
           </button>
@@ -349,7 +349,7 @@ export function BankRegister({ clientId }: { clientId: string }) {
           <p className="text-sm text-state-problem font-medium mb-2">{loadError}</p>
           <button onClick={load} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
-      ) : !data || data.lines.length === 0 ? (
+      ) : !data || (data.lines ?? []).length === 0 ? (
         <div className="bg-white rounded-xl border border-ps-border p-10 text-center">
           <p className="text-sm text-ps-hint">
             {filtersActive ? "Nothing matches these filters." : "No transactions on this account yet."}

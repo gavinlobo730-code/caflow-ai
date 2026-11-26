@@ -19,7 +19,8 @@
  * existed leaves exactly that, which the computation screen names when it finds one.
  *
  * A person who may change loss records (`canEdit`, the compute tier) can RECORD A YEAR'S USE BY HAND and TAKE ANY USE BACK, each with a reason
- * (POST-A-368, items 2 and 3). The controls only ask: `onRecord` / `onTakeBack` are the screen's calls to the server, which refuses in a sentence
+ * (POST-A-368, items 2 and 3), the part recorded by hand with no year included: the server names it (`hand_recorded_entry_id`) only when there is
+ * one, and the control is drawn only then. The controls only ask: `onRecord` / `onTakeBack` are the screen's calls to the server, which refuses in a sentence
  * the dialog shows as written. A use recorded by hand names no return ("recorded by hand for FY ..."), which is a different thing from a return
  * that could not be read or is gone, and is drawn as its own kind. The controls are not offered while the uses are loading or could not be
  * read: a correction made on a list that was not seen is a correction made blind.
@@ -40,7 +41,7 @@ export function lossUseLine(u: LossUse): string {
 }
 
 export function LossUses({
-  state, view, canEdit = false, onRecord, onTakeBack,
+  state, view, canEdit = false, onRecord, onTakeBack, onTakeBackHandRecorded,
 }: {
   state: LossUsesState;
   view?: LossUsesView;
@@ -48,6 +49,8 @@ export function LossUses({
   canEdit?: boolean;
   onRecord?: () => void;
   onTakeBack?: (use: LossUse) => void;
+  /** Take back the part recorded by hand with no year: what the server named for it, and how much it is (shown in the dialog's sentence). */
+  onTakeBackHandRecorded?: (entryId: string, amountPaise: number) => void;
 }) {
   if (state === "loading") return null;
   if (state === "failed") {
@@ -68,6 +71,8 @@ export function LossUses({
       </div>
     );
   }
+  const handId = view.hand_recorded_entry_id;
+  const handPaise = view.hand_recorded_paise;
   return (
     <div>
       <ul className="text-3xs text-ps-label mt-1 space-y-0.5" aria-label="Where this loss was used">
@@ -85,7 +90,20 @@ export function LossUses({
             )}
           </li>
         ))}
-        {view.hand_recorded_paise > 0 && <li>Recorded by hand, not linked to a filed return: {formatWhole(view.hand_recorded_paise)}</li>}
+        {view.hand_recorded_paise > 0 && (
+          <li>
+            Recorded by hand, not linked to a filed return: {formatWhole(view.hand_recorded_paise)}
+            {canEdit && onTakeBackHandRecorded && handId && (
+              <>
+                {" "}
+                <Button type="button" variant="plain" size="none" onClick={() => onTakeBackHandRecorded(handId, handPaise)}
+                  className="text-3xs text-brand-dark underline">
+                  Take back
+                </Button>
+              </>
+            )}
+          </li>
+        )}
       </ul>
       {record}
     </div>

@@ -28,7 +28,11 @@ import { getFirmId } from "@/lib/data/getFirmId";
 import { api, type DeclarationRow, type DeclarationItemRow } from "@/lib/api";
 import { PageHeader } from "@/components/ui/page-header";
 import { selectAll } from "@/lib/supabase/selectAll";
+import { CLIENT_LIST_UNREAD } from "@/lib/clients/clientListUnread";
 import { istToday } from "@/lib/dateMath";
+import { LoadingRegion } from "@/components/ui/skeleton";
+import { openedForChoice } from "@/lib/payroll/openedFor";
+import { useOpenedFor } from "@/lib/payroll/useOpenedFor";
 
 type Client = { id: string; client_name: string };
 type Employee = { id: string; name: string };
@@ -77,8 +81,22 @@ const SECTION_LABELS: Record<string, string> = {
 export default function DeclarationsPage() {
   const financialYears = useMemo(() => recentFinancialYears(), []);
   const [clients, setClients] = useState<Client[]>([]);
+  // A client list that could not be read is not a firm with no clients (POST-A-515 (d)): the picker says so.
+  const [clientsFailed, setClientsFailed] = useState(false);
   const [employees, setEmployees] = useState<Record<string, string>>({});
   const [clientId, setClientId] = useState("");
+  // OPENED FOR ONE CLIENT (POST-A-534): `?client=` from a client's own Payroll page. The firm's own practice is in no list of
+  // clients, so it is offered here only when the screen was opened for it, by a Partner; see lib/payroll/openedFor.
+  const { openedFor, practiceId } = useOpenedFor();
+  const opened = openedForChoice(clients, openedFor, practiceId);
+  const openedChoice = opened.choose;
+  // Once: the first time the address's client can be chosen. After that the picker is the CA's.
+  const [arrived, setArrived] = useState(false);
+  useEffect(() => {
+    if (arrived || !openedChoice) return;
+    setClientId(openedChoice);
+    setArrived(true);
+  }, [arrived, openedChoice]);
   const [fy, setFy] = useState(financialYears[0]);
   const [rows, setRows] = useState<DeclarationRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -94,11 +112,14 @@ export default function DeclarationsPage() {
         const sb = getSupabaseClient();
         const fid = await getFirmId();
         if (!fid) return;
-        const { data } = await selectAll(() => sb.from("clients")
+        const { data, error } = await selectAll(() => sb.from("clients")
           .select("id, client_name").eq("firm_id", fid).eq("is_internal", false).order("client_name").order("id"));
+        // The pager hands a failure back as `error` and does not throw: a read that stopped partway is not the firm's clients.
+        if (error) throw error;
         setClients(data ?? []);
       } catch (e) {
         console.error("load clients:", e);
+        setClientsFailed(true);
       }
     })();
   }, []);
@@ -141,7 +162,8 @@ export default function DeclarationsPage() {
         <CardContent className="pt-5 flex flex-wrap items-end gap-3">
           <div className="min-w-[260px]">
             <label className="block text-xs text-ps-label mb-1">Client</label>
-            <ClientLookup ariaLabel="Client" clients={clients} value={clientId} onChange={setClientId} />
+            <ClientLookup ariaLabel="Client" clients={opened.clients} value={clientId} onChange={setClientId} />
+            {clientsFailed && <p role="alert" className="mt-1 max-w-[260px] text-2xs text-state-problem">{CLIENT_LIST_UNREAD}</p>}
           </div>
           <div>
             <label className="block text-xs text-ps-label mb-1">Financial year</label>
@@ -181,9 +203,11 @@ export default function DeclarationsPage() {
       )}
 
       {loading && (
-        <div className="flex items-center gap-2 text-sm text-ps-label py-8 justify-center">
-          <Loader2 className="w-4 h-4 animate-spin" /> Loading declarations…
-        </div>
+        <LoadingRegion label="Loading declarations" noticeClassName="justify-center text-center">
+          <div className="flex items-center gap-2 text-sm text-ps-label py-8 justify-center">
+            <Loader2 className="w-4 h-4 animate-spin" /> Loading declarations…
+          </div>
+        </LoadingRegion>
       )}
 
       {!loading && loadFailed && (
@@ -402,7 +426,7 @@ function VerifyModal({ row, clientId, employeeName, onClose, onSaved }: {
     <Modal
       title={`Verify proofs — ${employeeName}`}
       note={`${row.fy} · ${row.regime === "old" ? "old regime" : "new regime"}`}
-      onClose={onClose}
+      onClose={() => { if (!saving) (onClose)(); }}
       maxWidthClass="max-w-2xl"
     >
       <div className="space-y-4">

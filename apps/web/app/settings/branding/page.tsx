@@ -1,12 +1,15 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { useState, useEffect, useCallback, useRef } from "react";
 // `Image` is aliased: lucide's icon of that name shadows next/image, which made
 // jsx-a11y/alt-text flag this decorative SVG as a real image missing an alt.
 import { Palette, Image as ImageIcon, Globe, Save, Upload, Eye } from "lucide-react";
 import { useAuth } from "@/lib/auth/AuthContext";
-import { RoleGuard } from "@/components/RoleGuard";
+import { ChangePart, ReadOnlyNotice } from "@/components/settings/ChangePart";
 import { api, type ApiResp } from "@/lib/api/index";
+import { UploadProgress } from "@/components/ui/upload-progress";
+import type { UploadProgress as BytesSent } from "@/lib/api/uploadWithProgress";
 import { PageHeader } from "@/components/ui/page-header";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -160,6 +163,7 @@ export default function BrandingPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [sent, setSent] = useState<BytesSent | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -211,7 +215,7 @@ export default function BrandingPage() {
     if (!file) return;
     setUploading(true);
     try {
-      const res = await api.branding.uploadLogo(file) as ApiResp<{ logo_url: string }>;
+      const res = await api.branding.uploadLogo(file, setSent) as ApiResp<{ logo_url: string }>;
       if (res.success) {
         setBranding((b) => ({ ...b, logo_url: res.data.logo_url }));
         showToast("Logo uploaded", "success");
@@ -219,6 +223,7 @@ export default function BrandingPage() {
     } catch (e) {
       showToast(e instanceof Error ? e.message : "Upload failed", "error");
     } finally {
+      setSent(null);
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
@@ -229,7 +234,7 @@ export default function BrandingPage() {
   }
 
   return (
-    <RoleGuard allowed={["Partner"]}>
+    <>
       <div className="p-6 max-w-5xl mx-auto space-y-5">
         {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
@@ -238,6 +243,8 @@ export default function BrandingPage() {
           title="Firm Branding"
           subtitle="Set the logo, tagline and primary colour that your practice&apos;s own invoices print. The other settings here are kept on file; no document prints them."
         />
+
+        <ReadOnlyNotice resource="branding" action="write" page="Firm Branding" />
 
         {loadError && !loading && (
           <div className="flex items-center justify-between gap-3 bg-state-problem-surface border border-red-100 rounded-xl px-4 py-3">
@@ -252,7 +259,7 @@ export default function BrandingPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           {/* ── Left: Settings ───────────────────────────────────────────── */}
-          <div className="space-y-4">
+          <ChangePart resource="branding" action="write" className="space-y-4">
 
             {/* Logo */}
             <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
@@ -283,6 +290,7 @@ export default function BrandingPage() {
                   </button>
                   <input aria-label="Logo image to upload" ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
                 </div>
+                <UploadProgress progress={sent} what="the logo" />
                 <p className="text-xs text-ps-label">
                   The invoice PDF prints a PNG, JPEG or WebP logo of up to 2,000,000 bytes (about 2 MB) that the server can fetch within three seconds. An SVG, a larger file or one that does not answer in time is kept and shown here but is left off the invoice.
                 </p>
@@ -363,16 +371,16 @@ export default function BrandingPage() {
             </div>
 
             <div className="flex justify-end">
-              <button
+              <Button variant="plain" size="none" spinner={false}
                 onClick={handleSave}
                 disabled={saving || loading}
                 className="flex items-center gap-2 px-5 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors disabled:opacity-50"
               >
                 <Save size={14} />
                 {saving ? "Saving…" : "Save Branding"}
-              </button>
+              </Button>
             </div>
-          </div>
+          </ChangePart>
 
           {/* ── Right: Live Preview ─────────────────────────────────────── */}
           <div className="space-y-3">
@@ -387,6 +395,6 @@ export default function BrandingPage() {
           </div>
         </div>
       </div>
-    </RoleGuard>
+    </>
   );
 }

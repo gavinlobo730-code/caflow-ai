@@ -5,14 +5,14 @@ import { Search, Network, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton, LoadingRegion } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
 import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
 import { windowDescription } from "@/lib/lists/window";
 import { useEntityRegister } from "@/lib/relationships/useEntityRegister";
-import { doingOf, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, fetchBounded, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -20,7 +20,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
   const { data: { session } } = await getSupabaseClient().auth.getSession();
   const token = session?.access_token ?? "";
   const doing = doingOf(opts?.method);
-  const res = await fetchPlain(`${API}${path}`, {
+  const res = await fetchBounded(`${API}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
@@ -121,14 +121,14 @@ export default function RelationshipExplorerPage() {
             />
           </div>
           {loading ? (
-            <div className="space-y-1.5">
+            <LoadingRegion label="Loading entities" className="space-y-1.5">
               {[1, 2, 3, 4].map((i) => (
                 <div key={i} className="px-4 py-3 rounded-lg border border-gray-200 bg-white space-y-1.5">
                   <Skeleton className="h-3 w-32" />
                   <Skeleton className="h-4 w-16 rounded-full" />
                 </div>
               ))}
-            </div>
+            </LoadingRegion>
           ) : filtered.length === 0 ? (
             <p className="text-sm text-gray-500 py-4 text-center">
               {register.window?.hasMore && entities.length > 0

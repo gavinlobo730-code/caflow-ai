@@ -14,7 +14,11 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import assert from "node:assert/strict";
 
-export async function loadPlaywright() {
+/** The browsers the drive can run in. Chromium is the default and the one every night uses; Firefox and WebKit are what the weekly other-browsers run asks for (POST-A-387). */
+export const BROWSERS = ["chromium", "firefox", "webkit"];
+
+/** The Playwright browser type named, or exit 2 with the words for installing Playwright. */
+export async function loadBrowserType(name = "chromium") {
   const tries = [
     () => import("@playwright/test"),
     () => import("playwright"),
@@ -23,8 +27,8 @@ export async function loadPlaywright() {
   for (const attempt of tries) {
     try {
       const pw = await attempt();
-      const chromium = pw.chromium ?? pw.default?.chromium;
-      if (chromium) return chromium;
+      const type = pw[name] ?? pw.default?.[name];
+      if (type) return type;
     } catch { /* try the next place */ }
   }
   console.error(
@@ -33,6 +37,37 @@ export async function loadPlaywright() {
     "  project dependency, see scripts/smoke-walk.mjs above loadChromium() for why)\n" +
     "or point PLAYWRIGHT_MODULE at an install, e.g. /opt/node-tools/node_modules/playwright/index.mjs.");
   process.exit(2);
+}
+
+export async function loadPlaywright() {
+  return loadBrowserType("chromium");
+}
+
+/** `--browser`: one of BROWSERS, or the sentence that says which. */
+export function resolveBrowser(value) {
+  if (value === undefined) return "chromium";
+  if (!BROWSERS.includes(value)) throw new Error(`--browser ${value}: not a browser the drive runs in (${BROWSERS.join(", ")}).`);
+  return value;
+}
+
+/** The narrowest and widest window the drive is run at, in CSS pixels. 1440 is the desktop the drive was written at; 390 is a phone. */
+export const DEFAULT_WIDTH = 1440;
+export function resolveWidth(value) {
+  if (value === undefined) return DEFAULT_WIDTH;
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 320 || n > 2560) throw new Error(`--width ${value}: a whole number of pixels from 320 to 2560, e.g. --width 390 for a phone.`);
+  return n;
+}
+/** A window under 600 pixels is a phone: it is taller than it is wide, as a phone is, unless DRIVE_VIEWPORT_HEIGHT says otherwise. */
+export function viewportFor(width, heightEnv) {
+  const given = Number(heightEnv);
+  return { width, height: given > 0 ? given : width < 600 ? 844 : 900 };
+}
+
+/** `--only` takes one group or id, or several separated by commas (`--only dates,keyboard`): a run is selected when ANY of them is its group, its id or the start of its id. */
+export function matchesOnly(run, only) {
+  if (!only) return true;
+  return only.split(",").map((t) => t.trim()).filter(Boolean).some((t) => run.group === t || run.id === t || run.id.startsWith(t));
 }
 
 /** The Chromium already on disk, when there is one (the walk's rule: Playwright's own download is disabled in
@@ -123,14 +158,25 @@ export const TZ_MATRIX = [
 // ── Which part of the drive a run drives (`--zone`, `--shard`) ────────────────────────────────────────────────────────────────────
 // The date scenarios run under all three zones of the matrix, which is two thirds of the drive's length and more than a night's allowance
 // on a GitHub runner (the run of 6 November 2026 was cancelled at its limit, 28 minutes into the drive). The NIGHTLY run therefore drives
-// ONE zone and ONE third of the date group, taken in turn, so that over any nine consecutive nights every zone sees every date scenario
-// once and none is ever left out; the other groups (they run in no zone) run in full every night. An on-demand run says `all`. The rule
-// is here, pure, so a test holds it: a rotation written in the workflow's shell could not be tried. THE ALLOWANCE IS NOT RAISED: it is
-// the owner's money, so the drive was cut to fit it.
+// ONE zone and ONE quarter of the date group, taken in turn, so that over any twelve consecutive nights every zone sees every date scenario
+// once and none is ever left out; the other groups (they run in no zone) run ONE HALF a night, the two halves on alternate nights, so each
+// of their scenarios is driven every second night (they ran in full every night until 22-11-2026: see HALVES). An on-demand run says `all`.
+// The rule is here, pure, so a test holds it: a rotation written in the workflow's shell could not be tried. THE ALLOWANCE IS NOT RAISED:
+// it is the owner's money, so the drive was cut to fit it.
 
 /** How many parts the date group is cut into for a night. THREE since POST-A-399 (7-11-2026): with two, the worst night was estimated at 21.1 minutes of the 21 its deadline leaves, once that
- *  change added ten browser scenarios that every night runs, so the date group is cut finer instead of the allowance being raised (the allowance is the owner's money). */
-export const SHARDS = 3;
+ *  change added ten browser scenarios that every night runs, so the date group is cut finer instead of the allowance being raised (the allowance is the owner's money). FOUR since
+ *  POST-A-386 (17-11-2026), for the same reason: its 25 date rows put the worst night at 21.3 minutes of 21, and each (zone, part) pair now comes round every twelve nights.
+ *  FOUR since POST-A-395 and POST-A-396 (17-11-2026) as well: their twenty scenarios, which every night runs, took the worst night from about 20.4 to 21.0
+ *  minutes of the 21 before the date rows of POST-A-386 were added, so the cut to four answers both. */
+export const SHARDS = 4;
+
+/** How many parts the OTHER groups (every scenario that is not a date scenario) are cut into for a night. They ran in full every night until 22-11-2026. By then there were 400 of them, and the
+ *  night of 22 November (smoke-walk run 44967231176) was stopped at its 24-minute deadline with 490 of 499 runs driven and none failed: the 390 of them it reached took 1,011 seconds, 2.59 s a run
+ *  where the budget's arithmetic still said 1.71, which is 17 minutes of a night before a single date scenario. Cutting the date group finer could not answer that (eight parts would have left a
+ *  night at its budget to the decimal, and the next scenario added over it), so the other groups are cut too: TWO halves, on alternate nights, each scenario every second night. A regression in one
+ *  of them is found within two nights and not one. The whole matrix on request, the weekly run and a run that names a zone still drive all of them. */
+export const HALVES = 2;
 
 const DAY_MS = 86_400_000;
 /** Five hours thirty minutes: the Indian day starts at 18:30 UTC. */
@@ -144,11 +190,12 @@ export function indianDayNumber(epochMs) {
   return Math.floor((epochMs + IST_OFFSET_MS) / DAY_MS);
 }
 
-/** What the run of the given instant drives when it drives a part: a zone and a shard. The zone changes every day and the shard every
- *  three, so nine consecutive days (three zones, three shards) cover each (zone, shard) pair exactly once. */
+/** What the run of the given instant drives when it drives a part: a zone, a shard of the date group and a half of the other groups. The zone
+ *  changes every day and the shard every three, so twelve consecutive days (three zones, four shards) cover each (zone, shard) pair exactly once;
+ *  the half changes every day, so no scenario of the other groups goes two nights undriven. */
 export function partOfTheNight(epochMs) {
   const day = indianDayNumber(epochMs);
-  return { zone: TZ_MATRIX[day % TZ_MATRIX.length].timezoneId, shard: Math.floor(day / TZ_MATRIX.length) % SHARDS, day };
+  return { zone: TZ_MATRIX[day % TZ_MATRIX.length].timezoneId, shard: Math.floor(day / TZ_MATRIX.length) % SHARDS, half: day % HALVES, day };
 }
 
 /** The zone of a night (kept for the callers that ask only for it). */
@@ -175,19 +222,38 @@ export function resolveShard(value, zoneValue, epochMs) {
   throw new Error(`--shard ${value}: not a part of the date group. Use all, rotate or a number from 0 to ${SHARDS - 1}.`);
 }
 
-/** The shard a scenario belongs to: a stable hash of its id (FNV-1a), so adding or removing a scenario moves no other one. */
-export function shardOf(id) {
+/** FNV-1a over a text: the stable hash both cuts below are made with. */
+function fnv1a(text) {
   let h = 0x811c9dc5;
-  for (let i = 0; i < id.length; i++) {
-    h ^= id.charCodeAt(i);
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
     h = Math.imul(h, 0x01000193) >>> 0;
   }
-  return h % SHARDS;
+  return h;
 }
 
-/** Whether a scenario of the given group is driven for a shard: only the date group is cut. */
-export function inShard(group, id, shard) {
-  return shard === "all" || group !== "dates" || shardOf(id) === shard;
+/** The shard a scenario belongs to: a stable hash of its id (FNV-1a), so adding or removing a scenario moves no other one. */
+export function shardOf(id) {
+  return fnv1a(id) % SHARDS;
+}
+
+/** The half a scenario of the other groups belongs to: the same stable hash, over the group and the id together (two groups may each have a scenario
+ *  of one name), so adding or removing a scenario moves no other one and a group's scenarios are spread over both nights. */
+export function halfOf(group, id) {
+  return fnv1a(`${group}/${id}`) % HALVES;
+}
+
+/** What half of the other groups a run drives: the night's when the zone rotates (the nightly, and a pull request's labelled run), and all of them
+ *  otherwise (the whole matrix, a named zone, the weekly run, a developer's own). There is no flag of its own: `--now` reproduces a night. */
+export function resolveHalf(zoneValue, epochMs) {
+  return zoneValue === "rotate" ? partOfTheNight(epochMs).half : "all";
+}
+
+/** Whether a scenario of the given group is driven for a shard and a half: the date group is cut by the shard, every other group by the half.
+ *  @param {string} group @param {string} id @param {number | "all"} shard @param {number | "all"} [half] */
+export function inShard(group, id, shard, half = "all") {
+  if (group === "dates") return shard === "all" || shardOf(id) === shard;
+  return half === "all" || halfOf(group, id) === half;
 }
 
 /** The contexts one scenario runs under for a resolved zone. A scenario that asks for none of its own (no `contexts`) runs once, as before.
@@ -206,8 +272,8 @@ export function contextsFor(contexts, zone) {
 
 /** Every flag the runner knows. A "value" flag takes one, spelled `--zone rotate` or `--zone=rotate`; a "bare" flag takes none. */
 export const FLAGS = {
-  "--only": "value", "--report": "value", "--out": "value", "--zone": "value", "--shard": "value", "--stop-after": "value", "--now": "value",
-  "--shots": "bare", "--no-tz-matrix": "bare", "--no-headers": "bare", "--list": "bare",
+  "--only": "value", "--report": "value", "--out": "value", "--zone": "value", "--shard": "value", "--stop-after": "value", "--now": "value", "--browser": "value", "--width": "value",
+  "--shots": "bare", "--no-tz-matrix": "bare", "--no-headers": "bare", "--list": "bare", "--weekly": "bare",
 };
 /** What a value flag says it needs when it is not given one (the first two keep the words they always had). */
 const NEEDS = {
@@ -218,6 +284,8 @@ const NEEDS = {
   "--shard": "all, rotate or a number, e.g. --shard 0",
   "--stop-after": "a number of minutes, e.g. --stop-after 24",
   "--now": "an instant with its zone, e.g. --now 2026-11-07T00:30:00Z",
+  "--browser": "chromium, firefox or webkit, e.g. --browser firefox",
+  "--width": "a width in pixels, e.g. --width 390 for a phone",
 };
 
 /** Read the runner's arguments into `{ flags, problem }`. It never throws: a problem is the sentence the caller prints before it exits 2. NOTHING IS IGNORED, because a run that
@@ -278,13 +346,13 @@ export function resolveNow(value, realNowMs) {
 
 /** The drive's report, as it stands at `nowMs`. `ok` needs the end to have been reached: a report written part-way is not a pass, however little had failed. `not_driven` is what had
  *  not run, named, so a cancelled or stopped run still says what it did not drive. */
-export function reportOf({ complete, stoppedAtDeadline = false, only = null, tzMatrix = true, zone, shard, stopAfter = null, chosenAtMs, csp, pinnedClock, commit = null,
+export function reportOf({ complete, stoppedAtDeadline = false, only = null, tzMatrix = true, zone, shard, half = "all", stopAfter = null, chosenAtMs, csp, pinnedClock, commit = null, browser = "chromium", width = DEFAULT_WIDTH,
   selected, results, escaped = [], startedMs, nowMs }) {
   const failed = results.filter((r) => !r.ok);
   return {
     generated_at: new Date(nowMs).toISOString(),
     commit,
-    mode: { only, tz_matrix: tzMatrix, zone, shard, stop_after_minutes: stopAfter, chosen_at: new Date(chosenAtMs).toISOString() },
+    mode: { only, browser, width, tz_matrix: tzMatrix, zone, shard, half, stop_after_minutes: stopAfter, chosen_at: new Date(chosenAtMs).toISOString() },
     csp,
     pinned_clock: pinnedClock,
     complete,

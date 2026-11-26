@@ -32,6 +32,7 @@ import { TableSkeleton } from "@/components/ui/skeleton";
 import { api, type AiAllowancePart, type AiUsage, type AiUsageByDay, type AiUsageByFeature } from "@/lib/api/index";
 import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
 import { formatIstLabelled } from "@/lib/dates/formatIst";
+import { TechnicalDetails } from "@/components/ai/TechnicalDetails";
 
 const COUNT = new Intl.NumberFormat("en-IN");
 
@@ -266,21 +267,22 @@ export function AiUsagePanel() {
               <caption className="sr-only">Use by feature</caption>
               <thead className="bg-ps-bg">
                 <tr>
-                  <Th>Feature</Th><Th>Provider</Th><Th>Models</Th>
+                  <Th>Feature</Th><Th>Provider</Th>
                   <Th right>Calls</Th><Th right>Failed</Th><Th right>Tokens</Th><Th right>Pages</Th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-ps-border">
                 {features.length === 0 && (
-                  <tr><td colSpan={7} className="px-3 py-4 text-sm text-ps-label">
+                  <tr><td colSpan={6} className="px-3 py-4 text-sm text-ps-label">
                     No call was recorded for this firm in {data.month?.label ?? "this month"}.
                   </td></tr>
                 )}
                 {features.map((f) => (
                   <tr key={`${f.provider}/${f.feature}`}>
-                    <td className="px-3 py-2 font-mono text-xs text-ps-ink">{f.feature ?? "—"}</td>
-                    <td className="px-3 py-2 text-sm text-ps-body">{f.provider ?? "—"}</td>
-                    <td className="px-3 py-2 font-mono text-xs text-ps-label">{arrayOrEmpty<string>(f.models).join(", ") || "—"}</td>
+                    <td className="px-3 py-2 text-sm text-ps-ink">
+                      {f.label ?? <span className="font-mono text-xs">{f.feature ?? "—"}</span>}
+                    </td>
+                    <td className="px-3 py-2 text-sm text-ps-body">{f.provider_label ?? f.provider ?? "—"}</td>
                     <Num>{count(f.calls)}</Num><Num>{count(f.failed)}</Num>
                     <Num>{count(f.tokens)}</Num><Num>{count(f.pages)}</Num>
                   </tr>
@@ -288,6 +290,19 @@ export function AiUsagePanel() {
               </tbody>
             </table>
           </div>
+
+          {features.length > 0 && (
+            <TechnicalDetails label="Technical details: the models that answered">
+              <ul className="space-y-1 text-xs text-ps-body">
+                {features.map((f) => (
+                  <li key={`${f.provider}/${f.feature}/models`}>
+                    {f.label ?? f.feature ?? "—"} ({f.provider_label ?? f.provider ?? "—"}):{" "}
+                    <span className="font-mono">{arrayOrEmpty<string>(f.models).join(", ") || "none recorded"}</span>
+                  </li>
+                ))}
+              </ul>
+            </TechnicalDetails>
+          )}
 
           {days.length > 0 && (
             <details className="rounded-xl border border-ps-border bg-white">

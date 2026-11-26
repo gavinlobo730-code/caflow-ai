@@ -55,7 +55,7 @@ export const scenarios = [
       assert.equal(at.requests(), 1, `expected ONE request, saw ${at.requests()}`);
       assert.equal(await at.card.getByRole("alert").count(), 0, "the card showed an alert for a clean download");
       const says = await at.card.innerText();
-      for (const promise of ["Not in it yet:", "payroll", "the bank", "the audit log", "not a snapshot"]) {
+      for (const promise of ["Not in it yet:", "payroll", "bank statement files", "the audit log", "stock ledger", "not a snapshot"]) {
         assert.ok(says.includes(promise), `the card does not say "${promise}"`);
       }
     },

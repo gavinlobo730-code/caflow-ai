@@ -11,7 +11,8 @@
  * authoritative), and Save & Issue / Save & Send chain the existing endpoints.
  */
 import { useState, useEffect, useRef, useMemo } from "react";
-import { Trash2, CheckCircle, Send, AlertCircle, Plus } from "lucide-react";
+import { Trash2, CheckCircle, Send, AlertCircle, Plus, Calculator } from "lucide-react";
+import { InclusivePriceDialog } from "@/components/invoices/InclusivePriceDialog";
 import { InvoiceWorkspaceLayout } from "@/components/invoices/InvoiceWorkspaceLayout";
 import { HsnLookup } from "@/components/lookups/HsnLookup";
 import { ServiceCataloguePicker } from "@/components/lookups/ServiceCataloguePicker";
@@ -22,7 +23,8 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { CustomerLookup } from "@/components/lookups/CustomerLookup";
 import { StateLookup } from "@/components/lookups/StateLookup";
 import { formatMoney } from "@/lib/services/formatting";
-import { estimateBaseMinor } from "@/lib/services/currencyPreview";
+import { baseTotalOfHeads } from "@/lib/services/currencyPreview";
+import { recentFirst, useRecentPartyIds } from "@/lib/lookups/recentParties";
 import { toInvoiceLinePayload } from "@/lib/invoices/lineItemPayload";
 import { joinSentences, stockEffectProblem } from "@/lib/documents/stockEffect";
 import { computeLineGst, discountPaise, gstRateBpsFromPercent,
@@ -59,8 +61,9 @@ import { DateInput } from "@/components/ui/date-input";
 import { useSingleFlight } from "@/lib/async/useSingleFlight";
 import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { removedDateProblem } from "@/lib/dates/removedDate";
+import { removedEvidenceProblem } from "@/lib/forms/removedEvidence";
 import { todayIstISO } from "@/lib/dates/format";
-import { editedText } from "@/lib/forms/editedValue";
+import { editedChoice, editedText } from "@/lib/forms/editedValue";
 
 type SaveAction = "draft" | "issue" | "send";
 
@@ -166,10 +169,13 @@ export function InvoiceEditor({
   // full edit only to have it rejected on save. Cancelled invoices never reach
   // this component — the edit route redirects them away.
   const isLocked = isEdit && existing?.status !== "draft";
+  // The customers this client invoiced most recently go to the top of the picker (POST-A-155); nothing is pre-selected.
+  const recentCustomerIds = useRecentPartyIds(api.customers.recent, clientId, !isLocked);
+  const recentCustomers = useMemo(() => recentFirst(recentCustomerIds, customers), [recentCustomerIds, customers]);
 
   const initialLines: EditorLine[] =
-    existing && existing.lines.length > 0 ? detailLinesToEditorLines(existing.lines)
-    : duplicateSeed && duplicateSeed.lines.length > 0 ? detailLinesToEditorLines(duplicateSeed.lines)
+    existing && (existing.lines ?? []).length > 0 ? detailLinesToEditorLines(existing.lines)
+    : duplicateSeed && (duplicateSeed.lines ?? []).length > 0 ? detailLinesToEditorLines(duplicateSeed.lines)
     : [{ ...EMPTY_LINE, _k: 0 }];
 
   const [customerId, setCustomerId] = useState(existing?.customer_id ?? duplicateSeed?.customer_id ?? "");
@@ -293,6 +299,9 @@ export function InvoiceEditor({
   });
   const [notes, setNotes] = useState(existing?.notes ?? duplicateSeed?.notes ?? "");
   const [lines, setLines] = useState<EditorLine[]>(initialLines);
+  // The line (by its key) whose "price including GST" box is open, or null. The key and not the position, so a line added
+  // or removed while the box is open cannot make the answer land on a different line.
+  const [inclusiveFor, setInclusiveFor] = useState<number | null>(null);
   // Compensation cess reaches a handful of trades — aerated waters, pan
   // masala, tobacco, coal, motor vehicles — so its two columns are revealed
   // rather than always shown; six extra cells on every line of every invoice
@@ -457,7 +466,6 @@ export function InvoiceEditor({
   }, [isEdit, existing?.id, clientId]);
 
   const isForeign = currency !== "" && currency !== "INR";
-  const rateNum = parseFloat(exchangeRate);
 
   // ── Dirty detection (Batch 2 carry-forward: real "Unsaved changes" indicator) ──
   const initialSnapshot = useRef({
@@ -545,8 +553,13 @@ export function InvoiceEditor({
     [customerId, invoiceNo, invoiceDate, lines, isForeign, exchangeRate,
      supplyStateCode, supplyType, isReverseCharge],
   );
-  const estimatedBasePaise = isForeign && !Number.isNaN(rateNum) && rateNum > 0 && totals.grand_total_paise > 0
-    ? estimateBaseMinor(totals.grand_total_paise, rateNum)
+  // The INR total the save will store: each head converted at the typed rate and the results added, the save's own rule
+  // (lib/services/currencyPreview, pinned to the server). Nothing for a rate it cannot read or a currency the master has not
+  // described; a foreign invoice is never rupee-rounded, so there is no round-off head.
+  const basePaise = isForeign && totals.grand_total_paise > 0
+    ? baseTotalOfHeads(
+        [totals.taxable_paise, totals.cgst_paise, totals.sgst_paise, totals.igst_paise, totals.cess_paise],
+        exchangeRate, currencies.find((c) => c.code === currency)?.minor_unit)
     : null;
 
   function fmtAmt(minor: number): string {
@@ -725,6 +738,19 @@ export function InvoiceEditor({
     if (shippingBillRefusal.shown) shippingBillRefusalRef.current?.scrollIntoView?.({ block: "nearest" });
   }, [shippingBillRefusal.shown]);
 
+  // The shipping bill's NUMBER and its PORT CODE are the same evidence in text, and were the same defect (POST-A-399, the remainder): an emptied box sent nothing, the stored value stayed and the
+  // screen said the invoice was saved. They are corrected and not removed, said the same way and for the same reason as the date; one sentence at a time, the number's first. A box that is not
+  // drawn is not one the person can empty.
+  const shippingEvidenceCleared = showsShippingBill
+    ? removedEvidenceProblem("The shipping bill number", initialSnapshot.current.shippingBillNo, shippingBillNo, "number")
+      ?? removedEvidenceProblem("The port code", initialSnapshot.current.portCode, portCode, "code")
+    : null;
+  const shippingEvidenceRefusal = useDateRefusal(shippingEvidenceCleared);
+  const shippingEvidenceRefusalRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (shippingEvidenceRefusal.shown) shippingEvidenceRefusalRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [shippingEvidenceRefusal.shown]);
+
   // A due date on file is corrected and not emptied either (POST-A-399), for a different reason than the shipping bill's. Every invoice carries a due date (a create that names none resolves one
   // from the customer's terms, or thirty days), the collections queue and the ageing read it, and the PATCH route reads an omitted or null date as "not sent": a box the person emptied would leave
   // the stored date exactly as it was and the screen would say the invoice was updated. So the screen says so beside the button, the same way, and a date the invoice never had (nothing on file) is
@@ -752,9 +778,10 @@ export function InvoiceEditor({
   // ── Save flow: create/PATCH → (issue) → (send), reusing existing endpoints ─────
   async function save(action: SaveAction) {
     setAttempted(true);
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError); return; }
     // The date on file cannot be emptied (above). Said beside the button as a derived sentence; a server answer left over from an earlier press is not shown next to it.
     if (shippingBillCleared) { setError(null); shippingBillRefusal.refuse(); return; }
+    if (shippingEvidenceCleared) { setError(null); shippingEvidenceRefusal.refuse(); return; }
     if (dueDateCleared) { setError(null); dueDateRefusal.refuse(); return; }
     const shippingBillSent = showsShippingBill ? {
       shipping_bill_no: shippingBillNo.trim() || undefined,
@@ -837,7 +864,9 @@ export function InvoiceEditor({
           due_date: dueDate || undefined,
           reference_no: editedText(referenceNo, initialSnapshot.current.referenceNo),
           credit_days: creditDays !== "" ? parseInt(creditDays, 10) : undefined,
-          supply_state_code: supplyStateCode || undefined,
+          // A DRAFT may be without a place of supply (the server refuses to ISSUE without one and resolves one from the customer when none is stored), so an
+          // emptied box that had one on file is sent as null and cleared (POST-A-399, the sixth slice); `x || undefined` sent nothing and the old state stayed.
+          supply_state_code: editedChoice(supplyStateCode, initialSnapshot.current.supplyStateCode),
           notes: editedText(notes, initialSnapshot.current.notes),
           is_inter_state: isInterstate,
           round_off_enabled: roundOffEnabled,
@@ -1085,8 +1114,8 @@ export function InvoiceEditor({
         <span>Grand Total{isForeign ? ` (${currency})` : ""}</span>
         <span className="font-mono">{fmtAmt(totals.grand_total_paise)}</span>
       </div>
-      {isForeign && estimatedBasePaise != null && (
-        <Row label="≈ INR total" value={fmt(estimatedBasePaise)} muted />
+      {isForeign && basePaise != null && (
+        <Row label="INR total at this rate" value={fmt(basePaise)} muted />
       )}
       <div className="border-t border-ps-border pt-2 mt-1 space-y-1.5">
         <Row label="Due date" value={dueDate || "—"} />
@@ -1131,7 +1160,7 @@ export function InvoiceEditor({
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="col-span-2">
               <label className="block text-xs font-medium text-ps-label mb-1">Customer *</label>
-              <CustomerLookup customers={customers} value={customerId} onChange={onCustomerChange} ariaLabel="Customer" disabled={isLocked} />
+              <CustomerLookup customers={customers} recent={recentCustomers} value={customerId} onChange={onCustomerChange} ariaLabel="Customer" disabled={isLocked} />
               {isLocked && <p className="mt-1 text-3xs text-ps-hint">Customer can&apos;t be changed once issued — issue a Credit Note to correct (CGST Act §34).</p>}
               {/* Shown only where a limit is RECORDED. `state: "not_set"` is
                   the answer for every customer nobody has set one for, and a
@@ -1322,7 +1351,7 @@ export function InvoiceEditor({
                   <DateInput id="inv-sb-date" value={shippingBillDate}
                     notAfter={todayIstISO()}
                     onChange={setShippingBillDate} onStateChange={dates.watch("shippingBillDate", "Shipping bill date", { afterMax: true })}
-                    anchor={invoiceDate}
+                    anchor={invoiceDate} near={invoiceDate || null}
                     className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
                 </div>
                 <div>
@@ -1571,9 +1600,21 @@ export function InvoiceEditor({
                         )}
                       </td>
                       <td className="py-1.5 pr-2">
-                        <input type="number" min="0" step="0.01" value={line.rate} onChange={(e) => setLine(idx, { rate: e.target.value })}
-                          onKeyDown={(e) => onLineKeyDown(e, idx)} disabled={isLocked} placeholder="0.00" aria-label={`Line ${idx + 1} rate`}
-                          className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand text-right text-xs disabled:bg-ps-bg disabled:text-ps-hint" />
+                        <div className="flex items-center gap-1">
+                          <input type="number" min="0" step="0.01" value={line.rate} onChange={(e) => setLine(idx, { rate: e.target.value })}
+                            onKeyDown={(e) => onLineKeyDown(e, idx)} disabled={isLocked} placeholder="0.00" aria-label={`Line ${idx + 1} rate`}
+                            className="w-full min-w-0 px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand text-right text-xs disabled:bg-ps-bg disabled:text-ps-hint" />
+                          {/* A price that includes GST, worked back by the server (POST-A-490). Not offered on a locked invoice, nor
+                              on a foreign-currency one: an export carries no GST to be included, and the rate there is not in rupees. */}
+                          {!isLocked && !isForeign && (
+                            <button type="button" onClick={() => setInclusiveFor(line._k)} tabIndex={-1}
+                              aria-label={`Line ${idx + 1}: work out the rate from a price including GST`}
+                              title="Work out the rate from a price including GST" data-inclusive-open=""
+                              className="shrink-0 rounded p-1 text-ps-hint hover:bg-ps-bg hover:text-brand focus:outline-none focus-visible:ring-2 focus-visible:ring-brand">
+                              <Calculator size={13} aria-hidden />
+                            </button>
+                          )}
+                        </div>
                       </td>
                       <td className="py-1.5 pr-2">
                         {/* Last editable column: spreadsheet-style Tab here
@@ -1666,8 +1707,24 @@ export function InvoiceEditor({
 
         {error && <Callout tone="problem">{error}</Callout>}
         {shippingBillRefusal.shown && <div ref={shippingBillRefusalRef}><Callout tone="problem">{shippingBillRefusal.shown}</Callout></div>}
+        {shippingEvidenceRefusal.shown && <div ref={shippingEvidenceRefusalRef} data-removed-evidence><Callout tone="problem">{shippingEvidenceRefusal.shown}</Callout></div>}
         {dueDateRefusal.shown && <div ref={dueDateRefusalRef}><Callout tone="problem">{dueDateRefusal.shown}</Callout></div>}
       </div>
+      {(() => {
+        const at = inclusiveFor === null ? -1 : lines.findIndex((l) => l._k === inclusiveFor);
+        if (at < 0) return null;
+        const line = lines[at];
+        return (
+          <InclusivePriceDialog
+            clientId={clientId}
+            lineNumber={at + 1}
+            line={{ qty: line.qty, gstRatePercent: line.gst_rate, discountPercent: line.discountPercent,
+              cessPercent: line.cessPercent, cessPerUnit: line.cessPerUnit }}
+            onUse={(rate) => setLine(at, { rate })}
+            onClose={() => setInclusiveFor(null)}
+          />
+        );
+      })()}
     </InvoiceWorkspaceLayout>
   );
 }

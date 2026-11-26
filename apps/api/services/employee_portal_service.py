@@ -27,9 +27,35 @@ MODELLED ON services/portal_access_service.py, INCLUDING ITS SCARS
 
 ONE DELIBERATE DIVERGENCE
     The client flow stores the live token in client_portal_users.invite_token.
-    This one stores only sha256(token) — see migration 264's header for why the
-    obvious column-level REVOKE does not work. The plaintext token is returned
-    exactly once, by invite_employee(), to the caller that will deliver it.
+    This one stores only a hash of it — see migration 264's header for why the
+    obvious column-level REVOKE does not work.
+
+THE TOKEN EXISTS ONLY IN THE MAIL THE SERVER SENDS (POST-A-552, 22-11-2026)
+    `invite_employee` used to hand the token and the activation link BACK to the
+    member of staff who pressed Invite, "so the caller can deliver the link if
+    the email does not arrive", and the dialog showed it for copying. Since
+    POST-A-445 that link is more than an invitation: `mint_activation_session`
+    turns the bare token into a Supabase sign-in for the invitation's address,
+    and for an address that ALREADY has a sign-in it asks for a magic link. So
+    anybody allowed to invite an employee could type the address of an existing
+    account (a Partner of their own practice, a member of another practice, a
+    client's portal contact), copy the link from the dialog and be signed in AS
+    THAT PERSON, in whatever practice or portal the account belongs to. The
+    staff invitation had exactly this hole and closed it on 16-11-2026
+    (`services/staff_invite_service`); the note written then said of this flow
+    that its token "is never returned to anybody", which was not true.
+
+    Now it is. The server issues the token, keeps only its hash in the STORED
+    FORM below, mails the link itself and tells the screen whether the mail
+    went, in one sentence. Nothing returns the token: not the invite, not the
+    status. A mail that did not go is said, and the invitation can be sent
+    again (a fresh token replaces the old one).
+
+    AN INVITATION ISSUED BEFORE THIS (its hash stored bare, its link shown to
+    the inviter) can still be ACCEPTED by somebody already signed in as its
+    address, and nothing else: the server opens a sign-in only for an
+    invitation in the stored form (`opens_a_sign_in`), the rule
+    `domain/firm/invite_token` keeps for staff.
 """
 from __future__ import annotations
 
@@ -45,6 +71,8 @@ from core.authz import assert_client_access
 from core.urls import frontend_base
 from core import db_provider
 from core.db_provider import privileged_for
+from services import sign_in_link
+from core.observability import capture_soft_failure
 
 # Same window the client-portal invites use. Long enough for someone on leave to
 # act on it, short enough that a forgotten invite does not stay live for months.
@@ -87,6 +115,36 @@ def token_hash(token: str) -> str:
     never identical.
     """
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+#: What marks an invitation the SERVER mailed and returned to nobody (POST-A-552). The column held the bare sha256 hex
+#: before; hex never contains a colon, so the prefix tells the two apart with no migration.
+STORED_PREFIX = "mailed:"
+
+
+def stored_form(token: str) -> str:
+    """What `portal_invite_token_hash` holds for an invitation issued now."""
+    return STORED_PREFIX + token_hash(token)
+
+
+def opens_a_sign_in(invite: dict) -> bool:
+    """Whether the server may open a sign-in from this invitation's bare token: only one it mailed itself and
+    returned to nobody. One issued before POST-A-552 was shown to the member of staff who sent it."""
+    value = invite.get("portal_invite_token_hash")
+    return isinstance(value, str) and value.startswith(STORED_PREFIX)
+
+
+def _lookup_values(token: str) -> list[str]:
+    """The column values a presented token matches: its stored form, and its bare hash for an invitation issued
+    before POST-A-552. Nothing for an empty value."""
+    if not token or not isinstance(token, str):
+        return []
+    return [stored_form(token), token_hash(token)]
+
+
+#: What the payroll screen is told when the invitation's mail did not go. The invitation exists either way.
+MAIL_NOT_SENT = ("The invitation was created, but the email could not be sent: the mail service did not accept it. "
+                 "Send the invitation again; if it fails again, this deployment's mail is not reaching the mail service.")
 
 
 def _employee(firm_id: str, employee_id: str, db, actor: Optional[dict] = None) -> dict:
@@ -138,8 +196,8 @@ def _audit(firm_id, employee_id, action, actor, extra=None) -> None:
             firm_id=firm_id, entity_type="payroll_employee", entity_id=employee_id,
             action=action, actor_id=(actor or {}).get("auth_user_id"),
             actor_email=(actor or {}).get("email"), metadata=extra or {})
-    except Exception:  # audit must never block provisioning
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="employee_portal.audit", firm_id=firm_id, employee_id=employee_id)
 
 
 def activation_url(token: str) -> str:
@@ -158,7 +216,9 @@ def invite_employee(firm_id: str, employee_id: str, email: str,
     refused rather than silently re-invited, because that would look like it
     worked while their existing access continued unchanged.
 
-    Returns the plaintext token; it is not stored and cannot be retrieved again.
+    THE TOKEN IS RETURNED TO NOBODY (POST-A-552; the module's header says why).
+    It goes into the one mail the server sends, and the answer says whether
+    that mail went (`mail`: `sent`, and one sentence when it did not).
     """
     if not email or "@" not in email:
         raise HTTPException(status_code=422, detail="A valid email is required.")
@@ -173,7 +233,7 @@ def invite_employee(firm_id: str, employee_id: str, email: str,
     token = secrets.token_urlsafe(32)
     _update(employee_id, {
         "email": email.strip(),
-        "portal_invite_token_hash": token_hash(token),
+        "portal_invite_token_hash": stored_form(token),
         "portal_invite_expires_at": (datetime.now(timezone.utc) + _INVITE_TTL).isoformat(),
         "portal_invited_at": _now(),
         "portal_invited_by": (actor or {}).get("auth_user_id"),
@@ -183,26 +243,31 @@ def invite_employee(firm_id: str, employee_id: str, email: str,
     }, db)
 
     _audit(firm_id, employee_id, "employee_portal_invite", actor, {"email": email.strip()})
-    _send_invite_email(email.strip(), employee.get("name") or "", token)
-    return {"employee_id": employee_id, "email": email.strip(), "token": token,
-            "activation_url": activation_url(token)}
+    # `is True`: only the mail service's own yes is a yes.
+    sent = _send_invite_email(email.strip(), employee.get("name") or "", token) is True
+    return {"employee_id": employee_id, "email": email.strip(),
+            "mail": {"sent": sent, "problem": None if sent else MAIL_NOT_SENT}}
 
 
-def _send_invite_email(email: str, name: str, token: str) -> None:
-    """Best-effort. A failed send must not lose the invite — the endpoint also
-    returns the activation URL so the CA can deliver it another way."""
+def _send_invite_email(email: str, name: str, token: str) -> bool:
+    """Mail the invitation, and say whether the mail service took it. A failed send does not lose the invitation
+    (it is saved before this runs and can be sent again), but it is SAID: this mail is now the only place the link
+    exists, so a send that failed silently would leave an employee who cannot get in and a screen that says sent."""
     try:
+        from html import escape
         from services.email_service import _send
         url = activation_url(token)
-        _send(to=email,
-              subject="Your payslip portal access",
-              html=(f"<p>Hello {name or 'there'},</p>"
-                    f"<p>Your employer has given you access to view your payslips "
-                    f"and leave balance online.</p>"
-                    f'<p><a href="{url}">Activate your portal access</a></p>'
-                    f"<p>This link works once and expires in 14 days.</p>"))
-    except Exception:
-        pass
+        return bool(_send(to=email,
+                          subject="Your payslip portal access",
+                          html=(f"<p>Hello {escape(name) if name else 'there'},</p>"
+                                f"<p>Your employer has given you access to view your payslips "
+                                f"and leave balance online.</p>"
+                                f'<p><a href="{escape(url, quote=True)}">Activate your portal access</a></p>'
+                                f"<p>This link works once and expires in 14 days. It signs you in, so do not "
+                                f"forward this email.</p>")))
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="employee_portal.invite_email")
+        return False
 
 
 def _find_pending_by_token(token: str, db):
@@ -211,14 +276,14 @@ def _find_pending_by_token(token: str, db):
     `auth_user_id IS NULL` is part of the query, not a check afterwards: it is
     what stops an already-accepted invite being replayed onto a second identity.
     """
-    if not token:
+    values = _lookup_values(token)
+    if not values:
         return None
-    h = token_hash(token)
     if _USE_MOCK:
         return next((e for e in MOCK_EMPLOYEES
-                     if e.get("portal_invite_token_hash") == h and not e.get("auth_user_id")), None)
+                     if e.get("portal_invite_token_hash") in values and not e.get("auth_user_id")), None)
     rows = (privileged_for(db).table("payroll_employees").select("*")
-            .eq("portal_invite_token_hash", h).is_("auth_user_id", "null")
+            .in_("portal_invite_token_hash", values).is_("auth_user_id", "null")
             .limit(1).execute().data or [])
     return rows[0] if rows else None
 
@@ -309,6 +374,11 @@ def mint_activation_session(token: str, db=None) -> dict:
     invite = _pending_unexpired_invite(token, db)
     if not invite:
         raise _INVALID_INVITE
+    # Only an invitation the server mailed and returned to nobody opens a sign-in (POST-A-552). One issued before was
+    # shown to the member of staff who sent it, and a sign-in opened from that link would make its holder whoever the
+    # invitation's address belongs to. The same generic refusal: a different one would say the token is a real one.
+    if not opens_a_sign_in(invite):
+        raise _INVALID_INVITE
 
     email = (invite.get("email") or "").strip()
     if not email:
@@ -322,21 +392,10 @@ def mint_activation_session(token: str, db=None) -> dict:
         return {"token_hash": f"mock-token-hash-{token_hash(token)[:16]}",
                 "verification_type": "magiclink", "email": email}
 
-    admin = db.auth.admin
-    try:
-        resp = admin.generate_link({"type": "invite", "email": email})
-    except Exception:
-        try:
-            resp = admin.generate_link({"type": "magiclink", "email": email})
-        except Exception as exc:
-            raise HTTPException(
-                status_code=503,
-                detail="Could not start your sign-in session. Please try again "
-                       "in a moment, or ask your employer to resend the invitation.",
-            ) from exc
-
-    props = resp.properties
-    return {"token_hash": props.hashed_token, "verification_type": props.verification_type}
+    return sign_in_link.mint(
+        db.auth.admin, email,
+        refusal="Could not start your sign-in session. Please try again "
+                "in a moment, or ask your employer to resend the invitation.")
 
 
 def accept_employee_invite(token: str, auth_user_id: str, email: str, db=None) -> dict:

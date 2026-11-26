@@ -13,7 +13,7 @@ NOT a filing engine: it never submits anything, never touches GST/accounting/ban
 schemas, and never emails clients (escalations are internal only). All money/date
 logic is server-side; the pure helpers here are deterministic and unit-tested.
 """
-from domain.practice.compliance_overdue import is_overdue
+from domain.practice.compliance_overdue import SETTLED, is_overdue, is_settled
 from domain.tds import vocabulary
 import os
 import logging
@@ -39,7 +39,7 @@ _logger = logging.getLogger("caflow.compliance_ops")
 # engagement" decides which override a recorded hour bills under, and two sets
 # would make it mean two things in one product.
 from domain.billing.time_rate import ACTIVE_ENGAGEMENT_STATUSES as _ACTIVE_ENGAGEMENT_STATUSES
-_OPEN_OBLIGATION = lambda s: s not in ("Filed", "Completed")  # noqa: E731
+_OPEN_OBLIGATION = lambda s: not is_settled(s)  # noqa: E731
 
 # GSTR1/GSTR3B/PMT06 are the three obligation types whose PERIOD SHAPE depends
 # on the client's own GST filing frequency (Rule 61A) — a monthly and a
@@ -423,9 +423,11 @@ def _payroll_obligations(financial_year: str) -> list[dict]:
     three separate authorities are owed money on three different dates, and
     missing any of them costs interest that dwarfs the fee.
 
-      EPF   15th of the following month — EPF Scheme 1952, para 38(1).
-            Late draws 12% a year under §7Q PLUS damages under §14B of up to
-            100% of the arrear.
+      EPF   15th of the following month — Employees' Provident Funds Scheme,
+            2026, paras 24(2)(ix) and 28(3). A late deposit draws interest and
+            damages (sections 127 and 128 of the Code, per para 20(7)); the
+            12% a year under §7Q and up to 100% under §14B this used to give
+            belong to the repealed 1952 Act and are not held as current.
       ESI   15th of the following month — ESI (General) Regulations 1950,
             reg. 31. It was the 21st until the 2017 amendment, so a date copied
             from older material is a week late.
@@ -1087,7 +1089,7 @@ def _reconcile_stale_gst_obligations(firm_id: str, client_id: str, financial_yea
             )
             blocked_ps.add((otype, ps))
             continue
-        compliance_records_repo.soft_delete(r["id"])
+        compliance_records_repo.soft_delete(r["id"], firm_id=firm_id, client_id=client_id)
     return seen3, blocked_ps, gaps
 
 
@@ -1249,6 +1251,72 @@ def generate_default_for_client(firm_id: str, client_id: str, financial_year: st
     return out
 
 
+def _the_practice_with_staff_on_its_payroll(firm_id: str) -> Optional[str]:
+    """The id of the firm's own practice when it has at least one active employee on its own payroll, else None.
+
+    The practice is not a client with an engagement to read a service from, so the fact that says "this practice owes
+    payroll deposits" is the roster itself. Read on the server's own client, naming the firm and the practice: a signed-in
+    session holds nothing on the payroll tables. No practice (or mock mode, where there is none): None."""
+    from services.internal_client_service import get_internal_client_id
+    practice = get_internal_client_id(firm_id)
+    if not practice:
+        return None
+    from core import db_provider
+    rows = (db_provider.service_db().table("payroll_employees").select("id")
+            .eq("firm_id", firm_id).eq("client_id", str(practice)).eq("is_active", True).limit(1).execute().data) or []
+    return str(practice) if rows else None
+
+
+def generate_for_the_practice(firm_id: str, financial_year: str, actor: Optional[dict] = None) -> dict:
+    """The dates the firm's OWN payroll owes for one FY, generated against the practice itself (POST-A-534). Idempotent.
+
+    The firm runs its own staff's payroll on its practice record since POST-A-532, and nothing put that payroll's dates
+    on any calendar: obligations come from a client's engagements (the practice has none with itself) or from the
+    no-engagement fallback over the firm's clients (which the practice is not, guardrail G2). So a practice paying its own
+    staff was reminded of every client's EPF, ESI and salary-TDS deposit and of none of its own.
+
+    WHAT IS GENERATED, and only when the practice has an active employee on its own payroll: the three monthly deposits a
+    payroll engagement gets (`_payroll_obligations`: EPF, ESI, TDS on salary) and the quarterly salary statement
+    (`TDS24Q`, the same row `_tds_obligations` gives a TDS engagement, with the same date from `compliance_engine`). The
+    statement is here because the practice has no TDS engagement to bring it and it is owed by whoever deducts under
+    section 192; a practice that deducted nothing in a quarter records the row as not required, as a client would.
+    NOT GENERATED: 26Q and the non-salary deposit (the practice's own payments to contractors are its books' matter and no
+    fact held here says it makes any), GST, income tax and ROC dates of the practice (no fact held here says what it is
+    registered for), and professional tax (no single date exists: `_payroll_obligations` says why).
+
+    THE ROWS ARE THE PRACTICE'S, so no list across the firm's clients carries them (`compliance_records_repo.find_all`
+    leaves the practice out when no client is named). They are read by naming the practice, which only a Partner may."""
+    practice = _the_practice_with_staff_on_its_payroll(firm_id)
+    if not practice:
+        return {"generated": 0, "skipped": 0, "generated_ids": []}
+    specs = _payroll_obligations(financial_year) + [
+        s for s in _tds_obligations(financial_year) if s["obligation_type"] == "TDS24Q"]
+    existing = compliance_records_repo.find_all(firm_id=firm_id, client_id=practice)
+    seen = {(r.get("obligation_type"), str(r.get("period_start"))[:10]) for r in existing if r.get("obligation_type")}
+    generated: list[str] = []
+    skipped = 0
+    for s in specs:
+        key = (s["obligation_type"], s["period_start"])
+        if key in seen:
+            skipped += 1
+            continue
+        rec = compliance_records_repo.create({
+            "firm_id": firm_id, "client_id": practice, "engagement_id": None,
+            "compliance_type": s["compliance_type"], "obligation_type": s["obligation_type"],
+            "period_label": s["period_label"], "period_start": s["period_start"],
+            "period_end": s["period_end"], "due_date": s["due_date"],
+            "status": "Not Started", "priority": "medium",
+        })
+        seen.add(key)
+        generated.append(rec["id"])
+        _audit_timeline_generate(firm_id, rec, actor)
+    out = {"generated": len(generated), "skipped": skipped, "generated_ids": generated}
+    gaps = sorted({g for s in specs for g in s.get("statutory_gaps", ())})
+    if gaps:
+        out["statutory_gaps"] = gaps
+    return out
+
+
 def generate_due(firm_id: str, client_id: Optional[str] = None, financial_year: Optional[str] = None,
                  actor: Optional[dict] = None, allowed_client_ids: Optional[set] = None) -> dict:
     """Generate obligations for every active engagement (optionally one client) for the
@@ -1294,8 +1362,22 @@ def generate_due(firm_id: str, client_id: Optional[str] = None, financial_year: 
         per_engagement.append({"engagement_id": None, "client_id": cid,
                                **{k: res[k] for k in ("generated", "skipped")}})
 
+    # The practice's own payroll (POST-A-534). On a run across the firm by somebody firm-wide (a Partner, or the nightly
+    # scheduler: `allowed_client_ids` is None), and on a run that NAMES the practice (the door has already asked whose it
+    # is). Never on a run confined to a member's assigned clients: the practice is nobody's assigned client.
+    practice_run = None
+    if allowed_client_ids is None:
+        from services.internal_client_service import is_internal_client
+        if client_id is None or is_internal_client(client_id, firm_id):
+            practice_run = generate_for_the_practice(firm_id, fy, actor=actor)
+            total_gen += practice_run["generated"]
+            total_skip += practice_run["skipped"]
+            gaps.update(practice_run.get("statutory_gaps", ()))
+
     out = {"financial_year": fy, "generated": total_gen, "skipped": total_skip,
            "engagements": per_engagement}
+    if practice_run is not None and (practice_run["generated"] or practice_run["skipped"]):
+        out["practice"] = {k: practice_run[k] for k in ("generated", "skipped")}
     # Every assumed statutory date this run produced, once each. The daily
     # scheduler calls this too; a gap that only reaches a log is the failure
     # this shape exists to fix, so it rides the response the router returns.
@@ -1322,7 +1404,7 @@ def assign(firm_id: str, record_id: str, preparer_id: Optional[str] = None,
     if not updates:
         raise HTTPException(status_code=422, detail="No assignment fields supplied.")
     updates["reassigned_at" if rec.get("assigned_at") else "assigned_at"] = _now_iso()
-    updated = compliance_records_repo.update(record_id, updates)
+    updated = compliance_records_repo.update(record_id, updates, firm_id=firm_id, client_id=rec.get("client_id"))
 
     actor = actor or {}
     try:
@@ -1366,7 +1448,29 @@ def transition(firm_id: str, record_id: str, new_status: str, actor: Optional[di
     return compliance_record_service.update_record(record_id, data, firm_id=firm_id, actor=actor)
 
 
-def _notify_internal(firm_id: str, rec: dict, tier: str, actor: Optional[dict]) -> set:
+def _people_who_can_open(firm_id: str, client_id, named: set, cache: Optional[dict] = None) -> set:
+    """Of the people an obligation names, the ones who can open its client (POST-A-451): a Partner, or a member assigned to it.
+
+    The reminders name the client, and the assign route now refuses naming somebody who cannot open it; this covers an obligation
+    named before that, and a member whose assignment was taken away since. `cache` holds one answer per (person, client) for a sweep,
+    so sixty obligations of one client ask about each person once. A person who is not a member of the firm (deleted since) is not
+    sent anything either."""
+    from core.authz import member_reaches_client
+    from repositories.user_repository import user_repo
+    cache = {} if cache is None else cache
+    reach = set()
+    for uid in named:
+        key = (str(uid), str(client_id or ""))
+        if key not in cache:
+            person = user_repo.find_by_id(uid, firm_id=firm_id)
+            cache[key] = bool(person) and member_reaches_client(person, client_id, firm_id)
+        if cache[key]:
+            reach.add(uid)
+    return reach
+
+
+def _notify_internal(firm_id: str, rec: dict, tier: str, actor: Optional[dict],
+                     reach_cache: Optional[dict] = None) -> set:
     """Internal-only escalation: client timeline + audit, plus a best-effort
     in-app notification to preparer/reviewer/approver. NEVER emails the client.
 
@@ -1392,23 +1496,38 @@ def _notify_internal(firm_id: str, rec: dict, tier: str, actor: Optional[dict]) 
                              firm_id=firm_id, entity_type="compliance_record", entity_id=rec.get("id"))
     except Exception:  # pragma: no cover
         pass
+    # The people named, and of them the ones who can open the client (POST-A-451). A person named who cannot is told nothing, and
+    # the audit row says who that was, so a reminder that did not go out is on record rather than missing without a word.
+    named: set = {r for r in (rec.get("preparer_id"), rec.get("reviewer_id"),
+                              rec.get("approver_id"), rec.get("assigned_to")) if r}
+    # The reads that say who can open the client are best-effort like every other side effect here: one failed read must not stop
+    # the nightly sweep for the whole firm. It FAILS CLOSED: nobody is told this time (and the obligation is escalated again
+    # tomorrow), never somebody nobody has checked.
+    reach_unreadable = False
+    try:
+        recipients: set = _people_who_can_open(firm_id, rec.get("client_id"), named, reach_cache)
+    except Exception as exc:  # noqa: BLE001
+        from core.observability import capture_soft_failure
+        capture_soft_failure(exc, operation="compliance.escalation_reach", firm_id=firm_id)
+        recipients, reach_unreadable = set(), True
     try:
         from services.audit_service import log_event
         log_event(firm_id, "compliance_record", rec.get("id"), "escalation",
                   actor_id=(actor or {}).get("auth_user_id"),
                   new_data={"tier": tier, "due_date": rec.get("due_date")},
                   metadata={"recipients": [rec.get("preparer_id"), rec.get("reviewer_id"),
-                                           rec.get("approver_id")]})
+                                           rec.get("approver_id")],
+                            "not_told_cannot_open_the_client": sorted(str(u) for u in named - recipients) if not reach_unreadable else [],
+                            "not_told_reach_unreadable": reach_unreadable})
     except Exception:  # pragma: no cover
         pass
     # Best-effort in-app notifications (internal). Guarded — never fatal.
-    recipients: set = {r for r in (rec.get("preparer_id"), rec.get("reviewer_id"),
-                                   rec.get("approver_id"), rec.get("assigned_to")) if r}
     try:
         from repositories.notifications_repository import notifications_repo
         for uid in recipients:
             notifications_repo.create({
-                "firm_id": firm_id, "user_id": uid, "type": "compliance_due",
+                # The client, so the notification follows the client's own rule on the recipient's list (POST-A-451).
+                "firm_id": firm_id, "user_id": uid, "type": "compliance_due", "client_id": rec.get("client_id"),
                 "title": f"Compliance {label}: {rec.get('obligation_type', '')}",
                 # Same raw-ISO-date defect in a different spelling, found by
                 # the same grep — CLAUDE.md's own bug-fixing rule.
@@ -1433,10 +1552,14 @@ def escalate(firm_id: str, today: Optional[date] = None, actor: Optional[dict] =
     today_s = today.isoformat()
     counts = {"due_7": 0, "due_3": 0, "due_1": 0, "overdue": 0}
     mail_batch: dict[str, list[dict]] = {}
+    reach_cache: dict = {}   # one answer per (person, client) for the sweep (POST-A-451)
     # Pushed server-side: escalate() only ever acts on open obligations, so
     # there's no reason to also fetch every Filed/Completed row just to
     # discard it in Python.
-    for r in compliance_records_repo.find_all(firm_id=firm_id, exclude_statuses=("Filed", "Completed")):
+    # `include_practice`: the sweep is not a list of clients, it is a reminder to the people NAMED on an obligation, and
+    # `_notify_internal` tells only those who can open the row's client, which for the practice is its Partners. A member's
+    # own run is confined to their clients below, as before, and the practice is nobody's assigned client.
+    for r in compliance_records_repo.find_all(firm_id=firm_id, exclude_statuses=SETTLED, include_practice=True):
         if allowed_client_ids is not None and str(r.get("client_id")) not in allowed_client_ids:
             continue
         due = str(r.get("due_date", ""))[:10]
@@ -1462,13 +1585,14 @@ def escalate(firm_id: str, today: Optional[date] = None, actor: Optional[dict] =
         if tier == "overdue" and last_tier == "overdue" and last_on:
             if (today - ce_date(last_on)).days < 7:
                 continue
-        for uid in _notify_internal(firm_id, r, tier, actor):
+        for uid in _notify_internal(firm_id, r, tier, actor, reach_cache):
             mail_batch.setdefault(str(uid), []).append({
                 "record_id": r.get("id"), "tier": tier,
                 "client_id": r.get("client_id"), "due_date": due,
                 "label": r.get("period_label") or r.get("obligation_type"),
             })
-        compliance_records_repo.update(r["id"], {"last_escalated_tier": tier, "last_escalated_on": today_s})
+        compliance_records_repo.update(r["id"], {"last_escalated_tier": tier, "last_escalated_on": today_s},
+                                       firm_id=firm_id, client_id=r.get("client_id"))
         counts[tier] += 1
     # ONE mail per recipient for the whole sweep, after the loop. A practice with
     # sixty clients has sixty GSTR-3Bs reach the 7-day tier on the same morning;
@@ -1521,6 +1645,77 @@ def dashboard(firm_id: str, today: Optional[date] = None, allowed_client_ids: Op
     queue = [{**r, "client_name": client_names.get(str(r.get("client_id") or "")), "overdue": is_overdue(r, today)}
              for r in records]
     return {**agg, "by_client": by_client, "by_staff": by_staff, "queue": queue}
+
+
+#: The person columns of an obligation, in the order a person's part in it is named. `assigned_to` is set to the preparer by `assign`,
+#: and is the only one keyed to `users` (migration 108); all four hold the INTERNAL user id.
+_PERSON_COLUMNS = (("preparer_id", "preparer"), ("reviewer_id", "reviewer"), ("approver_id", "approver"), ("assigned_to", "preparer"))
+
+
+def my_obligations(firm_id: str, user_id: str, today: Optional[date] = None,
+                   allowed_client_ids: Optional[set] = None) -> dict:
+    """The open obligations a person is named on, as preparer, reviewer or approver (POST-A-206, first slice): the obligation half of
+    "my obligations and my tasks" on My Work.
+
+    Read from the obligation store (`compliance_records`), the list Deadlines shows, never from the filing calendar. A settled obligation
+    (Filed, Completed, Not Required) is not work and is left out. Each row says which parts the person holds (`my_roles`), whether it is
+    overdue by the one rule every reader asks (`is_overdue`), and the client's name. Confined to the firm and, for a caller who is not
+    firm-wide, to their own clients. An obligation nobody is named on is NOT anybody's: it is counted apart (`unassigned_in_scope`), so
+    an empty list is not read as "nothing to do" in a practice that has not yet named its preparers."""
+    today = today or ist_today()
+    uid = str(user_id or "")
+    # `include_practice`: this is "the rows that name ME", not a list of clients, and a Partner named on one of the
+    # practice's own deposits must find it on My Work. The name it is shown under is resolved below (`_dashboard_names`
+    # reads the practice's name too). It is counted in nobody's "unassigned" figure: that figure is about clients' work.
+    rows = compliance_records_repo.find_all(firm_id=firm_id, exclude_statuses=list(SETTLED), include_practice=True)
+    if allowed_client_ids is not None:
+        rows = [r for r in rows if str(r.get("client_id")) in allowed_client_ids]
+    from services.internal_client_service import get_internal_client_id
+    _practice = str(get_internal_client_id(firm_id) or "")
+    mine, unassigned = [], 0
+    for r in rows:
+        roles: list[str] = []
+        for col, role in _PERSON_COLUMNS:
+            if uid and str(r.get(col) or "") == uid and role not in roles:
+                roles.append(role)
+        if not any(r.get(col) for col, _role in _PERSON_COLUMNS) and str(r.get("client_id") or "") != _practice:
+            unassigned += 1
+        if roles:
+            mine.append((r, roles))
+    names, _staff = _dashboard_names(firm_id, {str(r.get("client_id")) for r, _ in mine if r.get("client_id")}, set())
+    out = [{
+        "id": r.get("id"), "client_id": r.get("client_id"), "client_name": names.get(str(r.get("client_id") or "")),
+        "obligation_type": r.get("obligation_type"), "compliance_type": r.get("compliance_type"),
+        "period_label": r.get("period_label"), "due_date": r.get("due_date"), "status": r.get("status"),
+        "my_roles": roles, "overdue": is_overdue(r, today),
+    } for r, roles in mine]
+    out.sort(key=lambda x: (str(x.get("due_date") or "9999"), str(x.get("id") or "")))
+    return {
+        "obligations": out,
+        "total": len(out),
+        "overdue": sum(1 for x in out if x["overdue"]),
+        "unassigned_in_scope": unassigned,
+        "as_at": today.isoformat(),
+    }
+
+
+def with_people_named(firm_id: str, rows: list[dict]) -> list[dict]:
+    """Each obligation with `preparer_name` and `reviewer_name` (POST-A-206), so Deadlines can show who prepares and who reviews it and
+    filter on it, without the browser reading `users`. The preparer is `preparer_id`, or `assigned_to` where only that is set (`assign`
+    writes both). Both keys are ALWAYS present: null where nobody is named, or where the id resolves to nobody in the firm."""
+    ids = set()
+    for r in rows:
+        for col in ("preparer_id", "assigned_to", "reviewer_id"):
+            if r.get(col):
+                ids.add(str(r[col]))
+    _clients, staff = _dashboard_names(firm_id, set(), ids)
+    out = []
+    for r in rows:
+        prep = r.get("preparer_id") or r.get("assigned_to")
+        rev = r.get("reviewer_id")
+        out.append({**r, "preparer_name": staff.get(str(prep)) if prep else None,
+                    "reviewer_name": staff.get(str(rev)) if rev else None})
+    return out
 
 
 def _dashboard_names(firm_id: str, client_ids: set, user_ids: set) -> tuple[dict, dict]:
@@ -1576,7 +1771,7 @@ def client_names(firm_id: str, client_ids: set) -> dict:
     return _dashboard_names(firm_id, set(client_ids), set())[0]
 
 
-_DONE_STATUSES = ("Filed", "Completed")
+_DONE_STATUSES = SETTLED
 
 
 def calendar(firm_id: str, client_id: Optional[str] = None, today: Optional[date] = None,
@@ -1618,7 +1813,7 @@ def calendar(firm_id: str, client_id: Optional[str] = None, today: Optional[date
         records = list(by_id.values())
     upcoming, overdue, completed = [], [], []
     for r in records:
-        if r.get("status") in ("Filed", "Completed"):
+        if is_settled(r.get("status")):      # filed, or recorded as not required of the client (POST-A-267)
             completed.append(r)
         elif is_overdue(r, today):          # the one rule (POST-A-280): by its date, or moved to "Overdue" by hand, whatever the date
             overdue.append(r)

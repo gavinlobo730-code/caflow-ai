@@ -16,13 +16,14 @@ from datetime import date, datetime, timezone
 from typing import Annotated, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from models.common import api_response
 from core.permissions import can_user, rbac
 from core.authz import assert_client_access, can_access_client, effective_client_ids
 from domain.tds.tds_validator import TDSValidator
 from services.audit_service import log_event
+from services.internal_client_service import assert_partner_for_internal_id
 from services.timeline_service import timeline_service
 from services.period_validation_service import period_validation_service
 from models.fy import FYLabel, OptionalFYLabel
@@ -259,6 +260,10 @@ class CreateChallanRequest(BaseModel):
     minor_head: Literal["200", "400"] = Field(
         default="200",
         description="200 = TDS payable by the deductor; 400 = regular assessment")
+    #: POST-A-267 (migration 695): on a salary challan, the wage month (YYYY-MM) whose section 192 tax it deposits, as the person
+    #: recording it states it. It is what lets the challan close that month's salary deposit obligation on the calendar; blank closes
+    #: none. Refused on any other section and for a month outside the challan's own quarter (`month_problem`).
+    deduction_month: Optional[str] = Field(default=None, description="Salary challans only: the wage month it pays, YYYY-MM")
 
     @field_validator("minor_head")
     @classmethod
@@ -288,11 +293,34 @@ class CreateChallanRequest(BaseModel):
             raise ValueError("The challan date cannot be after today's date in India.")
         return day
 
+    @model_validator(mode="after")
+    def _a_wage_month_belongs_to_a_salary_challan_of_its_quarter(self):
+        from services.tds_salary_deposit_closes_obligation import month_problem
+        if self.deduction_month is not None and not self.deduction_month.strip():
+            self.deduction_month = None
+        problem = month_problem(deduction_month=self.deduction_month, section=self.section,
+                                financial_year=str(self.financial_year), quarter=self.quarter)
+        if problem:
+            raise ValueError(problem)
+        if self.deduction_month is not None:
+            self.deduction_month = self.deduction_month.strip()
+        return self
+
     def tds_paise(self) -> int:
         """What of the total is TAX. Never negative — the components are
         validated against the total before this is called."""
         return (self.amount_paise - self.surcharge_paise
                 - self.interest_paise - self.penalty_paise)
+
+
+def _a_supplier_id(value: Optional[str]) -> Optional[str]:
+    """A supplier id is a uuid or nothing: anything else is refused at the door in words (a 422), not answered with a failed read."""
+    if value is None or not str(value).strip():
+        return None
+    try:
+        return str(uuid.UUID(str(value).strip()))
+    except ValueError:
+        raise ValueError("vendor_id is not a supplier's id: pick the supplier again.") from None
 
 
 class CreateDeductionRequest(BaseModel):
@@ -307,6 +335,10 @@ class CreateDeductionRequest(BaseModel):
     endpoint that looks authoritative.
     """
     client_id: str
+    # The supplier the payment was made to, where it was one (POST-A-078): the form's picker sends it, and the deduction is then charged in
+    # that supplier's year by the bill path's resolver. Optional, because a dividend, a partner's remuneration, a winning or a landowner's
+    # compensation is paid to someone who is not a supplier; the CSV import sends a PAN, which names the supplier when exactly one holds it.
+    vendor_id: Optional[str] = None
     deductee_name: str = Field(..., min_length=1)
     # The payee's PAN. Optional because a deduction genuinely can be made
     # without one — and when it is, IT Act s.206AA floors the rate at 20%,
@@ -321,6 +353,11 @@ class CreateDeductionRequest(BaseModel):
     challan_no: Optional[str] = None
     notes: Optional[str] = None
 
+    @field_validator("vendor_id")
+    @classmethod
+    def _vendor_id_is_a_uuid(cls, v):
+        return _a_supplier_id(v)
+
 
 class UpdateDeductionRequest(BaseModel):
     """Every field optional; whatever is supplied is re-run through the engine.
@@ -329,6 +366,7 @@ class UpdateDeductionRequest(BaseModel):
     a typo would be a direct PostgREST write, which is the hole migration 345
     closed.
     """
+    vendor_id: Optional[str] = None
     deductee_name: Optional[str] = None
     deductee_pan: Optional[str] = None
     section: Optional[str] = None
@@ -337,6 +375,11 @@ class UpdateDeductionRequest(BaseModel):
     nature_of_payment: Optional[str] = None
     challan_no: Optional[str] = None
     notes: Optional[str] = None
+
+    @field_validator("vendor_id")
+    @classmethod
+    def _vendor_id_is_a_uuid(cls, v):
+        return _a_supplier_id(v)
 
 
 #: What `tds_returns.return_type` CHECKs (migration 037), and what this
@@ -656,10 +699,74 @@ def _remove_what_its_document_left_behind(db, firm_id: str, rec: dict) -> Option
     return why
 
 
+def _supplier_of_the_deduction(db, firm_id: str, client_id: str, body: dict) -> tuple[Optional[dict], Optional[str]]:
+    """The supplier a typed deduction was paid to, and a sentence where none could be named (POST-A-078).
+
+    A supplier the request NAMES (`vendor_id`, the form's picker) must be one of this client's, or the request is refused in words. Where it
+    names none, the PAN decides, and only when it can: the one supplier `vendor_tds.sole_holder` names among the client's suppliers holding
+    that PAN (active, not non-resident), which is the same rule the supplier's year counts a typed row by (the CSV import sends a name and a
+    PAN). Two such suppliers is normal (a supplier registered in two states has a record per GSTIN), so neither is chosen and the sentence
+    asks for the pick; a PAN held only by a supplier marked inactive, or only by a non-resident one, is said as such. With no database (mock
+    mode) there is no supplier to read, and nothing is said."""
+    if db is None:
+        return None, None
+    vendor_id = (body.get("vendor_id") or "").strip() if isinstance(body.get("vendor_id"), str) else body.get("vendor_id")
+    if vendor_id:
+        got = (db.table("vendors").select("*").eq("id", str(vendor_id)).eq("firm_id", firm_id).eq("client_id", client_id)
+               .limit(1).execute().data) or []
+        if not got:
+            raise HTTPException(status_code=404, detail="That supplier is not one of this client's suppliers.")
+        return got[0], None
+    pan = manual_register.usable_pan_key(body.get("deductee_pan"))
+    if not pan:
+        return None, None
+    from services.vendor_tds import sole_holder
+    holders = fetch_all(lambda: (db.table("vendors").select("*")
+                                 .eq("firm_id", firm_id).eq("client_id", client_id).eq("pan", pan)))
+    one = sole_holder(holders)
+    if one is not None:
+        return one, None
+    active = [h for h in holders if h.get("is_active") is not False]
+    resident = [h for h in active if h.get("residential_status") != "non_resident"]
+    if len(resident) > 1:
+        return None, (f"{len(resident)} suppliers of this client hold PAN {pan} (a supplier registered in more than one state has a record for "
+                      "each), so this payment is not counted in either's year. Pick the supplier to count it in that supplier's year.")
+    if active:
+        return None, (f"The supplier of this client holding PAN {pan} is recorded as non-resident, so this payment is not counted in its year: "
+                      "a payment to a non-resident is withheld under section 195, on a purchase bill.")
+    if holders:
+        return None, (f"{'The only supplier' if len(holders) == 1 else 'Every supplier'} of this client holding PAN {pan} is marked inactive, so "
+                      "this payment is not counted in its year. Mark the supplier active again if the payment was made to it.")
+    return None, None
+
+
+def _mirrors_a_document(db, firm_id: str, client_id: str, vendor_id: str, when: str, taxable: int) -> bool:
+    """Whether a live purchase bill or a live vendor advance of the same supplier carries the same day and the same amount: a typed
+    deduction that records the same payment as a document would count twice in the supplier's year, which is said, never guessed away. The
+    amount typed is meant to be the taxable value, and the box has long been labelled the gross payment, so a bill matches on its taxable
+    value or its total, and an advance on the base it was charged on or the sum paid."""
+    bills = (db.table("purchase_bills").select("id, taxable_amount_paise, total_paise, status, deleted_at")
+             .eq("firm_id", firm_id).eq("client_id", client_id).eq("vendor_id", vendor_id).eq("bill_date", when)
+             .execute().data) or []
+    if any(taxable in (int(b.get("taxable_amount_paise") or 0), int(b.get("total_paise") or 0))
+           and b.get("status") != "cancelled" and not b.get("deleted_at") for b in bills):
+        return True
+    advances = (db.table("purchase_payments").select("id, tds_base_paise, amount_paise, is_reversed")
+                .eq("firm_id", firm_id).eq("client_id", client_id).eq("vendor_id", vendor_id).eq("payment_date", when)
+                .execute().data) or []
+    return any(taxable in (int(a.get("tds_base_paise") or 0), int(a.get("amount_paise") or 0)) and not a.get("is_reversed")
+               for a in advances)
+
+
 def _resolve_manual_deduction(db, firm_id: str, client_id: str, body: dict,
-                              exclude_id: Optional[str] = None) -> dict:
+                              exclude_id: Optional[str] = None, current_user: Optional[dict] = None) -> dict:
     """Run one hand-entered deduction through the engine and return the row to
     store, plus what the CA needs told about it.
+
+    A DEDUCTION THAT NAMES ITS SUPPLIER (POST-A-078) is charged by the bill path's own resolver
+    (`services/vendor_tds.resolve_resident_tds`), on that supplier's year of bills, advances and typed deductions, with the supplier's
+    s.197 certificate and s.194A class; one that names none is charged as before, on the typed deductions for its PAN that name none.
+    Either way the tax is capped at the payment typed, as a bill's is at the bill.
 
     Raises HTTPException(422) with the engine's own words when the section is
     one it does not hold — s.194IA is the live example, offered by the old
@@ -668,12 +775,11 @@ def _resolve_manual_deduction(db, firm_id: str, client_id: str, body: dict,
     """
     from datetime import date as _date
     from domain.tds.tds_computer import TDSComputer, is_company_pan, has_pan
-    from domain.tds.residency import deduction_section_refusal
+    from domain.tds.residency import deduction_section_refusal, is_non_resident
     from domain.tds.section_rates import tds_rates_for, rates_are_verified as resident_rates_are_verified
     from services.tds_register_service import fy_quarter
 
     section = (body.get("section") or "").upper().strip()
-    pan = (body.get("deductee_pan") or "").upper().strip() or None
     try:
         when = _date.fromisoformat(str(body.get("transaction_date"))[:10])
     except ValueError:
@@ -690,65 +796,93 @@ def _resolve_manual_deduction(db, firm_id: str, client_id: str, body: dict,
     if refusal:
         raise HTTPException(status_code=422, detail=refusal)
 
-    prior_taxable, prior_tds = (0, 0)
-    # Asked means the read RAN: `prior_manual_aggregate` returns at once, without a query, for a blank firm, client or section.
+    supplier, supplier_note = _supplier_of_the_deduction(db, firm_id, client_id, body)
+    if supplier is not None and is_non_resident(supplier.get("residential_status")):
+        raise HTTPException(status_code=422, detail=(
+            "This supplier is recorded as non-resident, so a payment to it is withheld under section 195, by the nature of the income and any "
+            "treaty, which is worked on a purchase bill and not on this form."))
+    # The name and the PAN on the row are the supplier's where one is named (a snapshot when the deduction is recorded); otherwise what was typed.
+    pan = ((supplier.get("pan") if supplier is not None else body.get("deductee_pan")) or "").upper().strip() or None
+    name = ((supplier.get("name") if supplier is not None else body.get("deductee_name")) or "").strip()
+
+    fy = manual_register.fy_label(when)
+    rates_confirmed = resident_rates_are_verified(fy)
+    section_rule = tds_rates_for(fy).sections.get(section)
     register_asked = bool(not _USE_MOCK and db is not None and firm_id and client_id and section)
-    if register_asked:
-        prior_taxable, prior_tds = manual_register.prior_manual_aggregate(
-            db, firm_id=firm_id, client_id=client_id, section=section,
-            deductee_pan=pan, on=when, exclude_id=exclude_id)
+    gaps: list[str] = []
 
-    # Individual or company is read off the PAN's 4th character, not asked.
-    # s.194C is 1% for an individual and 2% for a company, and the old screen
-    # charged everyone 2%. Captured once so the same answer both drives the
-    # engine and explains itself below — asking is_company_pan twice could
-    # answer differently only if it were not pure, but two call sites reading
-    # one fact is still one fact to get wrong.
-    is_company = is_company_pan(pan)
-    try:
-        res = TDSComputer().resolve_tds(
-            section=section,
-            taxable_paise=taxable,
-            # BOTH limbs or neither. CLAUDE.md: a caller passing the first
-            # without the second re-charges the growing aggregate on every
-            # later entry.
-            fy_prior_taxable_paise=prior_taxable,
-            fy_prior_tds_paise=prior_tds,
-            is_company=is_company,
-            # The FY the PAYMENT falls in, not today's — a deduction entered
-            # late for a prior year must use that year's law.
-            fy=manual_register.fy_label(when),
-            # IT Act s.206AA — no PAN floors the rate at 20%.
-            has_pan=has_pan(pan),
-        )
-    except ValueError as ve:
-        # The registry's own words, for what the question above does not name (section 195 is not in the resident registry and has
-        # its own module).
-        raise HTTPException(status_code=422, detail=str(ve))
+    if supplier is not None:
+        from services import vendor_tds
+        w = vendor_tds.resolve_resident_tds(
+            supplier, section, taxable, when.isoformat(), firm_id, db,
+            client_id=client_id, exclude_deduction_id=exclude_id, event_noun="payment")
+        due, applies, rate_bps = w.tds_paise, w.applies, w.rate_bps
+        prior_taxable, prior_tds, why, reason = w.fy_prior_paise, w.fy_prior_tds_paise, w.why, None
+        is_lower, cert_no = w.is_lower_deduction, w.certificate_no
+        if supplier.get("tds_applicable") is False:
+            gaps.append(manual_register.GAP_SUPPLIER_NOT_SUBJECT_TO_TDS)
+        if register_asked and _mirrors_a_document(db, firm_id, client_id, supplier.get("id"), when.isoformat(), taxable):
+            gaps.append(manual_register.GAP_MIRRORS_A_DOCUMENT)
+        has_key = True   # the supplier is the key: its year is read whether or not it has a PAN
+    else:
+        prior_taxable, prior_tds = (0, 0)
+        # Asked means the read RAN: `prior_manual_aggregate` returns at once, without a query, for a blank firm, client or section.
+        if register_asked:
+            prior_taxable, prior_tds = manual_register.prior_manual_aggregate(
+                db, firm_id=firm_id, client_id=client_id, section=section,
+                deductee_pan=pan, on=when, exclude_id=exclude_id)
+        try:
+            res = TDSComputer().resolve_tds(
+                section=section,
+                taxable_paise=taxable,
+                # BOTH limbs or neither. CLAUDE.md: a caller passing the first
+                # without the second re-charges the growing aggregate on every
+                # later entry.
+                fy_prior_taxable_paise=prior_taxable,
+                fy_prior_tds_paise=prior_tds,
+                is_company=is_company_pan(pan),
+                # The FY the PAYMENT falls in, not today's — a deduction entered
+                # late for a prior year must use that year's law.
+                fy=fy,
+                # IT Act s.206AA — no PAN floors the rate at 20%.
+                has_pan=has_pan(pan),
+            )
+        except ValueError as ve:
+            # The registry's own words, for what the question above does not name (section 195 is not in the resident registry and has
+            # its own module).
+            raise HTTPException(status_code=422, detail=str(ve))
+        due, applies, rate_bps = res.tds_paise, res.applies, res.rate_bps
+        why, is_lower, cert_no, reason = None, False, None, getattr(res, "reason", None)
+        # WHOSE YEAR IT WAS: the typed deductions for its PAN that name no supplier (said with the pick it lacks), or, with no usable PAN
+        # (blank, a placeholder, not a PAN), nobody's: the aggregate above is 0 because nothing was read, not because nothing was paid, and
+        # the two sentences are not said together because the first would say a year was added up that the second says was not looked for.
+        has_key = manual_register.usable_pan_key(pan) is not None
+        gaps.append(manual_register.GAP_NO_SUPPLIER if has_key else manual_register.GAP_AGGREGATE_NOT_READ_WITHOUT_A_PAN)
 
-    # Named on EVERY row, not only where it currently bites. The CA cannot tell
-    # from the number whether the register this aggregate does not see would
-    # have changed it, and a gap that appears only sometimes reads as a fault
-    # in the data rather than a known limit of the calculation.
-    gaps = [manual_register.GAP_REGISTERS_NOT_UNIFIED]
-    # AND WHEN THE YEAR WAS NOT LOOKED AT ALL. A payee with no usable PAN (blank, a placeholder, not a PAN) has no key, so the aggregate above is
-    # 0 because nothing was read, not because nothing was paid; the screen used to say "the year's total for this payee has not reached it either"
-    # over that nil (POST-A-078). The gap that names a missing PAN is added for that reason alone.
-    has_key = manual_register.usable_pan_key(pan) is not None
-    if not has_key:
-        gaps.append(manual_register.GAP_AGGREGATE_NOT_READ_WITHOUT_A_PAN)
+    # A payee with no key is never added up by its NAME (POST-A-078): the year's earlier payments typed under the same name are NAMED with
+    # their figures, and the charge stays the first-payment charge above. `extra_gap_messages` are sentences that carry figures.
+    same_name_gaps, extra_gap_messages = _same_name_payments(
+        db, ask=register_asked and supplier is None and not has_key, firm_id=firm_id, client_id=client_id, section=section,
+        name=name, when=when, exclude_id=exclude_id)
+    gaps.extend(same_name_gaps)
+
+    # THE DEDUCTION IS BOUNDED BY THE PAYMENT, as a bill's is by the bill (routers/purchase_bills.py): the year's tax falls on the payment that
+    # crosses a threshold and can be many times its size. The shortfall is not lost: the next payment or bill to this payee credits what was
+    # actually withheld (s.200) and charges the rest. The typed amount is the taxable value, so the cap can only be smaller than a bill's.
+    tds_paise = min(due, taxable)
+    shortfall = due - tds_paise
+    if shortfall > 0:
+        gaps.append(manual_register.GAP_CAPPED_AT_THE_PAYMENT)
+
     # THE RATES OF A YEAR NOBODY HAS CONFIRMED. The bill and advance paths raise this gap (services/tds_register_service.py) and this door never did: the registry
     # substitutes its latest verified year for one it does not hold, and Finance Act 2025 raised most thresholds, so s.194J at Rs 40,000 typed for FY 2024-25 comes
     # back nil where Rs 4,000 was due (domain/tds/residency.py). The typed form answered it as confidently as any other.
-    fy = manual_register.fy_label(when)
-    rates_confirmed = resident_rates_are_verified(fy)
     if not rates_confirmed:
         gaps.append(manual_register.GAP_RESIDENT_RATES_UNVERIFIED)
-    # `aggregate_tested` is the one fact the screen's sentence "…and with the payments already typed for this payee in the year it is below the section's yearly
-    # threshold too" rests on: the register WAS asked and the read ran, for a payee who HAS a key, in a year whose rates are confirmed, and the section HAS a yearly
-    # limb to add them up against. Four sections deliberately have none (s.194I tests a month, s.194B a single transaction, s.192 and s.206C are not computed
-    # here: domain/tds/section_rates.py), and for them the year was never compared with anything, whatever was read.
-    section_rule = tds_rates_for(fy).sections.get(section)
+    # `aggregate_tested` is the one fact the screen's sentence "…and with the payments already counted for this payee in the year it is below the section's yearly
+    # threshold too" rests on: the register WAS asked and the read ran, for a payee who HAS a key (a supplier, or a usable PAN), in a year whose rates are
+    # confirmed, and the section HAS a yearly limb to add them up against. Four sections deliberately have none (s.194I tests a month, s.194B a single
+    # transaction, s.192 and s.206C are not computed here: domain/tds/section_rates.py), and for them the year was never compared with anything, whatever was read.
     aggregate_tested = bool(register_asked and has_key and rates_confirmed and section_rule is not None and section_rule.aggregate_threshold_paise is not None)
 
     # WHICH limb of the section's rate was applied, and why — stated on every
@@ -758,8 +892,11 @@ def _resolve_manual_deduction(db, firm_id: str, client_id: str, body: dict,
     # alone. Mirrors is_company_pan()'s own reasoning (domain/tds/tds_computer.py):
     # the 4th character of the PAN decides, and no usable PAN defaults to the
     # higher, non-individual rate.
-    limb = "non-individual" if is_company else "individual/HUF"
-    if has_key:
+    limb = "non-individual" if is_company_pan(pan) else "individual/HUF"
+    if is_lower:
+        # IT Act s.197: the certificate's rate replaces the section's limb, so the PAN's 4th character did not choose it.
+        rate_basis = f"Charged at the rate on the supplier's section 197 certificate {cert_no}, not at the rate the PAN's 4th character picks."
+    elif manual_register.usable_pan_key(pan) is not None:
         rate_basis = f"Charged at the {limb} rate: PAN 4th character {pan[3].upper()}."
     elif pan and len(pan) >= 4 and has_pan(pan):
         # Text in the PAN box that is not a PAN, which is not one of the two placeholders either. The engine reads its 4th character all the same (whether it
@@ -772,10 +909,26 @@ def _resolve_manual_deduction(db, firm_id: str, client_id: str, body: dict,
             "payee's type from, so the higher rate applies by default."
         )
 
+    # WHAT A PERSON WHO MAY NOT SEE PURCHASE DOCUMENTS IS TOLD (POST-A-078). A supplier's year includes its purchase bills, and the
+    # explanation's figures and sentence state that year; a member the Team grid keeps out of purchase documents (`accounting` read) gets
+    # the tax and the rate, which are this row's own, and a sentence that the year was added up. The year's figures, its sentence and the
+    # shortfall are hidden (the shortfall with the rate gives the year back exactly). Two things are not: the tax, where the payment does not
+    # cap it, can be worked back with the rate (it is this row's own and is stored on it), and the gap that a bill or an advance of the same
+    # day and amount exists says yes or no about an amount the person typed themselves; both are a decision, recorded in the design record.
+    year_hidden = supplier is not None and current_user is not None and not can_user(current_user, "accounting", "read")
+    if year_hidden:
+        # The shortfall too: it is the year's tax less this payment, and with the rate it gives the year's billed total back exactly.
+        prior_taxable_shown, prior_tds_shown, shortfall = None, None, None
+        why = ("The year's earlier payments to this supplier were added up, its purchase bills and advances included; the figures are not "
+               "shown, because purchase documents are not open to you.")
+    else:
+        prior_taxable_shown, prior_tds_shown = prior_taxable, prior_tds
+
     row = {
         "firm_id": firm_id,
         "client_id": client_id,
-        "deductee_name": (body.get("deductee_name") or "").strip(),
+        "vendor_id": supplier.get("id") if supplier is not None else None,
+        "deductee_name": name,
         "deductee_pan": pan,
         "section": section,
         "nature_of_payment": body.get("nature_of_payment") or None,
@@ -786,13 +939,17 @@ def _resolve_manual_deduction(db, firm_id: str, client_id: str, body: dict,
         # The rate ACTUALLY applied: 0 when below the threshold, so a s.203
         # certificate cannot later claim a rate was used when nothing was
         # deducted. Same rule as routers/purchase_bills.py.
-        "tds_rate_pct": (res.rate_bps / 100) if res.applies else 0,
-        "tds_paise": res.tds_paise,
+        "tds_rate_pct": (rate_bps / 100) if applies else 0,
+        "tds_paise": tds_paise,
         # A resident section deducts at the bare rate and carries neither.
         # s.195 is not reachable here: it needs chargeability, a treaty and a
         # nature of income, which is the purchase-bill path's job.
         "surcharge_paise": 0,
         "cess_paise": 0,
+        # IT Act s.197: the certificate that lowered the rate, as the bill path stores it (migration 037's columns), so a certified rate
+        # never reaches the register without its number.
+        "is_lower_deduction": bool(is_lower),
+        "lower_deduction_cert": cert_no,
         # ONE quarter vocabulary, and it is now the schema's own:
         # services/tds_register_service.fy_quarter returns the bare "Q3" and
         # the year goes in financial_year, matching tds_returns, tds_challans
@@ -801,24 +958,43 @@ def _resolve_manual_deduction(db, firm_id: str, client_id: str, body: dict,
         # "Q1 (Apr-Jun)" and the bill path "Q3 2025-26" — three spellings on a
         # column that had no CHECK, which is why no reader matched any of them.
         "quarter": fy_quarter(when),
-        "financial_year": manual_register.fy_label(when),
+        "financial_year": fy,
         "challan_no": body.get("challan_no") or None,
         "notes": body.get("notes") or None,
     }
     explain = {
-        "applies": res.applies,
-        "reason": getattr(res, "reason", None),
-        "rate_pct": res.rate_bps / 100,
-        "tds_paise": res.tds_paise,
+        "applies": applies,
+        "reason": reason,
+        # The rate applied, as on the row: 0 where nothing was deducted, on either path.
+        "rate_pct": (rate_bps / 100) if applies else 0,
+        "tds_paise": tds_paise,
         "rate_basis": rate_basis,
-        "fy_prior_taxable_paise": prior_taxable,
-        "fy_prior_tds_paise": prior_tds,
+        "fy_prior_taxable_paise": prior_taxable_shown,
+        "fy_prior_tds_paise": prior_tds_shown,
         "aggregate_tested": aggregate_tested,
+        # What the bill path's resolver says about this charge (the certificate, the class, the year), or None where no supplier was named.
+        "why": why,
+        "shortfall_paise": shortfall,
+        "supplier": ({"id": supplier.get("id"), "name": supplier.get("name")} if supplier is not None else None),
+        "supplier_note": supplier_note,
         "gaps": gaps,
         "gap_messages": [manual_register.GAP_MESSAGES[g] for g in gaps
-                         if g in manual_register.GAP_MESSAGES],
+                         if g in manual_register.GAP_MESSAGES] + extra_gap_messages,
     }
     return {"row": row, "explain": explain}
+
+
+def _same_name_payments(db, *, ask: bool, firm_id: str, client_id: str, section: str, name: str, when: date,
+                        exclude_id: Optional[str]) -> tuple[list[str], list[str]]:
+    """(gaps, sentences) for the year's earlier typed payments under the same name, for a payee with no supplier and no usable PAN
+    (`ask`); nothing otherwise, and nothing when there are none (POST-A-078, `manual_register.same_name_without_a_pan`)."""
+    if not ask:
+        return [], []
+    count, taxable, tds = manual_register.same_name_without_a_pan(
+        db, firm_id=firm_id, client_id=client_id, section=section, deductee_name=name, on=when, exclude_id=exclude_id)
+    if not count:
+        return [], []
+    return [manual_register.GAP_SAME_NAME_WITHOUT_A_PAN], [manual_register.same_name_sentence(count, taxable, tds)]
 
 
 @router.post("/deductions")
@@ -836,23 +1012,26 @@ def create_deduction(
     payload = body.model_dump()
     try:
         if _USE_MOCK:
-            resolved = _resolve_manual_deduction(None, firm_id, body.client_id, payload)
+            resolved = _resolve_manual_deduction(None, firm_id, body.client_id, payload, current_user=current_user)
             rec = {"id": str(uuid.uuid4()), **resolved["row"]}
             _MOCK_DEDUCTIONS[rec["id"]] = rec
             return api_response(True, {**rec, "explain": resolved["explain"]})
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        resolved = _resolve_manual_deduction(db, firm_id, body.client_id, payload)
+        resolved = _resolve_manual_deduction(db, firm_id, body.client_id, payload, current_user=current_user)
         row = resolved["row"]
         # Keys spelt INLINE. tests/test_backend_columns_exist_pg.py can only
         # read a payload whose keys are string constants; .insert(a_variable) is
         # counted as an unreadable reference and its columns stop being checked
         # against the real schema. Same reason the year-end and compliance
         # writes are spelt out.
-        ins = db.table("tds_deductions").insert({
+        # THE PRIVILEGED CLIENT WRITES THE REGISTER (POST-A-443): the route has asked the role tier and the client above, and the row names
+        # the firm and the client it was asked for. The read that follows a write, and every read here, stays on the caller's own client.
+        ins = privileged_for(db).table("tds_deductions").insert({
             "firm_id": row["firm_id"],
             "client_id": row["client_id"],
+            "vendor_id": row["vendor_id"],
             "deductee_name": row["deductee_name"],
             "deductee_pan": row["deductee_pan"],
             "section": row["section"],
@@ -863,6 +1042,8 @@ def create_deduction(
             "tds_paise": row["tds_paise"],
             "surcharge_paise": row["surcharge_paise"],
             "cess_paise": row["cess_paise"],
+            "is_lower_deduction": row["is_lower_deduction"],
+            "lower_deduction_cert": row["lower_deduction_cert"],
             "quarter": row["quarter"],
             "financial_year": row["financial_year"],
             "challan_no": row["challan_no"],
@@ -906,7 +1087,7 @@ def preview_deduction(
     if not _USE_MOCK:
         from core.supabase_client import get_supabase
         db = get_supabase()
-    resolved = _resolve_manual_deduction(db, firm_id, body.client_id, body.model_dump())
+    resolved = _resolve_manual_deduction(db, firm_id, body.client_id, body.model_dump(), current_user=current_user)
     return api_response(True, {
         # Everything the CA needs to see BEFORE committing, and nothing stored.
         "section": resolved["row"]["section"],
@@ -917,6 +1098,23 @@ def preview_deduction(
         "financial_year": resolved["row"]["financial_year"],
         "explain": resolved["explain"],
     })
+
+
+def _correction_of(rec: dict, sent: dict) -> dict:
+    """The deduction a correction describes: the stored row with what the request sent laid over it, and the supplier resolved from the
+    REQUEST where it changes the payee (POST-A-078). A supplier picked is that supplier. A PAN that differs from the stored one (compared in
+    capitals without spaces) means the payee was retyped, so the stored supplier is NOT kept and the new PAN decides: a stored supplier
+    carried over a corrected PAN would charge the payment in the wrong supplier's year. Anything else keeps the stored supplier, a name
+    included: on a row that names a supplier the name is the supplier's own (`_resolve_manual_deduction` takes it from the record), so a
+    name sent, or the stored name sent back unchanged, is not a different payee."""
+    merged = {**rec, **sent}
+    if not sent.get("vendor_id") and "deductee_pan" in sent and _pan_text(sent["deductee_pan"]) != _pan_text(rec.get("deductee_pan")):
+        merged["vendor_id"] = None
+    return merged
+
+
+def _pan_text(value) -> str:
+    return str(value or "").strip().upper()
 
 
 @router.patch("/deductions/{deduction_id}")
@@ -932,14 +1130,16 @@ def update_deduction(
     here would look like it worked and silently revert.
     """
     firm_id = current_user["firm_id"]
+    # A field left out, or sent as null, is not changed (this door cannot clear one: patch_handlers_that_cannot_clear.txt).
+    sent = body.model_dump(exclude_none=True)
     try:
         if _USE_MOCK:
             rec = _visible_or_none(current_user, _MOCK_DEDUCTIONS.get(deduction_id))
             if rec is None:
                 return api_response(False, None, "Not found")
-            merged = {**rec, **{k: v for k, v in body.model_dump().items() if v is not None}}
+            merged = _correction_of(rec, sent)
             resolved = _resolve_manual_deduction(None, firm_id, rec["client_id"], merged,
-                                                 exclude_id=deduction_id)
+                                                 exclude_id=deduction_id, current_user=current_user)
             rec.update(resolved["row"])
             return api_response(True, {**rec, "explain": resolved["explain"]})
 
@@ -950,15 +1150,19 @@ def update_deduction(
         rec = _visible_or_none(current_user, got[0] if got else None)
         if rec is None:
             return api_response(False, None, "Not found")
+        # The firm's own practice is a Partner's (G1, migration 074's `_internal_partner_only` policy on this table): the router's guard reads a
+        # client id off the request, and this one names a row, so the row's client is asked here before the privileged client writes (POST-A-443).
+        assert_partner_for_internal_id(rec.get("client_id"), current_user)
         if manual_register.written_by_a_document(rec):
             return api_response(False, None, _not_typed_here(rec, removing=False))
-        merged = {**rec, **{k: v for k, v in body.model_dump().items() if v is not None}}
+        merged = _correction_of(rec, sent)
         resolved = _resolve_manual_deduction(db, firm_id, rec["client_id"], merged,
-                                             exclude_id=deduction_id)
+                                             exclude_id=deduction_id, current_user=current_user)
         row = resolved["row"]
         # Inline again, and only the columns an edit may move — firm_id and
         # client_id are the row's identity, not its content.
-        upd = (db.table("tds_deductions").update({
+        upd = (privileged_for(db).table("tds_deductions").update({
+            "vendor_id": row["vendor_id"],
             "deductee_name": row["deductee_name"],
             "deductee_pan": row["deductee_pan"],
             "section": row["section"],
@@ -969,11 +1173,13 @@ def update_deduction(
             "tds_paise": row["tds_paise"],
             "surcharge_paise": row["surcharge_paise"],
             "cess_paise": row["cess_paise"],
+            "is_lower_deduction": row["is_lower_deduction"],
+            "lower_deduction_cert": row["lower_deduction_cert"],
             "quarter": row["quarter"],
             "financial_year": row["financial_year"],
             "challan_no": row["challan_no"],
             "notes": row["notes"],
-        }).eq("id", deduction_id).eq("firm_id", firm_id).execute().data) or []
+        }).eq("id", deduction_id).eq("firm_id", firm_id).eq("client_id", rec["client_id"]).execute().data) or []
         log_event(firm_id, "tds_deduction", deduction_id, "update",
                   actor_id=current_user.get("auth_user_id"),
                   actor_email=current_user.get("email"),
@@ -1016,6 +1222,7 @@ def delete_deduction(
         rec = _visible_or_none(current_user, got[0] if got else None)
         if rec is None:
             return api_response(False, None, "Not found")
+        assert_partner_for_internal_id(rec.get("client_id"), current_user)   # G1, as on the correction above (POST-A-443)
         if manual_register.written_by_a_document(rec):
             why = _remove_what_its_document_left_behind(db, firm_id, rec)
             if why is None:
@@ -1024,7 +1231,8 @@ def delete_deduction(
                       actor_id=current_user.get("auth_user_id"),
                       actor_email=current_user.get("email"), new_data={**dict(rec), "removed_because": why})
             return api_response(True, {"deleted": deduction_id, "removed_because": why})
-        db.table("tds_deductions").delete().eq("id", deduction_id).eq("firm_id", firm_id).execute()
+        (privileged_for(db).table("tds_deductions").delete()
+         .eq("id", deduction_id).eq("firm_id", firm_id).eq("client_id", rec["client_id"]).execute())
         log_event(firm_id, "tds_deduction", deduction_id, "delete",
                   actor_id=current_user.get("auth_user_id"),
                   actor_email=current_user.get("email"), new_data=dict(rec))
@@ -1182,8 +1390,17 @@ def _close_the_deposit_obligations(current_user: dict, challan: dict) -> list[di
     from core.observability import capture_soft_failure
     from core.supabase_client import get_supabase
     from services import tds_deposit_closes_obligation as closes
+    from services import tds_salary_deposit_closes_obligation as salary
+    from domain.tds.deposit_due import is_salary
     firm_id = current_user["firm_id"]
     try:
+        if is_salary(str(challan.get("section") or "")):
+            # A salary challan closes the month it names, against what payroll deducted (POST-A-267). The closer reads payroll's
+            # figures with the privileged client and names them, so a person blocked from READING payroll is not shown them.
+            return salary.close_for_recorded_challan(
+                db=get_supabase(), firm_id=firm_id, client_id=challan.get("client_id") or "", challan=challan, actor=current_user,
+                may_write_compliance=can_user(current_user, "compliance", "write"),
+                may_read_payroll=can_user(current_user, "payroll", "read"))
         return closes.close_for_recorded_challan(
             db=get_supabase(), firm_id=firm_id, client_id=challan.get("client_id") or "",
             financial_year=challan.get("financial_year"), quarter=challan.get("quarter"), challan_id=challan.get("id") or "",
@@ -1250,12 +1467,17 @@ def create_challan(
             "status": "deposited",
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
+        # Only when stated, so a challan recorded without a month is written exactly as before even in the minutes the API is live
+        # before migration 695 is.
+        if body.deduction_month:
+            record["deduction_month"] = body.deduction_month
 
         if _USE_MOCK:
             _MOCK_CHALLANS[record["id"]] = record
         else:
             from core.supabase_client import get_supabase
-            get_supabase().table("tds_challans").insert(record).execute()
+            # The privileged client writes (POST-A-443); `record` names the firm and the client the route asked for.
+            privileged_for(get_supabase()).table("tds_challans").insert(record).execute()
 
         log_event(firm_id, "tds_challan", record["id"], "create",
                   actor_id=current_user.get("auth_user_id"), new_data=record)
@@ -1631,7 +1853,8 @@ def _revise_tds_return(existing: dict, body: CreateReturnRequest,
         rec = dict(_MOCK_RETURNS[return_id])
     else:
         from core.supabase_client import get_supabase
-        rows = (get_supabase().table("tds_returns").update({
+        # The privileged client writes (POST-A-443), naming the firm and the client of the row the route read.
+        rows = (privileged_for(get_supabase()).table("tds_returns").update({
             # Back to pending with the approver cleared: see the docstring.
             "status": "pending",
             "ca_approved_by": None,
@@ -1644,10 +1867,11 @@ def _revise_tds_return(existing: dict, body: CreateReturnRequest,
             "deductee_count": deductees,
             "validation_errors": errors,
             "updated_at": now_iso,
-        }).eq("id", return_id).eq("firm_id", firm_id).execute().data) or []
+        }).eq("id", return_id).eq("firm_id", firm_id).eq("client_id", existing["client_id"]).execute().data) or []
         if not rows:
             # The row was read a moment ago in this request; an update that
-            # matched nothing means it is gone or not writable by this caller.
+            # matched nothing means it is gone (the privileged client writes it,
+            # POST-A-443, so no row security can be what refused it).
             # Answering success with the OLD figures would report a revision
             # that did not happen.
             raise HTTPException(status_code=404, detail=(
@@ -1735,7 +1959,8 @@ def create_return(
             _MOCK_RETURNS[record["id"]] = record
         else:
             from core.supabase_client import get_supabase
-            get_supabase().table("tds_returns").insert(record).execute()
+            # The privileged client writes (POST-A-443); `record` names the firm and the client the route asked for.
+            privileged_for(get_supabase()).table("tds_returns").insert(record).execute()
 
         log_event(firm_id, "tds_return", record["id"], "create",
                   actor_id=current_user.get("auth_user_id"), new_data=record)
@@ -1775,9 +2000,9 @@ def _the_filing_date(body: UpdateReturnStatusRequest) -> tuple[Optional[str], Op
                       "defaulted: the day it is recorded here is not the day it was filed.")
     from domain.compliance_record_service import clean_filed_date
     try:
-        return clean_filed_date(body.filing_date), None
+        return clean_filed_date(body.filing_date, "The filing date"), None
     except ValueError as refusal:
-        return None, f"{str(refusal).replace('filed_date', 'filing_date')}. Enter the date on the portal's receipt."
+        return None, f"{refusal} Enter the date on the portal's receipt."
 
 
 @dataclass(frozen=True)
@@ -1900,6 +2125,29 @@ def _close_the_obligation(current_user: dict, row: dict, body: UpdateReturnStatu
                            "Mark the obligation filed from Compliance."}
 
 
+def _status_request_refusal(body: "UpdateReturnStatusRequest", current_user: dict) -> Optional[str]:
+    """What is wrong with a status request on its face, before any row is read, or None. Moved out of `update_return_status` unchanged when that
+    route gained its own refusal for the firm's own practice (POST-A-443), which took it past the complexity limit."""
+    allowed = {"pending", "prepared", "ca_approved", "filed"}
+    if body.status not in allowed:
+        return f"Invalid status. Allowed: {allowed}"
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    if body.status in ("ca_approved", "filed") and not body.ca_approved:
+        return "Explicit ca_approved=true required for ca_approved/filed status. CA must confirm."
+
+    # IT Act §200/§203: only Manager+ can approve/file a TDS return —
+    # ca_approved=true alone is a caller-supplied flag, not proof of role.
+    # Asked of the PERSON (`can_user`: a per-person row wins, the role decides where there is none), not of the role template: a Manager whose
+    # approval of TDS the Team grid switched off still approved, filed and could record over a refusal, and an Executive it had granted it to could not.
+    if body.status in ("ca_approved", "filed") and not can_user(current_user, "tds", "approve"):
+        return "Only Manager or above can approve or file a TDS return."
+
+    if body.status == "filed" and not (body.prn or "").strip():
+        return "PRN (Provisional Receipt Number) is required to mark a return as filed."
+    return None
+
+
 @router.patch("/returns/{return_id}/status")
 def update_return_status(
     return_id: str,
@@ -1912,27 +2160,9 @@ def update_return_status(
     """
     try:
         firm_id = current_user["firm_id"]
-        allowed = {"pending", "prepared", "ca_approved", "filed"}
-        if body.status not in allowed:
-            return api_response(False, None, f"Invalid status. Allowed: {allowed}")
-
-        # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
-        if body.status in ("ca_approved", "filed") and not body.ca_approved:
-            return api_response(False, None,
-                "Explicit ca_approved=true required for ca_approved/filed status. CA must confirm.")
-
-        # IT Act §200/§203: only Manager+ can approve/file a TDS return —
-        # ca_approved=true alone is a caller-supplied flag, not proof of role.
-        # Asked of the PERSON (`can_user`: a per-person row wins, the role decides where there is none), not of the role template: a Manager whose
-        # approval of TDS the Team grid switched off still approved, filed and could record over a refusal, and an Executive it had granted it to could not.
-        if body.status in ("ca_approved", "filed"):
-            if not can_user(current_user, "tds", "approve"):
-                return api_response(False, None,
-                    "Only Manager or above can approve or file a TDS return.")
-
-        if body.status == "filed" and not (body.prn or "").strip():
-            return api_response(False, None,
-                "PRN (Provisional Receipt Number) is required to mark a return as filed.")
+        why_not = _status_request_refusal(body, current_user)
+        if why_not:
+            return api_response(False, None, why_not)
         filed_on, why_not_this_date = _the_filing_date(body)
         if why_not_this_date:
             return api_response(False, None, why_not_this_date)
@@ -1956,6 +2186,7 @@ def update_return_status(
         current = _visible_or_none(current_user, current)
         if current is None:
             return api_response(False, None, "Not found")
+        assert_partner_for_internal_id(current.get("client_id"), current_user)   # G1: the request names a return, not a client (POST-A-443)
         refusal = _the_refusal(body, current, filed_on)
         if refusal:
             return api_response(False, refusal.marker(), refusal.sentence)
@@ -1980,15 +2211,17 @@ def update_return_status(
             from core.supabase_client import get_supabase
             # Conditional on the status that was READ: two requests to mark the same statement filed (a double click) both
             # read ca_approved and both pass the checks above, and without this the second would overwrite the first's PRN.
-            rows = (get_supabase().table("tds_returns").update(update_payload)
-                    .eq("id", return_id).eq("firm_id", firm_id).eq("status", current.get("status")).execute().data)
+            # The privileged client writes (POST-A-443), naming the firm and the client of the row read and checked above.
+            rows = (privileged_for(get_supabase()).table("tds_returns").update(update_payload)
+                    .eq("id", return_id).eq("firm_id", firm_id).eq("client_id", current["client_id"])
+                    .eq("status", current.get("status")).execute().data)
             if not rows:
-                # The row was removed or changed between the read and the write, or the caller's row security refused the
-                # change: PostgREST answers all three with an empty list. It used to be answered `{}` as a success, with
-                # the audit row and the timeline entry written for a change that never happened.
+                # The row was removed or changed between the read and the write: PostgREST answers both with an empty list (the
+                # privileged client writes it since POST-A-443, so row security is no longer a third reason). It used to be answered
+                # `{}` as a success, with the audit row and the timeline entry written for a change that never happened.
                 return api_response(False, None,
-                    "Could not update this TDS return: it may have been removed or changed by someone else in the "
-                    "meantime, or your access does not let you change it. Nothing was changed.")
+                    "Could not update this TDS return: it was removed or changed by someone else in the meantime. "
+                    "Nothing was changed. Reload the returns and try again.")
             rec = rows[0]
 
         # THE OVERRIDE IS WRITTEN TO THE AUDIT LOG (POST-A-402): a statement recorded over what was incomplete about it says so, with what it
@@ -2009,6 +2242,9 @@ def update_return_status(
             )
             return api_response(True, {**rec, "compliance_obligation": _close_the_obligation(current_user, rec, body)})
         return api_response(True, rec)
+    except HTTPException:
+        # A refusal this route means (the firm's own practice is a Partner's, POST-A-443) is its answer, not a failure to word.
+        raise
     except Exception as e:
         return _could_not(e, "update the TDS return status")
 
@@ -2103,7 +2339,8 @@ def create_certificate(
             _MOCK_CERTIFICATES[record["id"]] = record
         else:
             from core.supabase_client import get_supabase
-            get_supabase().table("tds_certificates").insert(record).execute()
+            # The privileged client writes (POST-A-443); `record` names the firm and the client the route asked for.
+            privileged_for(get_supabase()).table("tds_certificates").insert(record).execute()
 
         log_event(firm_id, "tds_certificate", record["id"], "create",
                   actor_id=current_user.get("auth_user_id"), new_data=record)
@@ -2397,20 +2634,5 @@ def upload_form26as(
         return _could_not(e, "reconcile the Form 26AS upload")
 
 
-@router.get("/form26as/{upload_id}")
-def get_form26as(upload_id: str, current_user: dict = Depends(rbac("tds", "read"))):
-    """Get Form 26AS reconciliation result."""
-    try:
-        firm_id = current_user["firm_id"]
-        if _USE_MOCK:
-            rec = _MOCK_FORM26AS.get(upload_id)
-        else:
-            from core.supabase_client import get_supabase
-            rows = get_supabase().table("form_26as_uploads").select("*").eq("id", upload_id).eq("firm_id", firm_id).execute().data
-            rec = rows[0] if rows else None
-        rec = _visible_or_none(current_user, rec)
-        if not rec:
-            return api_response(False, None, "Not found")
-        return api_response(True, rec)
-    except Exception as e:
-        return _could_not(e, "read the Form 26AS reconciliation")
+# `GET /form26as/{upload_id}` (read one Form 26AS upload) was deleted on 21-11-2026 (POST-A-547): no screen opened it. An upload answers
+# with its own reconciliation when it is made, which is what the TDS screen shows.

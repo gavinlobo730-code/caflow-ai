@@ -44,6 +44,7 @@ from pathlib import Path
 
 import pytest
 from tests._cross_tenant_rows import LEGACY_ROWS_ALLOWED
+from tests._signed_in_writes_handed_back import hand_back
 
 API_ROOT = Path(__file__).resolve().parents[1]
 RUNNER = API_ROOT / "scripts" / "db" / "apply_migrations.py"
@@ -147,6 +148,46 @@ NOT_FOR_THE_API = {
     # routers), and 551 took every privilege away from `authenticated`, `anon` and PUBLIC; their row policies stay as the second
     # lock. (`entity_documents` lost its privileges in 538.)
     "documents", "client_documents", "document_requests", "document_extractions", "document_risks",
+    # Migration 617 (POST-A-056): the two GSTR-8 amendment tables (Table 4 and 4.1). Created for the API's privileged client alone,
+    # which is their one reader and writer (`ecommerce_operator_service`, naming the firm and the client after the route's own
+    # client check); `authenticated`, `anon` and PUBLIC hold no privilege, and the deny-list test below proves it for each name.
+    "ecommerce_operator_supply_amendments", "ecommerce_operator_unregistered_supply_amendments",
+    # Migration 620 (POST-A-092): the marks that a document's stock was put right by hand. Created for the API's privileged client
+    # alone, which is its one reader and writer (the stock-effect retry service, naming the firm and the client); `authenticated`,
+    # `anon` and PUBLIC hold no privilege, and the deny-list test below proves it.
+    "stock_effect_settlements",
+    # Migration 641 (POST-A-082): a mid-year client's payroll opening position per employee, a payroll table like the twenty-three
+    # above; the API's privileged client is its only reader and writer, and `authenticated`, `anon` and PUBLIC hold no privilege.
+    "payroll_opening_positions",
+    # Migration 671 (POST-A-212): how long one filing of each kind takes in this firm. Its review of 17-11-2026 took the read away
+    # too: `repositories/compliance_effort_repository.py` reads and writes it through the privileged client naming the firm, and
+    # `authenticated`, `anon` and PUBLIC hold no privilege.
+    "compliance_effort_estimates",
+    # Migration 715 (POST-A-057): what a bulk GSTR-2B drop did to each file. `services/gst_2b_drop_record` reads and writes both
+    # through the privileged client naming the firm, and `authenticated`, `anon` and PUBLIC hold no privilege.
+    "gstr2b_bulk_drops",
+    "gstr2b_bulk_drop_files",
+    # Migration 765 (POST-A-486): which sessions a login is signed in on. `services/login_devices_service` reads and writes it through
+    # the privileged client naming the firm and the member, and `authenticated`, `anon` and PUBLIC hold no privilege (a person's
+    # session id and address are not for the browser's own role to read).
+    "login_sessions",
+    # Migration 771 (POST-A-485, POST-A-497): a sign-up link as the server holds it (the hash of its secret and the firm and person names
+    # typed on the form), one row per address and no firm, because the person has not signed up yet. `services/signup_link_service`
+    # reads and writes it through the privileged client alone (`repositories/signup_link_repository`); `authenticated`, `anon` and
+    # PUBLIC hold no privilege and no policy exists, and the deny-list test below proves it.
+    "signup_links",
+    # Migration 772 (POST-A-499): who of a purged firm had a sign-in account, written by the platform administrator's purge (behind MFA)
+    # before the firm's rows go and read by `core/auth` for the caller's own verified account alone, both on the privileged client;
+    # `authenticated`, `anon` and PUBLIC hold no privilege and no policy exists, and the deny-list test below proves it.
+    "closed_account_markers",
+    # Migration 777 (POST-A-544): the related-party register. `entities` holds a PAN, a date of birth, a phone number and an address,
+    # and the server shows a member who is not firm-wide only the entities of their own clients; the database's row rule asked the
+    # firm alone, so a hand-made request was answered with the whole register. The server has read all three with its own client
+    # since 22-11-2026 and no screen reads them over PostgREST, so 777 took every privilege from `authenticated`, `anon` and PUBLIC.
+    # The deny-list test below proves the denial is real for each name.
+    "entities",
+    "entity_relationships",
+    "entity_to_entity_relationships",
 }
 # Scaffolding left behind by data migrations. Prefixed, not enumerated, because
 # the next one will have a different number.
@@ -281,19 +322,27 @@ def test_the_operator_tables_stay_out_of_reach(seeded_db):
 
 # ── The table that broke ─────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("privilege", ["SELECT", "INSERT", "UPDATE", "DELETE"])
-def test_the_api_role_holds_dml_on_the_register(seeded_db, privilege):
-    """The exact grant migration 285 omitted. SELECT is what 500ed; the other
-    three are what recording a reversal from the UI needs, and would have been
-    the next 42501 one line down."""
+def test_the_signed_in_role_reads_the_register(seeded_db):
+    """The exact grant migration 285 omitted: SELECT is what 500ed, and a signed-in session still reads the register (the GSTR-3B
+    computation's period read below is made as the caller)."""
     r = _psql(seeded_db,
-              f"SELECT has_table_privilege('authenticated','public.itc_reversal_register','{privilege}');",
+              "SELECT has_table_privilege('authenticated','public.itc_reversal_register','SELECT');",
               tuples=True)
     assert r.returncode == 0, r.stderr
-    assert r.stdout.strip() == "t", (
-        f"`authenticated` cannot {privilege} itc_reversal_register — this is the "
-        "403 that broke Compute from Books"
-    )
+    assert r.stdout.strip() == "t", "`authenticated` cannot SELECT itc_reversal_register — this is the 403 that broke Compute from Books"
+
+
+@pytest.mark.parametrize("privilege", ["INSERT", "UPDATE", "DELETE"])
+def test_since_migration_595_the_register_is_written_by_the_api_role_and_not_by_a_signed_in_session(seeded_db, privilege):
+    """Recording a reversal needed INSERT, UPDATE and DELETE as the caller while the API wrote with the caller's sign-in (287 granted
+    them). Since POST-A-008's GST tranche the API writes the register with its privileged client and migration 595 took the three away
+    from `authenticated`, so a reversal is recorded by `service_role` and a hand-made request cannot write one."""
+    r = _psql(seeded_db,
+              f"SELECT has_table_privilege('authenticated','public.itc_reversal_register','{privilege}'), "
+              f"has_table_privilege('service_role','public.itc_reversal_register','{privilege}');",
+              tuples=True)
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.strip() == "f|t", f"{privilege}: authenticated|service_role = {r.stdout.strip()}"
 
 
 def test_the_backend_role_keeps_its_own_dml(seeded_db):
@@ -355,7 +404,9 @@ def test_an_unassigned_clients_reversals_are_not_visible(seeded_db):
 
 def test_a_write_for_an_unassigned_client_is_refused(seeded_db):
     """WITH CHECK, not just USING — otherwise a user could declare a reversal
-    on a return they cannot read back."""
+    on a return they cannot read back. Measured with the signed-in write handed back (migration 595 took it away, so without it the
+    privilege would refuse first and this would pass for the wrong reason): the policy is the second lock."""
+    assert hand_back(seeded_db, ["itc_reversal_register"]) == ["itc_reversal_register"]
     r = _psql(seeded_db, _as_user(f"""
         INSERT INTO itc_reversal_register
           (firm_id, client_id, journal_entry_id, kind, reason_code, period, igst_paise)
@@ -368,7 +419,8 @@ def test_a_write_for_an_unassigned_client_is_refused(seeded_db):
 
 def test_an_assigned_client_can_still_be_written(seeded_db):
     """The negative control for the two tests above: if the RESTRICTIVE policy
-    were simply refusing everything, they would both pass for the wrong reason."""
+    were simply refusing everything, they would both pass for the wrong reason. With the write handed back, as above."""
+    assert hand_back(seeded_db, ["itc_reversal_register"]) == ["itc_reversal_register"]
     r = _psql(seeded_db, _as_user(f"""
         INSERT INTO itc_reversal_register
           (firm_id, client_id, journal_entry_id, kind, reason_code, period, igst_paise)
@@ -378,6 +430,17 @@ def test_an_assigned_client_can_still_be_written(seeded_db):
         "the assignment policy is too tight — a user assigned to this client "
         f"cannot record its own reversal: {r.stderr}"
     )
+
+
+def test_without_the_write_handed_back_even_an_assigned_clients_reversal_is_refused_by_the_privilege(seeded_db):
+    """The first lock, as production holds it since migration 595: the same statement the test above writes is refused with 42501
+    before the policy is asked."""
+    r = _psql(seeded_db, _as_user(f"""
+        INSERT INTO itc_reversal_register
+          (firm_id, client_id, journal_entry_id, kind, reason_code, period, igst_paise)
+        VALUES ('{FIRM}','{ASSIGNED}','{JE_SPARE_ASSIGNED}','reversal','rule_37','042026',100);
+    """))
+    assert r.returncode != 0 and "permission denied for table itc_reversal_register" in r.stderr, r.stderr or "it succeeded"
 
 
 def test_the_old_policy_name_is_gone(seeded_db):

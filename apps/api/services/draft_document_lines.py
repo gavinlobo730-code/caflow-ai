@@ -12,6 +12,10 @@ WHAT IT NO LONGER DOES
     Until 29-10-2026 it replaced the lines in two steps (a delete and then an insert) when the function was not in the database yet, for
     the hour between the API reaching production and migration 560 doing so. Migration 560 has been on production since 10:00 UTC
     that day, so the fallback is deleted: a missing function is now an error the caller sees and not a second way to write the lines.
+    Until 17-11-2026 it also read a draft's lines BEFORE the call, for the minutes the API was on production before migration 625 (which
+    makes the function answer the lines its own DELETE removed); 625 has been on production since 18:07 IST on 17-11-2026, so that read
+    is deleted too (POST-A-429): one round trip less on every save, and the lines the edit record names are only ever the ones the
+    call removed under the header's lock.
 
 WHAT IT DOES NOT DO
     It does not update the header. The header's totals are written by the route afterwards, as before, and the issue routes ask the
@@ -19,12 +23,15 @@ WHAT IT DOES NOT DO
 """
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 from fastapi import HTTPException
 
 from core.db_paging import fetch_all
 from core.db_provider import privileged_for
+
+_logger = logging.getLogger("caflow.documents.draft_lines")
 
 #: kind -> (lines table, the line's foreign key, what the document is called in a sentence)
 DOCUMENTS: dict[str, tuple[str, str, str]] = {
@@ -54,6 +61,11 @@ def _read_lines(db, document: str, document_id: str) -> list[dict]:
     """Every line the document holds now, in the order the document shows them, read in keyset pages: a document with more lines than
     PostgREST's row cap (a bill built from an import) would otherwise be recorded short, and the audit log can never be corrected."""
     rows = fetch_all(lambda: _READ[document](db, document_id), key="id", label=f"{document} lines for the edit record")
+    return _in_document_order(rows)
+
+
+def _in_document_order(rows: list[dict]) -> list[dict]:
+    """Lines in the order the document shows them (the function's DELETE returns them in no order)."""
     return sorted(rows, key=lambda r: (r.get("sort_order") if isinstance(r.get("sort_order"), int) else 0, str(r.get("id"))))
 
 
@@ -105,25 +117,32 @@ def replace_draft_lines(db, document: str, document_id: str, firm_id: str, lines
     `lines` may carry the foreign key (the routers build their rows with it); the function sets it from the document's own id.
     A document that is not found for the firm is a 404 and one that has been issued meanwhile a 409, in words, and nothing changed.
 
-    IT RECORDS WHAT IT REPLACED (POST-A-424). The lines a draft held are read first (as the API, and in full) and written to the audit
-    log beside the lines that replace them, as one row for this document by `edited_by` (the signed-in member), after the replacement
-    has happened and only then. No row-level record of a line exists: the line tables carry no firm, so the capture trigger is not on
-    them. A save that sends the lines the draft already holds records nothing, because nothing was replaced in substance. The read is
-    made before the database function takes the header's lock, so two members saving one draft at the same moment can both record
-    the same lines as the ones they replaced (POST-A-429). `edited_by` has no default, so a caller that replaces lines has to say
-    whose edit it is."""
+    IT RECORDS WHAT IT REPLACED (POST-A-424). The lines the database function's own DELETE removed under the header's lock (migration
+    625) are written to the audit log beside the lines that replace them, as one row for this document by `edited_by` (the signed-in
+    member), after the replacement has happened and only then; so two members saving one draft at the same moment each record what
+    their own save replaced (POST-A-429), and nothing is read before the call. No row-level record of a line exists: the line tables
+    carry no firm, so the capture trigger is not on them. A save that sends the lines the draft already holds records nothing, because
+    nothing was replaced in substance. An answer that does not name the lines it removed (a database without migration 625) records
+    no lines and is logged at ERROR, because the edit happened and an edit record built from a guess is worse than a loud gap.
+    `edited_by` has no default, so a caller that replaces lines has to say whose edit it is."""
     _lines_table, fk, noun = DOCUMENTS[document]
     rows = [{k: v for k, v in ln.items() if k != fk} for ln in lines]
     # Written as the API, after the route has read the draft under its firm and client: the signed-in role holds no write on the lines
     # once the grant is taken away (POST-A-335), and the function itself refuses a document that is not the firm's.
     db = privileged_for(db)
-    # READ AS THE API TOO (POST-A-424): the signed-in role holds no read on the document tables either (migration 551), and a read that
-    # went through the caller's own client would find nothing and record "the lines were empty" beside lines that were not.
-    previous = _read_lines(db, document, document_id)
     try:
-        db.rpc("replace_draft_document_lines", {
+        answer = db.rpc("replace_draft_document_lines", {
             "p_document": document, "p_document_id": document_id, "p_firm_id": firm_id, "p_lines": rows,
-        }).execute()
+        }).execute().data
+        # WHAT THE CALL REPLACED, READ UNDER ITS LOCK (POST-A-429, migration 625): the function answers the lines its own DELETE removed,
+        # so another save cannot put its lines in this edit record.
+        replaced = answer.get("replaced") if isinstance(answer, dict) else None
+        if not isinstance(replaced, list):
+            _logger.error("caflow.documents.draft_lines: the replacement of the lines of %s %s did not name the lines it removed (a "
+                          "database without migration 625?); the edit happened and its record names no replaced lines",
+                          document, document_id)
+            return len(rows)
+        previous = _in_document_order(replaced)
         if not _same_lines(previous, rows):
             from services.audit_service import log_document_edit
             log_document_edit(

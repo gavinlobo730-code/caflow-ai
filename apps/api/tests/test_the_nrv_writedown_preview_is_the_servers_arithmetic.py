@@ -170,7 +170,11 @@ def test_the_preview_and_the_posting_share_one_arithmetic_function():
     import inspect
     from domain import inventory_service as svc
 
+    # The preview hands the row to `nrv_writedown_answer` (shared with the cross-item NRV review, POST-A-111), and that hands it to
+    # the posting's function; neither rounds on its own. Followed one level, so the shared helper cannot become a place to compute.
     src = inspect.getsource(svc.preview_nrv_writedown)
+    assert "nrv_writedown_answer(" in src and "_round_paise" not in src and "Decimal(" not in src
+    src = inspect.getsource(svc.nrv_writedown_answer)
     assert "_compute_nrv_writedown(" in src
     assert "_round_paise" not in src and "Decimal(" not in src.replace("Decimal(str(", ""), (
         "the preview is computing with its own rounding instead of asking _compute_nrv_writedown")

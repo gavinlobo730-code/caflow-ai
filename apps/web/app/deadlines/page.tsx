@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense } from "react";
+import { useFirstRead } from "@/lib/loading/firstRead";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import {
@@ -11,6 +12,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { MarkFiledModal } from "@/components/compliance/MarkFiledModal";
 import { ReopenObligationModal } from "@/components/compliance/ReopenObligationModal";
+import { ObligationRequiredModal } from "@/components/compliance/ObligationRequiredModal";
 import Link from "next/link";
 import { formatDate } from "@/lib/services/formatting";
 import { addDaysISO } from "@/lib/sales/dateMath";
@@ -18,7 +20,7 @@ import { todayIstISO } from "@/lib/dates/format";
 import { isOverdue, isUpcoming } from "@/lib/compliance/overdue";
 import { describeFilingOutcome } from "@/lib/compliance/filingOutcome";
 import { formatRangeLabel } from "@/lib/dates/periods";
-import { getComplianceCalendar, getReopenRule, markFiled as markObligationFiled, reopenObligation } from "@/lib/data/compliance";
+import { getComplianceCalendar, getReopenRule, markFiled as markObligationFiled, reopenObligation, setObligationRequired } from "@/lib/data/compliance";
 import type { ReopenRule } from "@/lib/data/compliance";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import type { ComplianceEntry } from "@/lib/data/compliance";
@@ -27,11 +29,19 @@ import type { Client } from "@/lib/types";
 import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import { useToast } from "@/components/ui/use-toast";
-import { Skeleton, DashboardSkeleton, TableSkeleton } from "@/components/ui/skeleton";
+import { Skeleton, DashboardSkeleton, TableSkeleton, LoadingRegion } from "@/components/ui/skeleton";
 import { ExpiringEwayBills } from "@/components/gst/ExpiringEwayBills";
 import { MissingIrnPanel } from "@/components/gst/MissingIrnPanel";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+
+// ─── Who prepares and who reviews (POST-A-206) ─────────────────────────────
+const UNASSIGNED = "__unassigned__";
+
+function personLabel(id: string | null | undefined, name: string | null | undefined): string {
+  if (!id) return "Not assigned";
+  return name ?? "A member the server could not name";
+}
 
 // ─── Type filter mapping ───────────────────────────────────────────────────
 // URL param → compliance_type predicate. TDS and MCA use prefix matching because
@@ -89,8 +99,8 @@ const FILING_STATUS_COLORS: Record<string, string> = {
 // TDS27Q is here so a firm that HAS non-resident payees can filter to it. The
 // "TDS" group filter above already catches it by prefix, so a firm that has
 // none never sees the option and never sees an empty row for it either.
-// EPF/ESI/TDS_SALARY are the monthly payroll DEPOSITS (EPF Scheme 1952 para
-// 38(1), ESI Regulations reg. 31, IT Act Rule 30(2)). They were computed by
+// EPF/ESI/TDS_SALARY are the monthly payroll DEPOSITS (Employees' Provident Funds Scheme, 2026
+// paras 24(2)(ix) and 28(3), ESI Regulations reg. 31, IT Act Rule 30(2)). They were computed by
 // services/compliance_engine.payroll_deposit_due_dates from the day the payroll
 // module was built and reached no calendar until the generator started emitting
 // them — three authorities owed money every month, on two different dates,
@@ -104,7 +114,7 @@ const ALL_STATUSES = ["pending", "in_progress", "filed", "na"];
 
 function LoadingSpinner() {
   return (
-    <div className="p-6 max-w-ps-data mx-auto space-y-6">
+    <LoadingRegion label="Loading deadlines" className="p-6 max-w-ps-data mx-auto space-y-6">
       <div className="space-y-2">
         <Skeleton className="h-5 w-48" />
         <Skeleton className="h-3 w-72" />
@@ -113,7 +123,7 @@ function LoadingSpinner() {
       <DashboardSkeleton cards={6} className="grid-cols-2 md:grid-cols-6" />
       {/* Compliance table (Client, Type, Period, Due Date, Status, ARN) */}
       <TableSkeleton cols={6} rows={5} />
-    </div>
+    </LoadingRegion>
   );
 }
 
@@ -127,7 +137,9 @@ function DeadlinesContent() {
 
   const [records, setRecords] = useState<ComplianceEntry[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
-  const [loading, setLoading] = useState(true);
+  // The spinner for the first read only (POST-A-400): the table's Refresh asks for this read again (`onRefresh={loadData}`),
+  // and a read that replaced the page unmounted the table, losing the search typed into it and the rows ticked.
+  const { loading, reader: firstRead } = useFirstRead("deadlines");
   const [error, setError] = useState<string | null>(null);
   const [markFiled, setMarkFiled] = useState<MarkFiledForm | null>(null);
   // Rows a bulk "Mark Filed" is waiting to ask ONE date for.
@@ -141,7 +153,12 @@ function DeadlinesContent() {
   // obligation types the SERVER says it will reopen, so the browser holds no list of them.
   const { can } = usePermissions();
   const canReopen = can("compliance", "approve");
-  const [reopenRule, setReopenRule] = useState<ReopenRule>({ types: [], maxReasonChars: 500 });
+  const [reopenRule, setReopenRule] = useState<ReopenRule>({ types: [], maxReasonChars: 500, notRequirableTypes: [] });
+  // Recording an obligation as NOT REQUIRED of the client, or taking that back (POST-A-267, item 4): the same person
+  // (`compliance.approve`) and the server's own list of types.
+  const [requiredForm, setRequiredForm] = useState<(ReopenForm & { required: boolean }) | null>(null);
+  const [requiredSaving, setRequiredSaving] = useState(false);
+  const [requiredError, setRequiredError] = useState<string | null>(null);
   const [reopen, setReopen] = useState<ReopenForm | null>(null);
   const [reopening, setReopening] = useState(false);
   const [reopenError, setReopenError] = useState<string | null>(null);
@@ -154,21 +171,25 @@ function DeadlinesContent() {
   }, [canReopen]);
 
   const loadData = useCallback(async () => {
-    setLoading(true);
+    const read = firstRead.begin();
     setError(null);
     try {
       const [recs, cls] = await Promise.all([
         getComplianceCalendar(undefined),
         getClients().catch(() => [] as Client[]),
       ]);
+      if (!firstRead.isLatest(read)) return;   // a later read has been asked for: its answer is the one to show
       setRecords(recs);
       setClients(cls);
+      firstRead.landed(read);
     } catch (err) {
+      if (!firstRead.isLatest(read)) return;
+      firstRead.failed(read);
       setError(err instanceof Error ? err.message : "Failed to load deadline data");
     } finally {
-      setLoading(false);
+      firstRead.settled(read);
     }
-  }, []);
+  }, [firstRead]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -213,6 +234,22 @@ function DeadlinesContent() {
       setReopenError(err instanceof Error ? err.message : "Couldn't reopen this.");
     } finally {
       setReopening(false);
+    }
+  }
+
+  async function handleRequired(reason: string) {
+    if (!requiredForm) return;
+    setRequiredSaving(true);
+    setRequiredError(null);
+    try {
+      const message = await setObligationRequired(requiredForm.id, requiredForm.required, reason);
+      setRequiredForm(null);
+      await loadData();
+      toast({ title: requiredForm.required ? "Required again" : "Recorded as not required", description: message });
+    } catch (err) {
+      setRequiredError(err instanceof Error ? err.message : "Couldn't change this.");
+    } finally {
+      setRequiredSaving(false);
     }
   }
 
@@ -382,6 +419,18 @@ function DeadlinesContent() {
         </div>
       ),
     },
+    // Who prepares and who reviews it (POST-A-206): the names the server resolved for the people the obligation names. An id the
+    // server could not resolve says so, and nobody named reads "Not assigned", never a blank that looks like a missing read.
+    {
+      key: "preparer", header: "Preparer", sortable: true, searchable: true,
+      accessor: (r) => personLabel(r.preparer_id, r.preparer_name),
+      render: (r) => <span className={`text-xs ${r.preparer_id ? "text-ps-label" : "text-ps-hint"}`}>{personLabel(r.preparer_id, r.preparer_name)}</span>,
+    },
+    {
+      key: "reviewer", header: "Reviewer", sortable: true, searchable: true,
+      accessor: (r) => personLabel(r.reviewer_id, r.reviewer_name),
+      render: (r) => <span className={`text-xs ${r.reviewer_id ? "text-ps-label" : "text-ps-hint"}`}>{personLabel(r.reviewer_id, r.reviewer_name)}</span>,
+    },
     {
       key: "arn", header: "ARN",
       accessor: (r) => r.arn_number ?? "",
@@ -390,6 +439,15 @@ function DeadlinesContent() {
       ),
     },
   ], [clientMap, clientGstinMap, today]);
+
+  const assigneeOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const r of records) {
+      if (r.preparer_id && !seen.has(r.preparer_id)) seen.set(r.preparer_id, personLabel(r.preparer_id, r.preparer_name));
+    }
+    const people = [...seen.entries()].sort((a, b) => a[1].localeCompare(b[1])).map(([value, label]) => ({ value, label }));
+    return [...people, { value: UNASSIGNED, label: "Not assigned" }];
+  }, [records]);
 
   // ── DataTable filters — status always; type only when URL doesn't set it ────
   // (Matching the original: the Type dropdown is hidden — and not applied — when
@@ -408,6 +466,11 @@ function DeadlinesContent() {
           { value: "not_overdue", label: "Not overdue" },
         ] },
       { key: "due_date", label: "Due Date", type: "dateRange", accessor: (r) => r.due_date },
+      // The assignee is the preparer (`assign` sets one to the other). The options are the people the rows name, so nobody is
+      // offered who has nothing here, and "Not assigned" finds what is on nobody's list.
+      { key: "assignee", label: "Assignee (preparer)", type: "select",
+        accessor: (r) => r.preparer_id ?? UNASSIGNED,
+        options: assigneeOptions },
     ];
     if (!urlType) {
       defs.splice(1, 0, {
@@ -416,7 +479,7 @@ function DeadlinesContent() {
       });
     }
     return defs;
-  }, [urlType, today]);
+  }, [urlType, today, assigneeOptions]);
 
   // ── DataTable bulk actions — mark filed (skips rows already filed/na) + export ─
   const bulkActions: BulkAction<ComplianceEntry>[] = useMemo(() => [
@@ -524,6 +587,17 @@ function DeadlinesContent() {
           onClose={() => { setReopen(null); setReopenError(null); }}
         />
       )}
+      {requiredForm && (
+        <ObligationRequiredModal
+          required={requiredForm.required}
+          intro={requiredForm.label}
+          maxReasonChars={reopenRule.maxReasonChars}
+          busy={requiredSaving}
+          error={requiredError}
+          onConfirm={handleRequired}
+          onClose={() => { setRequiredForm(null); setRequiredError(null); }}
+        />
+      )}
       {bulkFiling && (
         <MarkFiledModal
           title={`Mark ${bulkFiling.length} filed`}
@@ -591,6 +665,17 @@ function DeadlinesContent() {
                 className="text-xs text-blue-600 hover:underline"
               >
                 Reopen
+              </button>
+            )}
+            {r.filing_status !== "filed" && canReopen && reopenRule.notRequirableTypes.includes(r.compliance_type) && (
+              <button
+                onClick={() => {
+                  setRequiredError(null);
+                  setRequiredForm({ id: r.id, label: obligationLabel(r, clientMap), required: r.filing_status === "na" });
+                }}
+                className="text-xs text-blue-600 hover:underline"
+              >
+                {r.filing_status === "na" ? "Required again" : "Not required"}
               </button>
             )}
             <Link

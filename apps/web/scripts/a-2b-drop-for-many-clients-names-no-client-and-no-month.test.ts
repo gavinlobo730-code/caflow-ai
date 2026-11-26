@@ -49,14 +49,16 @@ test("the control takes MANY files, chosen or dropped, and has nowhere to name a
 
 test("the request carries the file and its name and nothing else — no client, no month", () => {
   const call = PANEL.slice(PANEL.indexOf("reconcileGstr2bFiles(["),
-                           PANEL.indexOf("]);", PANEL.indexOf("reconcileGstr2bFiles([")));
+                           PANEL.indexOf(");", PANEL.indexOf("reconcileGstr2bFiles([")));
   assert.match(call, /name: file\.name, raw_data: read\.raw/);
   assert.doesNotMatch(call, /client|period|gstin|rtnprd/i);
+  // The one other thing it carries is the drop the server opened (POST-A-057).
+  assert.match(call, /\], dropId$/);
 
   const method = API.slice(API.indexOf("reconcileGstr2bFiles:"),
                            API.indexOf("createDraftBillFrom2b:"));
   assert.match(method, /"\/api\/gst-workspace\/gstr2b\/bulk"/);
-  assert.match(method, /JSON\.stringify\(\{ files \}\)/);
+  assert.match(method, /JSON\.stringify\(dropId \? \{ files, drop_id: dropId \} : \{ files \}\)/);
   assert.doesNotMatch(method, /client_id|period/);
 });
 
@@ -70,7 +72,7 @@ test("files go ONE AT A TIME, so no request outlives the browser's 45-second abo
   assert.match(PANEL, /for \(let i = 0; i < files\.length; i\+\+\) \{/);
   assert.doesNotMatch(PANEL, /Promise\.all|Promise\.allSettled|\.map\(async/);
   // one file per request: the array handed to the API has one element
-  assert.match(PANEL, /reconcileGstr2bFiles\(\[\s*\{ name: file\.name, raw_data: read\.raw \},\s*\]\)/);
+  assert.match(PANEL, /reconcileGstr2bFiles\(\[\s*\{ name: file\.name, raw_data: read\.raw \},\s*\], dropId\)/);
 });
 
 test("a file the browser cannot read as JSON never leaves it, and says why in the reader's words", () => {
@@ -122,4 +124,34 @@ test("a reconciliation that REPLACED an earlier one says so, in IST", () => {
 test("the panel keeps nothing in the browser and sends nothing to a portal", () => {
   assert.doesNotMatch(PANEL, /localStorage|sessionStorage|indexedDB/);
   assert.doesNotMatch(PANEL, /gst\.gov\.in|fetch\(/);
+});
+
+test("a drop is recorded under the id the server answered, and read back by the caller who may read GST (POST-A-057)", () => {
+  // The id comes from the server's answer and is never made up here.
+  assert.match(PANEL, /dropId = answer\.drop_id \?\? dropId;/);
+  assert.match(PANEL, /let dropId: string \| null = null;/);
+  // A drop the server did not record says so, never silently.
+  assert.match(PANEL, /answer\.recorded === true/);
+  // The read-back is offered only to someone its route admits.
+  assert.match(PANEL, /const mayRead = canDo\("gst", "read"\);/);
+  assert.match(PANEL, /\{mayRead && \(\s*<RecentDrops/);
+  const method = API.slice(API.indexOf("gstr2bBulkDrops:"), API.indexOf("createDraftBillFrom2b:"));
+  assert.match(method, /"\/api\/gst-workspace\/gstr2b\/bulk\/drops"/);
+  // A record that could not be read is not "no drops".
+  assert.match(PANEL, /!recent\.recorded \?/);
+});
+
+test("the not-recorded sentence sits below the table it speaks of, and counts each request (review of 18-11-2026)", () => {
+  const table = PANEL.indexOf("<ResultTable rows={rows} />");
+  const note = PANEL.indexOf('data-testid="bulk-gstr2b-not-recorded"');
+  assert.ok(table > 0 && note > table, "the sentence is rendered after the table");
+  assert.match(PANEL, /if \(answer\.recorded === true\) anyRecorded = true;\s*else unrecordedNames\.push\(file\.name\);/);
+  assert.match(PANEL, /setNotRecorded\(notRecordedSentence\(unrecordedNames, anyRecorded\)\)/);
+});
+
+test("the read-back invites a drop only from someone who may drop files, and says what was not recorded", () => {
+  assert.match(PANEL, /<RecentDrops [^>]*mayCompute=\{mayCompute\}/);
+  assert.match(PANEL, /\{mayCompute\s*\?\s*"You have not dropped any GSTR-2B files here yet\. Drop the month's files above/);
+  assert.match(PANEL, /: "None of your GSTR-2B drops is recorded\."/);
+  assert.match(PANEL, /\{d\.unrecorded && <p/);
 });

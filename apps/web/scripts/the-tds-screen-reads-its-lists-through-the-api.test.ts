@@ -91,9 +91,9 @@ test("the Challans tab prints no Status column (the server writes `deposited` fo
 test("the screen holds no copy of the sections or their names: they are the server's", () => {
   assert.ok(!/SECTION_LABELS|DEDUCTIBLE_SECTIONS/.test(PAGE), "the page keeps a table of sections or names");
   assert.ok(!/"194LA"|"194Q"|"206C"|Contractor payments|Professional \/ technical fees/.test(PAGE), "a section or a name is spelled in the page");
-  assert.ok(/\{choices\.challan\.map\(c => <option key=\{c\.section\} value=\{c\.section\}>\{sectionOptionText\(c\.section, choices\.labels\)\}<\/option>\)\}/.test(PAGE),
+  assert.ok(/items=\{choices\.challan\.length === 0 \? \[\{ section, label: section \}\] : choices\.challan\}/.test(PAGE) && /sectionOptionText\(c\.section, choices\.labels\)/.test(PAGE),
     "the Add Challan form is not offered the server's list of sections");
-  assert.ok(/\{choices\.deductible\.map\(k => \(\s*<option key=\{k\} value=\{k\}>\{sectionOptionText\(k, choices\.labels\)\}<\/option>/.test(PAGE),
+  assert.ok(/items=\{choices\.deductible\.length === 0 \? \[section\] : choices\.deductible\}/.test(PAGE) && /sectionOptionText\(k, choices\.labels\)/.test(PAGE),
     "the deduction form is not offered the server's list of sections");
   assert.ok(/options: choices\.filterable\.map\(\(k\) => \(\{ value: k, label: sectionOptionText\(k, choices\.labels\) \}\)\)/.test(PAGE),
     "the Section filter is not every section a recorded deduction can carry (the limbs the form offers and the sections a challan names)");

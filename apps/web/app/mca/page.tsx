@@ -14,7 +14,7 @@
 import { useState, useEffect, useMemo } from "react";
 import {
   Building2, FileText, CheckCircle, AlertTriangle, Clock,
-  Plus, X, AlertCircle, Users, Calendar,
+  Plus, AlertCircle, Users, Calendar,
 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { api } from "@/lib/api";
@@ -33,6 +33,7 @@ import { isCompaniesActCompany } from "@/lib/entityObligations";
 import { Callout } from "@/components/ui/callout";
 import { formatCroreLakh } from "@/lib/money/format";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { PageHeader } from "@/components/ui/page-header";
@@ -41,6 +42,7 @@ import { selectAll } from "@/lib/supabase/selectAll";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 import { useFilingChoices } from "@/lib/mca/useFilingChoices";
 import { chosenCompany, preselectedYear } from "@/lib/mca/filingChoices";
+import { usePermissions } from "@/lib/auth/AuthContext";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -94,6 +96,12 @@ const FORM_TYPES = [
   { value: "CHG-1",      label: "CHG-1 — Charge Creation (Section 77)" },
   { value: "MSME-1",     label: "MSME-1 — Outstanding payments to MSME" },
 ];
+
+/** The forms this page lists and filters by stay FORM_TYPES (filings of all of them may exist). The forms a NEW filing may be made
+ *  on are the ones `POST /api/mca-workspace/filings` takes (POST-A-442): INC-20A, DIR-3 KYC and MSME-1 are not among them, because
+ *  which list each belongs on (the Annual or the Event tab) and what rule dates it is not settled, and the server does not guess. */
+const FORMS_NOT_CREATED_HERE = new Set(["INC-20A", "DIR-3 KYC", "MSME-1"]);
+const ADD_FORM_TYPES = FORM_TYPES.filter(f => !FORMS_NOT_CREATED_HERE.has(f.value));
 
 const TABS = ["Companies", "Filings", "Directors", "Deadlines"];
 
@@ -208,15 +216,14 @@ function calendarSentence(note: string | null): string | undefined {
 /** The period list's last option: the CA types a year the calendar does not hold open. */
 const ANOTHER_YEAR = "__another__";
 
-function AddFilingModal({ clients, firmId, onClose, onAdded }: {
+function AddFilingModal({ clients, onClose, onAdded }: {
   clients: Client[];
-  firmId: string;
   onClose: () => void;
   onAdded: (f: MCAFiling) => void;
 }) {
   const { toast } = useToast();
-  // FORM_TYPES below are all Companies Act 2013 forms (AOC-4, MGT-7/7A, ADT-1,
-  // INC-20A, DIR-3 KYC, CHG-1, MSME-1), so the picker only offers clients
+  // ADD_FORM_TYPES below are all Companies Act 2013 forms (AOC-4, MGT-7/7A, ADT-1,
+  // CHG-1), so the picker only offers clients
   // actually incorporated under that Act — an LLP or a proprietorship has no
   // AOC-4/MGT-7 obligation to record here (see lib/entityObligations.ts).
   const companyClients = useMemo(() => clients.filter(c => isCompaniesActCompany(c.entity_type)), [clients]);
@@ -227,8 +234,8 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
   // period defaulted to the CURRENT financial year from the browser's clock, while an AOC-4 or MGT-7 filed in season is for the year that has
   // just ended, so the commonest first click filed it under a year the calendar does not hold open. Both now come from the server: the
   // client's active companies (the CIN is the chosen company's own) and the years the calendar holds this form's obligation open in.
-  // This form inserts the row from the browser (POST-A-442), so nothing on the server asks which company when the answer cannot be read: the
-  // sentence says what is done instead, which is that a typed CIN is matched to the client's companies when the filing is marked filed.
+  // When the answer cannot be read the CIN is typed: the server judges its shape when the filing is created, and matches it to the client's
+  // companies when the filing is marked filed. With several companies the server refuses a filing that names none, in its own words.
   const { state: choices, retry: readChoicesAgain } = useFilingChoices(clientId, formType, (c, f) => api.mca.filingChoices(c, f),
     "Type the CIN and the year; the CIN typed is matched to the client's companies when the filing is marked filed. Try again to choose "
     + "them instead.");
@@ -271,7 +278,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
   const dueDates = useDateProblems();
 
   async function handleSubmit() {
-    if (dueDates.first) { setErr(dueDates.first); return; }
+    if (dueDates.first) { dueDates.refuseWith(setErr); return; }
     if (choices.kind === "read" && choices.choices.company_required && !company) {
       setErr("Choose the company this filing is for. The calendar's obligation closes only when each of this client's companies has filed.");
       return;
@@ -280,44 +287,41 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
     if (!clientId || !cinValue || !dueDate) { setErr("Client, CIN and Due Date are required."); return; }
     const fromList = offeredYears.length > 0 && !periodTyped;
     if (fromList && !year) { setErr("Choose the year this filing is for, or Another year to type it."); return; }
-    // A form that stands for an obligation needs a year, or the filing can never close it (the server refuses the same on its own door; this
-    // form's insert does not reach it). Asked only where the server said so.
+    // A form that stands for an obligation needs a year, or the filing can never close it (the server refuses the same on its own door).
+    // Asked here only where the server said so, so the sentence comes before the request.
     if (!fromList && !period.trim() && choices.kind === "read" && choices.choices.has_obligation) {
       setErr(`Period: type the financial year this ${formType} is for, for example FY 2025-26. Without a year it can never close its obligation on the compliance calendar.`);
       return;
     }
     // The date box is on the form only for a filed filing, so an unreadable one matters only then.
-    if (status === "Filed" && dates.first) { setErr(dates.first); return; }
+    if (status === "Filed" && dates.first) { dates.refuseWith(setErr); return; }
     if (status === "Filed" && (!srn.trim() || !filedOn)) {
       setErr("A filing marked Filed needs its SRN and the date it was filed on MCA21."); return;
     }
     setSaving(true); setErr(null);
     try {
-      const sb = getSupabaseClient();
       const selectedClient = companyClients.find(c => c.id === clientId);
-      // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to MCA portal
-      const { data, error } = await sb.from("mca_filings").insert({
-        firm_id: firmId,
+      // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to MCA portal. Created through the API (POST-A-442), as the client tab's are: the route asks
+      // `mca:write` and the client, checks the company is the client's, stores the category the client's tabs list by and writes the audit
+      // event. A row is CREATED not started (or overdue) and never filed: recording it as filed goes through the status route below, which
+      // asks for Manager and above and the CA's confirmation (POST-A-225).
+      const res = await api.mca.createFiling({
         client_id: clientId,
-        client_name: selectedClient?.client_name ?? "",
-        cin: cinValue,           // DB column is 'cin'
-        company_cin: cinValue,    // alias column added in migration 038
         // The company chosen from the client's own (POST-A-291), which is how the calendar's closer places a filing among several.
         company_id: company?.id ?? null,
+        // Read by the server only where no company named holds a CIN of its own.
+        cin: company?.cin ? null : cinValue,
         form_type: formType,
         period: fromList ? `FY ${year}` : (period.trim() || null),
         financial_year: fromList ? year : null,
         due_date: dueDate,
-        // A row is CREATED not started (or overdue) and never filed: recording it as filed goes through the API
-        // below, which asks for Manager and above and the CA's confirmation. Writing `filed`, the SRN and a
-        // date taken from the clock here let an Executive record a statutory filing as done (POST-A-225).
-        filed_date: null,
-        srn: null,
-        status: status === "Overdue" ? "overdue" : "not_started",  // DB: not_started|in_progress|filed|overdue
-        notes: notes.trim() || null,
-      }).select().single();
-      if (error) throw new Error(error.message);
-      const filing = data as MCAFiling;
+        status: status === "Overdue" ? "overdue" : "not_started",
+        description: notes.trim() || null,
+      });
+      if (!res.success || !res.data) throw new Error(res.error ?? "The filing was not saved.");
+      const filing = { ...(res.data as unknown as MCAFiling) };
+      // The list shows the name the row carries; the server writes it, and the client chosen here is the fallback.
+      filing.client_name = filing.client_name || selectedClient?.client_name || "";
       filing.status = computeStatus(filing);
       let calendar: string | undefined;
       if (status === "Filed") {
@@ -360,12 +364,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-ps-ink">Add MCA Filing</h3>
-          <button onClick={onClose}><X className="w-4 h-4 text-ps-hint" /></button>
-        </div>
+    <Modal title="Add MCA Filing" maxWidthClass="max-w-md" onClose={() => { if (!saving) onClose(); }}>
         {err && <Callout tone="problem">{err}</Callout>}
         <div className="space-y-3">
           <div>
@@ -409,8 +408,9 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Form Type</label>
             <select aria-label="Form Type" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={formType} onChange={e => setFormType(e.target.value)}>
-              {FORM_TYPES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+              {ADD_FORM_TYPES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
             </select>
+            <p className="text-3xs text-ps-label mt-1">INC-20A, DIR-3 KYC and MSME-1 are not recorded here.</p>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -485,8 +485,9 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
             <input aria-label="Notes" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional" />
           </div>
         </div>
-        <div className="flex gap-2">
-          <button onClick={onClose} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg">Cancel</button>
+        {/* Pinned to the foot of the card while it scrolls, so Add Filing is in view on a short window (POST-A-395). */}
+        <div className="sticky -bottom-6 -mx-6 px-6 py-3 bg-white border-t border-ps-border flex gap-2">
+          <button onClick={onClose} disabled={saving} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg disabled:opacity-50">Cancel</button>
           <Button variant="plain" size="none" onClick={handleSubmit} disabled={saving || choices.kind === "loading"} className="flex-1 bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50">
             {saving ? "Saving…" : "Add Filing"}
           </Button>
@@ -495,8 +496,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
           {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
           All filings must be submitted manually on MCA21 portal (mca.gov.in) after CA review.
         </p>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -590,16 +590,27 @@ function BatchMarkFiledModal({ filings, firmId, tableError, onClose, onFiled }: 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between px-6 py-5 border-b border-ps-border">
-          <h3 className="text-base font-semibold text-ps-ink">Mark ROC Filings as Filed</h3>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-label transition-colors">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="px-6 py-5 space-y-4 overflow-y-auto">
+    // The shared dialog (POST-A-130). Its close (Escape, a click beside it, its ×) is held while the filings are out.
+    <Modal title="Mark ROC Filings as Filed" maxWidthClass="max-w-lg" onClose={() => { if (!saving) onClose(); }}
+      footer={<>
+        <button
+          onClick={onClose}
+          disabled={saving}
+          className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors disabled:opacity-50"
+        >
+          Cancel
+        </button>
+        {rows.length > 0 && (
+          <Button variant="plain" size="none"
+            onClick={handleSubmit}
+            disabled={!allFilled || !filedDate || !!dates.first || saving}
+            className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+          >
+            {saving ? "Saving…" : `Confirm ${rows.length} Filing${rows.length === 1 ? "" : "s"}`}
+          </Button>
+        )}
+      </>}>
+        <div className="space-y-4">
           <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-4 py-3">
             <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">CA Confirmation Required</p>
             <p className="text-xs text-state-attention mt-1">
@@ -663,26 +674,7 @@ function BatchMarkFiledModal({ filings, firmId, tableError, onClose, onFiled }: 
             </div>
           )}
         </div>
-
-        <div className="px-6 py-4 border-t border-ps-border flex gap-3 justify-end">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors"
-          >
-            Cancel
-          </button>
-          {rows.length > 0 && (
-            <Button variant="plain" size="none"
-              onClick={handleSubmit}
-              disabled={!allFilled || !filedDate || !!dates.first || saving}
-              className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
-            >
-              {saving ? "Saving…" : `Confirm ${rows.length} Filing${rows.length === 1 ? "" : "s"}`}
-            </Button>
-          )}
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -693,6 +685,10 @@ const DEMO_MCA_FORMS = ["AOC-4", "MGT-7", "MGT-7A", "ADT-1"];
 
 export default function MCAPage() {
   const { toast } = useToast();
+  // Mark Filed (one row or a selection) asks `mca` `approve` (a Manager or a Partner) and was offered to every member,
+  // who was refused (POST-A-455).
+  const { can: canDo, resolved: permissionsRead } = usePermissions();
+  const mayApprove = canDo("mca", "approve");
   const [activeTab, setActiveTab] = useState(0);
   // The filing walk-through (a SIMULATION that transmits and files nothing). Offered only where the SERVER says the flow exists, and only on an
   // annual form not yet filed: a control the server would refuse is a dead control (POST-A-003).
@@ -717,6 +713,9 @@ export default function MCAPage() {
   // with no indication anything went wrong.
   const [loadErrorMessage, setLoadErrorMessage] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
+  // Add Filing posts to POST /api/mca-workspace/filings, which asks `mca` `write` (POST-A-442): offered to anyone else, the form is filled in
+  // and then refused. The empty state's own Add Filing already asks the same pair.
+  const mayAddFiling = usePermissions().can("mca", "write");
   const [filedModal, setFiledModal] = useState<{ filing: MCAFiling } | null>(null);
   const [filedForm, setFiledForm] = useState({ srn: "", filed_date: "" });
   // Text that is not a date is said in the date's own sentence and not as "Filing date is required" (frontend_ux-19).
@@ -735,8 +734,12 @@ export default function MCAPage() {
           setLoadErrorMessage(e instanceof Error ? e.message : "Couldn't resolve your firm.");
         }
         setFirmId(fid);
+        // The clients' names, kept for the filings below: a filing made on a client's own MCA tab before POST-A-442 carries no name.
+        let names = new Map<string, string>();
         try {
-          setClients(await getClients());
+          const list = await getClients();
+          setClients(list);
+          names = new Map(list.map(c => [c.id, c.client_name]));
         } catch (e) {
           setClients([]);
           setLoadErrorMessage(prev => prev ?? (e instanceof Error ? e.message : "Couldn't load clients."));
@@ -748,7 +751,9 @@ export default function MCAPage() {
           setTableError(true);
           setLoadErrorMessage(prev => prev ?? error.message);
         } else {
-          const rows = ((data ?? []) as MCAFiling[]).map(r => ({ ...r, status: computeStatus(r) }));
+          const rows = ((data ?? []) as MCAFiling[]).map(r => ({
+            ...r, client_name: r.client_name || (r.client_id ? names.get(r.client_id) : undefined) || "", status: computeStatus(r),
+          }));
           setFilings(rows);   // real data only; empty firm shows the empty state
         }
         // Companies + directors from the firm's real data (migration 038). Empty
@@ -802,7 +807,7 @@ export default function MCAPage() {
 
   async function handleMarkFiled() {
     if (!filedModal) return;
-    if (filedDates.first) { setFiledError(filedDates.first); return; }
+    if (filedDates.first) { filedDates.refuseWith(setFiledError); return; }
     if (!filedForm.srn.trim()) {
       setFiledError("SRN is required");
       return;
@@ -941,13 +946,13 @@ export default function MCAPage() {
   // Bulk "Mark Filed" only opens the batch reference-entry modal — it never
   // writes to Supabase itself (returns false so DataTable keeps the
   // selection visible while the modal is open; the modal does the real work).
-  const filingBulkActions: BulkAction<MCAFiling>[] = useMemo(() => [
+  const filingBulkActions: BulkAction<MCAFiling>[] = useMemo(() => (mayApprove ? [
     {
       id: "mark-filed",
       label: "Mark Filed",
-      run: (selected) => { openBatchModal(selected); return false; },
+      run: (selected: MCAFiling[]) => { openBatchModal(selected); return false; },
     },
-  ], []);
+  ] : []), [mayApprove]);
 
   // ── Directors tab DataTable — KYC-overdue emphasis in the status cell ───────
   const directorColumns: Column<Director>[] = useMemo(() => [
@@ -1004,7 +1009,7 @@ export default function MCAPage() {
         subtitle="Ministry of Corporate Affairs — Companies Act 2013 compliance tracker"
         actions={
           <>
-            {activeTab === 1 && (
+            {activeTab === 1 && mayAddFiling && (
               <button onClick={() => setShowModal(true)} className="flex items-center gap-1.5 bg-brand text-white text-sm px-3 py-2 rounded-lg hover:bg-brand-dark">
                 <Plus className="w-4 h-4" /> Add Filing
               </button>
@@ -1111,7 +1116,11 @@ export default function MCAPage() {
                 <span className="text-xs text-ps-hint">Not applicable</span>
               ) : f.status !== "Filed" ? (
                 <span className="inline-flex items-center gap-3">
-                  <button onClick={() => openMarkFiledModal(f)} className="text-xs text-blue-600 hover:text-blue-800 font-medium">Mark Filed</button>
+                  {mayApprove ? (
+                    <button onClick={() => openMarkFiledModal(f)} className="text-xs text-blue-600 hover:text-blue-800 font-medium">Mark Filed</button>
+                  ) : permissionsRead ? (
+                    <span className="text-xs text-ps-label">Recording the filing needs permission to approve MCA filings, so the button is not shown to you</span>
+                  ) : null}
                   {demoFlows.includes("mca") && DEMO_MCA_FORMS.includes(f.form_type) && f.client_id && (
                     <button onClick={() => setDemo({ clientId: f.client_id, filingId: f.id })}
                       className="text-xs px-2 py-0.5 border border-state-attention-border rounded hover:bg-state-attention-hover text-state-attention font-medium">File (demo)</button>
@@ -1185,7 +1194,7 @@ export default function MCAPage() {
       )}
 
       {showModal && (
-        <AddFilingModal clients={clients} firmId={firmId} onClose={() => setShowModal(false)} onAdded={f => setFilings(prev => [...prev, f])} />
+        <AddFilingModal clients={clients} onClose={() => setShowModal(false)} onAdded={f => setFilings(prev => [...prev, f])} />
       )}
 
       {/* ================================================================== */}
@@ -1193,16 +1202,24 @@ export default function MCAPage() {
       {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT                            */}
       {/* ================================================================== */}
       {filedModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-ps-border">
-              <h3 className="text-base font-semibold text-ps-ink">Mark ROC Filing as Filed</h3>
-              <button onClick={() => setFiledModal(null)} className="text-ps-hint hover:text-ps-label transition-colors">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="px-6 py-5 space-y-4">
+        <Modal title="Mark ROC Filing as Filed" maxWidthClass="max-w-md" onClose={() => { if (!filedLoading) setFiledModal(null); }}
+          footer={<>
+            <button
+              onClick={() => setFiledModal(null)}
+              disabled={filedLoading}
+              className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <Button variant="plain" size="none"
+              onClick={handleMarkFiled}
+              disabled={filedLoading}
+              className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+            >
+              {filedLoading ? "Saving…" : "Confirm Filing"}
+            </Button>
+          </>}>
+            <div className="space-y-4">
               <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-4 py-3">
                 <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">CA Confirmation Required</p>
                 <p className="text-xs text-state-attention mt-1">
@@ -1247,24 +1264,7 @@ export default function MCAPage() {
 
               {filedError && <Callout tone="problem">{filedError}</Callout>}
             </div>
-
-            <div className="px-6 py-4 border-t border-ps-border flex gap-3 justify-end">
-              <button
-                onClick={() => setFiledModal(null)}
-                className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors"
-              >
-                Cancel
-              </button>
-              <Button variant="plain" size="none"
-                onClick={handleMarkFiled}
-                disabled={filedLoading}
-                className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
-              >
-                {filedLoading ? "Saving…" : "Confirm Filing"}
-              </Button>
-            </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ================================================================== */}

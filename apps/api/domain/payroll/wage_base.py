@@ -25,8 +25,8 @@ WHAT THIS IS FOR
 
 WHY THE CEILING MEANS THIS IS NARROWER THAN IT SOUNDS
 
-    The Rs 15,000 EPF ceiling is unchanged. For anyone whose basic + DA already
-    reaches it, `min(wages, 15000)` makes the add-back irrelevant and the old
+    The wage ceiling was Rs 15,000 until 16-09-2026 and is Rs 25,000 from 17-09-2026 (S.O. 5109(E); statutory.PF_WAGE_CEILINGS). For
+    anyone whose basic + DA already reaches the ceiling, `min(wages, ceiling)` makes the add-back irrelevant and the old
     figure was already right. The exposure is employees BELOW the ceiling on a
     low-basic / high-allowance structure — which is the ordinary Indian salary
     structure at exactly those salary levels.
@@ -164,6 +164,7 @@ def month_end(fy_label: str | None, month: int | None) -> date | None:
             return None
         return _last_day_of(fy_label, month)
     except (ValueError, TypeError, IndexError):
+        # None, never a guess, for a period that cannot be read (docstring); the caller decides what that means for its question.
         return None
 
 
@@ -188,6 +189,7 @@ def rule_in_force(fy_label: str | None, month: int | None) -> bool:
             return False
         return _last_day_of(fy_label, month) >= WAGE_RULE_EFFECTIVE_FROM
     except (ValueError, TypeError, IndexError):
+        # Unknown period: False, the pre-Code behaviour (docstring). Applying the rule to a month it may not govern would rewrite historic payslips.
         return False
 
 

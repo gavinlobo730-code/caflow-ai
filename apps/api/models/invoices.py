@@ -135,6 +135,33 @@ class InvoiceLineIn(BaseModel):
     # line as a stock movement for a specific product (migrations 184/188/189).
     service_catalogue_id: Optional[str] = None
 
+    # ── GST compensation cess ───────────────────────────────────────────────
+    # GST (Compensation to States) Act 2017 s.8(2): the cess is levied "on the
+    # basis of VALUE, QUANTITY or on such basis". Two limbs, because real
+    # Schedule entries use each and one uses both — aerated waters ad valorem,
+    # coal per tonne, cigarettes a percentage PLUS a figure per thousand. The
+    # AMOUNT is derived from these by domain/gst/compensation_cess.py and is
+    # never accepted from the caller, for the same reason cgst/sgst/igst are
+    # derived from gst_rate_percent.
+    #
+    # ON THE SHARED PARENT, so the four s.34 notes take it too (POST-A-058,
+    # migration 615). Until 615 the note tables had no cess column and the
+    # fields lived on the invoice's subclass alone, because a field the note
+    # path accepted and then dropped would have let a CA believe they had
+    # reversed a cess charge they had not. Now the note stores both limbs and
+    # the amount, and its journal and its return carry the cess.
+    cess_rate_bps: Optional[int] = None
+    cess_specific_paise_per_unit: Optional[int] = None
+
+    @field_validator("cess_rate_bps", "cess_specific_paise_per_unit")
+    @classmethod
+    def cess_non_negative(cls, v: Optional[int]) -> Optional[int]:
+        # No upper bound on the rate: Schedule column (4) carries entries above
+        # 100%, so a ceiling would be invented and would refuse a lawful charge.
+        if v is not None and v < 0:
+            raise ValueError("A compensation cess rate cannot be negative.")
+        return v
+
     @field_validator("quantity")
     @classmethod
     def quantity_positive(cls, v: float) -> float:
@@ -264,31 +291,27 @@ class SalesInvoiceLineIn(InvoiceLineIn):
                              "is money taken off.")
         return v
 
-    # ── GST compensation cess ───────────────────────────────────────────────
-    # GST (Compensation to States) Act 2017 s.8(2): the cess is levied "on the
-    # basis of VALUE, QUANTITY or on such basis". Two limbs, because real
-    # Schedule entries use each and one uses both — aerated waters ad valorem,
-    # coal per tonne, cigarettes a percentage PLUS a figure per thousand. The
-    # AMOUNT is derived from these by domain/gst/compensation_cess.py and is
-    # never accepted from the caller, for the same reason cgst/sgst/igst are
-    # derived from gst_rate_percent.
-    #
-    # ON THIS CLASS AND NOT ON InvoiceLineIn, deliberately, and for the same
-    # kind of reason as the discount above: the shared parent is what the s.34
-    # credit- and debit-note routes use, and the four note tables have no cess
-    # columns. A field the note path accepted and then dropped would let a CA
-    # believe they had reversed a cess charge they had not.
-    cess_rate_bps: Optional[int] = None
-    cess_specific_paise_per_unit: Optional[int] = None
+    # GST compensation cess: the two limbs are on the parent `InvoiceLineIn`,
+    # which the four s.34 notes share, since migration 615 gave the note tables
+    # the columns (POST-A-058). An invoice line takes them from there.
 
-    @field_validator("cess_rate_bps", "cess_specific_paise_per_unit")
-    @classmethod
-    def cess_non_negative(cls, v: Optional[int]) -> Optional[int]:
-        # No upper bound on the rate: Schedule column (4) carries entries above
-        # 100%, so a ceiling would be invented and would refuse a lawful charge.
-        if v is not None and v < 0:
-            raise ValueError("A compensation cess rate cannot be negative.")
-        return v
+
+class PurchaseNoteLineIn(InvoiceLineIn):
+    """A line of a purchase debit note (a return to the supplier) or a purchase credit note (the supplier's increase): an invoice line
+    that also says whether its input credit is blocked, CGST Act s.17(5), the two fields `PurchaseBillLineIn` carries (migration 240 on
+    the bill, 685 on the notes). CA-set only, never inferred, and a blocked line names its reason. A note against a bill whose line was
+    blocked marks the same line blocked, so the note moves the credit ledgers by the creditable tax only, as the bill did (POST-A-459)."""
+    # An `InvoiceLineIn` built in Python (what the notes took before) is read by its attributes, so a caller that builds one still works.
+    model_config = ConfigDict(from_attributes=True)
+
+    itc_eligible: bool = True
+    blocked_credit_reason: Optional[str] = None
+
+    @model_validator(mode="after")
+    def require_blocked_credit_reason(self) -> "PurchaseNoteLineIn":
+        if not self.itc_eligible and not (self.blocked_credit_reason or "").strip():
+            raise ValueError("blocked_credit_reason is required when itc_eligible is false.")
+        return self
 
 
 class SalesInvoiceIn(BaseModel):
@@ -432,6 +455,10 @@ class SalesInvoiceUpdateIn(BaseModel):
     on file. Every other field reads null as "not sent" too.
     """
     CLEARABLE: ClassVar[FrozenSet[str]] = frozenset({"reference_no", "notes"})
+    #: What a DRAFT may take away and an issued invoice may not (POST-A-399, the sixth slice): its place of supply. A draft may be without
+    #: one (the server refuses to ISSUE without one and resolves one from the customer when none is stored); once issued it is Rule 46(n)
+    #: content, frozen, and a null still reads "not sent".
+    CLEARABLE_ON_A_DRAFT: ClassVar[FrozenSet[str]] = frozenset({"supply_state_code"})
     customer_id: Optional[str] = None
     # Editable only while the invoice is a draft (enforced by the router,
     # which already blocks any update once issued) — same manual, CA-owned

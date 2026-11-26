@@ -1,132 +1,213 @@
-import { Landmark, BookOpen, Sparkles, Check, ArrowRight } from "../../icons";
+import {
+  BookOpen,
+  CheckCircle,
+  ChevronsUpDown,
+  Landmark,
+  Search,
+  Sparkles,
+  Upload,
+} from "../../icons";
+import { ClientBar } from "./ClientBar";
+import {
+  BANK_TABS,
+  CLIENT_MODULES,
+  DATA_TABLE,
+  DRAFT_REASONS,
+  ENTRIES,
+  HISTORY_REASONS,
+  fill,
+} from "./productWords";
 
 /**
- * The client workspace's Bank → Entries queue, recreated.
+ * A client's Bank → Entries queue, redrawn.
  *
- * Every string here is verbatim from apps/web/app/clients/[id]/bank/page.tsx and
- * apps/web/components/banking/* — the tab names, the state chips, the column
- * headers, the status words, the working-state line, the footer caption. The
- * palette is the product's own literals (#0F172A, #64748B, #94A3B8, #E2E8F0,
- * #F8FAFC, and the green #059669 the one primary action uses).
+ * Copied on 16-11-2026 from apps/web/app/clients/[id]/bank/page.tsx (the four
+ * tabs) and apps/web/components/banking/EntriesTab.tsx (the three filters with
+ * their counts, the account picker, the toolbar, the working line under To do,
+ * the columns, the state chips, the one action per row and the sentence under
+ * the table), inside the client top bar (`ClientBar`). The table's own chrome
+ * (the search box, Columns, the selection boxes, the sort marks, Actions) is
+ * components/ui/data-table.tsx's. The wording comes from `productWords.ts`,
+ * which a test holds to those files.
  *
- * It is a recreation rather than a screenshot because §7 of the brief wants the
- * UI itself to be the focus: this is real text at the reader's own pixel ratio,
- * about 3 KB instead of 200, translatable, selectable, and it cannot silently
- * go stale into a claim about a screen that no longer looks like this — a
- * screenshot can.
+ * THE ROWS ARE WHAT THE PRODUCT WOULD SHOW FOR THESE LINES. The narration column
+ * is what domain/banking/narration.py makes of a statement line (the
+ * counterparty, and a chip for the channel), and each invented line was put
+ * through that parser to get it, including the one it reads oddly (a GST
+ * payment's counterparty is the GSTIN printed on it). The Entry column is
+ * EntriesTab's `entryText`, and the line under it is the reason
+ * domain/banking/entry.py writes for each kind of proposal: one document that
+ * fits exactly, two that do, a rule, the payee's history, a transfer between
+ * two of the client's own accounts, and nothing at all, which asks instead.
+ * Pass is green on a Ready line and navy on a proposal it may accept; a
+ * proposal against a document is answered, never passed in one click. The
+ * green is drawn one step darker than the product's (its `state.ready` ink,
+ * #047857, where the product's buttons use #059669): white on #059669 is below
+ * WCAG's 4.5:1, which a trial axe scan of the home page reported.
  *
- * The rows are invented, and invented carefully: Indian bank narration formats
- * (NEFT/RTGS/UPI/ACH/CHRG), a real GSTIN shape, and the four states the queue
- * actually distinguishes. No real customer appears anywhere.
+ * THE DRAWING BEFORE THIS ONE (16-09-2026) had three tabs where the product now
+ * has four, put a passed line in the To do list (which never holds one) and
+ * showed raw narrations the product no longer shows. The lines, the ledgers,
+ * the amounts and the names are invented; the GSTIN is well-formed. No real
+ * client appears.
  */
+
+type State = "ready" | "proposed" | "needs_you";
 
 type Row = {
   date: string;
-  narration: string;
+  party: string;
+  channel?: string;
   entry: string;
   reason?: string;
   spent?: string;
   received?: string;
-  status: "Ready" | "Passed · rule" | "Needs you" | "Proposed";
-  action: string;
+  state: State;
+  /** Pass on a line that can be passed; Answer opens it when it cannot. */
+  action: "pass-ready" | "pass-proposed" | "answer";
 };
+
+const [READY, PROPOSED, NEEDS_YOU] = ENTRIES.states;
 
 const ROWS: Row[] = [
   {
-    date: "02 Sep",
-    narration: "NEFT-HDFC0000240-SUNDARAM AUTO COMPONENTS PVT LTD-N240925",
-    entry: "Receipt · Sundaram Auto Components",
-    reason: "Matched an open invoice for the exact amount",
+    date: "02 Sep 2026",
+    party: "SUNDARAM AUTO COMPONENTS PVT LTD",
+    channel: "NEFT",
+    entry: `${ENTRIES.receipt} · INV/2026-27/0184 · Sundaram Auto Components Pvt Ltd`,
+    reason: DRAFT_REASONS.onlyDocument,
     received: "4,72,000.00",
-    status: "Ready",
-    action: "Pass",
+    state: "ready",
+    action: "pass-ready",
   },
   {
-    date: "03 Sep",
-    narration: "UPI/DR/526104738201/RELIANCE JIO/YESB/jio@ybl",
-    entry: "Payment · Telephone & Internet",
-    reason: "Trusted rule — NEFT/UPI to RELIANCE JIO",
+    date: "03 Sep 2026",
+    party: "RELIANCE JIO",
+    channel: "UPI",
+    entry: `${ENTRIES.payment} · Telephone & Internet`,
+    reason: fill(DRAFT_REASONS.rule, "Jio broadband"),
     spent: "2,360.00",
-    status: "Passed · rule",
-    action: "Undo",
+    state: "ready",
+    action: "pass-ready",
   },
   {
-    date: "04 Sep",
-    narration: "RTGS-KKBKR52026090400234-VAIDEHI TEXTILES PVT LTD",
-    entry: "Receipt · Vaidehi Textiles Private Limited",
-    reason: "Matched two open invoices, ₹11,80,000 together",
+    date: "04 Sep 2026",
+    party: "MEGHDOOT INTERIORS PVT LTD",
+    channel: "RTGS",
+    entry: `${ENTRIES.receipt} · INV/2026-27/0171 · Meghdoot Interiors Pvt Ltd`,
+    reason: fill(DRAFT_REASONS.severalDocuments, 2),
     received: "11,80,000.00",
-    status: "Ready",
-    action: "Pass",
+    state: "proposed",
+    action: "answer",
   },
   {
-    date: "05 Sep",
-    narration: "ACH-D-GST PMT-27AACCM9910C1ZN-0920",
-    entry: "Payment · needs a ledger",
-    reason: "A GST challan — which period is this for?",
+    date: "05 Sep 2026",
+    party: "27AACCV4721K1Z6",
+    channel: "NACH",
+    entry: ENTRIES.askPayment,
     spent: "1,94,780.00",
-    status: "Needs you",
-    action: "Answer",
+    state: "needs_you",
+    action: "answer",
   },
   {
-    date: "06 Sep",
-    narration: "NEFT SHARMA ENTERPRISES-SBIN0001234-N652026090600891",
-    entry: "Payment · Sharma Enterprises",
-    reason: "Supplier matched by name; no open bill for this amount",
+    date: "06 Sep 2026",
+    party: "SHARMA ENTERPRISES",
+    channel: "NEFT",
+    entry: `${ENTRIES.payment} · Purchases — Raw Material`,
+    reason: fill(HISTORY_REASONS.most, 7, 9),
     spent: "88,500.00",
-    status: "Proposed",
-    action: "Answer",
+    state: "proposed",
+    action: "pass-proposed",
   },
   {
-    date: "08 Sep",
-    narration: "BY CASH DEPOSIT-COSMOS BANK-BRANCH 004",
-    entry: "Contra · Cash in hand",
-    reason: "Between two of this client's own accounts",
+    date: "08 Sep 2026",
+    party: "COSMOS BANK 004",
+    entry: `${ENTRIES.receipt} · from Cosmos Bank 004`,
+    reason: DRAFT_REASONS.ownAccount,
     received: "50,000.00",
-    status: "Ready",
-    action: "Pass",
+    state: "ready",
+    action: "pass-ready",
+  },
+  {
+    date: "09 Sep 2026",
+    party: "SMS ALERT CHARGES",
+    channel: "CHARGES",
+    entry: `${ENTRIES.payment} · Bank Charges`,
+    reason: fill(HISTORY_REASONS.every, 14),
+    spent: "17.70",
+    state: "ready",
+    action: "pass-ready",
   },
 ];
 
-const STATUS_STYLE: Record<Row["status"], string> = {
-  Ready: "bg-[#ECFDF5] text-[#047857]",
-  "Passed · rule": "bg-[#EEF2FF] text-[#4338CA]",
-  "Needs you": "bg-[#FEF3C7] text-[#92400E]",
-  Proposed: "bg-[#F1F5F9] text-[#475569]",
+const STATE_LABEL: Record<State, string> = {
+  ready: READY,
+  proposed: PROPOSED,
+  needs_you: NEEDS_YOU,
 };
 
-export function BankQueue() {
-  return (
-    <div className="min-w-[760px] bg-white text-[#0F172A]">
-      {/* Client header strip */}
-      <div className="flex h-12 items-center gap-3 border-b border-[#E2E8F0] px-4">
-        <span className="grid h-[15px] w-[15px] place-items-center text-[#94A3B8]">
-          <Landmark size={15} />
-        </span>
-        <span className="text-[13px] font-semibold text-[#182350]">
-          Vaidehi Textiles Private Limited
-        </span>
-        <span className="rounded bg-[#F1F5F9] px-1.5 py-0.5 text-[10px] font-medium text-[#64748B]">
-          Private Limited
-        </span>
-        <span className="hidden font-mono text-[10px] text-[#94A3B8] lg:inline">
-          27AACCM9910C1ZN
-        </span>
-        <span className="ml-auto rounded-full bg-[#ECFDF5] px-2 py-0.5 text-[10px] font-semibold text-[#047857]">
-          84 Healthy
-        </span>
-      </div>
+const STATE_STYLE: Record<State, string> = {
+  ready: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
+  proposed: "border-[#BFDBFE] bg-[#DBEAFE] text-[#1D4ED8]",
+  needs_you: "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
+};
 
-      {/* Tab strip */}
+/** EntriesTab's tones: a ready proposal is body ink; a question, or a proposal still to confirm, is amber. */
+const ENTRY_TONE: Record<State, string> = {
+  ready: "text-[#334155]",
+  proposed: "text-[#B45309]",
+  needs_you: "text-[#B45309]",
+};
+
+const BANK = CLIENT_MODULES.find((m) => m.id === "bank")?.label ?? "Bank";
+
+function Action({ kind }: { kind: Row["action"] }) {
+  if (kind === "answer") {
+    return (
+      <span className="rounded-md border border-[#FDE68A] bg-[#FFFBEB] px-2.5 py-1 text-[11px] font-medium text-[#B45309]">
+        {ENTRIES.answer}
+      </span>
+    );
+  }
+  return (
+    <span
+      className={`rounded-md px-2.5 py-1 text-[11px] font-medium text-white ${
+        kind === "pass-ready" ? "bg-[#047857]" : "bg-[#182350]"
+      }`}
+    >
+      {ENTRIES.pass}
+    </span>
+  );
+}
+
+function Header({ label, sortable, right }: { label: string; sortable?: boolean; right?: boolean }) {
+  return (
+    <th className={`px-3 py-3 font-semibold ${right ? "text-right" : "text-left"}`}>
+      <span className={`inline-flex items-center gap-1 ${right ? "flex-row-reverse" : ""}`}>
+        {label}
+        {sortable ? <ChevronsUpDown size={11} className="text-[#CBD5E1]" /> : null}
+      </span>
+    </th>
+  );
+}
+
+const Box = () => <span className="block h-3 w-3 rounded-sm border border-[#94A3B8] bg-white" />;
+
+export function BankQueue() {
+  const [date, narration, entry, spent, received, status] = ENTRIES.headers;
+  const counts = { toDo: "173", passed: "386", setAside: "4" };
+  return (
+    <div className="min-w-[760px] bg-white text-[#0D1635]">
+      <ClientBar module={BANK} />
+
+      {/* The four tabs */}
       <div className="px-6 pb-0 pt-5">
         <div className="flex w-fit gap-0.5 rounded-lg bg-[#F8FAFC] p-1">
-          {["Entries", "Reconcile", "Rules"].map((t) => (
+          {BANK_TABS.tabs.map((t, i) => (
             <span
               key={t}
-              className={`rounded-md px-3 py-1.5 text-xs font-medium ${
-                t === "Entries"
-                  ? "bg-white text-[#0F172A] shadow-sm"
-                  : "text-[#64748B]"
+              className={`whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium ${
+                i === 0 ? "bg-white text-[#0D1635] shadow-sm" : "text-[#475569]"
               }`}
             >
               {t}
@@ -136,109 +217,126 @@ export function BankQueue() {
       </div>
 
       <div className="space-y-3 px-6 pb-6 pt-4">
-        {/* Toolbar */}
+        {/* The three filters, the account picker, setup on the right, and the one primary action */}
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex gap-0.5 rounded-lg bg-[#F8FAFC] p-1">
-            {[
-              ["To do", "173", true],
-              ["Passed", "128", false],
-              ["Set aside", "4", false],
-            ].map(([label, count, on]) => (
+          <div className="flex gap-1 rounded-lg bg-[#F8FAFC] p-1">
+            {ENTRIES.filters.map((label, i) => (
               <span
-                key={label as string}
-                className={`rounded-md px-2.5 py-1 text-xs ${
-                  on ? "bg-white text-[#0F172A] shadow-sm" : "text-[#64748B]"
+                key={label}
+                className={`whitespace-nowrap rounded-md px-2.5 py-1 text-xs ${
+                  i === 0 ? "bg-white font-medium text-[#0D1635] shadow-sm" : "text-[#475569]"
                 }`}
               >
-                {label as string}{" "}
-                <span className="tabular-nums opacity-70">{count as string}</span>
+                {label}
+                <span className={`ml-1 tabular-nums ${i === 0 ? "text-[#334155]" : "text-[#64748B]"}`}>
+                  {[counts.toDo, counts.passed, counts.setAside][i]}
+                </span>
               </span>
             ))}
           </div>
+          <span className="rounded-lg border border-[#E2E8F0] bg-white px-2 py-1.5 text-xs text-[#334155]">
+            {ENTRIES.allAccounts} ▾
+          </span>
 
-          <span className="ml-auto hidden items-center gap-2 md:flex">
-            <span className="inline-flex items-center gap-1.5 text-xs text-[#64748B]">
-              <Landmark size={12} /> Accounts
+          <span className="ml-auto flex items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 px-2 py-1.5 text-xs text-[#475569]">
+              <Landmark size={12} /> {ENTRIES.accounts}
             </span>
-            <span className="inline-flex items-center gap-1.5 text-xs text-[#64748B]">
-              <BookOpen size={12} /> Bank Book
-            </span>
-            <span className="inline-flex items-center gap-1.5 rounded-lg border border-[#E2E8F0] px-3 py-1.5 text-xs text-[#475569]">
-              Import statement
+            <span className="inline-flex items-center gap-1.5 px-2 py-1.5 text-xs text-[#475569]">
+              <BookOpen size={12} /> {ENTRIES.bankBook}
             </span>
             <span className="inline-flex items-center gap-1.5 rounded-lg border border-[#E2E8F0] px-3 py-1.5 text-xs text-[#475569]">
-              <Sparkles size={12} /> Propose
+              <Upload size={12} /> {ENTRIES.importStatement}
             </span>
-            <span className="inline-flex items-center gap-1.5 rounded-lg bg-[#059669] px-3 py-1.5 text-xs font-medium text-white">
-              <Check size={13} /> Pass 128 ready
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-[#E2E8F0] px-3 py-1.5 text-xs text-[#475569]">
+              <Sparkles size={12} /> {ENTRIES.propose}
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-lg bg-[#047857] px-3 py-1.5 text-xs font-medium text-white">
+              <CheckCircle size={13} /> {fill(ENTRIES.passReady, 128)}
             </span>
           </span>
         </div>
 
-        {/* Working state */}
-        <p className="text-xs text-[#334155]">
-          <span className="font-bold text-[#0F172A]">173 to do</span>
-          <span className="px-1.5 text-[#94A3B8]">—</span>
-          <span className="underline decoration-dotted underline-offset-2">128 ready</span>
-          <span className="px-1 text-[#94A3B8]">·</span>
-          <span className="underline decoration-dotted underline-offset-2">12 proposed</span>
-          <span className="px-1 text-[#94A3B8]">·</span>
-          <span className="underline decoration-dotted underline-offset-2">33 need you</span>
+        {/* The working states under To do, as one line */}
+        <p className="text-xs text-[#475569]">
+          <span className="font-medium tabular-nums text-[#0D1635]">{fill(ENTRIES.toDo, counts.toDo)}</span>
+          <span className="text-[#64748B]"> — </span>
+          <span className="tabular-nums underline decoration-dotted underline-offset-2">
+            {fill(ENTRIES.ready, 128)}
+          </span>
+          <span className="text-[#64748B]"> · </span>
+          <span className="tabular-nums underline decoration-dotted underline-offset-2">
+            {fill(ENTRIES.proposed, 12)}
+          </span>
+          <span className="text-[#64748B]"> · </span>
+          <span className="tabular-nums underline decoration-dotted underline-offset-2">33 need you</span>
         </p>
 
-        {/* Table */}
-        <div className="overflow-hidden rounded-xl border border-[#E2E8F0]">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-[#F8FAFC] text-[10px] uppercase tracking-wide text-[#94A3B8]">
-                <th className="px-4 py-2.5 font-semibold">Date</th>
-                <th className="px-3 py-2.5 font-semibold">Bank narration</th>
-                <th className="px-3 py-2.5 font-semibold">Entry</th>
-                <th className="px-3 py-2.5 text-right font-semibold">Spent</th>
-                <th className="px-3 py-2.5 text-right font-semibold">Received</th>
-                <th className="px-3 py-2.5 font-semibold">Status</th>
-                <th className="px-4 py-2.5 font-semibold">Actions</th>
+        {/* The table's own toolbar */}
+        <div className="flex items-center gap-2">
+          <span className="relative flex min-w-[14rem] flex-1 items-center rounded-lg border border-[#E2E8F0] bg-white py-1.5 pl-8 pr-7 text-xs text-[#64748B]">
+            <Search size={13} className="absolute left-2.5 text-[#64748B]" />
+            {ENTRIES.search}
+          </span>
+          <span className="inline-flex items-center gap-1.5 rounded-lg border border-[#E2E8F0] bg-white px-2.5 py-1.5 text-xs text-[#475569]">
+            {DATA_TABLE.columns}
+          </span>
+        </div>
+
+        <div className="overflow-hidden rounded-xl border border-[#E2E8F0] bg-white">
+          <table className="w-full text-xs">
+            <thead className="bg-[#F8FAFC]">
+              <tr className="border-b border-[#E2E8F0] text-[#64748B]">
+                <th className="w-8 px-3 py-3">
+                  <Box />
+                </th>
+                <Header label={date} sortable />
+                <Header label={narration} sortable />
+                <Header label={entry} />
+                <Header label={spent} sortable right />
+                <Header label={received} sortable right />
+                <Header label={status} sortable />
+                <th className="px-3 py-3 text-right font-semibold">{DATA_TABLE.actions}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#F1F5F9]">
+            <tbody className="divide-y divide-[#E2E8F0]">
               {ROWS.map((r) => (
-                <tr key={r.narration} className="align-top">
-                  <td className="whitespace-nowrap px-4 py-3 text-[11.5px] text-[#64748B]">
-                    {r.date}
+                <tr key={r.party + r.date} className={r.state === "ready" ? "bg-[#ECFDF5]" : undefined}>
+                  <td className="px-3 py-2">
+                    <Box />
                   </td>
-                  <td className="max-w-[230px] px-3 py-3">
-                    <span className="block truncate font-mono text-[11px] text-[#334155]">
-                      {r.narration}
+                  <td className="whitespace-nowrap px-3 py-2 tabular-nums text-[#475569]">{r.date}</td>
+                  <td className="max-w-[150px] px-3 py-2">
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span className="truncate text-[#0D1635]">{r.party}</span>
+                      {r.channel ? (
+                        <span className="shrink-0 rounded bg-[#F1F5F9] px-1 py-0.5 text-[10px] text-[#475569]">
+                          {r.channel}
+                        </span>
+                      ) : null}
                     </span>
                   </td>
-                  <td className="px-3 py-3">
-                    <span className="block text-[12px] font-medium text-[#0F172A]">
-                      {r.entry}
-                    </span>
+                  <td className="max-w-[190px] px-3 py-2">
+                    <span className={`block truncate text-xs ${ENTRY_TONE[r.state]}`}>{r.entry}</span>
                     {r.reason ? (
-                      <span className="mt-0.5 block text-[10.5px] leading-snug text-[#94A3B8]">
-                        {r.reason}
-                      </span>
+                      <span className="block truncate text-[10px] text-[#64748B]">{r.reason}</span>
                     ) : null}
                   </td>
-                  <td className="whitespace-nowrap px-3 py-3 text-right font-mono text-[11.5px] text-[#334155]">
-                    {r.spent ? `₹${r.spent}` : <span className="text-[#94A3B8]">—</span>}
+                  <td className="whitespace-nowrap px-3 py-2 text-right font-mono text-[#9F1239]">
+                    {r.spent ? `₹${r.spent}` : ""}
                   </td>
-                  <td className="whitespace-nowrap px-3 py-3 text-right font-mono text-[11.5px] font-semibold text-[#047857]">
-                    {r.received ? `₹${r.received}` : <span className="font-normal text-[#94A3B8]">—</span>}
+                  <td className="whitespace-nowrap px-3 py-2 text-right font-mono text-[#15803D]">
+                    {r.received ? `₹${r.received}` : ""}
                   </td>
-                  <td className="px-3 py-3">
+                  <td className="px-3 py-2">
                     <span
-                      className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-medium ${STATUS_STYLE[r.status]}`}
+                      className={`inline-block whitespace-nowrap rounded border px-1.5 py-0.5 text-[10px] ${STATE_STYLE[r.state]}`}
                     >
-                      {r.status}
+                      {STATE_LABEL[r.state]}
                     </span>
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3">
-                    <span className="inline-flex items-center gap-1 rounded-md border border-[#E2E8F0] px-2 py-1 text-[10.5px] text-[#475569]">
-                      {r.action}
-                      {r.action === "Pass" ? <ArrowRight size={10} /> : null}
-                    </span>
+                  <td className="whitespace-nowrap px-3 py-2 text-right">
+                    <Action kind={r.action} />
                   </td>
                 </tr>
               ))}
@@ -246,10 +344,7 @@ export function BankQueue() {
           </table>
         </div>
 
-        <p className="text-center text-[10px] text-[#94A3B8]">
-          A line is a Receipt, a Payment or a Contra — the bank decides which. Click a line
-          to answer it; Pass puts it in the books; Undo takes it back out.
-        </p>
+        <p className="text-center text-[10px] text-[#64748B]">{ENTRIES.footer}</p>
       </div>
     </div>
   );

@@ -1,9 +1,12 @@
 "use client";
 
+import { rowMenuAt, type RowMenuPlace } from "@/lib/ui/rowMenuPosition";
 import { PAYMENT_MODES } from "@/lib/payments/modes";
 import { taxablePaise } from "@/lib/money/gstLine";
 import { templateBasePaise } from "@/lib/recurring/templateBase";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { recentFirst, useRecentPartyIds } from "@/lib/lookups/recentParties";
+import { api } from "@/lib/api";
 import { pruneSelection } from "@/lib/table/pruneSelection";
 import { createPortal } from "react-dom";
 import {
@@ -17,11 +20,13 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { PaymentAccountPicker } from "@/components/banking/PaymentAccountPicker";
 import { postingAccountNotice } from "@/lib/accounting/postingAccountNotice";
 import { selectAll } from "@/lib/supabase/selectAll";
+import { readAtText } from "@/lib/cache/readCache";
+import { forgetCustomerLists, readCustomerList } from "@/lib/data/partyLists";
 import { fetchActiveBankAccounts } from "@/lib/banking/activeBankAccounts";
 import { formatPaise, formatDateTime, formatMoney } from "@/lib/services/formatting";
 import { bpsFromPercentInput, paiseFromRupeeInput, parseQuantity } from "@/lib/money/rupeeInput";
 import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
-import { Skeleton, TableSkeleton, TransactionListSkeleton } from "@/components/ui/skeleton";
+import { Skeleton, TableSkeleton, TransactionListSkeleton, LoadingRegion } from "@/components/ui/skeleton";
 import type { Column, FilterDef } from "@/lib/table/types";
 import { bulkStockNotMovedSentence, bulkStockSentence, issuedMessage, joinSentences, stockEffectProblem, stockEffectSummary, stockNotMovedSentence } from "@/lib/documents/stockEffect";
 import { mapWithConcurrency } from "@/lib/table/concurrency";
@@ -71,8 +76,10 @@ import {
   outstandingOf,
   type Customer, type SalesInvoice,
   type CurrencyOption, type InvoiceStatus,
+  HELD_DIALOG_MS,
 } from "@/lib/invoices/shared";
 import { partyCreditsApi, type PartyCreditDetail } from "@/lib/api/partyCredits";
+import { usePermissions } from "@/lib/auth/AuthContext";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 
@@ -81,6 +88,8 @@ import { StateLookup } from "@/components/lookups/StateLookup";
 import { DrCr, sideOf } from "@/components/ui/drcr";
 import { formatPaiseBare } from "@/lib/money/format";
 import { Callout } from "@/components/ui/callout";
+import { RowMenu } from "@/components/ui/row-menu";
+import { Modal } from "@/components/ui/modal";
 import { objectWithLists } from "@/lib/api/shape";
 import { readOnlinePayment } from "@/lib/payments/onlinePayment";
 import { Button } from "@/components/ui/button";
@@ -90,7 +99,7 @@ import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { typedDateText } from "@/lib/dates/typedDate";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { formatDate, todayIstISO } from "@/lib/dates/format";
-import { failureSentence, fetchPlain } from "@/lib/api/failureSentence";
+import { failureSentence, fetchBounded, LONG_REQUEST_BOUND_MS } from "@/lib/api/failureSentence";
 // ── Types ──────────────────────────────────────────────────────────────────
 
 type SalesTab = "sales-cycle" | "invoices" | "recurring" | "customers" | "receipts" | "credit-notes" | "debit-notes" | "statements" | "interest" | "post-dated-cheques";
@@ -245,14 +254,14 @@ function isOverdueForUi(inv: SalesInvoice): boolean {
 
 function LoadingSkeleton() {
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <LoadingRegion label="Loading sales" className="flex flex-col h-full overflow-hidden" noticeClassName="px-6">
       <div className="flex-shrink-0 px-6 pt-5 pb-0">
         <Skeleton className="h-8 w-96 rounded-lg" />
       </div>
       <div className="flex-1 px-6 pb-6 pt-4">
         <TableSkeleton cols={6} rows={5} />
       </div>
-    </div>
+    </LoadingRegion>
   );
 }
 
@@ -517,7 +526,7 @@ function RecurringInvoices({ clientId }: { clientId: string }) {
   async function runNow(t: RecurringTemplate) {
     try {
       const token = await getAuthToken();
-      const res = await apiCall(`/api/recurring-invoices/${t.id}/run`, "POST", undefined, token);
+      const res = await apiCall(`/api/recurring-invoices/${t.id}/run`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
       if (!res.success) throw new Error(res.error ?? "Run failed");
       const d = res.data as { generated_count: number; skipped_count: number };
       showToast(`Generated ${d.generated_count} draft${d.generated_count === 1 ? "" : "s"}`
@@ -529,7 +538,7 @@ function RecurringInvoices({ clientId }: { clientId: string }) {
   async function changeStatus(t: RecurringTemplate, action: "pause" | "resume" | "archive") {
     try {
       const token = await getAuthToken();
-      const res = await apiCall(`/api/recurring-invoices/${t.id}/${action}`, "POST", undefined, token);
+      const res = await apiCall(`/api/recurring-invoices/${t.id}/${action}`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
       if (!res.success) throw new Error(res.error ?? "Update failed");
       showToast(`Template ${action === "resume" ? "resumed" : action + "d"}`, "success");
       load();
@@ -764,6 +773,9 @@ function RecurringEditor({
   onSaved: (msg: string) => void;
 }) {
   const [customerId, setCustomerId] = useState(existing?.customer_id ?? "");
+  // The customers this client invoiced most recently go to the top of the picker (POST-A-155); nothing is pre-selected.
+  const recentCustomerIds = useRecentPartyIds(api.customers.recent, clientId, !existing);
+  const recentCustomers = useMemo(() => recentFirst(recentCustomerIds, customers), [recentCustomerIds, customers]);
   const [title, setTitle] = useState(existing?.title ?? "");
   const [description, setDescription] = useState(existing?.description ?? "");
   const [frequency, setFrequency] = useState(existing?.frequency ?? "monthly");
@@ -868,10 +880,10 @@ function RecurringEditor({
       };
       let res;
       if (existing) {
-        res = await apiCall(`/api/recurring-invoices/${existing.id}`, "PUT", body, token);
+        res = await apiCall(`/api/recurring-invoices/${existing.id}`, "PUT", body, token, { timeoutMs: HELD_DIALOG_MS });
       } else {
         body.client_id = clientId; body.customer_id = customerId;
-        res = await apiCall(`/api/recurring-invoices`, "POST", body, token);
+        res = await apiCall(`/api/recurring-invoices`, "POST", body, token, { timeoutMs: HELD_DIALOG_MS });
       }
       if (!res.success) throw new Error(res.error ?? "Save failed");
       onSaved(existing ? "Template updated" : "Template created");
@@ -883,18 +895,14 @@ function RecurringEditor({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl border border-ps-border p-6 w-full max-w-2xl shadow-xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-ps-ink">{existing ? "Edit" : "New"} Recurring Template</h3>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-body"><X size={14} /></button>
-        </div>
+    <Modal title={`${existing ? "Edit" : "New"} Recurring Template`} maxWidthClass="max-w-2xl" onClose={() => { if (!saving) onClose(); }}>
         <form onSubmit={submit} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Customer</label>
               <CustomerLookup
                 customers={customers}
+                recent={recentCustomers}
                 value={customerId}
                 onChange={setCustomerId}
                 disabled={!!existing}
@@ -1028,15 +1036,14 @@ function RecurringEditor({
 
           {(error || refusal.shown) && <Callout tone="problem">{error || refusal.shown}</Callout>}
           <div className="flex gap-3 justify-end">
-            <button type="button" onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
+            <button disabled={saving} type="button" onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
             <button type="submit" disabled={saving}
               className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">
               {saving ? "Saving…" : existing ? "Save changes" : "Create template"}
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -1072,13 +1079,8 @@ function RecurringHistoryDrawer({
   }, [template.id]);
 
   return (
-    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl border border-ps-border p-6 w-full max-w-lg shadow-xl max-h-[85vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-1">
-          <h3 className="text-sm font-semibold text-ps-ink">{template.title}</h3>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-body"><X size={14} /></button>
-        </div>
-        <p className="text-2xs text-ps-hint mb-4">{customerName} · {FREQ_LABEL[template.frequency] ?? template.frequency}</p>
+    <Modal title={template.title} maxWidthClass="max-w-lg" onClose={onClose}
+      note={<>{customerName} · {FREQ_LABEL[template.frequency] ?? template.frequency}</>}>
 
         {loading ? (
           <TransactionListSkeleton rows={3} />
@@ -1126,8 +1128,7 @@ function RecurringHistoryDrawer({
         <div className="flex justify-end mt-5 pt-4 border-t border-ps-border">
           <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Close</button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -1296,8 +1297,9 @@ function Statements({ clientId }: { clientId: string }) {
     const on = shown();
     if (!on) return;
     const token = await getAuthToken();
-    const res = await fetchPlain(`${API}/api/customer-statements/pdf?client_id=${clientId}&customer_id=${on.customer_id}&start_date=${on.start_date}&end_date=${on.end_date}`,
-      { headers: { Authorization: `Bearer ${token}` } }, "read");
+    const res = await fetchBounded(`${API}/api/customer-statements/pdf?client_id=${clientId}&customer_id=${on.customer_id}&start_date=${on.start_date}&end_date=${on.end_date}`,
+      // a statement over a whole period, drawn as a PDF: an export, so the long bound (POST-A-470)
+      { headers: { Authorization: `Bearer ${token}` } }, "read", LONG_REQUEST_BOUND_MS);
     if (!res.ok) { setError("PDF download failed."); return; }
     const blob = await res.blob();
     window.open(URL.createObjectURL(blob), "_blank");
@@ -1308,7 +1310,7 @@ function Statements({ clientId }: { clientId: string }) {
   }
 
   function openEmail() {
-    setEmailTo(stmt?.customer.email ?? "");
+    setEmailTo(stmt?.customer?.email ?? "");
     setEmailMsg(null); setEmailModal(true);
   }
   async function sendEmail() {
@@ -1318,7 +1320,7 @@ function Statements({ clientId }: { clientId: string }) {
     try {
       const token = await getAuthToken();
       const res = await apiCall("/api/customer-statements/email", "POST",
-        { client_id: clientId, customer_id: on.customer_id, start_date: on.start_date, end_date: on.end_date, to_email: emailTo || undefined }, token);
+        { client_id: clientId, customer_id: on.customer_id, start_date: on.start_date, end_date: on.end_date, to_email: emailTo || undefined }, token, { timeoutMs: HELD_DIALOG_MS });
       if (res.success) { setEmailModal(false); setEmailMsg(null); setDeliveryRefresh((k) => k + 1); }
       else { setEmailMsg(res.error ?? "Email failed."); setDeliveryRefresh((k) => k + 1); }
     } catch (e) { setEmailMsg(e instanceof Error ? e.message : "Email failed."); }
@@ -1431,9 +1433,7 @@ function Statements({ clientId }: { clientId: string }) {
       {customerId && <StatementDeliveryLog clientId={clientId} customerId={customerId} refreshKey={deliveryRefresh} />}
 
       {emailModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setEmailModal(false)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-sm font-semibold text-ps-ink">Email statement to customer</h3>
+        <Modal title="Email statement to customer" onClose={() => { if (!emailing) setEmailModal(false); }}>
             <label className="block">
               <span className="text-xs font-medium text-ps-label">Recipient email</span>
               <input value={emailTo} onChange={(e) => setEmailTo(e.target.value)} placeholder="customer@example.com"
@@ -1441,17 +1441,14 @@ function Statements({ clientId }: { clientId: string }) {
             </label>
             {emailMsg && <Callout tone="problem">{emailMsg}</Callout>}
             <div className="flex justify-end gap-2">
-              <button onClick={() => setEmailModal(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg">Cancel</button>
+              <button disabled={emailing} onClick={() => setEmailModal(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg">Cancel</button>
               <Button variant="plain" size="none" onClick={sendEmail} disabled={actionInFlight || !emailTo} className="text-xs px-4 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">{emailing ? "Sending…" : "Send"}</Button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {applyModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setApplyModal(false)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-sm font-semibold text-ps-ink">Apply credit to an invoice</h3>
+        <Modal title="Apply credit to an invoice" onClose={() => { if (!applying) setApplyModal(false); }}>
             <p className="text-xs text-ps-label">
               Available credit: <span className="font-mono font-medium">₹{stmtRupees(credit?.balance_paise ?? 0)}</span>
             </p>
@@ -1475,14 +1472,13 @@ function Statements({ clientId }: { clientId: string }) {
             </label>
             {applyError && <Callout tone="problem">{applyError}</Callout>}
             <div className="flex justify-end gap-2">
-              <button onClick={() => setApplyModal(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg">Cancel</button>
+              <button disabled={applying} onClick={() => setApplyModal(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg">Cancel</button>
               <Button variant="plain" size="none" onClick={applyCredit} disabled={actionInFlight || !applyInvoiceId || !applyAmount}
                 className="text-xs px-4 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">
                 {applying ? "Applying…" : "Apply"}
               </Button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );
@@ -1505,6 +1501,9 @@ function SalesInvoices({
 }) {
   const [invoices, setInvoices] = useState<SalesInvoice[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  // Voiding an issued invoice asks `accounting` `approve`, a Partner's alone, while deleting a draft asks `accounting`
+  // `write`; the one bulk action did both for everyone and the voids came back refused (POST-A-455).
+  const mayVoid = usePermissions().can("accounting", "approve");
   // Client's own Product/Service catalogue — only needed for the CSV import's
   // "resolve missing references" step (product_service column). The manual
   // editor loads this itself via ServiceCataloguePicker.
@@ -1527,10 +1526,9 @@ function SalesInvoices({
   // lives here so the actions column reads as one button, not a strip of
   // mixed icon/text buttons. Anchored to the viewport (mirrors the Customers
   // tab's own menu below) since the table scrolls/clips an in-flow dropdown.
-  const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null);
+  const [menu, setMenu] = useState<({ id: string } & RowMenuPlace) | null>(null);
   function openMenuFor(e: React.MouseEvent, inv: SalesInvoice) {
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    setMenu({ id: inv.id, top: r.bottom + 4, left: Math.max(8, r.right - 192) });
+    setMenu({ id: inv.id, ...rowMenuAt(e, 192) });
   }
 
   // FY / date-window selector that SCOPES THE SERVER QUERY (which rows load).
@@ -1723,7 +1721,7 @@ function SalesInvoices({
     try {
       // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
       const token = await getAuthToken();
-      const result = await apiCall(`/api/sales-invoices/${id}/issue`, "POST", undefined, token);
+      const result = await apiCall(`/api/sales-invoices/${id}/issue`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
       if (!result.success) throw new Error(result.error ?? "Failed to issue invoice");
       // POST-A-092: the server says on this response when the invoice's stock effect was not all recorded.
       const issued = issuedMessage("Invoice issued successfully", result.data);
@@ -1766,7 +1764,7 @@ function SalesInvoices({
 
   async function deleteInvoice(inv: SalesInvoice) {
     const token = await getAuthToken();
-    const result = await apiCall(`/api/sales-invoices/${inv.id}`, "DELETE", undefined, token);
+    const result = await apiCall(`/api/sales-invoices/${inv.id}`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
     if (!result.success) throw new Error(result.error ?? "Failed to delete invoice");
     showToast(`Invoice ${inv.invoice_no} deleted`, "success");
     setDeleteTarget(null);
@@ -1778,7 +1776,7 @@ function SalesInvoices({
     const endpoint = isResend
       ? `/api/sales-invoices/${inv.id}/resend`
       : `/api/sales-invoices/${inv.id}/send`;
-    const result = await apiCall(endpoint, "POST", { to_email: toEmail || null }, token);
+    const result = await apiCall(endpoint, "POST", { to_email: toEmail || null }, token, { timeoutMs: HELD_DIALOG_MS });
     if (!result.success) throw new Error(result.error ?? "Failed to send invoice");
     showToast(`Invoice ${inv.invoice_no} sent to ${toEmail}`, "success");
     setSendModal(null);
@@ -1803,6 +1801,8 @@ function SalesInvoices({
           deleted++;
         } else if (inv.status === "cancelled") {
           failures.push(`${inv.invoice_no}: already voided`);
+        } else if (!mayVoid) {
+          failures.push(`${inv.invoice_no}: voiding an issued invoice needs permission to approve accounting entries`);
         } else {
           const result = await apiCall(`/api/sales-invoices/${inv.id}/cancel`, "POST", undefined, token);
           if (!result.success) throw new Error(result.error ?? "void failed");
@@ -1970,7 +1970,7 @@ function SalesInvoices({
   // the modal surfaces the error; reloads to refresh reminder_count on success.
   async function remindInvoice(inv: SalesInvoice) {
     const token = await getAuthToken();
-    const result = await apiCall(`/api/sales-invoices/${inv.id}/remind`, "POST", undefined, token);
+    const result = await apiCall(`/api/sales-invoices/${inv.id}/remind`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
     if (!result.success) throw new Error(result.error ?? "Failed to send reminder");
     showToast(`Payment reminder sent for ${inv.invoice_no}`, "success");
     setRemindModal(null);
@@ -2190,8 +2190,8 @@ function SalesInvoices({
         />
       )}
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-3">
+      {/* Summary cards: stacked on a phone, where three abreast left each figure wider than its tile (POST-A-131). */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         {/* The query is scoped to the selected period (invoice_date between
             range.from and range.to), so these tiles are the PERIOD's figures
             and not the client's whole receivable/turnover. The label used to
@@ -2243,12 +2243,7 @@ function SalesInvoices({
         const inv = scoped.find((x) => x.id === menu.id);
         if (!inv) return null;
         return (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
-            <div
-              className="fixed z-50 w-48 bg-white rounded-lg border border-ps-border shadow-lg py-1 text-xs"
-              style={{ top: menu.top, left: menu.left }}
-            >
+          <RowMenu place={menu} widthClass="w-48" onClose={() => setMenu(null)}>
               <button onClick={() => { setMenu(null); setDetailId(inv.id); }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                 <Eye size={13} /> View details
@@ -2304,8 +2299,7 @@ function SalesInvoices({
                   )}
                 </>
               )}
-            </div>
-          </>
+          </RowMenu>
         );
       })()}
 
@@ -2344,12 +2338,20 @@ function SalesInvoices({
             confirm: "Issue the selected draft invoices? This posts a journal entry for each and cannot be undone.",
             run: bulkIssueInvoices,
           },
-          {
+          mayVoid ? {
             id: "delete-void",
             label: "Delete / Void",
             icon: <Trash2 size={13} />,
             variant: "danger",
             confirm: "Delete the selected draft invoices and void the selected issued invoices? Voiding reverses the accounting entry but keeps the invoice number on record. This cannot be undone.",
+            run: bulkDeleteOrVoid,
+          } : {
+            id: "delete-void",
+            label: "Delete draft(s)",
+            icon: <Trash2 size={13} />,
+            variant: "danger",
+            appliesTo: (rows: SalesInvoice[]) => rows.some((r) => r.status === "draft"),
+            confirm: "Delete the selected draft invoices? Voiding an issued invoice needs permission to approve accounting entries, so any issued invoice in the selection is left as it is.",
             run: bulkDeleteOrVoid,
           },
           {
@@ -2412,6 +2414,7 @@ function SalesInvoices({
             )}
             <button
               onClick={(e) => openMenuFor(e, inv)}
+              aria-haspopup="true" aria-expanded={menu?.id === inv.id}
               aria-label={`Actions for invoice ${inv.invoice_no}`}
               className="p-1 rounded hover:bg-ps-muted text-ps-label"
             >
@@ -2476,15 +2479,18 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
   const canGenerate = gatewayOn && hist?.can_pay_online === true;
 
   async function generate() {
+    // Held while the WRITE is out and let go when it returns; the re-read that follows is not a write (POST-A-395).
     setBusy(true); setMsg(null);
+    let made = false;
     try {
       const token = await getAuthToken();
-      const res = await apiCall("/api/payments/links", "POST", { invoice_id: invoice.id }, token);
+      const res = await apiCall("/api/payments/links", "POST", { invoice_id: invoice.id }, token, { timeoutMs: HELD_DIALOG_MS });
       if (!res.success) throw new Error(res.error ?? "Could not create link");
       setMsg({ text: "Payment link ready", type: "success" });
-      await load();
+      made = true;
     } catch (e) { setMsg({ text: e instanceof Error ? e.message : "Could not create link", type: "error" }); }
     finally { setBusy(false); }
+    if (made) await load();
   }
 
   async function copy(url: string | null) {
@@ -2497,7 +2503,7 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
     setBusy(true); setMsg(null);
     try {
       const token = await getAuthToken();
-      const res = await apiCall(`/api/payments/links/${linkId}/send`, "POST", undefined, token);
+      const res = await apiCall(`/api/payments/links/${linkId}/send`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
       if (!res.success) throw new Error(res.error ?? "Could not send");
       const d = res.data as { sent: boolean; to: string };
       setMsg({ text: d.sent ? `Payment link emailed to ${d.to}` : "Email not sent (check customer email / mail config)", type: d.sent ? "success" : "error" });
@@ -2506,12 +2512,7 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
   }
 
   return (
-    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl border border-ps-border p-6 w-full max-w-lg shadow-xl max-h-[88vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-1">
-          <h3 className="text-sm font-semibold text-ps-ink">Online Payment · {invoice.invoice_no}</h3>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-body"><X size={14} /></button>
-        </div>
+    <Modal title={`Online Payment · ${invoice.invoice_no}`} maxWidthClass="max-w-lg" onClose={() => { if (!busy) onClose(); }}>
         {gatewayOn && (
           <p className="text-2xs text-ps-hint mb-4">
             A verified payment posts a receipt automatically through the standard receipt workflow — no manual entry.
@@ -2581,7 +2582,7 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
 
         {/* Payment history / timeline */}
         <p className="text-2xs font-semibold text-ps-label uppercase tracking-wide mb-2">Payment History</p>
-        {!hist || hist.payments.length === 0 ? (
+        {!hist || (hist.payments ?? []).length === 0 ? (
           <p className="text-xs text-ps-hint">No payments recorded yet.</p>
         ) : (
           <div className="space-y-2">
@@ -2598,10 +2599,9 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
         )}
 
         <div className="flex justify-end mt-5 pt-4 border-t border-ps-border">
-          <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Close</button>
+          <button disabled={busy} onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Close</button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -2641,12 +2641,7 @@ function SendInvoiceModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl border border-ps-border p-6 w-full max-w-md shadow-xl">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-ps-ink">Send Invoice {invoice.invoice_no}</h3>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-body"><X size={14} /></button>
-        </div>
+    <Modal title={`Send Invoice ${invoice.invoice_no}`} maxWidthClass="max-w-md" onClose={() => { if (!sending) onClose(); }}>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-medium text-ps-label mb-1">Recipient Email</label>
@@ -2669,7 +2664,7 @@ function SendInvoiceModal({
           </p>
           {error && <Callout tone="problem">{error}</Callout>}
           <div className="flex gap-3 justify-end">
-            <button
+            <button disabled={sending}
               type="button"
               onClick={onClose}
               className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg"
@@ -2685,8 +2680,7 @@ function SendInvoiceModal({
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -2720,12 +2714,7 @@ function RemindInvoiceModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl border border-ps-border p-6 w-full max-w-md shadow-xl">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-ps-ink">Send Payment Reminder</h3>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-body"><X size={14} /></button>
-        </div>
+    <Modal title="Send Payment Reminder" maxWidthClass="max-w-md" onClose={() => { if (!sending) onClose(); }}>
         <div className="space-y-3 text-xs">
           <div className="rounded-lg bg-ps-bg border border-ps-border p-3 space-y-1">
             <div className="flex justify-between">
@@ -2763,7 +2752,7 @@ function RemindInvoiceModal({
           {error && <Callout tone="problem">{error}</Callout>}
         </div>
         <div className="flex gap-3 justify-end mt-4">
-          <button
+          <button disabled={sending}
             type="button"
             onClick={onClose}
             className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg"
@@ -2780,8 +2769,7 @@ function RemindInvoiceModal({
             {sending ? "Sending…" : <><AlertTriangle size={11} /> Send Reminder</>}
           </Button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -2809,14 +2797,7 @@ function DeliveryHistoryModal({
   const lastEmail = deliveries[0]?.sent_to ?? "";
 
   return (
-    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl border border-ps-border p-6 w-full max-w-lg shadow-xl">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-ps-ink">
-            Delivery History — {invoice.invoice_no}
-          </h3>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-body"><X size={14} /></button>
-        </div>
+    <Modal title={`Delivery History — ${invoice.invoice_no}`} maxWidthClass="max-w-lg" onClose={onClose}>
         {deliveries.length === 0 ? (
           <p className="text-xs text-ps-hint text-center py-8">No delivery attempts yet.</p>
         ) : (
@@ -2865,8 +2846,7 @@ function DeliveryHistoryModal({
             Close
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -2903,12 +2883,10 @@ function DeleteInvoiceModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl border border-ps-border p-6 w-full max-w-md shadow-xl">
+    <Modal title="Delete draft invoice?" maxWidthClass="max-w-md" onClose={() => { if (!deleting) onClose(); }}>
         <div className="flex items-start gap-3 mb-4">
           <div className="p-2 rounded-full bg-state-problem-surface text-red-600 flex-shrink-0"><AlertTriangle size={16} /></div>
           <div>
-            <h3 className="text-sm font-semibold text-ps-ink">Delete draft invoice?</h3>
             <p className="text-xs text-ps-label mt-1">
               <span className="font-mono">{invoice.invoice_no}</span> will be removed from your invoice
               list. Only drafts can be deleted — issued, partially-paid, paid and cancelled invoices are
@@ -2918,7 +2896,7 @@ function DeleteInvoiceModal({
         </div>
         {error && <Callout tone="problem">{error}</Callout>}
         <div className="flex gap-3 justify-end">
-          <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
+          <button disabled={deleting} onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
           {/* A Button, not a raw <button>: `handle` AWAITS the caller's delete, which the same-file analysis
               cannot see, so a second click in the same tick sent a second DELETE. */}
           <Button
@@ -2930,8 +2908,7 @@ function DeleteInvoiceModal({
             {deleting ? "Deleting…" : <><Trash2 size={12} /> Delete Draft</>}
           </Button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -2950,18 +2927,27 @@ function Customers({
   clientId: string;
   onNavigate: (tab: SalesTab, custId?: string) => void;
 }) {
+  // Adding, importing, editing, reactivating and (one row at a time, written straight to the table under the row policy that
+  // asks `client` `write`) deactivating a customer ask `client` `write`, a Manager's or a Partner's. The bulk Deactivate and
+  // Delete go through `DELETE /api/customers/{id}` and ask `client` `delete`, a Partner's. Each was offered to every member and
+  // came back refused (POST-A-455).
+  const { can: canDo } = usePermissions();
+  const mayEditParty = canDo("client", "write");
+  const mayRemoveParty = canDo("client", "delete");
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   // See SalesInvoices.loadFailed (audit M17): a failed fetch must not render as
   // an empty customer list.
   const [loadFailed, setLoadFailed] = useState(false);
+  /** When the list on screen was read, while it is the last answer painted ahead of the real read (POST-A-124); null once the real one lands. */
+  const [paintedFrom, setPaintedFrom] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [editCustomer, setEditCustomer] = useState<Customer | null>(null);
   const [deactivateTarget, setDeactivateTarget] = useState<Customer | null>(null);
   const [deactivating, setDeactivating] = useState(false);
   // Row actions overflow menu (anchored to the viewport to avoid table clipping).
-  const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null);
+  const [menu, setMenu] = useState<({ id: string } & RowMenuPlace) | null>(null);
   // Permanent-delete flow: target + the dependency report that gates it.
   const [deleteTarget, setDeleteTarget] = useState<Customer | null>(null);
   const [deleteDeps, setDeleteDeps] = useState<CustomerDependencies | null>(null);
@@ -2975,25 +2961,31 @@ function Customers({
   const load = useCallback(async () => {
     setLoading(true);
     const supabase = getSupabaseClient();
+    let painted = false;
     try {
-      // Load all customers; active/inactive scoping is a client-side DataTable filter.
-      const { data, error } = await selectAll(() =>
-        supabase
-          .from("customers")
-          .select(
-            "id, name, gstin, state_code, pan, tan, email, phone, city, state, opening_balance_paise, credit_days, is_active"
-          )
-          .eq("client_id", clientId)
-          .order("name")
-          .order("id"),
-      );
-      if (error) throw error;
-      setCustomers((data as Customer[]) ?? []);
+      // Load all customers; active/inactive scoping is a client-side DataTable filter. The last answer is painted at once from the shared
+      // read cache and the real read always follows (POST-A-124); a failed read throws, so it is never stored.
+      const data = await readCustomerList<Customer>(clientId, async () => {
+        const { data, error } = await selectAll(() =>
+          supabase
+            .from("customers")
+            .select(
+              "id, name, gstin, state_code, pan, tan, email, phone, city, state, opening_balance_paise, credit_days, is_active"
+            )
+            .eq("client_id", clientId)
+            .order("name")
+            .order("id"),
+        );
+        if (error) throw error;
+        return (data as Customer[]) ?? [];
+      }, (last, readAt) => { painted = true; setCustomers(last); setPaintedFrom(readAt); setLoading(false); });
+      setCustomers(data);
+      setPaintedFrom(null);
       setLoadFailed(false);
     } catch {
       // Was swallowed: a failed fetch rendered as "no customers", which on this
-      // tab invites the CA to re-create customers that already exist.
-      setCustomers([]);
+      // tab invites the CA to re-create customers that already exist. A list painted from the last read stays up and says it is not current.
+      if (!painted) setCustomers([]);
       setLoadFailed(true);
     } finally {
       setLoading(false);
@@ -3014,14 +3006,23 @@ function Customers({
   async function confirmDeactivate() {
     if (!deactivateTarget) return;
     setDeactivating(true);
-    const supabase = getSupabaseClient();
-    const { error } = await supabase
-      .from("customers")
-      .update({ is_active: false })
-      .eq("id", deactivateTarget.id);
-    setDeactivating(false);
+    let error: unknown = null;
+    // Let go of the dialog in a finally, so a write that throws cannot leave it held until the page is reloaded (POST-A-395).
+    try {
+      const { error: refused } = await getSupabaseClient()
+        .from("customers")
+        .update({ is_active: false })
+        .eq("id", deactivateTarget.id);
+      error = refused;
+    } catch (e) {
+      error = e;
+    } finally {
+      setDeactivating(false);
+    }
+    forgetCustomerLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
     if (error) {
-      showToast("Failed to deactivate customer", "error");
+      // A request that got no answer may have gone through: it is said as that, not as a failure (POST-A-414).
+      showToast(failureSentence(error, "Failed to deactivate customer", "write"), "error");
       setDeactivateTarget(null);
       return;
     }
@@ -3035,7 +3036,8 @@ function Customers({
   async function reactivateCustomer(c: Customer) {
     const supabase = getSupabaseClient();
     const { error } = await supabase.from("customers").update({ is_active: true }).eq("id", c.id);
-    if (error) { showToast("Failed to reactivate customer", "error"); return; }
+    forgetCustomerLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
+    if (error) { showToast(failureSentence(error, "Failed to reactivate customer", "write"), "error"); return; }
     showToast("Customer reactivated", "success");
     load();
   }
@@ -3058,7 +3060,8 @@ function Customers({
     setDeleteBusy(true);
     try {
       const token = await getAuthToken();
-      const res = await apiCall(`/api/customers/${deleteTarget.id}?permanent=true`, "DELETE", undefined, token);
+      const res = await apiCall(`/api/customers/${deleteTarget.id}?permanent=true`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+      forgetCustomerLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
       if (!res.success) {
         showToast(res.error ?? "Failed to delete customer", "error");
         return;
@@ -3075,10 +3078,9 @@ function Customers({
   }
 
   // Anchor the overflow menu to the viewport (the table scrolls/clips, so an
-  // in-flow dropdown would be cut off). Right-align a 176px menu under the button.
+  // in-flow dropdown would be cut off). Right-align a 176px menu under the button, or above it near the foot of the window (lib/ui/rowMenuPosition).
   function openMenuFor(e: React.MouseEvent, c: Customer) {
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    setMenu({ id: c.id, top: r.bottom + 4, left: Math.max(8, r.right - 176) });
+    setMenu({ id: c.id, ...rowMenuAt(e, 176) });
   }
 
   /** Bulk-import customers through /api/customers/bulk — one request for the
@@ -3100,12 +3102,22 @@ function Customers({
 
     // Snapshot the current active customers to match against.
     const supabase = getSupabaseClient();
-    const { data: existingRows } = await selectAll(() => supabase
+    const { data: existingRows, error: existingError } = await selectAll(() => supabase
       .from("customers")
       .select("name, gstin, pan")
       .eq("client_id", clientId)
       .eq("is_active", true)
       .order("id"));
+    // The pager hands a failure back as `error` and does not throw. Without the snapshot every row would be taken for a new customer, so a
+    // failed read stops the import: nothing is sent, and the person is told why (POST-A-527).
+    if (existingError) {
+      return {
+        imported: 0,
+        errors: [...errors, "The customers already on file could not be read, so nothing was imported: without that check a row that already exists would be added again. Try the import again."],
+        skipped: 0,
+        skippedDetail: [],
+      };
+    }
 
     const keyOf = (r: { gstin?: string | null; pan?: string | null; name?: string | null }): string | null => {
       if (r.gstin) return "g:" + r.gstin.trim().toUpperCase();
@@ -3138,6 +3150,7 @@ function Customers({
     let imported = 0;
     if (toCreate.length > 0) {
       const result = await apiCall("/api/customers/bulk", "POST", { customers: toCreate }, token);
+      forgetCustomerLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
       if (result.success) {
         const data = result.data as {
           created: unknown[];
@@ -3173,6 +3186,7 @@ function Customers({
     await Promise.all(targets.map(async (c) => {
       try {
         const result = await apiCall(`/api/customers/${c.id}`, "DELETE", undefined, token);
+        forgetCustomerLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
         if (!result.success) throw new Error(result.error ?? "failed");
         deactivated++;
       } catch (e) {
@@ -3200,6 +3214,7 @@ function Customers({
     await Promise.all(selected.map(async (c) => {
       try {
         const result = await apiCall(`/api/customers/${c.id}?permanent=true`, "DELETE", undefined, token);
+        forgetCustomerLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
         if (!result.success) throw new Error(result.error ?? "failed");
         deleted++;
       } catch (e) {
@@ -3258,20 +3273,22 @@ function Customers({
         <p className="text-xs font-semibold text-ps-body">
           {customers.length} customer{customers.length !== 1 ? "s" : ""}
         </p>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setShowImport(true)}
-            className="flex items-center gap-1.5 text-xs border border-ps-border text-ps-label px-3 py-1.5 rounded-lg hover:bg-ps-bg"
-          >
-            <Upload size={12} /> Import
-          </button>
-          <button
-            onClick={() => { setEditCustomer(null); setShowForm(true); }}
-            className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark"
-          >
-            <Plus size={12} /> Add Customer
-          </button>
-        </div>
+        {mayEditParty && (
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowImport(true)}
+              className="flex items-center gap-1.5 text-xs border border-ps-border text-ps-label px-3 py-1.5 rounded-lg hover:bg-ps-bg"
+            >
+              <Upload size={12} /> Import
+            </button>
+            <button
+              onClick={() => { setEditCustomer(null); setShowForm(true); }}
+              className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark"
+            >
+              <Plus size={12} /> Add Customer
+            </button>
+          </div>
+        )}
       </div>
 
       {/* accounting-20 — named price lists and each customer's default one: a PRE-FILL
@@ -3303,12 +3320,8 @@ function Customers({
       )}
 
       {deactivateTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
-            <div className="px-6 py-5 border-b border-ps-border">
-              <h2 className="text-base font-semibold text-ps-ink">Deactivate Customer?</h2>
-            </div>
-            <div className="px-6 py-5 space-y-2">
+        <Modal title="Deactivate Customer?" maxWidthClass="max-w-md" onClose={() => { if (!deactivating) setDeactivateTarget(null); }}>
+            <div className="space-y-2">
               <p className="text-sm text-ps-label">
                 <span className="font-medium text-ps-ink">{deactivateTarget.name}</span> will no
                 longer be available for new invoices.
@@ -3318,10 +3331,10 @@ function Customers({
                 this customer later.
               </p>
             </div>
-            <div className="px-6 py-4 border-t border-ps-border flex justify-end gap-2">
+            <div className="flex justify-end gap-2">
               <button
                 onClick={() => setDeactivateTarget(null)}
-                disabled={deactivating}
+                disabled={(deactivating) || actionInFlight}
                 className="px-4 py-2 text-sm text-ps-label rounded-lg border border-ps-border hover:bg-ps-bg disabled:opacity-50"
               >
                 Cancel
@@ -3334,24 +3347,22 @@ function Customers({
                 {deactivating ? "Deactivating…" : "Deactivate"}
               </Button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* Permanent-delete flow: checking → blocked (has records) → confirm (clean) */}
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+        <Modal title={deleteDeps === null ? "Delete customer" : deleteDeps.can_delete ? "Delete Customer?" : "Can't delete this customer"} maxWidthClass="max-w-md"
+          onClose={() => { if (!deleteBusy) { setDeleteTarget(null); setDeleteDeps(null); } }}>
             {deleteDeps === null ? (
-              <div className="px-6 py-10 flex items-center justify-center gap-2 text-sm text-ps-label">
-                <Loader2 size={16} className="animate-spin" /> Checking for linked records…
-              </div>
+              <LoadingRegion label="Checking for linked records" noticeClassName="px-6 justify-center text-center">
+                <div className="py-6 flex items-center justify-center gap-2 text-sm text-ps-label">
+                  <Loader2 size={16} className="animate-spin" /> Checking for linked records…
+                </div>
+              </LoadingRegion>
             ) : deleteDeps.can_delete ? (
               <>
-                <div className="px-6 py-5 border-b border-ps-border">
-                  <h2 className="text-base font-semibold text-ps-ink">Delete Customer?</h2>
-                </div>
-                <div className="px-6 py-5 space-y-2">
+                <div className="space-y-2">
                   <p className="text-sm text-ps-label">
                     <span className="font-medium text-ps-ink">{deleteTarget.name}</span> has no
                     linked invoices, receipts, credit notes or opening balance.
@@ -3360,7 +3371,7 @@ function Customers({
                     This permanently removes the customer and cannot be undone.
                   </p>
                 </div>
-                <div className="px-6 py-4 border-t border-ps-border flex justify-end gap-2">
+                <div className="flex justify-end gap-2">
                   <button
                     onClick={() => { setDeleteTarget(null); setDeleteDeps(null); }}
                     disabled={deleteBusy}
@@ -3379,11 +3390,7 @@ function Customers({
               </>
             ) : (
               <>
-                <div className="px-6 py-5 border-b border-ps-border flex items-center gap-2">
-                  <AlertTriangle size={18} className="text-amber-500" />
-                  <h2 className="text-base font-semibold text-ps-ink">Can&apos;t delete this customer</h2>
-                </div>
-                <div className="px-6 py-5 space-y-3">
+                <div className="space-y-3">
                   <p className="text-sm text-ps-label">
                     <span className="font-medium text-ps-ink">{deleteTarget.name}</span> has linked
                     accounting records, so it can&apos;t be permanently deleted:
@@ -3413,8 +3420,8 @@ function Customers({
                     invoices.
                   </p>
                 </div>
-                <div className="px-6 py-4 border-t border-ps-border flex justify-end gap-2">
-                  <button
+                <div className="flex justify-end gap-2">
+                  <button disabled={actionInFlight}
                     onClick={() => { setDeleteTarget(null); setDeleteDeps(null); }}
                     className="px-4 py-2 text-sm text-ps-label rounded-lg border border-ps-border hover:bg-ps-bg"
                   >
@@ -3431,8 +3438,7 @@ function Customers({
                 </div>
               </>
             )}
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* Row actions overflow menu (viewport-anchored to dodge table clipping) */}
@@ -3440,16 +3446,13 @@ function Customers({
         const c = customers.find((x) => x.id === menu.id);
         if (!c) return null;
         return (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
-            <div
-              className="fixed z-50 w-44 bg-white rounded-lg border border-ps-border shadow-lg py-1 text-xs"
-              style={{ top: menu.top, left: menu.left }}
-            >
-              <button onClick={() => { setMenu(null); setEditCustomer(c); setShowForm(true); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
-                <Pencil size={13} /> Edit
-              </button>
+          <RowMenu place={menu} widthClass="w-44" onClose={() => setMenu(null)}>
+              {mayEditParty && (
+                <button onClick={() => { setMenu(null); setEditCustomer(c); setShowForm(true); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
+                  <Pencil size={13} /> Edit
+                </button>
+              )}
               <button onClick={() => { setMenu(null); onNavigate("invoices", c.id); }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                 <FileText size={13} /> View Invoices
@@ -3458,27 +3461,36 @@ function Customers({
                 className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                 <BookOpen size={13} /> View Ledger
               </button>
-              <div className="my-1 border-t border-ps-border" />
-              {c.is_active ? (
+              {mayEditParty && <div className="my-1 border-t border-ps-border" />}
+              {c.is_active && mayEditParty ? (
                 <button onClick={() => { setMenu(null); setDeactivateTarget(c); }}
                   className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                   <Ban size={13} /> Deactivate
                 </button>
-              ) : (
+              ) : !c.is_active && mayEditParty ? (
                 <Button variant="plain" size="none" onClick={() => { setMenu(null); return reactivateCustomer(c); }}
                   className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-green-700">
                   <RotateCcw size={13} /> Reactivate
                 </Button>
+              ) : null}
+              {mayRemoveParty && (
+                <button onClick={() => { setMenu(null); startDelete(c); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-hover text-red-600">
+                  <Trash2 size={13} /> Delete
+                </button>
               )}
-              <button onClick={() => { setMenu(null); startDelete(c); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-hover text-red-600">
-                <Trash2 size={13} /> Delete
-              </button>
-            </div>
-          </>
+          </RowMenu>
         );
       })()}
 
+      {/* A list painted ahead of the real read says when it was read, and says so again if the real read failed (POST-A-124). */}
+      {paintedFrom !== null && (
+        <p role="status" className="text-xs text-ps-hint">
+          {loadFailed
+            ? `Showing the list as it was read at ${readAtText(paintedFrom)}. It could not be refreshed, so it may not be current.`
+            : `Showing the list as it was read at ${readAtText(paintedFrom)} while the current one loads…`}
+        </p>
+      )}
       {/* Table — shared DataTable (search, sort, filters, pagination, export, prefs) */}
       <DataTable
         data={customers}
@@ -3505,26 +3517,29 @@ function Customers({
           </EmptyStateActions>
         }
         bulkActions={[
-          {
-            id: "deactivate",
-            label: "Deactivate",
-            icon: <Ban size={13} />,
-            confirm: "Deactivate the selected customers? They will no longer be available for new invoices. Existing records are unaffected and this can be undone.",
-            run: bulkDeactivate,
-          },
-          {
-            id: "delete-permanent",
-            label: "Delete permanently",
-            icon: <Trash2 size={13} />,
-            variant: "danger",
-            confirm: "Permanently delete the selected customers? Any customer with linked invoices, receipts, credit notes or an opening balance will be skipped. This cannot be undone.",
-            run: bulkDeletePermanent,
-          },
+          ...(mayRemoveParty ? [
+            {
+              id: "deactivate",
+              label: "Deactivate",
+              icon: <Ban size={13} />,
+              confirm: "Deactivate the selected customers? They will no longer be available for new invoices. Existing records are unaffected and this can be undone.",
+              run: bulkDeactivate,
+            },
+            {
+              id: "delete-permanent",
+              label: "Delete permanently",
+              icon: <Trash2 size={13} />,
+              variant: "danger" as const,
+              confirm: "Permanently delete the selected customers? Any customer with linked invoices, receipts, credit notes or an opening balance will be skipped. This cannot be undone.",
+              run: bulkDeletePermanent,
+            },
+          ] : []),
           exportSelectedAction("customers-selected.csv", columns),
         ]}
         rowActions={(c) => (
           <button
             onClick={(e) => openMenuFor(e, c)}
+            aria-haspopup="true" aria-expanded={menu?.id === c.id}
             aria-label={`Actions for ${c.name}`}
             className="p-1 rounded hover:bg-ps-muted text-ps-label"
           >
@@ -3551,6 +3566,8 @@ function Receipts({
    *  table below. Null when the screen was opened any other way. */
   openDoc?: string | null;
 }) {
+  // Reversing a receipt asks `accounting` `approve`, a Partner's alone (POST-A-455).
+  const mayReverse = usePermissions().can("accounting", "approve");
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -3640,7 +3657,7 @@ function Receipts({
     try {
       const token = await getAuthToken();
       const result = await apiCall(`/api/receipts/${r.id}/reverse`, "POST",
-        { reversal_date: todayIstISO() }, token);
+        { reversal_date: todayIstISO() }, token, { timeoutMs: HELD_DIALOG_MS });
       if (!result.success) throw new Error(result.error ?? "Failed to reverse receipt");
       showToast(`${r.receipt_no} reversed — journal and allocations rolled back`, "success");
       load();
@@ -3795,10 +3812,12 @@ function Receipts({
               className="text-2xs text-blue-600 hover:text-blue-800 hover:underline">
               Apply
             </button>
-            <Button variant="plain" size="none" onClick={() => reverseReceipt(r)}
-              className="text-2xs text-red-600 hover:text-red-800 hover:underline">
-              Reverse
-            </Button>
+            {mayReverse && (
+              <Button variant="plain" size="none" onClick={() => reverseReceipt(r)}
+                className="text-2xs text-red-600 hover:text-red-800 hover:underline">
+                Reverse
+              </Button>
+            )}
           </div>
         )}
       />
@@ -3830,6 +3849,9 @@ function ReceiptForm({
 }) {
   const today = todayIstISO();
   const [customerId, setCustomerId] = useState("");
+  // The customers this client invoiced most recently go to the top of the picker (POST-A-155); nothing is pre-selected.
+  const recentCustomerIds = useRecentPartyIds(api.customers.recent, clientId, true);
+  const recentCustomers = useMemo(() => recentFirst(recentCustomerIds, customers), [recentCustomerIds, customers]);
   const [receiptDate, setReceiptDate] = useState(today);
   // A date typed as text that is not a date reads as blank to the form; the
   // save has to know which it was (frontend_ux-19).
@@ -3890,6 +3912,8 @@ function ReceiptForm({
   }, [clientId]);
   const [referenceNo, setReferenceNo] = useState("");
   const [openInvoices, setOpenInvoices] = useState<SalesInvoice[]>([]);
+  // A read of the customer's open invoices that did not come is not a customer with none (POST-A-527): a receipt recorded now would be an advance.
+  const [openInvoicesUnread, setOpenInvoicesUnread] = useState(false);
   const [allocations, setAllocations] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -3934,10 +3958,10 @@ function ReceiptForm({
   // Load open invoices for selected customer, then keep only those in the
   // receipt's own currency (INR when domestic, matching code when foreign).
   useEffect(() => {
-    if (!customerId) { setOpenInvoices([]); return; }
+    if (!customerId) { setOpenInvoices([]); setOpenInvoicesUnread(false); return; }
     async function loadInvoices() {
       const supabase = getSupabaseClient();
-      const { data } = await selectAll(() => supabase
+      const { data, error } = await selectAll(() => supabase
         .from("client_sales_invoices")
         // `outstanding_paise` (migration 278, a GENERATED column: total +
         // debit notes − paid − credited) is what a CA allocates against.
@@ -3947,7 +3971,9 @@ function ReceiptForm({
         .in("status", ["issued", "partially_paid"])
         .order("invoice_date")
         .order("id"));
-      setOpenInvoices((data as SalesInvoice[]) ?? []);
+      // The pager hands a failure back as `error` and does not throw.
+      setOpenInvoicesUnread(!!error);
+      setOpenInvoices(error ? [] : (data as SalesInvoice[]) ?? []);
     }
     loadInvoices();
   }, [customerId, clientId]);
@@ -3998,7 +4024,7 @@ function ReceiptForm({
     .reduce<number>((s, v) => s + (v ?? 0), 0);
 
   async function handleSave() {
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError); return; }
     if (!customerId) { setError("Select a customer"); return; }
     if (amountPaise === null) {
       setError("Amount must be a number of rupees, e.g. 125000 or 125000.50 — without commas.");
@@ -4083,7 +4109,7 @@ function ReceiptForm({
             : {}),
         },
         token
-      );
+      , { timeoutMs: HELD_DIALOG_MS });
       if (!result.success) throw new Error(result.error ?? "Failed to record receipt");
 
       onSaved();
@@ -4106,6 +4132,7 @@ function ReceiptForm({
           <label className="block text-xs font-medium text-ps-label mb-1">Customer *</label>
           <CustomerLookup
             customers={customers}
+            recent={recentCustomers}
             value={customerId}
             onChange={setCustomerId}
             ariaLabel="Customer"
@@ -4301,6 +4328,12 @@ function ReceiptForm({
         </div>
       )}
 
+      {openInvoicesUnread && (
+        <p role="alert" className="text-xs text-state-problem">
+          This customer&apos;s open invoices could not be read, so none can be allocated here. That is not a customer with none: pick the customer
+          again to read them before you record the receipt, or it is recorded as an advance.
+        </p>
+      )}
       {/* Allocate against open invoices */}
       {visibleInvoices.length > 0 && (
         <div className="space-y-2">
@@ -4397,7 +4430,7 @@ function CreditNotes({
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" | "warning" } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [issuingId, setIssuingId] = useState<string | null>(null);
-  const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null);
+  const [menu, setMenu] = useState<({ id: string } & RowMenuPlace) | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -4497,8 +4530,7 @@ function CreditNotes({
   }
 
   function openMenuFor(e: React.MouseEvent, cn: CreditNote) {
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    setMenu({ id: cn.id, top: r.bottom + 4, left: Math.max(8, r.right - 176) });
+    setMenu({ id: cn.id, ...rowMenuAt(e, 176) });
   }
 
   async function issueCreditNote(id: string) {
@@ -4506,7 +4538,7 @@ function CreditNotes({
     setIssuingId(id);
     try {
       const token = await getAuthToken();
-      const result = await apiCall(`/api/credit-notes/${id}/issue`, "POST", undefined, token);
+      const result = await apiCall(`/api/credit-notes/${id}/issue`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
       if (!result.success) throw new Error(result.error ?? "Failed to issue credit note");
       // CGST §34(2), decided by the server against the ORIGINAL SUPPLY's
       // financial year. Issuing is the moment the reduction reaches the ledger
@@ -4538,7 +4570,7 @@ function CreditNotes({
     setDetailId(null);
     try {
       const token = await getAuthToken();
-      const result = await apiCall(`/api/credit-notes/${cn.id}`, "DELETE", undefined, token);
+      const result = await apiCall(`/api/credit-notes/${cn.id}`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
       if (!result.success) throw new Error(result.error ?? "Failed to delete credit note");
       showToast(`${cn.credit_note_no || "Credit note"} deleted`, "success");
       load();
@@ -4673,12 +4705,7 @@ function CreditNotes({
         const c = creditNotes.find((x) => x.id === menu.id);
         if (!c) return null;
         return (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
-            <div
-              className="fixed z-50 w-44 bg-white rounded-lg border border-ps-border shadow-lg py-1 text-xs"
-              style={{ top: menu.top, left: menu.left }}
-            >
+          <RowMenu place={menu} widthClass="w-44" onClose={() => setMenu(null)}>
               <button onClick={() => { setMenu(null); setDetailId(c.id); }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                 View details
@@ -4696,8 +4723,7 @@ function CreditNotes({
                   </Button>
                 </>
               )}
-            </div>
-          </>
+          </RowMenu>
         );
       })()}
 
@@ -4802,6 +4828,7 @@ function CreditNotes({
             )}
             <button
               onClick={(e) => openMenuFor(e, cn)}
+              aria-haspopup="true" aria-expanded={menu?.id === cn.id}
               aria-label={`Actions for credit note ${cn.credit_note_no || cn.id}`}
               className="p-1 rounded hover:bg-ps-muted text-ps-label"
             >
@@ -4848,7 +4875,7 @@ function SalesDebitNotes({
   const [loadFailed, setLoadFailed] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
   const [issuingId, setIssuingId] = useState<string | null>(null);
-  const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null);
+  const [menu, setMenu] = useState<({ id: string } & RowMenuPlace) | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -4945,8 +4972,7 @@ function SalesDebitNotes({
   }
 
   function openMenuFor(e: React.MouseEvent, dn: SalesDebitNote) {
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    setMenu({ id: dn.id, top: r.bottom + 4, left: Math.max(8, r.right - 176) });
+    setMenu({ id: dn.id, ...rowMenuAt(e, 176) });
   }
 
   async function issueDebitNote(id: string) {
@@ -4954,7 +4980,7 @@ function SalesDebitNotes({
     setIssuingId(id);
     try {
       const token = await getAuthToken();
-      const result = await apiCall(`/api/sales-debit-notes/${id}/issue`, "POST", undefined, token);
+      const result = await apiCall(`/api/sales-debit-notes/${id}/issue`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
       if (!result.success) throw new Error(result.error ?? "Failed to issue debit note");
       showToast("Debit note issued", "success");
       load();
@@ -4976,7 +5002,7 @@ function SalesDebitNotes({
     setDetailId(null);
     try {
       const token = await getAuthToken();
-      const result = await apiCall(`/api/sales-debit-notes/${dn.id}`, "DELETE", undefined, token);
+      const result = await apiCall(`/api/sales-debit-notes/${dn.id}`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
       if (!result.success) throw new Error(result.error ?? "Failed to delete debit note");
       showToast(`${dn.debit_note_no || "Debit note"} deleted`, "success");
       load();
@@ -5103,12 +5129,7 @@ function SalesDebitNotes({
         const d = debitNotes.find((x) => x.id === menu.id);
         if (!d) return null;
         return (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
-            <div
-              className="fixed z-50 w-44 bg-white rounded-lg border border-ps-border shadow-lg py-1 text-xs"
-              style={{ top: menu.top, left: menu.left }}
-            >
+          <RowMenu place={menu} widthClass="w-44" onClose={() => setMenu(null)}>
               <button onClick={() => { setMenu(null); setDetailId(d.id); }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                 View details
@@ -5126,8 +5147,7 @@ function SalesDebitNotes({
                   </Button>
                 </>
               )}
-            </div>
-          </>
+          </RowMenu>
         );
       })()}
 
@@ -5232,6 +5252,7 @@ function SalesDebitNotes({
             )}
             <button
               onClick={(e) => openMenuFor(e, dn)}
+              aria-haspopup="true" aria-expanded={menu?.id === dn.id}
               aria-label={`Actions for debit note ${dn.debit_note_no || dn.id}`}
               className="p-1 rounded hover:bg-ps-muted text-ps-label"
             >

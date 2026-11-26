@@ -578,3 +578,237 @@ def test_mock_mode_says_nothing_was_read(monkeypatch):
     out = gw.itc_time_bar(client_id=CLIENT, current_user={"firm_id": FIRM, "role": "Partner"})
     assert out["data"]["items"] == []
     assert "without a database" in out["data"]["notes"][0]
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# A BILL FURNISHED IN A LATER MONTH'S 2B IS ONE ROW (POST-A-062)
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# The reconciliation matches a 2B month against that month's bills only, so an April bill the supplier furnished in June's 2B reads
+# `not_in_2b` in April and its document reads `missing_in_books` in June. The radar listed both and counted the credit twice.
+
+def _late_store(*, june_docs=(("A-LATE", "10-04-2025", "Y"),), april_bills=None):
+    bills = april_bills if april_bills is not None else [_bill("b-late", "A-LATE", "2025-04-10")]
+    store = _world(bills)
+    _reconcile(store, "042025", [])
+    _reconcile(store, "062025", list(june_docs))
+    return store
+
+
+def test_a_bill_furnished_in_a_later_months_2b_is_one_row_that_names_the_month():
+    out, _db = _radar(_late_store())
+    (row,) = out["items"]
+    assert row["kind"] == bar.KIND_FURNISHED_LATER and row["verdict"] == bar.KIND_FURNISHED_LATER
+    assert row["label"] == "A-LATE" and row["document_id"] == "b-late"
+    assert row["document_date"] == "2025-04-10" and row["closes_on"] == "2026-11-30", "the bill's own date decides the year"
+    assert row["return_period"] == "062025" and row["supplier_gstin"] == SUPPLIER
+    assert row["credit_at_risk_paise"] == 18_000 and row["furnished_credit_paise"] == 18_000
+    assert "June 2025" in row["reason"] and "paise" not in row["reason"]
+    assert out["totals"]["credit_at_risk_paise"] == 18_000, "the credit is counted once"
+
+
+def test_the_premise_without_a_later_document_the_bill_is_withheld_and_without_a_bill_the_document_is_unbooked():
+    alone = _late_store(june_docs=())
+    assert [(i["kind"], i["label"]) for i in _radar(alone)[0]["items"]] == [("withheld_bill", "A-LATE")]
+    unbooked = _late_store(april_bills=[])
+    assert [(i["kind"], i["label"]) for i in _radar(unbooked)[0]["items"]] == [("not_booked", "A-LATE")]
+
+
+def test_the_number_is_folded_the_way_the_reconciliation_folds_it():
+    store = _late_store(june_docs=(("a/late", "10-04-2025", "Y"),), april_bills=[_bill("b-late", "A-LATE", "2025-04-10")])
+    (row,) = _radar(store)[0]["items"]
+    assert row["kind"] == bar.KIND_FURNISHED_LATER
+
+
+@pytest.mark.parametrize("june_docs, why", [
+    ((("A-LATE", "10-04-2025", "N"),), "a document 2B marks unavailable is not credit on offer"),
+    ((("A-OTHER", "10-04-2025", "Y"),), "another number"),
+])
+def test_a_document_that_is_not_the_bills_is_not_joined(june_docs, why):
+    labels = sorted((i["kind"], i["label"]) for i in _radar(_late_store(june_docs=june_docs))[0]["items"])
+    assert ("withheld_bill", "A-LATE") in labels, why
+
+
+def test_another_suppliers_document_of_the_same_number_is_not_joined():
+    store = _late_store()
+    store["vendors"][0]["gstin"] = "27BBBBB2222B1Z5"
+    kinds = sorted(i["kind"] for i in _radar(store)[0]["items"])
+    assert kinds == ["not_booked", "withheld_bill"]
+
+
+def test_two_bills_of_one_number_are_ambiguous_and_both_stay_withheld():
+    store = _late_store(april_bills=[_bill("b-late", "A-LATE", "2025-04-10"), _bill("b-late-2", "A-LATE", "2025-04-20")])
+    kinds = sorted(i["kind"] for i in _radar(store)[0]["items"])
+    assert kinds == ["not_booked", "withheld_bill", "withheld_bill"]
+
+
+def test_a_document_in_an_earlier_month_than_the_bill_is_not_its_late_filing():
+    bills = [_bill("b-may", "A-LATE", "2025-05-10")]
+    store = _world(bills)
+    _reconcile(store, "042025", [("A-LATE", "10-04-2025", "Y")])
+    _reconcile(store, "052025", [])
+    kinds = sorted(i["kind"] for i in _radar(store)[0]["items"])
+    assert kinds == ["not_booked", "withheld_bill"]
+
+
+def test_a_document_of_another_financial_year_that_reuses_the_bills_number_is_not_its_late_filing():
+    """Rule 46(b) keeps a number unique within ONE financial year, and the scan spans two: a June 2025 bill '15' and the supplier's
+    May 2026 invoice '15' are two documents. Joined, the CA was told the June 2025 credit is communicated when it is not."""
+    store = _world([_bill("b-15", "15", "2025-06-10")])
+    _reconcile(store, "062025", [])
+    _reconcile(store, "052026", [("15", "10-05-2026", "Y")])
+    rows = sorted((i["kind"], i["label"], i["document_date"], i["closes_on"]) for i in _radar(store)[0]["items"])
+    assert rows == [("not_booked", "15", "2026-05-10", "2027-11-30"),
+                    ("withheld_bill", "15", "2025-06-10", "2026-11-30")]
+
+
+def test_a_march_bill_furnished_in_aprils_2b_is_still_its_late_filing_because_the_year_is_the_documents():
+    """The year compared is the DOCUMENT's date, not the 2B month that carries it: a 20 March 2026 invoice furnished in April 2026's
+    GSTR-2B is FY 2025-26 on both sides, and is joined."""
+    store = _world([_bill("b-mar", "A-MAR", "2026-03-20")])
+    _reconcile(store, "032026", [])
+    _reconcile(store, "042026", [("A-MAR", "20-03-2026", "Y")])
+    (row,) = _radar(store)[0]["items"]
+    assert row["kind"] == bar.KIND_FURNISHED_LATER and row["return_period"] == "042026"
+    assert row["financial_year"] == "2025-26" and row["closes_on"] == "2026-11-30"
+
+
+def test_a_later_document_whose_date_cannot_be_read_is_not_joined_and_stays_unbooked():
+    bill = {"kind": bar.KIND_WITHHELD, "verdict": "not_in_2b", "document_id": "b-1", "document_date": "2025-04-10",
+            "credit_at_risk_paise": 18_000}
+    doc = {"document_type": "invoice", "supplier_gstin": SUPPLIER, "invoice_number": "A-1", "return_period": "062025",
+           "itc_available": "Y", "cgst_paise": 9_000, "sgst_paise": 9_000}
+    keys = {"b-1": (SUPPLIER, "A-1")}
+    for unreadable in (None, "", "10-04-2025", "not a date"):
+        rows, unbooked = bar.join_furnished_later([bill], [{**doc, "invoice_date": unreadable}], keys)
+        assert [r["kind"] for r in rows] == [bar.KIND_WITHHELD] and len(unbooked) == 1, unreadable
+    rows, unbooked = bar.join_furnished_later([bill], [{**doc, "invoice_date": "2025-04-10"}], keys)   # the premise: a date joins
+    assert [r["kind"] for r in rows] == [bar.KIND_FURNISHED_LATER] and unbooked == []
+
+
+def test_a_document_of_another_year_does_not_make_the_bills_own_years_late_filing_ambiguous():
+    """The other year's document is skipped BEFORE the one-bill/one-document test, so it neither joins nor blocks the one that does."""
+    bill = {"kind": bar.KIND_WITHHELD, "verdict": "not_in_2b", "document_id": "b-1", "document_date": "2025-06-10",
+            "credit_at_risk_paise": 18_000}
+    base = {"document_type": "invoice", "supplier_gstin": SUPPLIER, "invoice_number": "15", "itc_available": "Y",
+            "cgst_paise": 9_000, "sgst_paise": 9_000}
+    this_year = {**base, "return_period": "092025", "invoice_date": "2025-06-10"}
+    next_year = {**base, "return_period": "052026", "invoice_date": "2026-05-10"}
+    rows, unbooked = bar.join_furnished_later([bill], [next_year, this_year], {"b-1": (SUPPLIER, "15")})
+    assert [(r["kind"], r["return_period"]) for r in rows] == [(bar.KIND_FURNISHED_LATER, "092025")]
+    assert unbooked == [next_year]
+
+
+def test_a_later_document_for_less_tax_says_both_figures():
+    bills = [_bill("b-late", "A-LATE", "2025-04-10", cgst=12_000, sgst=12_000)]
+    store = _late_store(april_bills=bills)
+    (row,) = _radar(store)[0]["items"]
+    assert row["kind"] == bar.KIND_FURNISHED_LATER
+    assert row["credit_at_risk_paise"] == 24_000 and row["furnished_credit_paise"] == 18_000
+    assert "₹180.00" in row["reason"] and "₹240.00" in row["reason"]
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# THE DATABASE KEEPS ONLY WHAT COULD BE WITHHELD (POST-A-062, migration 616)
+# ═════════════════════════════════════════════════════════════════════════════
+
+class _RpcDB(_DB):
+    """The double with the database function: it answers with the candidates it is given, as the function would."""
+
+    def __init__(self, store, candidates, *, fail=False):
+        super().__init__(store)
+        self.candidates, self.fail, self.calls = candidates, fail, []
+
+    def rpc(self, name, params):
+        self.calls.append((name, params))
+        db = self
+
+        class _Call:
+            def execute(self):
+                if db.fail:
+                    raise RuntimeError("function not found")
+                return _R(db.candidates)
+        return _Call()
+
+
+def _candidate(bid, number, bill_date, **over):
+    row = {"id": bid, "vendor_id": "v1", "vendor_name": "Acme Supplies", "vendor_gstin": SUPPLIER, "bill_no": number,
+           "our_reference": None, "bill_date": bill_date, "is_reverse_charge": False, "examined": True,
+           "igst_paise": 0, "cgst_paise": 9_000, "sgst_paise": 9_000, "cess_paise": 0,
+           "matched": False, "blocked": False, "reason_code": "",
+           "filed_igst_paise": 0, "filed_cgst_paise": 0, "filed_sgst_paise": 0, "filed_cess_paise": 0}
+    row.update(over)
+    return row
+
+
+def test_with_the_function_the_bills_are_not_read_and_the_answer_is_the_same():
+    store = _standard()
+    expected = _radar(store)[0]
+    db = _RpcDB(store, [_candidate("b-unfiled-a", "A-UNFILED", "2025-06-10"),
+                        _candidate("b-unfiled-b", "B-UNFILED", "2026-05-05")])
+    got = svc.radar(db, firm_id=FIRM, client_id=CLIENT, as_of=AS_OF)
+    assert got == expected
+    (name, params), = db.calls
+    assert name == "itc_time_bar_candidates" and params["p_firm_id"] == FIRM and params["p_client_id"] == CLIENT
+    assert params["p_periods"] == ["062025", "052026"] and params["p_from"] == "2025-04-01"
+    assert not [t for t, _f in db.queries if t in ("purchase_bills", "vendors")], "the bills are the function's to read"
+
+
+def test_the_functions_verdict_inputs_reach_the_same_pass():
+    """A blocked candidate is counted and a candidate recorded after its reconciliation is named, from the function's own flags."""
+    store = _standard()
+    db = _RpcDB(store, [
+        _candidate("b-blocked", "BLK", "2025-06-10", matched=True, blocked=True, reason_code="P",
+                   filed_cgst_paise=9_000, filed_sgst_paise=9_000),
+        _candidate("b-late-entry", "LATE-ENTRY", "2025-06-11", examined=False)])
+    out = svc.radar(db, firm_id=FIRM, client_id=CLIENT, as_of=AS_OF)
+    assert out["items"] == [] and out["blocked_by_2b_count"] == 1 and out["not_assessed_count"] == 1
+
+
+def test_a_function_that_cannot_be_called_falls_back_to_reading_the_bills_and_says_so(caplog):
+    store = _standard()
+    expected = _radar(store)[0]
+    db = _RpcDB(store, [], fail=True)
+    with caplog.at_level("ERROR", logger="caflow.itc_time_bar"):
+        got = svc.radar(db, firm_id=FIRM, client_id=CLIENT, as_of=AS_OF)
+    assert got == expected
+    assert any("itc_time_bar_candidates failed" in r.getMessage() for r in caplog.records)
+    assert [t for t, _f in db.queries if t == "purchase_bills"], "the fallback reads the bills"
+
+
+def test_every_kind_the_radar_answers_with_has_a_label_on_the_screen():
+    """The screen indexes its label map by the row's kind, so a kind the server adds and the screen does not name renders as blank.
+    Held from the side that owns the vocabulary."""
+    import pathlib
+    web = pathlib.Path(__file__).resolve().parents[2] / "web"
+    screen = (web / "components" / "gst" / "ItcTimeBarRadar.tsx").read_text()
+    types = (web / "lib" / "api" / "index.ts").read_text()
+    kinds = {v for k, v in vars(bar).items() if k.startswith("KIND_")}
+    assert kinds == {"withheld_bill", "not_booked", "furnished_later"}
+    for kind in kinds:
+        assert f'"{kind}"' in types, kind
+        assert f"{kind}: \"" in screen, kind
+
+
+def test_two_withheld_bills_of_one_number_in_different_years_each_join_only_their_own_years_document():
+    """POST-A-460: the BILL side is keyed by its own financial year too. A June 2025 bill '15' and a June 2026 bill '15' of one supplier
+    are two documents; when only the 2025 one is furnished late, it joins and the 2026 one stays withheld, and the credit is counted
+    once. Keyed by supplier and number alone, the pair 'shared a key' and joined nothing, so the 2025 bill and its later 2B document
+    both stayed as rows and that credit was counted twice."""
+    store = _world([_bill("b-15a", "15", "2025-06-10"), _bill("b-15b", "15", "2026-06-10")])
+    _reconcile(store, "062025", [])
+    _reconcile(store, "082025", [("15", "10-06-2025", "Y")])
+    _reconcile(store, "062026", [])
+    out = _radar(store)[0]
+    rows = sorted((i["kind"], i["document_date"]) for i in out["items"])
+    assert rows == [(bar.KIND_FURNISHED_LATER, "2025-06-10"), ("withheld_bill", "2026-06-10")]
+    assert out["totals"]["credit_at_risk_paise"] == 2 * 18_000, "each bill's credit once, the 2B document not again"
+
+
+def test_two_withheld_bills_of_one_number_in_the_same_year_still_join_nothing():
+    bill = {"kind": bar.KIND_WITHHELD, "verdict": "not_in_2b", "document_date": "2025-06-10", "credit_at_risk_paise": 18_000}
+    doc = {"document_type": "invoice", "supplier_gstin": SUPPLIER, "invoice_number": "15", "return_period": "082025",
+           "invoice_date": "2025-06-10", "itc_available": "Y", "cgst_paise": 9_000, "sgst_paise": 9_000}
+    bills = [{**bill, "document_id": "b-1"}, {**bill, "document_id": "b-2", "document_date": "2025-07-01"}]
+    rows, unbooked = bar.join_furnished_later(bills, [doc], {"b-1": (SUPPLIER, "15"), "b-2": (SUPPLIER, "15")})
+    assert [r["kind"] for r in rows] == [bar.KIND_WITHHELD, bar.KIND_WITHHELD] and unbooked == [doc]

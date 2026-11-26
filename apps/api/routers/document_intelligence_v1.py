@@ -22,6 +22,7 @@ from domain.extraction_totals import check_totals
 from domain.extraction_checks import check_supplier
 from domain.ai import extraction_schemas, gemini_vision, groq_text, untrusted
 from domain.ai.gateway import ProviderFailed
+from core.observability import capture_soft_failure
 
 _logger = logging.getLogger("caflow.doc_intelligence_v1")
 _GROQ_KEY = os.environ.get("GROQ_API_KEY", "")
@@ -305,8 +306,8 @@ def _extract_pdf_text(content: bytes) -> Optional[str]:
         text = pdf_extract(io.BytesIO(content))
         if text and text.strip():
             return text[:8000]  # cap at 8000 chars for token budget
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="document_intelligence.pdf_text_read")
     return None
 
 

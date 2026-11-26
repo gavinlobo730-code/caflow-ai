@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import type { HubTile } from "@/lib/api";
 import { arrayOrEmpty } from "@/lib/api/shape";
 import { NO_FIGURE, formatPaise } from "@/lib/money/format";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 /**
  * The hub — the fifteen tiles of decision D1, at firm or client scope.
@@ -82,11 +83,13 @@ export function Hub({ clientId }: { clientId?: string }) {
 
   if (loading) {
     return (
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        {Array.from({ length: 15 }).map((_, i) => (
-          <div key={i} className="h-24 rounded-lg border border-ps-border bg-white animate-pulse" />
-        ))}
-      </div>
+      <LoadingRegion label="Loading the hub">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          {Array.from({ length: 15 }).map((_, i) => (
+            <div key={i} className="h-24 rounded-lg border border-ps-border bg-white animate-pulse" />
+          ))}
+        </div>
+      </LoadingRegion>
     );
   }
 

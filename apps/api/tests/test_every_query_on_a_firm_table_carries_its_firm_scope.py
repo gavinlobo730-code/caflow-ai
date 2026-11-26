@@ -73,9 +73,10 @@ WHAT THIS DOES NOT SEE (and says so rather than implying it does)
       value even when the callee queries nothing; a non-ownership `assert_*` that names
       `firm_id` counts as a gate; a gate whose result is ignored still counts. An allowlist
       line is bound to (file, function, table, operation, count) and NOT to the chain's
-      content, so a predicate can change under a standing key. Smaller: `.or_()` mentioning
-      `firm_id`, `.filter("firm_id", "neq", x)` and `.eq("firm_id", None)` count as the
-      filter; `.from_("t")` is read as no chain; a helper passed by reference is not a call;
+      content, so a predicate can change under a standing key. Smaller, and CLOSED on
+      22-11-2026 (POST-A-019, first slice): an `.or_()` that only mentions `firm_id`,
+      `.filter("firm_id", "neq", x)` and `.eq("firm_id", None)` used to count as the filter and
+      no longer do (the controls below hold each), and `.from_("t")` is read as the query it is. Still open: a helper passed by reference is not a call;
       a call inside a `_USE_MOCK` branch is read as no query; a relation a newer migration
       gives a firm_id by a view, a multi-action ALTER, CREATE TABLE AS or LIKE is not found
       until the snapshot is refreshed. None is relied on by a chain in the tree today
@@ -93,6 +94,8 @@ import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+
+import pytest
 
 TESTS = Path(__file__).resolve().parent
 API = TESTS.parent
@@ -195,9 +198,12 @@ REPORTED_EXPOSURES: tuple = ()
 #: 37 -> 38 and 8 -> 9 on 26-10-2026 (POST-A-339): `core/acting_client.ActingClient.table(name)` hands the name its caller gave to the
 #: wrapped client and only labels the request with the person it acts for; it is a pass-through, and the calls that reach it name
 #: their table (and carry their firm) as literal chains the reader reads at their own call site.
+#: 38 -> 39 and 9 -> 10 on 22-11-2026 (POST-A-019, first slice): the reader now sees `.from_("t")`, the alias supabase-py offers for
+#: `.table("t")`, which it used to read as no query at all. The one use in the server is the same pass-through's twin,
+#: `ActingClient.from_(name)`; nothing else in the server names a table by the alias, and a query that does is now judged like any other.
 UNREADABLE_BUDGET = {
-    "table_named_by_a_variable": 38,
-    "handed_on_without_a_visible_firm_filter": 9,
+    "table_named_by_a_variable": 39,
+    "handed_on_without_a_visible_firm_filter": 10,
     "same_name_calls_not_provably_the_helper": 5,
 }
 
@@ -803,6 +809,103 @@ def test_a_new_query_on_customers_with_no_firm_scope_fails():
         "    return (db.table(\"customers\").select(\"*\").eq(\"id\", customer_id)\n"
         "            .eq(\"firm_id\", firm_id).execute().data)\n")
     assert _newly_unscoped(rel, src, scoped) == []
+
+
+def _helper_on_customers(body: str) -> list[tuple]:
+    """What the reader says of one new helper on `customers` whose query is `body`, appended to a real router."""
+    rel = "routers/customers.py"
+    src = (API / rel).read_text(encoding="utf-8")
+    added = src + ("\n\ndef _a_helper_somebody_adds(db, firm_id, client_id, customer_id):\n"
+                   f"    return (db.table(\"customers\").select(\"*\"){body}.execute().data)\n")
+    return _newly_unscoped(rel, src, added)
+
+
+_NOT_A_SCOPE = [
+    # (what somebody might write, why it confines nothing)
+    ('.filter("firm_id", "neq", firm_id)', "every OTHER firm's rows"),
+    ('.filter("firm_id", "gt", firm_id)', "an operator that is not eq or in"),
+    ('.filter("firm_id", op, firm_id)', "an operator the reader cannot see"),
+    ('.eq("firm_id", None)', "no firm named"),
+    ('.eq("firm_id", "")', "no firm named"),
+    ('.in_("firm_id", [])', "no firm named"),
+    ('.match({"firm_id": None})', "no firm named"),
+    ('.or_(f"firm_id.eq.{firm_id},client_id.eq.{client_id}")', "a second way into the answer"),
+    ('.or_(f"firm_id.eq.{firm_id},id.eq.{customer_id}")', "a second way into the answer"),
+    ('.or_(f"firm_id.neq.{firm_id}")', "every other firm's rows"),
+    ('.or_("firm_id.is.null")', "no alternative is the caller's firm"),
+    ('.or_(f"and(firm_id.eq.{firm_id},client_id.eq.{client_id}),id.eq.{customer_id}")', "a nested group is not read"),
+    ('.or_(some_filter_built_elsewhere)', "a string the reader cannot see"),
+]
+_A_SCOPE = [
+    '.eq("firm_id", firm_id)',
+    '.in_("firm_id", [firm_id])',
+    '.filter("firm_id", "eq", firm_id)',
+    '.match({"firm_id": firm_id})',
+    '.or_(f"firm_id.eq.{firm_id},firm_id.is.null")',        # the caller's rows and the stock ones (task templates)
+    '.or_(f"firm_id.eq.{firm_id},is_system.eq.true")',      # the caller's rows and the system ones (workflow templates)
+]
+
+
+@pytest.mark.parametrize("body,why", _NOT_A_SCOPE, ids=[b for b, _ in _NOT_A_SCOPE])
+def test_a_filter_that_only_mentions_the_firm_column_is_not_a_scope(body, why):
+    """POST-A-019, the smaller shapes. Each of these used to count as the firm filter because the column's name is in it."""
+    added = _helper_on_customers(body)
+    assert added == [("routers/customers.py", "_a_helper_somebody_adds", "customers", "read")], f"{body} was read as a firm scope ({why})"
+    assert _guard_verdict(added[0]) == [added[0]]
+
+
+@pytest.mark.parametrize("body", _A_SCOPE)
+def test_a_filter_that_confines_the_read_to_a_firm_still_is_one(body):
+    assert _helper_on_customers(body) == [], f"{body} is no longer read as a firm scope"
+
+
+def test_a_query_written_with_the_alias_for_a_table_is_read_like_any_other():
+    """`.from_("t")` is supabase-py's other name for `.table("t")`. The reader used to see no query in it, so an unscoped read
+    written that way was invisible; and a storage bucket, reached by `.storage.from_(bucket)`, is not a table and is still not one."""
+    rel = "routers/customers.py"
+    src = (API / rel).read_text(encoding="utf-8")
+    leaky = src + ("\n\ndef _a_helper_somebody_adds(db, customer_id):\n"
+                   "    return db.from_(\"customers\").select(\"*\").eq(\"id\", customer_id).execute().data\n")
+    added = _newly_unscoped(rel, src, leaky)
+    assert added == [(rel, "_a_helper_somebody_adds", "customers", "read")], added
+    assert _guard_verdict(added[0]) == [added[0]]
+    scoped = src + ("\n\ndef _a_helper_somebody_adds(db, firm_id, customer_id):\n"
+                    "    return db.from_(\"customers\").select(\"*\").eq(\"firm_id\", firm_id).eq(\"id\", customer_id).execute().data\n")
+    assert _newly_unscoped(rel, src, scoped) == []
+    a_bucket = src + ("\n\ndef _a_helper_somebody_adds(client, path):\n"
+                      "    return client.storage.from_(\"customers\").download(path)\n")
+    assert _newly_unscoped(rel, src, a_bucket) == [], "a storage bucket was read as a table"
+
+
+def test_an_or_that_gains_a_second_way_in_turns_the_guard_red_in_the_real_tree():
+    """The five `.or_()` chains the tree holds are each the caller's firm or a row every firm reads. Adding one alternative to a
+    real one is the mutation this change exists to catch: it kept the column's name in the string and the old reader stayed green."""
+    rel = "repositories/task_template_repository.py"
+    src = (API / rel).read_text(encoding="utf-8")
+    needle = 'query = query.or_(f"firm_id.eq.{firm_id},firm_id.is.null")'
+    assert src.count(needle) == 1, "the control's premise moved: pick another chain that is scoped by an or_"
+    widened = src.replace(needle, 'query = query.or_(f"firm_id.eq.{firm_id},firm_id.is.null,name.eq.{name}")')
+    assert _newly_unscoped(rel, src, widened), "an or_ with a third way in is still read as a firm scope"
+    assert _newly_unscoped(rel, src, src) == []
+
+
+def test_every_or_the_tree_holds_on_the_firm_column_is_one_the_reader_accepts():
+    """Counted, so the rule above is known to be exercised by real code and not only by the controls: eight today, each the
+    caller's own rows with the stock task templates (a NULL firm) or with the system workflow templates (`is_system`). A new one
+    that is not the caller's firm or a shared row fails the guard itself; this count moves only when one is added or removed."""
+    found = []
+    for path in sorted(API.rglob("*.py")):
+        rel = path.relative_to(API).as_posix()
+        if rel.startswith(("tests/", "venv", ".venv", "scripts/")):
+            continue
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "or_" and node.args:
+                text = S._or_text(node.args[0])
+                if text is not None and "firm_id" in text:
+                    found.append((rel, text, S._or_confines_to_a_firm(node.args[0])))
+    assert len(found) == 8, found
+    assert {text for _rel, text, _ok in found} == {"firm_id.eq.{},firm_id.is.null", "firm_id.eq.{},is_system.eq.true"}, found
+    assert all(ok for _rel, _text, ok in found), [f for f in found if not f[2]]
 
 
 def test_an_allowlist_line_whose_chain_was_fixed_is_stale_and_fails():

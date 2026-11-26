@@ -3,11 +3,11 @@ Statutory figures the FIRM recorded, and the rules for using one.
 
 WHY THESE COME FROM A TABLE AND NOT FROM CODE
 
-Professional tax is levied by twenty-two states, each setting its own slabs by
-its own notification on its own cycle. professional_tax.py models FOUR of them
-and reports a named gap for the rest rather than deducting zero, which is right
-— Article 276 makes the employer liable to deduct and deposit it, so a silent
-nil is a shortfall with interest, not an absence of liability.
+Professional tax is set by each state, by its own notification on its own
+cycle. professional_tax.py has FOUR states' slabs built in and reports a named
+gap for every other state it lists as levying the tax rather than deducting zero
+in silence (who is liable for what was not deducted is each state's own Act, not
+read here: the owner's list, S9).
 
 Correct, and not a product. Writing the other eighteen states' slabs from
 memory would put eighteen confidently wrong deductions into people's pay, and
@@ -67,6 +67,8 @@ def _as_date(value) -> date | None:
     try:
         return date.fromisoformat(str(value)[:10])
     except (TypeError, ValueError):
+        # Not a date. A DATE or timestamp column always reads back as ISO text, so a stored one never lands here: this is an absent value or text that
+        # was never a date, and None says there is none.
         return None
 
 
@@ -200,9 +202,9 @@ def slabs_recorded_against_a_modelled_state(slabs: list[dict],
     states = sorted({str(s.get("state") or "").strip().upper() for s in (slabs or [])}
                     & set(modelled))
     return [
-        f"Professional-tax slabs are recorded for {state}, but {state} is modelled "
-        f"in the software and verified against the state Act, so the recorded "
-        f"slabs were NOT used. If the state has issued a new notification, say so "
-        f"— this needs a code change, not a settings change."
+        f"Professional-tax slabs are recorded for {state}, but {state}'s slabs are "
+        f"built into the software, so the recorded slabs were NOT used. If the "
+        f"state has issued a new notification, say so: this needs a code change, "
+        f"not a settings change."
         for state in states
     ]

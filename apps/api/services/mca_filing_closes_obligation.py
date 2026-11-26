@@ -49,6 +49,7 @@ WHAT THIS DOES
 from __future__ import annotations
 
 import re
+from domain.practice.compliance_overdue import SETTLED, is_settled
 from typing import Any, Collection, Iterable, Optional, Sequence
 
 from datetime import date
@@ -85,6 +86,7 @@ def _year_in(text: Any) -> Optional[str]:
     try:
         return normalise_fy_label(match.group(1))
     except ValueError:
+        # Looks like a year label and is not one (2025-27): no year is read from the text.
         return None
 
 
@@ -142,6 +144,7 @@ def _year_of_window(start: Any, end: Any) -> Optional[str]:
     try:
         year = ist_fy_label(date.fromisoformat(first))
     except ValueError:
+        # The window does not start on a readable day: it is no financial year's window.
         return None
     return year if fy_bounds(year) == (first, last) else None
 
@@ -159,7 +162,7 @@ def open_years_for(firm_id: str, client_id: str, form_type: Optional[str]) -> Op
     wanted = OBLIGATION_FOR_FORM[form_type]
     years: dict[str, dict[str, Any]] = {}
     for r in compliance_records_repo.find_all(firm_id=firm_id, client_id=client_id, compliance_type=COMPLIANCE_TYPE,
-                                              exclude_statuses=["Filed", "Completed"]):
+                                              exclude_statuses=list(SETTLED)):
         if r.get("obligation_type") != wanted:
             continue
         year = _year_of_window(r.get("period_start"), r.get("period_end"))
@@ -231,7 +234,7 @@ def close_for_filed_filing(
                and str(r.get("period_end") or "")[:10] == end]
     if not matches:
         return answer(NOT_ON_THE_CALENDAR, f"No {what} is on the compliance calendar, so none was closed.")
-    open_ones = [r for r in matches if r.get("status") not in ("Filed", "Completed")]
+    open_ones = [r for r in matches if not is_settled(r.get("status"))]
     if not open_ones:
         return answer(ALREADY_FILED, f"The {what} was already recorded as filed, so it was left as it is.",
                       matches[0].get("id"))

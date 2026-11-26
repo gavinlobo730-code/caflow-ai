@@ -7,7 +7,7 @@
 # function. This file may only SHRINK: `python scripts/ci/ruff_ratchet.py --update` deletes lines that no
 # longer fire and lowers numbers that fell, and cannot add or raise anything. A line is a defect the product
 # carries today, written down. It is never a judgement that the code is fine.
-core/auth.py :: B904 :: get_current_user :: 3
+core/auth.py :: B904 :: get_current_user :: 2
 core/auth.py :: B904 :: get_jwt_user :: 2
 core/ist_clock.py :: B904 :: fy_bounds :: 1
 domain/accounting/cost_centre.py :: F401 :: <module> :: 1
@@ -36,7 +36,7 @@ domain/banking/vision.py :: F401 :: <module> :: 1
 domain/compliance_record_service.py :: B904 :: _filed_date_for :: 1
 domain/compliance_record_service.py :: B904 :: clean_filed_date :: 1
 domain/currency/document_currency.py :: B904 :: resolve_document_currency :: 2
-domain/demo/fixture.py :: F401 :: <module> :: 2
+domain/demo/fixture.py :: F401 :: <module> :: 1
 domain/document_intelligence_service.py :: F401 :: <module> :: 1
 domain/fixed_assets/opening_register.py :: C901 :: plan :: 39
 domain/fixed_assets/opening_register.py :: PLR0915 :: plan :: 111
@@ -85,8 +85,7 @@ domain/payroll/annexure2.py :: F841 :: build_annexure_ii :: 1
 domain/payroll/attendance.py :: B904 :: _whole_number :: 1
 domain/payroll/declarations.py :: C901 :: validate :: 16
 domain/payroll/ecr.py :: F401 :: <module> :: 1
-domain/payroll/employee_import.py :: C901 :: validate :: 26
-domain/payroll/employee_import.py :: PLR0915 :: validate :: 77
+domain/payroll/employee_import.py :: C901 :: validate :: 23
 domain/payroll/exceptions.py :: F401 :: <module> :: 1
 domain/payroll/firm_rates.py :: B905 :: bands_cover_every_wage :: 1
 domain/payroll/handoff.py :: F541 :: epf_obligation :: 1
@@ -114,7 +113,7 @@ domain/tds/section_195.py :: F401 :: <module> :: 1
 domain/tds/vocabulary.py :: B904 :: act_for_fy :: 1
 domain/tds/vocabulary.py :: B904 :: certificate_form :: 1
 domain/tds/vocabulary.py :: B904 :: statement_form :: 1
-domain/workflow_engine_v2.py :: F401 :: <module> :: 2
+domain/workflow_engine_v2.py :: F401 :: <module> :: 1
 domain/workflow_engine_v2.py :: F401 :: WorkflowEngineV2._eval_rule :: 1
 jobs/scheduler.py :: C901 :: run_daily_jobs :: 30
 jobs/scheduler.py :: F401 :: <module> :: 1
@@ -131,7 +130,6 @@ models/payroll.py :: B904 :: ApplyStructureIn._iso_date :: 1
 repositories/assignment_repository.py :: F401 :: <module> :: 1
 repositories/assignment_rule_repository.py :: C901 :: AssignmentRuleRepository.evaluate_rules :: 18
 repositories/automation_repository.py :: F401 :: <module> :: 1
-repositories/compliance_records_repository.py :: C901 :: ComplianceRecordsRepository.find_all :: 17
 repositories/compliance_records_repository.py :: F401 :: <module> :: 1
 repositories/escalation_rule_repository.py :: F401 :: <module> :: 1
 repositories/notifications_repository.py :: F401 :: <module> :: 1
@@ -169,10 +167,9 @@ routers/compliance_ops.py :: B904 :: _assert_obligation_scope :: 1
 routers/compliance_ops.py :: B904 :: mark_filed_obligation :: 2
 routers/compliance_ops.py :: B904 :: transition_obligation :: 2
 routers/compliance_ops.py :: F401 :: <module> :: 1
-routers/compliance_records.py :: B904 :: create_compliance_record :: 1
 routers/compliance_records.py :: B904 :: get_client_health :: 1
 routers/compliance_records.py :: B904 :: get_compliance_record :: 1
-routers/compliance_records.py :: B904 :: update_compliance_record :: 2
+routers/compliance_records.py :: B904 :: update_compliance_record :: 1
 routers/compliance_records.py :: F401 :: <module> :: 1
 routers/cost_centres.py :: B904 :: create_cost_centre :: 1
 routers/cost_centres.py :: B904 :: update_cost_centre :: 1
@@ -197,7 +194,6 @@ routers/document_intelligence.py :: F811 :: trigger_extraction :: 1
 routers/document_intelligence_v1.py :: F401 :: <module> :: 2
 routers/document_intelligence_v2.py :: F841 :: approve_notice :: 1
 routers/document_intelligence_v2.py :: F841 :: extract_notice :: 1
-routers/document_intelligence_v2.py :: F841 :: get_notice :: 1
 routers/document_intelligence_v2.py :: F841 :: list_notices :: 1
 routers/document_intelligence_v2.py :: F841 :: update_notice_status :: 1
 routers/documents.py :: F401 :: <module> :: 2
@@ -206,13 +202,11 @@ routers/einvoice.py :: B904 :: cancel_irn :: 1
 routers/einvoice.py :: B904 :: create_record :: 1
 routers/einvoice.py :: B904 :: invoices_that_owe_an_irn_and_have_none :: 1
 routers/einvoice.py :: B904 :: record_irn_generated :: 1
-routers/einvoice.py :: F401 :: <module> :: 1
 routers/engagement_letters.py :: B904 :: change_recipient :: 1
 routers/engagement_letters.py :: F841 :: update_engagement :: 1
 routers/engagements.py :: F401 :: <module> :: 2
 routers/engagements.py :: F841 :: delete_engagement :: 2
 routers/engagements.py :: F841 :: get_engagement :: 1
-routers/engagements.py :: F841 :: update_engagement :: 1
 routers/eway_bill.py :: B904 :: ExtendEWBRequest._a_date :: 1
 routers/eway_bill.py :: B904 :: cancel_ewb :: 1
 routers/eway_bill.py :: B904 :: create_eway_bill :: 1
@@ -250,7 +244,6 @@ routers/gst_workspace.py :: B904 :: upload_gstr2b :: 1
 routers/gst_workspace.py :: C901 :: update_gstr3b_status :: 16
 routers/gst_workspace.py :: F401 :: <module> :: 3
 routers/gst_workspace.py :: F841 :: filing_history :: 1
-routers/gst_workspace.py :: F841 :: get_gstr2b :: 1
 routers/gst_workspace.py :: F841 :: get_gstr3b :: 1
 routers/gst_workspace.py :: F841 :: gst_dashboard :: 1
 routers/gst_workspace.py :: F841 :: list_returns :: 1
@@ -275,7 +268,6 @@ routers/inventory.py :: B904 :: expiry_report :: 1
 routers/inventory.py :: B904 :: position_detail :: 1
 routers/inventory.py :: F401 :: <module> :: 1
 routers/invoices.py :: B904 :: generate_from_engagement :: 2
-routers/invoices.py :: B904 :: generate_from_time_entries :: 1
 routers/itr_workspace.py :: B904 :: create_bf_loss :: 1
 routers/itr_workspace.py :: B904 :: create_deduction :: 1
 routers/itr_workspace.py :: B904 :: create_disallowance :: 1
@@ -292,17 +284,8 @@ routers/lifecycle.py :: C901 :: convert_lead :: 25
 routers/lifecycle.py :: F401 :: <module> :: 1
 routers/lifecycle.py :: F541 :: convert_lead :: 2
 routers/lifecycle.py :: PLR0915 :: convert_lead :: 99
-routers/mca_workspace.py :: F841 :: create_company :: 1
-routers/mca_workspace.py :: F841 :: create_filing :: 1
-routers/mca_workspace.py :: F841 :: filing_history :: 1
-routers/mca_workspace.py :: F841 :: get_company :: 1
-routers/mca_workspace.py :: F841 :: get_filing :: 2
-routers/mca_workspace.py :: F841 :: list_companies :: 1
-routers/mca_workspace.py :: F841 :: list_directors :: 1
-routers/mca_workspace.py :: F841 :: list_filings :: 1
+routers/mca_workspace.py :: F841 :: get_filing :: 1
 routers/mca_workspace.py :: F841 :: mca_calendar :: 1
-routers/mca_workspace.py :: F841 :: update_director :: 1
-routers/mca_workspace.py :: F841 :: update_filing_status :: 1
 routers/notifications.py :: B904 :: set_email_preference :: 1
 routers/payroll.py :: B904 :: _finalised_run_inputs :: 1
 routers/payroll.py :: B904 :: _parse_leaving_date :: 1
@@ -364,10 +347,10 @@ routers/sales_invoices.py :: B905 :: update_invoice :: 2
 routers/sales_invoices.py :: C901 :: _create_invoice_core :: 24
 routers/sales_invoices.py :: C901 :: bulk_create_invoices :: 18
 routers/sales_invoices.py :: C901 :: list_invoices :: 17
-routers/sales_invoices.py :: C901 :: update_invoice :: 27
+routers/sales_invoices.py :: C901 :: update_invoice :: 26
 routers/sales_invoices.py :: F401 :: _do_send_invoice :: 1
 routers/sales_invoices.py :: PLR0915 :: _create_invoice_core :: 145
-routers/sales_invoices.py :: PLR0915 :: update_invoice :: 139
+routers/sales_invoices.py :: PLR0915 :: update_invoice :: 138
 routers/search.py :: C901 :: global_search :: 39
 routers/search.py :: PLR0915 :: global_search :: 112
 routers/service_catalogue.py :: B007 :: bulk_create_services :: 1
@@ -393,7 +376,6 @@ routers/tds.py :: F401 :: <module> :: 2
 routers/tds_workspace.py :: B904 :: _resolve_manual_deduction :: 2
 routers/tds_workspace.py :: B904 :: create_return :: 1
 routers/tds_workspace.py :: B904 :: deposit_due :: 1
-routers/tds_workspace.py :: C901 :: update_return_status :: 16
 routers/vendors.py :: B007 :: create_vendors_bulk :: 1
 routers/vendors.py :: B905 :: create_vendors_bulk :: 1
 routers/vendors.py :: C901 :: create_vendor :: 17
@@ -428,7 +410,6 @@ services/audit_query_service.py :: B904 :: ist_day_bounds._parse :: 1
 services/bank_batch_service.py :: B904 :: BankBatchService.add_attachment :: 1
 services/bank_batch_service.py :: B904 :: BankBatchService.remove_attachment :: 1
 services/bank_column_mapping_service.py :: F401 :: <module> :: 1
-services/bank_entry_service.py :: F401 :: <module> :: 1
 services/bank_exception_service.py :: C901 :: _matched_documents :: 18
 services/bank_payee_service.py :: F401 :: <module> :: 1
 services/bank_posting_service.py :: B904 :: BankPostingService._charge_lines :: 2
@@ -451,7 +432,6 @@ services/bill_of_entry_service.py :: F401 :: <module> :: 1
 services/book_to_tax_service.py :: F541 :: section_43bh_disallowance :: 4
 services/client_gst_registration_service.py :: B904 :: resolve :: 1
 services/client_gst_registration_service.py :: F401 :: <module> :: 1
-services/coa_seed_service.py :: F401 :: <module> :: 1
 services/compliance_engine.py :: F401 :: <module> :: 1
 services/cwip_service.py :: F401 :: <module> :: 1
 services/ecommerce_operator_service.py :: F401 :: <module> :: 1
@@ -464,7 +444,6 @@ services/gst_2b_reconciliation_service.py :: B023 :: holders_of :: 2
 services/gst_advance_service.py :: F401 :: <module> :: 1
 services/gstr9_service.py :: B904 :: build :: 1
 services/income_tax_worksheet_service.py :: F401 :: <module> :: 1
-services/intelligence_service.py :: B007 :: compute_journal_suggestions :: 1
 services/intelligence_service.py :: C901 :: compute_compliance_risk :: 17
 services/intelligence_service.py :: F401 :: <module> :: 1
 services/invoice_lifecycle_service.py :: F401 :: <module> :: 2
@@ -473,7 +452,6 @@ services/invoice_pdf_service.py :: PLR0915 :: _render_tax_invoice :: 137
 services/irn_worklist_service.py :: B904 :: _since :: 1
 services/irn_worklist_service.py :: C901 :: worklist :: 22
 services/itc_time_bar_service.py :: B023 :: _unbooked_documents :: 2
-services/itc_time_bar_service.py :: F401 :: <module> :: 1
 services/knowledge_service.py :: F401 :: <module> :: 1
 services/knowledge_service.py :: F841 :: archive_article :: 1
 services/knowledge_service.py :: F841 :: restore_version :: 1
@@ -537,7 +515,6 @@ services/task_service.py :: F401 :: <module> :: 2
 services/tds_register_service.py :: C901 :: sync_for_bill :: 16
 services/tds_return_service.py :: B905 :: _payment_codes :: 1
 services/tds_return_service.py :: B905 :: tds_24q_from_books :: 1
-services/tds_return_service.py :: B905 :: tds_26q_from_books :: 1
 services/tds_return_service.py :: B905 :: tds_27q_from_books :: 1
 services/timeline_service.py :: F401 :: TimelineService.log :: 1
 services/vendor_statement_service.py :: F401 :: <module> :: 3
@@ -945,7 +922,6 @@ tests/test_the_year_end_fx_revaluation_has_a_door.py :: F401 :: <module> :: 1
 tests/test_the_year_end_statements_use_the_chart_of_accounts.py :: F401 :: <module> :: 1
 tests/test_time_tracking_client_scope.py :: F401 :: test_export_time_entries_drops_rows_outside_the_effective_scope :: 2
 tests/test_two_identical_transactions_are_two.py :: F401 :: <module> :: 1
-tests/test_users_fk_columns_take_the_internal_id.py :: B905 :: _params_carrying_a_users_id :: 1
 tests/test_v13_payroll_assets.py :: F401 :: <module> :: 1
 tests/test_v13_payroll_assets.py :: F841 :: TestTDS192.test_new_regime_surcharge_capped_at_25_percent :: 1
 tests/test_vendor_payment_concurrency.py :: F811 :: _Q.limit :: 1

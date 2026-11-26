@@ -36,8 +36,8 @@ export function getActiveWorkspaceForPathname(pathname: string): WorkspaceId | n
   // list strip its sidebar, so it rendered with no navigation and no ⌘K, and
   // nothing in the product linked to it. It now lives at /clients/onboarding
   // and reaches Clients through the ordinary /clients prefix check below,
-  // with no special case needed. /onboarding/checklist is a redirect stub
-  // kept for bookmarks and answers null here, same as /onboarding itself.
+  // with no special case needed. /onboarding/checklist has no page now
+  // (POST-A-562) and answers null here, same as /onboarding itself.
   if (
     pathname === "/" ||
     pathname.startsWith("/calendar") ||
@@ -82,9 +82,12 @@ export function getActiveWorkspaceForPathname(pathname: string): WorkspaceId | n
   // or it is unreachable.
   if (pathname.startsWith("/payroll")) return "payroll";
 
+  // Asked BEFORE the `/accounting` prefix below, which would otherwise take it: the ageing of the practice's earlier fee
+  // bills is a My practice screen at an address it has had since it was on the Accounting menu (POST-B-193).
+  if (pathname.startsWith("/accounting/receivables")) return "practice";
+
   if (
     pathname.startsWith("/accounting") ||
-    pathname.startsWith("/billing") ||
     pathname.startsWith("/migration")
   )
     return "accounting";
@@ -95,7 +98,8 @@ export function getActiveWorkspaceForPathname(pathname: string): WorkspaceId | n
   if (pathname.startsWith("/health"))
     return "health";
 
-  if (pathname.startsWith("/practice") || pathname.startsWith("/executive-dashboard"))
+  // `/billing` is the earlier fee bills, a read-only record in My practice since 21-11-2026 (POST-B-193).
+  if (pathname.startsWith("/practice") || pathname.startsWith("/billing") || pathname.startsWith("/executive-dashboard"))
     return "practice";
 
   if (pathname.startsWith("/knowledge"))

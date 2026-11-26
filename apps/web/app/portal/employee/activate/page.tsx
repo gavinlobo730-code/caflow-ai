@@ -51,12 +51,17 @@ import { api } from "@/lib/api";
 import { setPasswordWithReauthNonce, isInvalidNonceError } from "@/lib/auth/reauth";
 import { hasEmployeePortalAccess } from "@/lib/portal/employeeAccess";
 import { Eye, EyeOff, ShieldCheck, AlertCircle, Loader2 } from "lucide-react";
+import { FrontDoor } from "@/components/FrontDoor";
+import { passwordProblem } from "@/lib/auth/passwordRules";
+import { PasswordRules } from "@/components/auth/PasswordRules";
+import { authErrorMessage } from "@/lib/auth/authErrorMessage";
 
-const MIN_LENGTH = 10;
 const SESSION_WAIT_ATTEMPTS = 10;
 const SESSION_WAIT_INTERVAL_MS = 500;
 
-type Stage = "verifying" | "invalid" | "form" | "reauth" | "done";
+/** "linked": the invitation was accepted by a sign-in that is already a member of staff (POST-A-549). No password is asked
+ *  for: the one they have is the one they sign in to the practice with, and setting one here would replace it. */
+type Stage = "verifying" | "invalid" | "form" | "reauth" | "done" | "linked";
 
 /** Does this identity already have employee-portal access? A spent single-use
  *  token is only an error if they have no access yet, so this decides whether
@@ -132,8 +137,8 @@ export default function EmployeeActivatePage() {
       }
 
       try {
-        await api.portalSelf.acceptEmployeeInvite(token);
-        if (!cancelled) setStage("form");
+        const accepted = await api.portalSelf.acceptEmployeeInvite(token);
+        if (!cancelled) setStage(accepted?.data?.staff_sign_in === true ? "linked" : "form");
       } catch {
         const active = await alreadyActivated();
         if (cancelled) return;
@@ -148,8 +153,10 @@ export default function EmployeeActivatePage() {
   async function handleSetPassword(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    if (pw.length < MIN_LENGTH) {
-      setError(`Use at least ${MIN_LENGTH} characters.`);
+    // Every rule the sign-in service enforces, before anything is sent (POST-A-477).
+    const rulesProblem = passwordProblem(pw);
+    if (rulesProblem) {
+      setError(rulesProblem);
       return;
     }
     if (pw !== pw2) {
@@ -167,11 +174,11 @@ export default function EmployeeActivatePage() {
           setStage("reauth");
           return;
         }
-        throw new Error(err.message);
+        throw new Error(authErrorMessage(err));
       }
       setStage("done");
     } catch (ex) {
-      setError(ex instanceof Error ? ex.message : "Could not set your password.");
+      setError(authErrorMessage(ex, "Could not set your password."));
     } finally {
       setSaving(false);
     }
@@ -184,21 +191,17 @@ export default function EmployeeActivatePage() {
     try {
       const { error: err } = await setPasswordWithReauthNonce(
         supabase.auth, pwRef.current, reauthOtp);
-      if (err) throw new Error(err.message);
+      if (err) throw new Error(authErrorMessage(err));
       setStage("done");
     } catch (ex) {
-      setReauthError(ex instanceof Error ? ex.message : "That code did not work.");
+      setReauthError(authErrorMessage(ex, "That code did not work."));
     } finally {
       setSaving(false);
     }
   }
 
   const shell = (children: React.ReactNode) => (
-    <div className="min-h-screen bg-ps-bg flex items-center justify-center p-6">
-      <div className="w-full max-w-md bg-white rounded-xl border border-ps-border p-6 shadow-sm">
-        {children}
-      </div>
-    </div>
+    <FrontDoor name="PracticeSync" width="wide">{children}</FrontDoor>
   );
 
   if (stage === "verifying") {
@@ -236,15 +239,22 @@ export default function EmployeeActivatePage() {
     );
   }
 
-  if (stage === "done") {
+  // "done" (a password was set) and "linked" (the sign-in is already a member of staff, so none was asked for: POST-A-549) are the
+  // same step with different words, and one heading: this page's own headings are a frozen list that only shrinks.
+  if (stage === "done" || stage === "linked") {
+    const linked = stage === "linked";
     return shell(
-      <div>
+      <div {...(linked ? { "data-activation-linked": "" } : {})}>
         <div className="flex items-start gap-2 mb-4">
           <ShieldCheck className="w-5 h-5 text-state-ready shrink-0 mt-0.5" />
           <div>
-            <h1 className="text-base font-semibold text-ps-ink">You&apos;re all set</h1>
+            <h1 className="text-base font-semibold text-ps-ink">
+              {linked ? "Your payslips are linked to your sign-in" : "You\u2019re all set"}
+            </h1>
             <p className="text-sm text-ps-label mt-1">
-              You can now view your payslips and leave balance any time.
+              {linked
+                ? "You already sign in to PracticeSync with this email address, so there is no new password to set: you sign in the same way as before. Your own payslips and leave balance are under My payslips in the account menu."
+                : "You can now view your payslips and leave balance any time."}
             </p>
           </div>
         </div>
@@ -293,13 +303,14 @@ export default function EmployeeActivatePage() {
         like, without waiting for another email.
       </p>
 
+      <div className="mb-3"><PasswordRules password={pw} id="employee-activate-password-rules" /></div>
       <div className="relative mb-3">
         <input
-          id="employee-activate-password" name="new-password" aria-label="New password"
+          id="employee-activate-password" name="new-password" aria-label="New password" aria-describedby="employee-activate-password-rules"
           type={showPw ? "text" : "password"}
           value={pw}
           onChange={(e) => setPw(e.target.value)}
-          placeholder={`At least ${MIN_LENGTH} characters`}
+          placeholder="Create a password"
           className="w-full border border-ps-border rounded-lg px-3 py-2 pr-10 text-sm"
           autoComplete="new-password"
         />

@@ -46,12 +46,25 @@ WHY EVERY QUERY NOW CARRIES firm_id
     belong to a firm the request could name, and the token — a 256-bit secret
     sent only to the invited mailbox, matched only on a row not yet linked —
     is the scope. Its caller checks expiry and the mailbox as well.
+    `find_linked_member` is the other, keyed on the caller's own verified sign-in:
+    accept-invite asks it whether that sign-in already belongs to a practice.
+
+THE INVITATION'S TOKEN NEVER LEAVES THIS MODULE BUT THROUGH `find_by_invite_token`
+    (POST-A-445.) Every other read and write returns the row WITHOUT
+    `invite_token` and with `invite_outstanding` (whether one is set) in its place,
+    which is all `domain/firm/member_state` needs. The team list served it whole to
+    anyone who may read the team, and a role change, an activation and a forced
+    sign-out each echoed it back; since the join page turns a token into a sign-in,
+    a token on a response was a sign-in for somebody else's address. The column also
+    holds a hash now (`domain/firm/invite_token`), so a stored value that leaks some
+    other way opens nothing either.
 """
 import os
 from typing import Optional
 from repositories.base import BaseRepository
 from core.exceptions import NotFoundError
 from core import db_provider
+from domain.firm.invite_token import lookup_values
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
@@ -77,17 +90,37 @@ def _mock_in_firm(u: dict, firm_id: str) -> bool:
     return u.get("firm_id") in (None, firm_id)
 
 
+def _without_token(row: Optional[dict]) -> Optional[dict]:
+    """The row as every method but `find_by_invite_token` returns it: no token, and whether one is set."""
+    if not row:
+        return row
+    out = {k: v for k, v in row.items() if k != "invite_token"}
+    out["invite_outstanding"] = bool(row.get("invite_token"))
+    return out
+
+
+def _invitation_columns(previous: dict, now: str) -> dict:
+    """The two invitation columns a restore writes back, named: a restore puts back an invitation and nothing else,
+    whatever else the dict it is handed carries. The database path writes the same three names as a literal, so the
+    column check can read every name it writes."""
+    return {"invite_token": previous.get("invite_token"), "invite_expires_at": previous.get("invite_expires_at"),
+            "updated_at": now}
+
+
 class UserRepository(BaseRepository[dict]):
 
     def find_by_id(self, id: str, *, firm_id: str) -> Optional[dict]:
         _require_firm(firm_id, "find_by_id")
         if _USE_MOCK:
-            return next((u for u in MOCK_TEAM_MEMBERS
-                         if u["id"] == id and _mock_in_firm(u, firm_id)), None)
+            return _without_token(self._mock_row(id, firm_id))
         result = (_get_db().table("users").select("*")
                   .eq("id", id).eq("firm_id", firm_id)
                   .is_("deleted_at", None).maybe_single().execute())
-        return result.data
+        return _without_token(result.data)
+
+    @staticmethod
+    def _mock_row(id: str, firm_id: str) -> Optional[dict]:
+        return next((u for u in MOCK_TEAM_MEMBERS if u["id"] == id and _mock_in_firm(u, firm_id)), None)
 
     def find_all(self, firm_id: Optional[str] = None, role: Optional[str] = None, **filters) -> list[dict]:
         if _USE_MOCK:
@@ -96,24 +129,24 @@ class UserRepository(BaseRepository[dict]):
                 users = [u for u in users if _mock_in_firm(u, firm_id)]
             if role:
                 users = [u for u in users if u.get("role") == role]
-            return users
+            return [_without_token(u) for u in users]
         _require_firm(firm_id, "find_all")
         query = (_get_db().table("users").select("*")
                  .eq("firm_id", firm_id).is_("deleted_at", None))
         if role:
             query = query.eq("role", role)
         result = query.order("full_name").execute()
-        return result.data or []
+        return [_without_token(u) for u in (result.data or [])]
 
     def find_by_email(self, email: str, *, firm_id: str) -> Optional[dict]:
         _require_firm(firm_id, "find_by_email")
         if _USE_MOCK:
-            return next((u for u in MOCK_TEAM_MEMBERS
-                         if u["email"] == email and _mock_in_firm(u, firm_id)), None)
+            return _without_token(next((u for u in MOCK_TEAM_MEMBERS
+                                        if u["email"] == email and _mock_in_firm(u, firm_id)), None))
         result = (_get_db().table("users").select("*")
                   .eq("email", email).eq("firm_id", firm_id)
                   .is_("deleted_at", None).maybe_single().execute())
-        return result.data
+        return _without_token(result.data)
 
     def find_by_auth_user_id(self, auth_user_id: str, *, firm_id: str) -> Optional[dict]:
         _require_firm(firm_id, "find_by_auth_user_id")
@@ -122,7 +155,57 @@ class UserRepository(BaseRepository[dict]):
         result = (_get_db().table("users").select("*")
                   .eq("auth_user_id", auth_user_id).eq("firm_id", firm_id)
                   .maybe_single().execute())
-        return result.data
+        return _without_token(result.data)
+
+    def find_linked_member(self, auth_user_id: str) -> Optional[dict]:
+        """The member row a sign-in is already linked to, in ANY practice, or None (POST-A-445).
+
+        Deliberately NOT firm-scoped, and keyed on the caller's own verified sign-in: accept-invite asks it before
+        linking, because a sign-in linked to two `users` rows locks its owner out of both (`core/auth` reads that
+        link with `maybe_single`, which a second row turns into a 503 on every request)."""
+        if not auth_user_id:
+            return None
+        if _USE_MOCK:
+            return _without_token(next((u for u in MOCK_TEAM_MEMBERS
+                                        if u.get("auth_user_id") == auth_user_id), None))
+        result = (_get_db().table("users").select("id, firm_id")
+                  .eq("auth_user_id", auth_user_id).limit(1).execute())
+        rows = result.data or []
+        return rows[0] if rows else None
+
+    def invite_columns(self, id: str, *, firm_id: str) -> Optional[dict]:
+        """A member's stored invitation (`invite_token`, a hash or the pre-POST-A-445 secret, and
+        `invite_expires_at`), read only so a resend whose mail did not go can put it back. Never served."""
+        _require_firm(firm_id, "invite_columns")
+        if _USE_MOCK:
+            row = self._mock_row(id, firm_id)
+        else:
+            row = (_get_db().table("users").select("invite_token, invite_expires_at")
+                   .eq("id", id).eq("firm_id", firm_id).maybe_single().execute()).data
+        if not row:
+            return None
+        return {"invite_token": row.get("invite_token"), "invite_expires_at": row.get("invite_expires_at")}
+
+    def restore_invitation(self, id: str, previous: dict, *, replacing: str, firm_id: str) -> Optional[dict]:
+        """Write `previous` (an invitation's stored columns) back over the member's row, but ONLY while the row still
+        holds the invitation `replacing` (its stored form), has no sign-in and is switched on. A resend whose mail did
+        not go puts the earlier invitation back this way, so a withdraw, an acceptance or another resend that landed
+        while the mail was being sent is never undone (POST-A-445). None when nothing was written."""
+        _require_firm(firm_id, "restore_invitation")
+        if _USE_MOCK:
+            row = self._mock_row(id, firm_id)
+            if (not row or row.get("invite_token") != replacing or row.get("auth_user_id")
+                    or row.get("is_active") is False):
+                return None
+            row.update(_invitation_columns(previous, self.now_iso()))
+            return _without_token(row)
+        result = (_get_db().table("users")
+                  .update({"invite_token": previous.get("invite_token"),
+                           "invite_expires_at": previous.get("invite_expires_at"),
+                           "updated_at": self.now_iso()})
+                  .eq("id", id).eq("firm_id", firm_id).eq("invite_token", replacing)
+                  .is_("auth_user_id", None).eq("is_active", True).execute())
+        return _without_token(result.data[0]) if result.data else None
 
     def find_by_invite_token(self, token: str) -> Optional[dict]:
         """A row awaiting invite acceptance (F21 fix) — never matches an
@@ -130,14 +213,17 @@ class UserRepository(BaseRepository[dict]):
 
         Deliberately NOT firm-scoped: the invitee belongs to no firm the
         request can name yet, and the 256-bit token is the scope (see the
-        module docstring)."""
-        if not token:
+        module docstring). The ONE read that returns the stored token (a hash
+        since POST-A-445, `domain/firm/invite_token`), because the caller asks
+        which form it is in before it opens a sign-in."""
+        values = lookup_values(token)
+        if not values:
             return None
         if _USE_MOCK:
             return next((u for u in MOCK_TEAM_MEMBERS
-                         if u.get("invite_token") == token and not u.get("auth_user_id")), None)
+                         if u.get("invite_token") in values and not u.get("auth_user_id")), None)
         result = (_get_db().table("users").select("*")
-                  .eq("invite_token", token).is_("auth_user_id", None)
+                  .in_("invite_token", values).is_("auth_user_id", None)
                   .maybe_single().execute())
         return result.data
 
@@ -155,9 +241,9 @@ class UserRepository(BaseRepository[dict]):
             import uuid
             record = {"id": str(uuid.uuid4()), **data, "created_at": self.now_iso()}
             MOCK_TEAM_MEMBERS.append(record)
-            return record
+            return _without_token(record)
         result = _get_db().table("users").insert({**data, "created_at": self.now_iso(), "updated_at": self.now_iso()}).execute()
-        return result.data[0]
+        return _without_token(result.data[0])
 
     def update(self, id: str, data: dict, *, firm_id: str) -> Optional[dict]:
         """Update one member of `firm_id`. A user id belonging to another firm
@@ -167,15 +253,15 @@ class UserRepository(BaseRepository[dict]):
             # Moving a person between tenants is not an update anybody asks for.
             raise ValueError("user_repo.update cannot move a user to another firm")
         if _USE_MOCK:
-            user = self.find_by_id(id, firm_id=firm_id)
+            user = self._mock_row(id, firm_id)
             if not user:
                 return None
             user.update({**data, "updated_at": self.now_iso()})
-            return user
+            return _without_token(user)
         result = (_get_db().table("users")
                   .update({**data, "updated_at": self.now_iso()})
                   .eq("id", id).eq("firm_id", firm_id).execute())
-        return result.data[0] if result.data else None
+        return _without_token(result.data[0]) if result.data else None
 
 
 user_repo = UserRepository()

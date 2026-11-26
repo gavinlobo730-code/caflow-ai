@@ -1,165 +1,168 @@
-import { Sparkles, Shield, Users, Zap, BarChart } from "../../icons";
+import {
+  Clock,
+  Plus,
+  Send,
+  Shield,
+  Sparkles,
+  ThumbsDown,
+  ThumbsUp,
+  Zap,
+} from "../../icons";
+import { COPILOT, COPILOT_DISCLOSURE, COPILOT_QUESTIONS } from "./productWords";
 
 /**
- * /copilot, recreated.
+ * /copilot, redrawn.
  *
- * Verbatim from apps/web/app/copilot/page.tsx: the title and subtitle, the
- * context options, the Chat/Insights segmented control with its red count
- * badge, "New Conversation", "Ask anything about your clients, compliance, GST,
- * TDS...", and the footer line — which is the one that matters:
+ * Copied on 16-11-2026 from apps/web/app/copilot/page.tsx: the title and
+ * subtitle, the context picker, New Conversation, the conversation list (an
+ * icon for the context each was opened in, and how long ago), the two bubbles,
+ * the time, tokens and the two ratings under an answer, the disclosure the page
+ * shows before anything is sent (`AI_DISCLOSURES.copilot` in
+ * apps/web/lib/ai/disclosure.ts, letter for letter), the box and its
+ * placeholder, and the advisory line at the foot. The wording comes from
+ * `productWords.ts`, which a test holds to those files. The suggested-question
+ * chips the page shows under a conversation are left out.
  *
- *   "AI responses are advisory — always verify with source documents. Never
- *    auto-submit to government portals."
+ * THE DRAWING BEFORE THIS ONE (16-09-2026) SHOWED A CAPABILITY THE COPILOT DOES
+ * NOT HAVE. Its answer listed four clients by name with their GSTINs and what
+ * each owed. The copilot is given COUNTS from the practice's records and never
+ * a client's name (domain/ai_copilot_service.py `_build_context`), and anything
+ * shaped like a PAN or a GSTIN is replaced before a message leaves
+ * (domain/ai/redaction.py), so it could not have written that answer. It also
+ * drew a Chat and Insights switch the product removed (the Insights tab listed
+ * recommendations nothing generated). The answer below is the shape the copilot
+ * can give: counts, the statutory date its own brief carries, and a plain
+ * statement that it holds no names.
  *
- * The answer shown is the shape this product's copilot actually returns: a
- * heading, the statutory position, then the clients with their GSTINs and what
- * each owes — and a closing line that says the figures were prepared from the
- * books and that the CA files them. That last sentence is why this screen is in
- * the showcase at all.
+ * The questions in the sidebar are ones the product suggests
+ * (models/ai_copilot.py); the counts, the times and the token figure are
+ * invented. The greys the product uses for the times, the token count and the
+ * foot line are drawn one or two steps darker here, so they pass WCAG's 4.5:1 on
+ * a public page (a trial axe scan of each screen is what found the last of them).
  */
 
 const CONVERSATIONS = [
-  { icon: <Shield size={13} />, title: "GST filing status for Q1 FY27", when: "4h ago", on: true },
-  { icon: <Users size={13} />, title: "TDS deposit position for Rajhans Polymers", when: "22m ago" },
-  { icon: <Sparkles size={13} />, title: "Risk clients this month", when: "2d ago" },
-  { icon: <Zap size={13} />, title: "Which workflows have failed recently?", when: "18 Aug" },
-  { icon: <BarChart size={13} />, title: "Q2 FY 2026-27 realisation by partner", when: "just now" },
+  { icon: <Shield size={14} />, title: COPILOT_QUESTIONS.status, when: "4m ago", on: true },
+  { icon: <Zap size={14} />, title: COPILOT_QUESTIONS.workflows, when: "2h ago" },
+  { icon: <Sparkles size={14} />, title: COPILOT_QUESTIONS.risk, when: "13 Nov 2026" },
+  { icon: <Sparkles size={14} />, title: COPILOT_QUESTIONS.tds, when: "10 Nov 2026" },
 ];
 
-const CLIENTS = [
-  ["Rajhans Polymers Pvt Ltd", "27AAECR2938K1Z1", "₹4,86,200 payable"],
-  ["Suvarna Agro Exports LLP", "29AABCS5647L1ZT", "₹1,12,450 payable"],
-  ["Meghdoot Interiors Pvt Ltd", "07AAGCM8821P1ZU", "nil return"],
-  ["Vaidya Consulting Services", "24AACCV4419N1Z3", "₹68,900 payable"],
+/** The answer, one line per paragraph, as the page renders a reply: `## ` is a heading, `- ` an item. */
+const ANSWER = [
+  "## Compliance status, from your practice's records",
+  "- 3 compliance filings are overdue.",
+  "- 9 more fall due in the next 7 days.",
+  "- 5 tasks are past their due date.",
+  "GSTR-3B is due on the 20th of the following month (Rule 61 CGST Rules).",
+  "I am given counts, not client names: the compliance calendar shows which clients these are. Prepare each return here and file it on the portal yourself — never auto-submit.",
 ];
 
 export function CopilotChat() {
   return (
-    <div className="flex min-w-[760px] flex-col bg-[#F8FAFC] text-[#0F172A]">
+    <div className="flex min-w-[760px] flex-col bg-[#F8FAFC] text-[#0D1635]">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-[#E2E8F0] bg-white px-6 py-4">
-        <div className="flex items-center gap-3">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-[#182350] text-white">
+      <div className="flex items-start justify-between gap-4 border-b border-[#E2E8F0] bg-white px-6 py-4">
+        <div className="flex items-center gap-2">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#182350] text-white">
             <Sparkles size={16} />
           </span>
           <span>
-            <span className="block text-[17px] font-semibold leading-tight text-[#182350]">
-              AI Copilot
-            </span>
-            <span className="block text-[11.5px] text-[#64748B]">
-              Intelligent assistant for your CA practice
-            </span>
+            <span className="block text-xl font-semibold text-[#0D1635]">{COPILOT.title}</span>
+            <span className="mt-0.5 block text-sm text-[#475569]">{COPILOT.subtitle}</span>
           </span>
         </div>
-        <div className="hidden items-center gap-2 sm:flex">
-          <span className="rounded-lg border border-[#E2E8F0] bg-white px-3 py-1.5 text-[11.5px] text-[#475569]">
-            Compliance
-          </span>
-          <span className="flex gap-1 rounded-lg border border-[#E2E8F0] bg-white p-0.5">
-            <span className="rounded-md bg-[#182350] px-3 py-1.5 text-[11.5px] font-medium text-white">
-              Chat
-            </span>
-            <span className="relative rounded-md px-3 py-1.5 text-[11.5px] font-medium text-[#64748B]">
-              Insights
-              <span className="absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full bg-red-500 text-[9px] font-bold text-white">
-                6
-              </span>
-            </span>
-          </span>
-        </div>
+        <span className="rounded-lg border border-[#E2E8F0] bg-white px-3 py-1.5 text-xs text-[#475569]">
+          {COPILOT.context} ▾
+        </span>
       </div>
 
       <div className="flex">
-        {/* Sidebar */}
-        <div className="hidden w-60 shrink-0 flex-col border-r border-[#E2E8F0] bg-white lg:flex">
-          <div className="border-b border-[#F1F5F9] p-3">
-            <span className="flex items-center justify-center gap-2 rounded-lg bg-[#182350] px-3 py-2 text-[12.5px] font-medium text-white">
-              + New Conversation
+        {/* Conversation history */}
+        <div className="flex w-64 shrink-0 flex-col border-r border-[#E2E8F0] bg-white">
+          <div className="border-b border-[#E2E8F0] p-3">
+            <span className="flex w-full items-center gap-2 rounded-lg bg-[#182350] px-3 py-2 text-sm font-medium text-white">
+              <Plus size={14} />
+              {COPILOT.newConversation}
             </span>
           </div>
           <div className="space-y-1 p-2">
             {CONVERSATIONS.map((c) => (
               <div
                 key={c.title}
-                className={`flex items-start gap-2 rounded-lg px-2.5 py-2 ${
-                  c.on ? "bg-[#F1F5F9]" : ""
-                }`}
+                className={`rounded-lg px-3 py-2.5 ${c.on ? "bg-[#EFF6FF] text-[#182350]" : "text-[#334155]"}`}
               >
-                <span className={`mt-0.5 shrink-0 ${c.on ? "text-[#182350]" : "text-[#94A3B8]"}`}>
-                  {c.icon}
-                </span>
-                <span className="min-w-0">
-                  <span className="block truncate text-[11.5px] font-medium text-[#334155]">
-                    {c.title}
-                  </span>
-                  <span className="block text-[10px] text-[#94A3B8]">{c.when}</span>
-                </span>
+                <div className="flex items-start gap-2">
+                  <span className="mt-0.5 shrink-0 text-[#64748B]">{c.icon}</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium">{c.title}</p>
+                    <div className="mt-0.5 flex items-center gap-1 text-[10px] text-[#475569]">
+                      <Clock size={9} />
+                      {c.when}
+                    </div>
+                  </div>
+                </div>
               </div>
             ))}
           </div>
         </div>
 
-        {/* Conversation */}
+        {/* The conversation */}
         <div className="flex min-w-0 flex-1 flex-col">
-          <div className="space-y-4 p-5">
-            {/* User */}
-            <div className="flex justify-end">
-              <p className="max-w-[80%] rounded-2xl rounded-br-md bg-[#182350] px-4 py-2.5 text-[12.5px] leading-relaxed text-white">
-                Which clients have GSTR-3B pending for August 2026?
-              </p>
-            </div>
+          <div className="px-6 py-4">
+            <div className="mx-auto max-w-3xl">
+              {/* The CA */}
+              <div className="mb-4 flex justify-end">
+                <div className="max-w-[85%] rounded-2xl rounded-tr-sm bg-[#182350] px-4 py-3 text-sm leading-relaxed text-white">
+                  {COPILOT_QUESTIONS.status}
+                </div>
+              </div>
 
-            {/* Assistant */}
-            <div className="flex gap-3">
-              <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-[#182350] text-white">
-                <Sparkles size={13} />
-              </span>
-              <div className="min-w-0 flex-1 rounded-2xl rounded-tl-md border border-[#E2E8F0] bg-white px-4 py-3.5">
-                <p className="text-[13px] font-bold text-[#0F172A]">
-                  4 clients have GSTR-3B pending for 08/2026
-                </p>
-                <p className="mt-1.5 text-[11.5px] leading-relaxed text-[#475569]">
-                  Due 20 September 2026. Interest under CGST §50(1) runs at 18% p.a. on the
-                  cash-ledger portion only.
-                </p>
-                <ul className="mt-3 space-y-1.5">
-                  {CLIENTS.map(([name, gstin, amount]) => (
-                    <li key={gstin} className="flex flex-wrap items-baseline gap-x-2 text-[11.5px]">
-                      <span className="font-medium text-[#334155]">{name}</span>
-                      <span className="font-mono text-[10.5px] text-[#94A3B8]">{gstin}</span>
-                      <span
-                        className={`ml-auto font-mono ${
-                          amount === "nil return" ? "text-[#94A3B8]" : "font-semibold text-[#0F172A]"
-                        }`}
+              {/* The copilot */}
+              <div className="mb-4 flex justify-start">
+                <span className="mr-2 mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#182350] text-white">
+                  <Sparkles size={13} />
+                </span>
+                <div className="max-w-[85%]">
+                  <div className="rounded-2xl rounded-tl-sm border border-[#E2E8F0] bg-white px-4 py-3 text-sm leading-relaxed text-[#0D1635] shadow-sm">
+                    {ANSWER.map((line) => (
+                      <p
+                        key={line}
+                        className={
+                          line.startsWith("##") ? "mt-2 font-semibold" : line.startsWith("- ") ? "pl-3" : ""
+                        }
                       >
-                        {amount}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-                <p className="mt-3.5 border-t border-[#F1F5F9] pt-2.5 text-[11px] text-[#64748B]">
-                  Prepared from the books. File on gst.gov.in and record the ARN here.
-                </p>
-                <p className="mt-2 text-[10px] text-[#94A3B8]">12m ago · 1,284 tokens</p>
+                        {line.startsWith("## ") ? line.slice(3) : line}
+                      </p>
+                    ))}
+                  </div>
+                  <div className="mt-1.5 flex items-center gap-2 px-1 text-[10px] text-[#64748B]">
+                    <span>4m ago</span>
+                    <span>1284 tokens</span>
+                    <span className="ml-auto flex gap-1">
+                      <ThumbsUp size={11} />
+                      <ThumbsDown size={11} />
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Composer */}
-          <div className="border-t border-[#E2E8F0] bg-white px-5 py-3.5">
-            <div className="flex items-center gap-2 rounded-lg border border-[#E2E8F0] px-3.5 py-2.5">
-              <span className="flex-1 text-[12px] text-[#94A3B8]">
-                Ask anything about your clients, compliance, GST, TDS...
+          {/* The box */}
+          <div className="border-t border-[#E2E8F0] bg-white px-6 py-4">
+            <span className="mx-auto mb-2 block max-w-3xl text-[10px] leading-snug text-[#475569]">
+              {COPILOT_DISCLOSURE.sentence}
+            </span>
+            <div className="mx-auto flex max-w-3xl items-end gap-3">
+              <span className="flex min-h-[48px] flex-1 items-center rounded-xl border border-[#E2E8F0] px-4 py-3 text-sm text-[#64748B]">
+                {COPILOT.placeholder}
               </span>
-              <span className="grid h-6 w-6 place-items-center rounded-md bg-[#182350] text-white">
-                <Sparkles size={12} />
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#E2E8F0] text-[#64748B]">
+                <Send size={15} />
               </span>
             </div>
-            <p className="mt-2.5 flex items-start gap-1.5 text-[10.5px] leading-snug text-[#94A3B8]">
-              <Shield size={11} className="mt-px shrink-0" />
-              AI responses are advisory — always verify with source documents. Never
-              auto-submit to government portals.
-            </p>
+            <p className="mt-2 text-center text-[10px] text-[#64748B]">{COPILOT.footer}</p>
           </div>
         </div>
       </div>

@@ -16,7 +16,7 @@ import { currentFinancialYearLabel } from "@/lib/dateMath";
 import { todayIstISO } from "@/lib/dates/format";
 import { objectOrNull, objectWithLists } from "@/lib/api/shape";
 import { errorMessage } from "@/lib/api";
-import { doingOf, fetchPlain, jsonPlain, type Doing, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, fetchBounded, jsonPlain, type Doing, type UntypedJson } from "@/lib/api/failureSentence";
 import { obligationNote } from "@/lib/compliance/obligationNote";
 import { TDS_REGISTER_WINDOW_MAX } from "@/lib/lists/window";
 import { readWindow } from "@/lib/lists/readWindow";
@@ -69,6 +69,9 @@ export interface TDSDeductee {
   challan_date: string;
   is_lower_deduction?: boolean;
   lower_deduction_cert?: string;
+  /** What recorded the deduction, as the server says (a from-books 26Q only): a purchase bill, an advance, or the TDS register (a deduction typed on the TDS
+   *  screen, carried by no journal the product records; POST-A-078). A statement saved before the field existed has none. */
+  recorded_by?: "purchase_bill" | "advance" | "tds_register";
 }
 
 export interface TDSChallan {
@@ -185,15 +188,25 @@ export interface TDSReturnPayload {
     difference_paise: number;
     matched: boolean;
     account_found: boolean;
+    /** POST-A-078. The tax of the deductions typed on the TDS screen that the statement carries: nothing records which journal, if any, carries them, so the tie-out above does not
+     *  compare it. Absent from a statement built before the field existed. */
+    typed_paise?: number;
+    /** The account the tie-out read (24Q: the payroll resolver's answer, POST-A-083). */
+    account_name?: string | null;
+    /** Why no account was read when the server can say (24Q: two accounts could each be the salary TDS account, named). */
+    account_note?: string | null;
   };
   excluded_non_resident?: {
     bill_count: number;
     tds_paise: number;
     reason: string;
   };
-  /** POST-A-078. The deductions typed on the TDS screen for the quarter that a 26Q built from the books leaves out. Present on a 26Q only, and read through
-   *  `readExcludedTyped` (`lib/tds/excludedTyped.ts`), which draws nothing it cannot read whole; a server that predates it sends no key. */
+  /** POST-A-078. The deductions typed on the TDS screen for the quarter that a 26Q built from the books leaves out (a register row recorded for another statement).
+   *  Present on a 26Q only, and read through `readExcludedTyped` (`lib/tds/excludedTyped.ts`), which draws nothing it cannot read whole; a server that predates it sends
+   *  no key. */
   excluded_typed?: unknown;
+  /** POST-A-078. The deductions typed on the TDS screen that the 26Q carries as deductee rows, in the same shape and read the same way. */
+  typed_on_statement?: unknown;
   /** TDS-16. Present only on a from-books build — see TDSKeyingSheet above. */
   keying_sheet?: TDSKeyingSheet;
   period?: {
@@ -297,7 +310,7 @@ async function authedFetch<T>(path: string, init?: RequestInit, asked?: Doing): 
   const { data: { session } } = await getSupabaseClient().auth.getSession();
   // What the request was: its method, unless the caller says it is an estimator that persists nothing (a POST that only asks).
   const doing = asked ?? doingOf(init?.method);
-  const res = await fetchPlain(`${API_BASE}${path}`, {
+  const res = await fetchBounded(`${API_BASE}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
@@ -434,14 +447,29 @@ export type DeductionExplain = {
    *  (see domain/tds/tds_computer.is_company_pan), and this is the one place
    *  the CA is told which limb landed and on what basis. */
   rate_basis: string;
-  fy_prior_taxable_paise: number;
-  fy_prior_tds_paise: number;
+  /** The payee's year before this payment: what was already paid and what was already withheld. NULL when a supplier is named and the
+   *  person asking may not read purchase documents (the year includes the supplier's bills), which is "not shown", never nil (POST-A-078). */
+  fy_prior_taxable_paise: number | null;
+  fy_prior_tds_paise: number | null;
   /** Whether the server ADDED UP the payee's earlier typed payments of the year against the section's yearly threshold before it answered (POST-A-078). True only
    *  when the register was asked, the payee has a usable PAN to be looked up by (not blank, not a placeholder such as PANNOTAVBL, not text that is not a PAN), the
    *  financial year's rates are confirmed (an unconfirmed year gets the `resident_tds_rates_not_verified` gap instead) and the section has a yearly threshold at all
    *  (s.194I tests a month and s.194B one transaction). False otherwise, and a nil is then "not tested" and never "none". A
    *  server that predates it sends no key, which is not true either: only `true` lets a screen say the year's total is below a threshold. */
   aggregate_tested?: boolean;
+  /** Where a supplier is named, the bill path's own sentence about this charge: the year it was charged on, a s.197 certificate, a
+   *  s.194A class (`services/vendor_tds.resolve_resident_tds`). NULL where none is named; absent from a server that predates it. */
+  why?: string | null;
+  /** The year's tax due at this payment that is more than the payment itself, so is not withheld here (the next payment or bill
+   *  credits what was). 0 when the payment covers it; NULL where a supplier's year is not shown to the person asking (it gives the year
+   *  back with the rate), which is "not shown", never nil. */
+  shortfall_paise?: number | null;
+  /** The supplier whose year this deduction is counted in: the one picked, or the one the server found by the PAN (exactly one active
+   *  supplier of the client holds it). NULL when it is counted with the other deductions that name none. */
+  supplier?: { id: string; name: string } | null;
+  /** Why no supplier was found by the PAN although one or more of the client's suppliers hold it: two hold it, the only holder is
+   *  non-resident (s.195 is worked on a bill), or every holder is inactive. NULL otherwise, a picked supplier included. */
+  supplier_note?: string | null;
   gaps: string[];
   gap_messages: string[];
 };
@@ -461,6 +489,9 @@ export type RecordedDeduction = Record<string, unknown> & {
  *  excess, and no threshold on anything. */
 export async function createTdsDeduction(body: {
   client_id: string;
+  /** The supplier the payment was made to (POST-A-078). Its name and PAN are taken from its record, and the payment is counted in its
+   *  year of purchase bills, advances and typed deductions. Omitted, the server looks for the one active supplier holding the PAN. */
+  vendor_id?: string | null;
   deductee_name: string;
   deductee_pan?: string | null;
   section: string;
@@ -487,6 +518,7 @@ export async function createTdsDeduction(body: {
  *  a §194C/§194H/§194J aggregate threshold that is the whole difference. */
 export async function previewTdsDeduction(body: {
   client_id: string;
+  vendor_id?: string | null;
   deductee_name: string;
   deductee_pan?: string | null;
   section: string;
@@ -510,7 +542,8 @@ export async function previewTdsDeduction(body: {
   // The screen reads `explain.applies` and `explain.fy_prior_tds_paise`: a preview without its explanation is no preview (POST-A-149).
   const shaped = objectOrNull<typeof resp.data>(resp.data);
   if (!shaped || !objectOrNull(shaped.explain)) throw new Error("The deduction preview came back in a shape this screen cannot read.");
-  return shaped;
+  // `explain.gap_messages` is a list the screen maps over (POST-A-360): it is defaulted here, where the answer is read.
+  return { ...shaped, explain: { ...shaped.explain, gap_messages: Array.isArray(shaped.explain.gap_messages) ? shaped.explain.gap_messages : [] } };
 }
 
 /** Correct a hand-entered deduction; the engine re-runs on whatever changed.
@@ -519,6 +552,7 @@ export async function previewTdsDeduction(body: {
 export async function updateTdsDeduction(
   id: string,
   body: Partial<{
+    vendor_id: string | null;
     deductee_name: string;
     deductee_pan: string | null;
     section: string;

@@ -11,7 +11,8 @@ used to read another column, `clients.health_score`, which nothing writes; it re
 
 THE RULE, the browser's with this table's own settled words. Not settled, and either somebody moved it to "Overdue" by hand or its due date is
 strictly BEFORE today: an obligation due today is not late until the day is out. Settled is "Filed" and "Completed" (the terminal step after
-Filed; the browser's pair is "filed" and "na", its own vocabulary), which owe nothing whatever the date; the older readers compared only to
+Filed) and "Not Required" (POST-A-267: the CA recorded that the client does not owe it; the browser's pair is "filed" and "na", its own
+vocabulary), which owe nothing whatever the date; the older readers compared only to
 "Filed", so a Completed obligation with a past date counted as late. A missing due date cannot be late (`"" < today` would say it is).
 "Today" is the CA's day, a date and not an instant: callers pass `ist_today()` once, so every row of one answer is judged against one day.
 `tests/test_one_rule_says_a_compliance_obligation_is_overdue.py` pins this module and scans the backend for any reader that asks the stored
@@ -22,14 +23,24 @@ from __future__ import annotations
 from datetime import date
 from typing import Iterable, Optional
 
-#: Workflow states that owe nothing, however far past the due date.
-SETTLED = ("Filed", "Completed")
+#: The states that record a FILING (or a deposit made): a filing date and an acknowledgement stand behind them. A reader that asks "was it
+#: filed" (a filed count, an on-time ratio, a closer that must not close twice) asks this, never SETTLED.
+FILED = ("Filed", "Completed")
+#: An obligation the calendar carries that the CA has recorded is not owed by this client (POST-A-267, item 4; migration 670), with a
+#: written reason kept on the row and in the audit log. It owes nothing and was not filed: it is neither open nor a filing.
+NOT_REQUIRED = "Not Required"
+#: Workflow states that owe nothing, however far past the due date. A reader that asks "is it still open" asks this.
+SETTLED = FILED + (NOT_REQUIRED,)
 #: The only stored state that is itself a claim of lateness (set by hand).
 STORED_OVERDUE = "Overdue"
 
 
 def is_settled(status: Optional[str]) -> bool:
     return status in SETTLED
+
+
+def is_filed(status: Optional[str]) -> bool:
+    return status in FILED
 
 
 def is_overdue(record: dict, today: date) -> bool:

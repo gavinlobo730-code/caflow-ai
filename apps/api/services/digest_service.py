@@ -57,7 +57,7 @@ from core.db_paging import fetch_all, fetch_all_in
 from core.ist_clock import ist_now, ist_today
 from core.permissions import can_user
 from domain.ai import groq_text, narration
-from domain.practice import digest
+from domain.practice import digest, nightly_results
 
 _logger = logging.getLogger("caflow.digest")
 
@@ -105,6 +105,45 @@ def _books_findings(firm_id: str, allowed: Optional[set], names: dict[str, str],
         if missing:
             notes.append(digest.not_recently_checked(missing))
     return digest.findings_item(latest, findings, names), notes
+
+
+def _stored_results(firm_id: str, allowed: Optional[set], names: dict[str, str],
+                    now: datetime, engines: list[str]) -> tuple[list[dict], list[str]]:
+    """The sections for these engines, from the rows the nightly check stored.
+
+    One read of `nightly_exception_results` for the firm, recent rows only (a
+    read proportional to clients, not to the ledger), narrowed to the caller's
+    clients before anything is counted. A client in scope with no computed row
+    for an engine is named beside its section as not covered."""
+    from core.supabase_client import get_service_supabase
+
+    db = get_service_supabase()
+    cutoff = (now - timedelta(days=digest.RUN_WINDOW_DAYS)).isoformat()
+
+    def page():
+        return (db.table("nightly_exception_results")
+                .select("id, client_id, engine, status, count, amount_paise, details, computed_at")
+                .eq("firm_id", firm_id).in_("engine", engines)
+                .gte("computed_at", cutoff))
+
+    rows = fetch_all(page, label="digest.nightly_exception_results")
+    if allowed is not None:
+        rows = [r for r in rows if str(r.get("client_id")) in allowed]
+    items: list[dict] = []
+    notes: list[str] = []
+    for engine in engines:
+        mine = [r for r in rows if r.get("engine") == engine]
+        items.append(digest.stored_item(engine, mine, names))
+        covered = {str(r["client_id"]) for r in mine
+                   if r.get("status") == "computed" and r.get("count") is not None}
+        missing = len(set(names) - covered)
+        if missing and covered:
+            notes.append(digest.not_covered_by_stored(digest.STORED_SECTIONS[engine][1], missing))
+        partly = {str(r["client_id"]) for r in mine if nightly_results.left_unchecked(r)}
+        if partly:
+            notes.append(digest.partly_checked_by_stored(digest.STORED_SECTIONS[engine][1],
+                                                         len(partly)))
+    return items, notes
 
 
 def _visible(rows: list[dict], allowed: Optional[set]) -> list[dict]:
@@ -171,6 +210,28 @@ def gather(current_user: dict, allowed: Optional[set], today: date,
             "Books-integrity findings",
             "they follow the access of the Verify Books screen, which needs approval "
             "rights on accounting"))
+
+    # The three engines the nightly check stores (POST-A-050), each behind the
+    # access of the screen it summarises: GSTR-2B follows the GST screens, the
+    # other two the accounting ones. A role without that access is told, and a
+    # failed read is named, never shown as nothing.
+    wanted: list[str] = []
+    for engine, resource in (("gstr_2b", "gst"), ("duplicate_bills", "accounting"),
+                             ("recurring_journals", "accounting")):
+        label = digest.STORED_SECTIONS[engine][1]
+        if can_user(current_user, resource, "read"):
+            wanted.append(engine)
+        else:
+            gaps.append(digest.withheld(label, f"your role does not include {resource}"))
+    if wanted:
+        try:
+            stored_items, notes = _stored_results(firm_id, allowed, names, now, wanted)
+            items.extend(stored_items)
+            gaps.extend(notes)
+        except Exception:                                       # noqa: BLE001
+            _logger.warning("digest: stored nightly results could not be read", exc_info=True)
+            for engine in wanted:
+                gaps.append(digest.unreadable(digest.STORED_SECTIONS[engine][1]))
 
     return {"items": items, "gaps": gaps, "scoped": allowed is not None}
 

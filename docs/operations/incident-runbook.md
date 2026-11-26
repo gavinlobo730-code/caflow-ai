@@ -203,10 +203,10 @@ until a person has opened the dashboard and filled this in:
 
 | fact | answer |
 |---|---|
-| the Supabase plan | [FILL IN] |
-| are daily backups on, and how many days are kept | [FILL IN] |
-| is point-in-time recovery on, and to what granularity | [FILL IN] |
-| who may start a restore | [FILL IN] |
+| the Supabase plan | **Free** (the organisation's plan, read in the dashboard by the owner on 15-11-2026; project `caflow-ai`, region ap-south-1). The owner decided on 15-11-2026 to upgrade when real clients' books go in, not before the demo. |
+| are daily backups on, and how many days are kept | **No.** The dashboard says "Free Plan does not include project backups" (15-11-2026). There is nothing to restore from today. |
+| is point-in-time recovery on, and to what granularity | **No** (not available on the Free plan; 15-11-2026). |
+| who may start a restore | Not applicable while there are no backups. [FILL IN: once the plan is upgraded] |
 | how long a restore takes at the current size | [FILL IN: unknown until one has been done] |
 | the date of the last restore into a scratch project, and who did it | **never**, until someone writes a date |
 
@@ -237,6 +237,7 @@ Restoring into a **new** project and comparing is safer than restoring in place,
 | the nightly screen walk | `.github/workflows/smoke-walk.yml`; not a required check | [FILL IN] |
 | the live redirect check | `.github/workflows/live-redirects.yml`, every six hours | [FILL IN] |
 | the scheduler wake | `.github/workflows/wake-before-scheduler.yml` | nobody: it only pings |
+| which commit the live API and the live site are running | `.github/workflows/live-build.yml`, on demand only (Actions, Live build, Run workflow); it prints both and decides nothing | whoever asked |
 | a failed Render deploy | Render can notify; **whether it is set is not recorded** | [FILL IN] |
 | a failed Cloudflare Pages build | Cloudflare can notify; not recorded | [FILL IN] |
 | Supabase advisors, usage and disk | the monthly routine in `docs/operations/database-monitoring.md`; the alerts in its §5 are **not set** | [FILL IN] |

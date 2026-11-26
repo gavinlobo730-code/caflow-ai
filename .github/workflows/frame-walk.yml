@@ -1,0 +1,120 @@
+# Measures, in a real browser, where every screen sits on the page and what it draws while its first read is out,
+# weekly and on demand, against a committed list that only shrinks (POST-A-530).
+#
+# WHY IT EXISTS
+#     The owner, walking the live site on 20-11-2026, found that a screen inside a client's workspace was laid out and
+#     waited with placeholders, while a screen outside it (Billing Schedules) hugged the left edge of a wide window and
+#     waited as one line of text. Neither is a fact a source scan can read: a wrapper's classes do not say where its box
+#     lands, and a screen that imports a skeleton may still wait as words. So the rule is a MEASUREMENT.
+#     `apps/web/scripts/smoke-walk.mjs --frame` opens every screen at a 1920-pixel window with the stub API held for two
+#     and a half seconds, reads what is drawn while it waits (placeholders, bare words, a spinner, the screen itself,
+#     nothing), lets the answer land, and measures the screen's own container against `<main>`. A screen whose container
+#     has far more room on its right than its left "hugs the left"; a screen that waits as words or a spinner alone
+#     "waits without a shape". `apps/web/scripts/frame-baseline.json` is the list of the screens allowed to (empty when
+#     this was written), and the run fails on a screen that is newly wrong and on a line nobody deleted.
+#
+# WHY IT IS NOT IN THE NIGHTLY WALK
+#     The nightly job (smoke-walk.yml) has a 45-minute allowance that its walk and its drive of the money editors fill
+#     (that file's header has the arithmetic). This measurement opens every screen a second time and holds each for
+#     seconds, about half an hour in all, so it has a job of its own, once a week. The allowance is the owner's and a
+#     week is how long a new screen can sit unmeasured; `apps/web/scripts/a-screen-sits-in-the-page-frame-and-waits-with-
+#     a-shape.test.ts` runs on every pull request and holds what can be held without a browser.
+#
+# IT IS NOT A CHECK ANYTHING WAITS ON
+#     No `pull_request` trigger and not in the required checks: a red run is a screen to fix, reported by GitHub's own
+#     failed-workflow mail, and never a blocked merge. It has no `paths:` filter (nothing waits on it, so the rule in
+#     CLAUDE.md about required checks does not arise, and a filter would only hide a screen that changed).
+name: frame walk
+
+on:
+  schedule:
+    # 21:10 UTC on Saturday = 02:40 IST on Sunday. A cron line is evaluated in UTC; GitHub starts it late under load.
+    - cron: "10 21 * * 6"
+  workflow_dispatch:
+
+concurrency:
+  group: frame-walk-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # Exact, and the same number smoke-walk.yml installs: the script was written and run against it.
+  PLAYWRIGHT_VERSION: "1.63.0"
+
+jobs:
+  frame:
+    name: measure every screen's layout and waiting state in Chromium
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: "10"
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: "pnpm"
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: apps/web
+        run: pnpm install --frozen-lockfile
+
+      # In this job only: the edit to package.json and the lockfile lives and dies with this checkout.
+      - name: Add Playwright to THIS job
+        working-directory: apps/web
+        run: >-
+          pnpm add --save-dev
+          "@playwright/test@${PLAYWRIGHT_VERSION}"
+          "playwright-core@${PLAYWRIGHT_VERSION}"
+
+      # The same drop smoke-walk.yml makes before `--with-deps` runs apt.
+      - name: Drop third-party apt sources
+        run: |
+          sudo grep -rlE 'dl\.google\.com' /etc/apt/sources.list.d/ 2>/dev/null \
+            | sudo xargs -r rm -f
+
+      - name: Install Chromium
+        working-directory: apps/web
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Build the static export for the walk
+        id: build
+        working-directory: apps/web
+        run: pnpm smoke:build
+
+      # Two runs because a client's screens are measured with a client the stub knows (`--real-client`); the firm's
+      # screens, the portals and the entry pages are measured without one. Each fails on a screen that is newly wrong
+      # and on a line of the list that the run found right.
+      - name: Measure the firm's screens
+        working-directory: apps/web
+        run: node scripts/smoke-walk.mjs --no-axe --no-slow-server --no-headers --frame --frame-only --shots --report .smoke/frame-firm.json
+
+      - name: Measure a client's screens
+        if: always() && steps.build.outcome == 'success'
+        working-directory: apps/web
+        run: node scripts/smoke-walk.mjs --no-axe --no-slow-server --no-headers --frame --frame-only --shots --real-client --only /clients/00000000 --report .smoke/frame-client.json
+
+      # The browser scenarios that neither the nightly drive nor the on-demand matrix has room for (each is at the end
+      # of its allowance; `apps/web/scripts/drive/weekly/` says which they are). They read the same build and the same
+      # stub, a few minutes in all, so they ride with the measurement and never with a pull request.
+      - name: Drive the weekly scenarios
+        if: always() && steps.build.outcome == 'success'
+        working-directory: apps/web
+        run: node scripts/driveMoneyEditors.mjs --weekly --shots --report .smoke/weekly-drive.json
+
+      - name: Keep the reports and the pictures
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: frame-walk-report
+          path: apps/web/.smoke/
+          if-no-files-found: warn
+          retention-days: 30

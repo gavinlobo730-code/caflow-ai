@@ -56,6 +56,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Mapping, Optional, Sequence
 from domain.money_sentence import rupee_text
+from domain.reporting.age_of_document import days_old
 
 # The operational ageing buckets, in presentation order. One definition:
 # `vendor_statement_service`, `customer_statement_service` and
@@ -121,15 +122,6 @@ class AdvancePosition:
     gaps: list[str] = field(default_factory=list)
 
 
-def _age_days(document_date: Optional[str], today: date) -> int:
-    if not document_date:
-        return 0
-    try:
-        return (today - date.fromisoformat(str(document_date)[:10])).days
-    except (ValueError, TypeError):
-        return 0
-
-
 def unapplied_advances(
     rows: Sequence[AdvanceInput | Mapping],
     *,
@@ -181,7 +173,8 @@ def unapplied_advances(
         if stored <= 0:
             continue
 
-        days = _age_days(row.document_date, today)
+        # A date that cannot be read ages the advance as current, which understates how old it is, so it is reported (POST-A-505).
+        days = days_old(row.document_date, today, operation="party_advances.unreadable_date", document_id=str(row.document_id))
         bucket = aging_bucket(days)
         buckets[bucket] += stored
         total += stored

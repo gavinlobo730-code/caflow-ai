@@ -23,6 +23,7 @@
  * each against what the document still owes on the day the cheque is converted.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { recentFirst, useRecentPartyIds } from "@/lib/lookups/recentParties";
 import { Loader2, Plus, RefreshCw, X } from "lucide-react";
 import {
   api,
@@ -44,6 +45,7 @@ import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { useSingleFlight } from "@/lib/async/useSingleFlight";
 import { CustomerLookup } from "@/components/lookups/CustomerLookup";
 import { VendorLookup } from "@/components/lookups/VendorLookup";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 type Msg = { type: "ok" | "err"; text: string } | null;
 
@@ -115,6 +117,11 @@ export default function PostDatedChequesPanel({
   const [editing, setEditing] = useState<PostDatedCheque | null>(null);
   const [form, setForm] = useState<FormState>(BLANK);
   const [options, setOptions] = useState<PostDatedChequeOptions | null>(null);
+  const partyOptions = useMemo(
+    () => (options ? options.parties : []).map((p) => ({ id: p.id, name: p.name ?? "", gstin: p.gstin })), [options]);
+  // The parties this client used most recently go to the top of the picker (POST-A-155); nothing is pre-selected.
+  const recentPartyIds = useRecentPartyIds(direction === "received" ? api.customers.recent : api.vendors.recent, clientId, !editing);
+  const recentParties = useMemo(() => recentFirst(recentPartyIds, partyOptions), [recentPartyIds, partyOptions]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -196,7 +203,7 @@ export default function PostDatedChequesPanel({
   }, [form.alloc]);
 
   async function submit() {
-    if (chequeDates.first) { setMsg({ type: "err", text: chequeDates.first }); return; }
+    if (chequeDates.first) { chequeDates.refuseWith(setMsg, (text) => ({ type: "err" as const, text })); return; }
     // A cleared box reports no problem, and "" went to the server as the cheque's date, which refuses it in the model's own words (the date
     // is what decides when the cheque falls due and may be converted).
     if (!form.chequeDate) { setMsg({ type: "err", text: "Cheque date: enter the date written on the cheque." }); return; }
@@ -244,7 +251,7 @@ export default function PostDatedChequesPanel({
   }
 
   async function convert(c: PostDatedCheque) {
-    if (presentDates.first) { setMsg({ type: "err", text: presentDates.first }); return; }
+    if (presentDates.first) { presentDates.refuseWith(setMsg, (text) => ({ type: "err" as const, text })); return; }
     const ok = await confirmDialog({
       title: words.convert,
       message:
@@ -392,7 +399,8 @@ export default function PostDatedChequesPanel({
               <span className="text-2xs text-ps-label">{words.party}</span>
               {direction === "received" ? (
                 <CustomerLookup
-                  customers={(options ? options.parties : []).map((p) => ({ id: p.id, name: p.name ?? "", gstin: p.gstin }))}
+                  customers={partyOptions}
+                  recent={recentParties}
                   value={form.partyId}
                   onChange={pickParty}
                   disabled={!!editing}
@@ -401,7 +409,8 @@ export default function PostDatedChequesPanel({
                 />
               ) : (
                 <VendorLookup
-                  vendors={(options ? options.parties : []).map((p) => ({ id: p.id, name: p.name ?? "", gstin: p.gstin }))}
+                  vendors={partyOptions}
+                  recent={recentParties}
                   value={form.partyId}
                   onChange={pickParty}
                   disabled={!!editing}
@@ -514,7 +523,7 @@ export default function PostDatedChequesPanel({
       )}
 
       {loading && !register ? (
-        <p className="p-4 text-sm text-ps-hint">Reading the register…</p>
+        <LoadingRegion label="Reading the post-dated cheque register" className="p-4 text-sm text-ps-hint">Reading the register…</LoadingRegion>
       ) : cheques.length === 0 ? (
         <p className="p-4 text-sm text-ps-hint">
           No post-dated cheques on the register.

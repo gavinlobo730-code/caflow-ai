@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, FormEvent } from "react";
-import { X } from "lucide-react";
+import { Modal } from "@/components/ui/modal";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { EntityLookup } from "@/components/lookups/EntityLookup";
 import { Combobox } from "@/components/ui/combobox";
@@ -82,7 +82,7 @@ export function TaskFormModal({ open, onClose, onSaved, clients, teamMembers = [
     e.preventDefault();
     if (!form.client_id) { setError("Please select a client"); return; }
     if (!form.title.trim()) { setError("Please enter a task title"); return; }
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError); return; }
 
     setSaving(true);
     setError(null);
@@ -101,21 +101,9 @@ export function TaskFormModal({ open, onClose, onSaved, clients, teamMembers = [
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-ps-bg/60" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-ps-border">
-          <div>
-            <h2 className="text-base font-semibold text-ps-ink">New Task</h2>
-            <p className="text-xs text-ps-label mt-0.5">Create a task for a client</p>
-          </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-ps-muted text-ps-hint">
-            <X size={16} />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+    // POST-A-130: the shared dialog (named, Escape, Tab kept inside, focus given back). It stays open while the task is being created.
+    <Modal title="New Task" note="Create a task for a client" maxWidthClass="max-w-lg" onClose={() => { if (!saving) onClose(); }}>
+        <form onSubmit={handleSubmit} className="space-y-4">
           {/* Client */}
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">Client *</label>
@@ -219,7 +207,7 @@ export function TaskFormModal({ open, onClose, onSaved, clients, teamMembers = [
           {error && <Callout tone="problem">{error}</Callout>}
 
           <div className="flex gap-3 pt-1">
-            <button
+            <button disabled={saving}
               type="button" onClick={onClose}
               className="flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-ps-body hover:bg-ps-bg"
             >
@@ -233,7 +221,6 @@ export function TaskFormModal({ open, onClose, onSaved, clients, teamMembers = [
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }

@@ -11,7 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ClientFormModal } from "@/components/ClientFormModal";
 import {
-  getClients, archiveClient, restoreClient, permanentDeleteClient,
+  getClientsStale, archiveClient, restoreClient, permanentDeleteClient,
   type ClientFilter, DeleteBlockedError,
 } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
@@ -22,6 +22,7 @@ import { downloadCsv } from "@/components/ui/data-table";
 import { toCsv } from "@/lib/table/process";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
+import { forgetReads, readAtText } from "@/lib/cache/readCache";
 import { getLatestHealthScores } from "@/lib/services/health-score-compute";
 import { HealthBadgeLight } from "@/components/HealthBadge";
 import { usePermissions } from "@/lib/auth/AuthContext";
@@ -29,8 +30,11 @@ import { api } from "@/lib/api";
 import { gstinProblem } from "@/lib/gst/gstin";
 import { panProblem } from "@/lib/identifiers/pan";
 import { PageHeader } from "@/components/ui/page-header";
+import { wantsToAddClient } from "@/lib/clients/addClient";
 
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
+import { LoadingRegion } from "@/components/ui/skeleton";
 const CLIENT_IMPORT_COLUMNS = [
   { key: "client_name",  label: "Client Name",    required: true,  hint: "e.g. ABC Pvt Ltd" },
   { key: "entity_type",  label: "Entity Type",    required: true,  hint: "Proprietorship | Partnership | LLP | Private Limited | Public Limited | Trust | Society | Individual | HUF | AOP | BOI" },
@@ -143,6 +147,8 @@ export default function ClientsPage() {
    *  be noise. */
   const [payrollStates, setPayrollStates] = useState<Record<string, PayrollState>>({});
   const [loading, setLoading]     = useState(true);
+  /** When the list on screen was last read, while it is the PREVIOUS answer painted ahead of the real read (POST-A-124); null once the real read lands. */
+  const [paintedFrom, setPaintedFrom] = useState<number | null>(null);
   const [error, setError]         = useState<string | null>(null);
   const [search, setSearch]       = useState("");
   const [modalOpen, setModalOpen] = useState(false);
@@ -170,24 +176,9 @@ export default function ClientsPage() {
   // A selection may only name rows still on screen (see lib/table/pruneSelection).
   useEffect(() => { setSelected((s) => pruneSelection(s, clients.map((c) => c.id))); }, [clients]);
 
-  // Escape closes whichever lifecycle confirmation is open, matching the
-  // shared Modal (components/ui/modal.tsx) these hand-rolled overlays don't
-  // use — guarded on actionBusy so an archive/restore/delete in flight can't
-  // be abandoned mid-request.
-  useEffect(() => {
-    if (!archiveTarget && !restoreTarget && !deleteTarget) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key !== "Escape" || actionBusy) return;
-      setArchiveTarget(null);
-      setRestoreTarget(null);
-      setDeleteTarget(null);
-      setDeleteConfirmName("");
-      setDeleteBlockers(null);
-      setActionError(null);
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [archiveTarget, restoreTarget, deleteTarget, actionBusy]);
+  // Escape on a lifecycle confirmation (Archive, Restore, Permanently Delete) is the shared Modal's now (POST-A-130): each dialog's own
+  // `onClose` below is held on `actionBusy`, so an archive, restore or delete in flight cannot be abandoned mid-request. The listener
+  // this page kept for its hand-built overlays is gone: the Modal acts on the key first and stops it, so that listener never ran.
   const [bulkBusy, setBulkBusy]   = useState(false);
   // One action at a time: every button that starts work waits for whichever
   // is already running. Guarding each on its own flag alone let two fire at
@@ -199,8 +190,11 @@ export default function ClientsPage() {
   // Read from the backend's permission map rather than a role list copied here:
   // archive/delete are rbac("client","write") and rbac("client","delete"), and a
   // second copy of who holds those is a copy that can drift out of step.
-  const { can } = usePermissions();
+  const { can, resolved: permissionsResolved } = usePermissions();
   const canArchive = can("client", "write");
+  // Adding (and importing) a client is the same permission: `rbac("client","write")` on the route and the same pair in the
+  // database's policy. The button used to be drawn for every role and ended, for one without it, in a refusal (POST-A-488).
+  const canAdd = can("client", "write");
   const canDelete  = can("client", "delete");
   const hasActions = canArchive || canDelete;
 
@@ -210,7 +204,11 @@ export default function ClientsPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await getClients(filter);
+      // The last answer is painted at once and the real read always follows; the line under the title says so while they differ.
+      const data = await getClientsStale(filter, (last, readAt) => {
+        setClients(last); setFiltered(last); setPaintedFrom(readAt); setLoading(false);
+      });
+      setPaintedFrom(null);
       setClients(data);
       setFiltered(data);
       getLatestHealthScores(data.map((c) => c.id)).then(setHealthScores).catch(() => {});
@@ -223,9 +221,10 @@ export default function ClientsPage() {
           const rows = (res as { data?: { clients?: PayrollState[] } })?.data?.clients ?? [];
           setPayrollStates(Object.fromEntries(rows.map((r) => [r.client_id, r])));
         })
-        .catch(() => {});
+        .catch(() => { /* the badges simply do not appear, as the note above says; the list itself is unaffected */ });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load clients");
+      // A list painted from the last read stays up and says it is not current; one that was never read stays empty.
     } finally {
       setLoading(false);
     }
@@ -296,6 +295,17 @@ export default function ClientsPage() {
     setEditClient(null);
     setModalOpen(true);
   }
+
+  // The client dropdown and the sidebar's Clients panel link here with `?add=1` (POST-A-488). The request is taken out of the
+  // address at once so that a reload does not open the form again, and it is waited for until the permission map has
+  // answered: asking sooner would read "not allowed" for a Partner.
+  useEffect(() => {
+    if (!permissionsResolved) return;
+    if (!wantsToAddClient(window.location.search)) return;
+    window.history.replaceState(null, "", window.location.pathname);
+    if (canAdd) { setEditClient(null); setModalOpen(true); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [permissionsResolved, canAdd]);
 
   async function handleArchive() {
     if (!archiveTarget) return;
@@ -504,7 +514,7 @@ export default function ClientsPage() {
       if (error) errors.push(`${row.client_name}: ${error.message}`);
       else imported++;
     }
-    if (imported > 0) load();
+    if (imported > 0) { forgetReads("clients"); load(); }
     return { imported, errors };
   }
 
@@ -516,7 +526,7 @@ export default function ClientsPage() {
       {/* Header */}
       <PageHeader
         title="Clients"
-        subtitle={loading ? "Loading…" : `${filtered.length} client${filtered.length !== 1 ? "s" : ""}`}
+        subtitle={loading ? "\u00a0" : `${filtered.length} client${filtered.length !== 1 ? "s" : ""}`}
         actions={
           <div className="flex items-center gap-2">
             <button
@@ -526,20 +536,24 @@ export default function ClientsPage() {
             >
               <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
             </button>
-            <Link
-              href="/pipeline"
-              className="flex items-center gap-2 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg transition-colors"
-            >
-              <KanbanSquare size={15} />
-              Pipeline
-            </Link>
-            <button
-              onClick={() => setImportOpen(true)}
-              className="flex items-center gap-2 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg transition-colors"
-            >
-              <Upload size={15} />
-              Import CSV
-            </button>
+            {can("pipeline", "read") && (
+              <Link
+                href="/pipeline"
+                className="flex items-center gap-2 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg transition-colors"
+              >
+                <KanbanSquare size={15} />
+                Pipeline
+              </Link>
+            )}
+            {canAdd && (
+              <button
+                onClick={() => setImportOpen(true)}
+                className="flex items-center gap-2 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg transition-colors"
+              >
+                <Upload size={15} />
+                Import CSV
+              </button>
+            )}
             <button
               onClick={() => downloadCsv("clients.csv", toCsv(filtered, CLIENT_EXPORT_COLUMNS))}
               disabled={filtered.length === 0}
@@ -548,13 +562,15 @@ export default function ClientsPage() {
               <Download size={15} />
               Export
             </button>
-            <button
-              onClick={openCreate}
-              className="flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark transition-colors"
-            >
-              <Plus size={15} />
-              Add Client
-            </button>
+            {canAdd && (
+              <button
+                onClick={openCreate}
+                className="flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark transition-colors"
+              >
+                <Plus size={15} />
+                Add Client
+              </button>
+            )}
           </div>
         }
       />
@@ -595,20 +611,31 @@ export default function ClientsPage() {
         </div>
       )}
 
+      {/* A list painted ahead of the real read says when it was read, and says so again if the real read failed (POST-A-124). */}
+      {paintedFrom !== null && (
+        <p role="status" className="text-xs text-ps-hint">
+          {error
+            ? `Showing the list as it was read at ${readAtText(paintedFrom)}. It could not be refreshed, so it may not be current.`
+            : `Showing the list as it was read at ${readAtText(paintedFrom)} while the current one loads…`}
+        </p>
+      )}
+
       {/* Loading skeleton */}
       {loading && (
         <Card>
-          <CardContent className="p-0 divide-y divide-ps-border">
-            {[...Array(4)].map((_, i) => (
-              <div key={i} className="flex items-center gap-4 px-6 py-4">
-                <div className="w-10 h-10 rounded-full bg-ps-muted animate-pulse shrink-0" />
-                <div className="flex-1 space-y-2">
-                  <div className="h-3 bg-ps-muted rounded animate-pulse w-48" />
-                  <div className="h-2.5 bg-ps-muted rounded animate-pulse w-32" />
+          <LoadingRegion label="Loading clients" noticeClassName="px-6">
+            <div className="divide-y divide-ps-border">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="flex items-center gap-4 px-6 py-4">
+                  <div className="w-10 h-10 rounded-full bg-ps-muted animate-pulse shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-3 bg-ps-muted rounded animate-pulse w-48" />
+                    <div className="h-2.5 bg-ps-muted rounded animate-pulse w-32" />
+                  </div>
                 </div>
-              </div>
-            ))}
-          </CardContent>
+              ))}
+            </div>
+          </LoadingRegion>
         </Card>
       )}
 
@@ -624,7 +651,7 @@ export default function ClientsPage() {
           <p className="text-sm text-ps-label mb-4">
             {filter === "archived" ? "Archived clients will appear here" : "Add your first client to get started"}
           </p>
-          {filter === "active" && (
+          {filter === "active" && canAdd && (
             <button
               onClick={openCreate}
               className="inline-flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark"
@@ -845,14 +872,7 @@ export default function ClientsPage() {
 
       {/* ── Archive modal ─────────────────────────────────────────────────── */}
       {archiveTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-xl">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
-                <Archive size={16} className="text-amber-600" />
-              </div>
-              <h2 className="text-base font-semibold text-ps-ink">Archive Client</h2>
-            </div>
+        <Modal title="Archive Client" onClose={() => { if (!actionBusy) { setArchiveTarget(null); setActionError(null); } }}>
             <p className="text-sm text-ps-label mb-1">
               Archive <span className="font-semibold">{archiveTarget.client_name}</span>?
             </p>
@@ -876,20 +896,12 @@ export default function ClientsPage() {
                 {actionBusy ? "Archiving…" : "Archive"}
               </Button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ── Restore modal ─────────────────────────────────────────────────── */}
       {restoreTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-xl">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-9 h-9 rounded-full bg-green-100 flex items-center justify-center shrink-0">
-                <RotateCcw size={16} className="text-green-600" />
-              </div>
-              <h2 className="text-base font-semibold text-ps-ink">Restore Client</h2>
-            </div>
+        <Modal title="Restore Client" onClose={() => { if (!actionBusy) { setRestoreTarget(null); setActionError(null); } }}>
             <p className="text-sm text-ps-label mb-4">
               Restore <span className="font-semibold">{restoreTarget.client_name}</span> to the active client list?
             </p>
@@ -910,24 +922,13 @@ export default function ClientsPage() {
                 {actionBusy ? "Restoring…" : "Restore"}
               </Button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ── Delete modal ──────────────────────────────────────────────────── */}
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-xl">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-9 h-9 rounded-full bg-red-100 flex items-center justify-center shrink-0">
-                <Trash2 size={16} className="text-red-600" />
-              </div>
-              <div>
-                <h2 className="text-base font-semibold text-ps-ink">Permanently Delete</h2>
-                <p className="text-xs font-medium text-red-600">This cannot be undone</p>
-              </div>
-            </div>
-
+        <Modal title="Permanently Delete" note={<span className="font-medium text-red-600">This cannot be undone</span>}
+          onClose={() => { if (!actionBusy) { setDeleteTarget(null); setDeleteConfirmName(""); setDeleteBlockers(null); setActionError(null); } }}>
             {!deleteBlockers && (
               <>
                 <p className="text-sm text-ps-label mb-3">
@@ -996,8 +997,7 @@ export default function ClientsPage() {
                 </Button>
               )}
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ── Form modal ────────────────────────────────────────────────────── */}

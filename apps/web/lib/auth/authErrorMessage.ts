@@ -58,6 +58,22 @@ export const AUTH_ERROR_SENTENCES: Readonly<Record<string, string>> = {
   hook_timeout_after_retry: "The sign-in service took too long to respond. Please try again.",
 };
 
+/**
+ * Codes the sign-in SERVICE sends that the installed auth-js does not list in its ErrorCode union (the union lags the service).
+ * They are kept apart from AUTH_ERROR_SENTENCES because that map's test insists every key is a real library code, so that a typo
+ * cannot silently never match; these are named from the service's own behaviour instead, and a test asserts they are STILL absent
+ * from the library's union, so the day the library lists one it moves into the main map.
+ *
+ * The project's "Require current password when updating" switch (POST-A-512): `current_password_required` was seen live on
+ * 19-11-2026 (HTTP 400), the change refused because none of the password screens sent the current password. The refusal for a wrong
+ * one is expected to be `current_password_mismatch` and is NOT confirmed against the live service, so any other refusal keeps the
+ * service's own words instead of being guessed into one of these sentences.
+ */
+export const SERVICE_ONLY_ERROR_SENTENCES: Readonly<Record<string, string>> = {
+  current_password_required: "Your current password is needed to change it. Enter it and try again.",
+  current_password_mismatch: "Current password is incorrect.",
+};
+
 const DEFAULT_FALLBACK = "Something went wrong. Please try again.";
 const SERVICE_UNREACHABLE =
   "The sign-in service could not be reached. Please check your connection and try again.";
@@ -69,6 +85,27 @@ function asErrorLike(err: unknown): ErrorLike | null {
 export const PASSWORD_BREACHED =
   "This password has appeared in a known data breach, so it cannot be used. Please choose a different one.";
 
+// The sign-in service's refusal for a password missing a character group. Live,
+// on 18-11-2026, it came with NO error code and said "Password should contain
+// at least one character of each: abcdefghijklmnopqrstuvwxyz,
+// ABCDEFGHIJKLMNOPQRSTUVWXYZ, 0123456789, !@#$%^&*()_+-=[]{};'\:"|<>?,./`~." —
+// a developer's string that the CA saw verbatim, or not at all (POST-A-477).
+// The sentence is worded from the groups the SERVER names, so a changed setting
+// is still told truthfully.
+const CHARACTER_GROUPS_REFUSAL = /at least one character of each/i;
+
+function charactersRefusal(message: string): string | null {
+  if (!CHARACTER_GROUPS_REFUSAL.test(message)) return null;
+  const needs: string[] = [];
+  if (/abcdefghijklmnopqrstuvwxyz/.test(message) || /lowercase/i.test(message)) needs.push("a lowercase letter");
+  if (/ABCDEFGHIJKLMNOPQRSTUVWXYZ/.test(message) || /uppercase/i.test(message)) needs.push("a capital letter");
+  if (/0123456789|digit/i.test(message)) needs.push("a digit");
+  if (/[!@#$%^&*()_+\-=[\]{};':"\\|<>?,./`~]{3,}|symbol/i.test(message)) needs.push("a symbol (for example ! @ # $ %)");
+  if (needs.length === 0) return "Your password must include at least one character from each group the sign-in rules ask for.";
+  const list = needs.length === 1 ? needs[0] : `${needs.slice(0, -1).join(", ")} and ${needs[needs.length - 1]}`;
+  return `Your password needs ${list}.`;
+}
+
 /**
  * weak_password says WHICH rule failed in `reasons` (auth-js
  * AuthWeakPasswordError), and the server's own message states the rule
@@ -79,7 +116,7 @@ export const PASSWORD_BREACHED =
 function weakPasswordMessage(e: ErrorLike): string {
   const reasons = Array.isArray(e.reasons) ? e.reasons.filter((r) => typeof r === "string") : [];
   const serverSays = typeof e.message === "string" ? e.message.trim() : "";
-  if (reasons.includes("characters") && serverSays) return serverSays;
+  if (reasons.includes("characters") && serverSays) return charactersRefusal(serverSays) ?? serverSays;
   const parts: string[] = [];
   if (reasons.includes("length")) {
     const n = /at least (\d+) characters/i.exec(serverSays)?.[1];
@@ -94,10 +131,23 @@ function weakPasswordMessage(e: ErrorLike): string {
 export function knownAuthErrorMessage(err: unknown): string | null {
   const e = asErrorLike(err);
   if (!e) return null;
+  // The service's throttle on a REPEAT request ("For security purposes, you can only request this after 7
+  // seconds.") arrives with the same code as the hourly limit, so by code alone it read "too many emails in the last
+  // hour", which is untrue and sends a person away for nothing (live, 18-11-2026, POST-A-479).
+  const waitSeconds = /only request this after (\d+) seconds?/i.exec(typeof e.message === "string" ? e.message : "")?.[1];
+  if (waitSeconds) return `Please wait ${waitSeconds} seconds before asking again.`;
   const code = typeof e.code === "string" ? e.code : "";
   if (code === "weak_password") return weakPasswordMessage(e);
+  // The same refusal arrives with no code at all; the message is then the only signal.
+  if (!code && typeof e.message === "string") {
+    const groups = charactersRefusal(e.message);
+    if (groups) return groups;
+  }
   if (code && Object.prototype.hasOwnProperty.call(AUTH_ERROR_SENTENCES, code)) {
     return AUTH_ERROR_SENTENCES[code];
+  }
+  if (code && Object.prototype.hasOwnProperty.call(SERVICE_ONLY_ERROR_SENTENCES, code)) {
+    return SERVICE_ONLY_ERROR_SENTENCES[code];
   }
   // AuthSessionMissingError carries no code, only its class name.
   if (e.name === "AuthSessionMissingError") return AUTH_ERROR_SENTENCES.session_expired;
@@ -122,37 +172,6 @@ export function authErrorMessage(err: unknown, fallback: string = DEFAULT_FALLBA
   const e = asErrorLike(err);
   const message = e && typeof e.message === "string" ? e.message.trim() : "";
   return message || fallback;
-}
-
-// On the Team screen the reader is the Partner who can fix the cause, not the
-// person the email was for, so a code whose remedy is theirs says so.
-const INVITE_EMAIL_SENTENCES: Readonly<Record<string, string>> = {
-  email_address_not_authorized:
-    "The email service is only allowed to send to pre-approved addresses. A custom mail server (SMTP) has to be set up before invites can reach anybody else.",
-};
-
-export const INVITE_EMAIL_REFUSED_NO_REASON = "The email service refused it and gave no reason.";
-
-/**
- * Why a staff invite email was not sent, as one sentence, or null when it
- * was. Reads both what `signInWithOtp` RESOLVES with as `error` and what a
- * failed fetch THROWS, so an error object with nothing in it is still an
- * error and never success.
- */
-export function inviteEmailProblem(error: unknown): string | null {
-  if (error === null || error === undefined) return null;
-  const e = asErrorLike(error);
-  const code = e && typeof e.code === "string" ? e.code : "";
-  if (code && Object.prototype.hasOwnProperty.call(INVITE_EMAIL_SENTENCES, code)) {
-    return INVITE_EMAIL_SENTENCES[code];
-  }
-  const known = knownAuthErrorMessage(error);
-  if (known) return known;
-  const raw = authErrorMessage(error, "");
-  if (!raw) return INVITE_EMAIL_REFUSED_NO_REASON;
-  // The server's own words, kept rather than hidden, inside a sentence that
-  // says whose words they are.
-  return `The email service refused it: ${raw.replace(/[.\s]+$/, "")}.`;
 }
 
 /** What the Team screen shows when the member row was created and the email did not go. */

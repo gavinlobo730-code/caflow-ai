@@ -18,6 +18,7 @@ from typing import Optional
 
 from fastapi import HTTPException
 from core import db_provider
+from core.observability import capture_soft_failure
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.portal_access")
@@ -65,9 +66,41 @@ def _find_all_active_by_auth(auth_user_id: str, db) -> list[dict]:
         return []
     if _USE_MOCK:
         return [c for c in MOCK_PORTAL_CONTACTS
-                if c.get("auth_user_id") == auth_user_id and c.get("status") == "active"]
-    return (db.table("client_portal_users").select("*")
-            .eq("auth_user_id", auth_user_id).eq("status", "active").execute().data or [])
+                if c.get("auth_user_id") == auth_user_id and c.get("status") == "active"
+                and not _mock_client_deleted(c.get("client_id"))]
+    contacts = (db.table("client_portal_users").select("*")
+                .eq("auth_user_id", auth_user_id).eq("status", "active").execute().data or [])
+    return _of_live_clients(contacts, db)
+
+
+# A CONTACT OF A DELETED CLIENT IS NOBODY'S CONTACT (POST-A-447, the portal half). Deleting a client sets
+# `clients.deleted_at` and hides it from every staff screen, but nothing touched its `client_portal_users` rows, so
+# an active contact kept signing in to the portal of a client the practice had deleted: reading its fee invoices,
+# documents and compliance list, and posting messages that notified staff about a client none of them could open.
+# The membership is read with the client's row now, by firm and client together, and a deleted client is not a
+# membership. An ARCHIVED client is deliberately not touched here: whether a former client keeps reading its own
+# fee invoices and documents is a decision, not a defect, and it is recorded as one.
+def _mock_client_deleted(client_id) -> bool:
+    try:
+        from mock_data import CLIENT_INDEX
+    except ImportError:  # a mock store that cannot be imported holds no deleted client
+        return False
+    return bool((CLIENT_INDEX.get(client_id) or {}).get("deleted_at"))
+
+
+def _of_live_clients(contacts: list[dict], db) -> list[dict]:
+    """The contacts whose client still exists in the contact's own firm: one read of `clients` by id, with
+    `deleted_at` asked for, matched on (client, firm) so a contact row naming another firm's client is not one."""
+    ids = sorted({str(c["client_id"]) for c in contacts if c.get("client_id")})
+    if not ids:
+        return []
+    firms = sorted({str(c["firm_id"]) for c in contacts if c.get("firm_id")})
+    if not firms:
+        return []
+    live = {(str(r["id"]), str(r.get("firm_id")))
+            for r in (db.table("clients").select("id,firm_id").in_("firm_id", firms).in_("id", ids)
+                      .is_("deleted_at", "null").execute().data or [])}
+    return [c for c in contacts if (str(c.get("client_id")), str(c.get("firm_id"))) in live]
 
 
 def _legacy_client(auth_user_id: str, db) -> Optional[dict]:
@@ -76,9 +109,10 @@ def _legacy_client(auth_user_id: str, db) -> Optional[dict]:
         return None
     if _USE_MOCK:
         leg = MOCK_LEGACY_PORTAL.get(auth_user_id)
-        return dict(leg) if leg else None
+        return dict(leg) if leg and not _mock_client_deleted(leg.get("client_id")) else None
     rows = (db.table("clients").select("id,firm_id")
-            .eq("portal_user_id", auth_user_id).eq("portal_enabled", True).limit(1).execute().data or [])
+            .eq("portal_user_id", auth_user_id).eq("portal_enabled", True).is_("deleted_at", "null")
+            .limit(1).execute().data or [])
     return {"client_id": rows[0]["id"], "firm_id": rows[0]["firm_id"]} if rows else None
 
 
@@ -186,8 +220,8 @@ def _audit(firm_id, client_id, contact_id, action, actor, extra=None):
         log_event(firm_id, "client_portal_user", contact_id or client_id, action,
                   actor_id=(actor or {}).get("auth_user_id"), actor_email=(actor or {}).get("email"),
                   new_data={"client_id": client_id, **(extra or {})}, metadata={"source": "portal_access"})
-    except Exception:  # pragma: no cover - audit is best-effort
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="portal_access.audit", firm_id=firm_id, client_id=client_id)
 
 
 def _send_invite_email(email: str, client_id: str, firm_id: str, invite_token: str) -> None:
@@ -216,8 +250,8 @@ def _send_invite_email(email: str, client_id: str, firm_id: str, invite_token: s
               f'<p><a href="{link}">Set up your account</a> — you\'ll choose a password so you can '
               f'sign in any time at <a href="{portal_login_url()}">{portal_login_url()}</a>.</p>'
               f'<p>This link expires in 14 days.</p>')
-    except Exception:  # pragma: no cover - email is best-effort
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="portal_access.invite_email", firm_id=firm_id, client_id=client_id)
 
 
 # client_portal_users carries a live, single-use invite secret (invite_token),
@@ -265,8 +299,8 @@ def _enable_portal(firm_id: str, client_id: str, db) -> None:
     try:
         db.table("clients").update({"portal_enabled": True, "portal_invited_at": _now()}) \
           .eq("id", client_id).eq("firm_id", firm_id).execute()
-    except Exception:  # pragma: no cover
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="portal_access.enable", firm_id=firm_id, client_id=client_id)
 
 
 def invite_contact(firm_id: str, client_id: str, email: str, name: Optional[str],

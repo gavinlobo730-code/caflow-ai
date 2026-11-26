@@ -60,14 +60,26 @@ BOUNDED BY THE WINDOW, NOT BY THE LEDGER (the reporting rule): the scan covers
     the financial years whose window has not closed more than sixty days ago —
     at most two — and only the months whose GSTR-2B has been generated.
 
-WHAT IT DOES NOT DECIDE
+A LATE-FURNISHED BILL IS ONE ROW, NOT TWO (POST-A-062)
     Matching is per MONTH, as the reconciliation's is: a bill is judged against
     its own month's 2B. A supplier who files an April invoice late appears in a
-    LATER month's 2B, where the document reads `not_booked` while the bill
-    stays `not_in_2b` in April. Both are listed — the credit really is unclaimed
-    — and the screen says so; joining them across months is a change to the
-    reconciliation, not to this report. Nothing here claims credit, posts or files:
-    the radar is read-only and sends nothing to any portal.
+    LATER month's 2B, where the reconciliation finds no June bill for it and
+    stores it `missing_in_books`, while the April bill stays `not_in_2b`. Until
+    POST-A-062 the radar listed both, the same invoice twice and its credit
+    counted twice in the totals. `join_furnished_later` now joins them on the
+    reconciliation's own key, the supplier's GSTIN and the document number
+    folded by `itc_matching.normalise_document_number`, within the bill's own
+    financial year (Rule 46(b) makes a number unique within a year, not across
+    the two the scan spans, so a document of another year, or with a date that
+    cannot be read, is never a candidate), when exactly one later
+    month's document answers exactly one withheld bill: one row of kind
+    `furnished_later`, dated by the BILL (the invoice §16(4) measures from),
+    carrying the book credit and saying which month's 2B communicates it and
+    for how much. Anything ambiguous (two documents for one bill, two bills for
+    one document) is left as the two rows it was, never guessed. The stored
+    reconciliation is not changed: a 2B month is still matched against its own
+    month's bills. Nothing here claims credit, posts or files: the radar is
+    read-only and sends nothing to any portal.
 """
 from __future__ import annotations
 
@@ -91,6 +103,8 @@ GSTR2B_GENERATED_ON_DAY = 14
 
 KIND_WITHHELD = "withheld_bill"
 KIND_NOT_BOOKED = "not_booked"
+#: A withheld bill the supplier furnished in a LATER month's GSTR-2B (POST-A-062).
+KIND_FURNISHED_LATER = "furnished_later"
 
 #: The verdicts a supplier's action can still turn into credit.
 RESCUABLE_VERDICTS = (rule_36_4.NOT_IN_2B, rule_36_4.MORE_THAN_2B)
@@ -108,9 +122,13 @@ NOT_ASSESSED_IS_NOT_AT_RISK = (
 MATCHING_IS_PER_MONTH = (
     "Each bill is judged against the GSTR-2B for its OWN month, as the "
     "reconciliation does. A supplier who files an April invoice late appears in a "
-    "later month's GSTR-2B, where it is listed below as a document with no bill, "
-    "while the April bill stays unmatched: both are credit not yet claimed, and "
-    "the lapse date is the same.")
+    "later month's GSTR-2B: where that later document carries the bill's supplier "
+    "GSTIN and number and is dated in the bill's own financial year (an invoice "
+    "number repeats from one year to the next), no other bill carries them and no "
+    "other document of that year does, the two are shown as one row that names "
+    "the month that carries it. Otherwise the bill and the document are listed "
+    "apart, each with the date its own credit lapses on: both are credit not yet "
+    "claimed.")
 
 
 @dataclass(frozen=True)
@@ -132,6 +150,8 @@ def _parse(value: Any) -> Optional[date]:
     try:
         return date.fromisoformat(str(value or "")[:10])
     except ValueError:
+        # Not a date. A DATE or timestamp column always reads back as ISO text, so a stored one never lands here: this is an absent value or text that
+        # was never a date, and None says there is none.
         return None
 
 
@@ -269,6 +289,118 @@ def not_booked_rows(records: Iterable[dict], *, as_of: date,
                     "or it lapses on the date shown."),
             credit_at_risk_paise=credit))
     return rows
+
+
+def _later(period: str, than: str) -> bool:
+    """Whether MMYYYY `period` falls after MMYYYY `than` (the raw strings do not sort)."""
+    try:
+        return _sort_period(period) > _sort_period(than)
+    except (TypeError, ValueError):
+        # A period that cannot be read is not shown to be later than anything: the answer is no.
+        return False
+
+
+def _credit_of(record: dict) -> int:
+    return sum(int(record.get(k) or 0) for k in ("igst_paise", "cgst_paise", "sgst_paise", "cess_paise"))
+
+
+def _financial_year_of(value: Any) -> str:
+    """'2025-26' for a readable date, '' for one that cannot be read. The label is the one window authority's (`cw.fy_label`),
+    asked through the date's own month, the way `window_of` asks it."""
+    d = _parse(value)
+    return cw.fy_label(_period_of(d)) if d is not None else ""
+
+
+def join_furnished_later(rows: list[dict], records: Iterable[dict],
+                         bill_keys: dict[str, tuple[str, str]]) -> tuple[list[dict], list[dict]]:
+    """(radar rows, the 2B documents still unbooked): a `not_in_2b` bill and ONE
+    later month's unbooked document of the same supplier and number become one
+    `furnished_later` row, and the document leaves the unbooked list.
+
+    `bill_keys` is `{bill id: (supplier GSTIN, bill number)}`; a bill missing
+    from it (no GSTIN on its supplier, no number) is never joined. The key is the
+    reconciliation's own: the GSTIN folded to upper case and the number through
+    `itc_matching.normalise_document_number`. Only a document the radar would
+    itself offer as `not_booked` is a candidate (an invoice or a debit note, not
+    marked ITC-unavailable, carrying credit), and only from a month AFTER the
+    bill's own. A key two bills share, or two documents share, joins nothing.
+
+    THE NUMBER IS ONE ONLY WITHIN A FINANCIAL YEAR. CGST Rule 46(b) makes an
+    invoice's serial number unique for a financial year, and the scan spans two,
+    so a supplier who restarts at 1 every April issues a '15' in each. A
+    document is therefore a candidate only when its own date can be read and
+    falls in the same financial year as the bill's: a June 2025 bill '15' is not
+    the supplier's May 2026 invoice '15'. The year is the DOCUMENT's date, never
+    the month whose 2B carries it (a March invoice furnished in April's 2B is
+    still March's year). A document of another year, or with no readable date,
+    is left out BEFORE the one-bill / one-document test, so it neither joins nor
+    makes the bill's own year's document ambiguous, and it stays on the
+    unbooked list. THE BILL SIDE IS KEYED BY ITS OWN FINANCIAL YEAR TOO
+    (POST-A-460): two withheld bills of one supplier and number in DIFFERENT
+    years are two documents, so each is matched only against its own year's
+    document; two withheld bills that share a key in the SAME year join
+    nothing, and both stay as they were. A bill whose own date cannot be read
+    has no year and joins nothing.
+    """
+    from domain.gst.itc_matching import normalise_document_number
+
+    records = list(records)
+
+    def key(gstin: str, number: str) -> Optional[tuple[str, str]]:
+        g, n = str(gstin or "").strip().upper(), normalise_document_number(number or "")
+        return (g, n) if g and n else None
+
+    offered: dict[tuple[str, str], list[int]] = {}
+    for i, r in enumerate(records):
+        if (r.get("document_type") or "") not in ("invoice", "debit_note"):
+            continue
+        if (r.get("itc_available") or "").strip().upper() == "N" or _credit_of(r) <= 0:
+            continue
+        k = key(r.get("supplier_gstin"), r.get("invoice_number"))
+        if k:
+            offered.setdefault(k, []).append(i)
+
+    # Rule 46(b): a number is one only within a financial year, on the bill side as on the document side (POST-A-460).
+    waiting: dict[tuple[str, str, str], list[int]] = {}
+    for j, row in enumerate(rows):
+        if row.get("kind") != KIND_WITHHELD or row.get("verdict") != rule_36_4.NOT_IN_2B:
+            continue
+        gstin, number = bill_keys.get(str(row.get("document_id") or ""), ("", ""))
+        k = key(gstin, number)
+        year = _financial_year_of(row.get("document_date"))
+        if k and year:
+            waiting.setdefault((*k, year), []).append(j)
+
+    used: set[int] = set()
+    out = [dict(r) for r in rows]
+    for (gstin_k, number_k, own_year), bills in waiting.items():
+        if len(bills) != 1:
+            continue
+        j = bills[0]
+        own = out[j].get("document_date") or ""
+        own_period = f"{own[5:7]}{own[0:4]}" if len(own) >= 7 else ""
+        # Rule 46(b): the same number in another financial year is another document (see the docstring).
+        same_year = [i for i in offered.get((gstin_k, number_k), [])
+                     if _financial_year_of(records[i].get("invoice_date")) == own_year]
+        later = [i for i in same_year if _later(str(records[i].get("return_period") or ""), own_period)]
+        if len(same_year) != 1 or len(later) != 1:
+            continue
+        rec = records[later[0]]
+        used.add(later[0])
+        furnished = _credit_of(rec)
+        period = str(rec.get("return_period") or "")
+        month = f"{calendar.month_name[int(period[:2])]} {period[2:]}" if len(period) == 6 and period[:2].isdigit() and 1 <= int(period[:2]) <= 12 else period
+        reason = (f"The supplier did not furnish this bill in the GSTR-2B for its own month and furnished it later, in the "
+                  f"GSTR-2B for {month}, where the books hold no bill of that month to match it. The credit is communicated "
+                  f"there and is not being claimed; it lapses on the date shown.")
+        if furnished != int(out[j]["credit_at_risk_paise"]):
+            from domain.money_sentence import rupee_text
+            reason += (f" That GSTR-2B carries {rupee_text(furnished)} of tax on it against "
+                       f"{rupee_text(int(out[j]['credit_at_risk_paise']))} in the books.")
+        out[j].update(kind=KIND_FURNISHED_LATER, verdict=KIND_FURNISHED_LATER, reason=reason,
+                      supplier_gstin=str(rec.get("supplier_gstin") or ""), return_period=period,
+                      furnished_credit_paise=furnished)
+    return out, [r for i, r in enumerate(records) if i not in used]
 
 
 def unreconciled_rows(months: Iterable[str], *, as_of: date,

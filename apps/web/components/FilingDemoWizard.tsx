@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { TableSkeleton } from "@/components/ui/skeleton";
+import { Modal } from "@/components/ui/modal";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -12,7 +13,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
   // A SIMULATION: every call of this component asks (the walk-through transmits, files and records nothing, and says so on each answer), so a request that failed says that no result came
   // back, and never that something may have been recorded.
   const doing = "read" as const;
-  const res = await fetchPlain(`${API}${path}`, {
+  const res = await fetchBounded(`${API}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
@@ -74,7 +75,7 @@ export async function fetchFilingDemoCapabilities(): Promise<{ enabled: boolean;
  */
 
 import { FILING_POSTURE, type FilingPosture } from "@/lib/filing/posture";
-import { fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { fetchBounded, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 
 interface Figure { label: string; paise?: number; text?: string }
 interface Cell { text?: string; paise?: number }
@@ -199,11 +200,22 @@ export default function FilingDemoWizard({
   }, [stage?.kind, idx]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+    // The shared dialog (POST-A-130): named, modal, Tab kept inside, Escape closes it, focus given back. It transmits and writes nothing, so
+    // nothing holds its close. Its name is neutral on purpose: what this is, is said by the banner under it, in the server's words.
+    <Modal title="Filing walk-through" maxWidthClass="max-w-2xl" onClose={onClose}
+      footer={<>
+        <span className="mr-auto text-2xs text-ps-hint">
+          {stage?.kind === "result" ? "Nothing was transmitted." : "Step through as the portal would."}
+        </span>
+        <button onClick={onClose}
+          className="px-3 py-1.5 text-sm border rounded hover:bg-ps-bg">Close</button>
+      </>}>
         {/* Never scrolls away: whoever glances at this screen — including the
-            person who did not watch it start — has to see what it is. */}
-        <div className="sticky top-0 px-5 py-3 bg-amber-100 border-b-2 border-amber-400 z-10">
+            person who did not watch it start — has to see what it is.
+            `-top-4 -mx-4`: the shared dialog's scrolling panel has 16px of padding and a sticky box is held inside its CONTENT edge, so
+            minus the padding puts the banner on the panel's own edge, at rest and while the body scrolls beneath it (the dialog's own
+            footer does the same at the bottom). */}
+        <div className="sticky -top-4 -mx-4 px-5 py-3 bg-amber-100 border-b-2 border-amber-400 z-10">
           <p className="text-sm font-bold text-amber-900">{posture.headline}</p>
           <p className="text-xs text-amber-900 mt-0.5">{posture.body}</p>
           {/* The one forward-looking sentence, and the reason it is in the
@@ -216,7 +228,7 @@ export default function FilingDemoWizard({
           <p className="text-2xs text-amber-900/90 mt-1">{posture.roadmap}</p>
         </div>
 
-        <div className="px-5 py-4 space-y-4">
+        <div className="space-y-4">
           {error && <p className="text-sm text-red-600">{error}</p>}
           {!script && !error && <TableSkeleton rows={5} />}
 
@@ -497,15 +509,6 @@ export default function FilingDemoWizard({
             </>
           )}
         </div>
-
-        <div className="px-5 py-3 border-t flex justify-between items-center">
-          <span className="text-2xs text-ps-hint">
-            {stage?.kind === "result" ? "Nothing was transmitted." : "Step through as the portal would."}
-          </span>
-          <button onClick={onClose}
-            className="px-3 py-1.5 text-sm border rounded hover:bg-ps-bg">Close</button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

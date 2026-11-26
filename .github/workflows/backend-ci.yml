@@ -16,6 +16,22 @@ name: Backend CI
 # those runs it. A frontend-only PR pays a few seconds instead
 # of ~7 minutes, so the minute budget this file worries about is preserved.
 #
+# THE DOCS LANE (the owner's decision of 20 November 2026). A pull request whose every changed file is under `docs/` or is `CLAUDE.md` is
+# not a backend change, but the suite READS those files, so it cannot skip the suite either; it used to run all of it, about 45 minutes,
+# for a sentence in the ledger. It runs only the test modules that read those files now (`scripts/ci/tests_reading_the_docs.py` derives
+# them): the mock job runs the ones that are not real-Postgres tests, the migration job the ones that are, and neither runs the lint
+# ratchet or the coverage floor, which a document cannot move. The lane is for a PULL REQUEST only: a push to main (a merge) always
+# runs the whole suite, so a read the finder missed is found one run after the merge, not never. Both required jobs still run and
+# still report, under the same names.
+#
+# A SCREEN CHANGE WITH ITS NOTES IS THE SAME LANE (22 November 2026). Nearly every change to a screen also edits a line of the ledger
+# under `docs/`, and that one line took it out of both short paths: not frontend-only (so the whole suite ran, about 50 minutes) and not
+# docs-only. A pull request whose every changed file is a document or is under one of the two frontends, with at least one document among
+# them, is the docs lane too, and where a frontend changed the lane also runs the modules that read a frontend
+# (`scripts/ci/tests_reading_the_browser.py`): in the required mock job, and their real-Postgres ones (the column, status and sign-in-id
+# guards) in the migration job, which a frontend-only change does not get. Each kind of file runs the tests that read it. A diff with any
+# other file in it (a line of code, a workflow, a shared vector) is still the whole suite, and so is every push to main.
+#
 # `paths-ignore` is NOT the fix. It is not the inverse of `paths` — a PR
 # touching both apps/api and apps/web satisfies both, so the real job and a
 # shim would each report the same check name.
@@ -49,6 +65,7 @@ jobs:
     outputs:
       api: ${{ steps.detect.outputs.api }}
       web: ${{ steps.detect.outputs.web }}
+      docs_lane: ${{ steps.detect.outputs.docs_lane }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -72,6 +89,7 @@ jobs:
             || [ "$base" = "0000000000000000000000000000000000000000" ] \
             || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
             echo "api=true" >> "$GITHUB_OUTPUT"
+            echo "docs_lane=false" >> "$GITHUB_OUTPUT"
             echo "No usable base commit — running the full backend suite."
             exit 0
           fi
@@ -107,11 +125,31 @@ jobs:
           else
             echo "web=false" >> "$GITHUB_OUTPUT"
           fi
+          # THE DOCS LANE: a pull request whose every changed file is under docs/, is CLAUDE.md, or is under one of the two frontends, with
+          # AT LEAST ONE document among them (a diff of frontends alone is the frontend-only branch above, where api is false). A push (a
+          # merge to main) is never in the lane, so the whole suite runs after every merge. An empty diff is not in it either, which is the
+          # safe direction. Where a frontend is in the diff `web` is true, and the lane's steps add the modules that read a frontend.
+          docs_lane=false
+          if [ "${{ github.event_name }}" = "pull_request" ] && [ -n "$changed" ] \
+            && ! grep -qvE '^(docs/|CLAUDE\.md$|apps/(web|marketing)/)' <<<"$changed" \
+            && grep -qE '^(docs/|CLAUDE\.md$)' <<<"$changed"; then
+            docs_lane=true
+            echo "Only documents and the frontends changed — the docs lane runs the tests that read them."
+          fi
+          echo "docs_lane=$docs_lane" >> "$GITHUB_OUTPUT"
 
   test:
     name: pytest — mock mode (Python 3.11)
     runs-on: ubuntu-latest
     needs: scope
+    # THE ONE JOB IN THIS FILE THAT WRITES ANYTHING TO GITHUB, and only a pull-request comment (POST-A-041): the coverage step's
+    # figures, in one comment the last step below edits on every push. `pull-requests: write` is for that comment and nothing
+    # else; `contents: read` is what the checkout needs. Naming a permission sets every one not named to none, so this job's token
+    # can do exactly those two things. A pull request from a fork still gets a read-only token whatever this says, and that
+    # step then warns and carries on.
+    permissions:
+      contents: read
+      pull-requests: write
 
     steps:
       - uses: actions/checkout@v7
@@ -146,7 +184,7 @@ jobs:
       # Exit 2 means ruff did not run, which is never a clean result. Run it first: it takes seconds, and it
       # should not wait behind ten minutes of tests to say a name is unused.
       - name: Lint — ruff against the frozen baseline
-        if: needs.scope.outputs.api == 'true'
+        if: needs.scope.outputs.api == 'true' && needs.scope.outputs.docs_lane != 'true'
         working-directory: apps/api
         run: python scripts/ci/ruff_ratchet.py
 
@@ -184,7 +222,8 @@ jobs:
       # scripts/ci/coverage_floor.py holds each above a recorded floor in the next step. Only the mock-mode suite is
       # measured here: the real-Postgres tests run in the other job and are not part of this number.
       - name: Run tests (in-memory / FakeDB), in parallel, with coverage
-        if: needs.scope.outputs.api == 'true'
+        id: tests
+        if: needs.scope.outputs.api == 'true' && needs.scope.outputs.docs_lane != 'true'
         working-directory: apps/api
         env:
           APP_ENV: development
@@ -199,18 +238,67 @@ jobs:
       # A TOOL THAT DID NOT RUN IS NOT A CLEAN RESULT: `if: always()` is NOT used. If the tests failed there is no
       # honest coverage figure to compare, and the floor step would only add a second red mark to a red job. It
       # exits 2, never 0, when the report is missing or measured nothing.
+      # THE DOCS LANE'S RUN, in place of the whole suite and instead of the lint and the coverage steps around it (a document cannot add an
+      # unused import or move a measured line). The list is derived, never held; see scripts/ci/tests_reading_the_docs.py for what counts as
+      # a read and why it errs toward running more. It never prints nothing, so the step cannot collect the whole suite by accident.
+      # WHERE A FRONTEND IS IN THE DIFF TOO, the modules that read a frontend are added to the list (the same derived list the
+      # browser-contract job runs for a frontend-only change), so a screen change with its notes runs both sets in this REQUIRED job. One
+      # list, sorted and without repeats: a module that reads both is run once. Each finder exits non-zero on an empty answer, and
+      # `set -e` with a plain assignment (not a process substitution, whose failure the shell would not see) stops the step there.
+      - name: Run the tests that read docs/ and CLAUDE.md (a docs-only change), and a frontend where one changed
+        if: needs.scope.outputs.api == 'true' && needs.scope.outputs.docs_lane == 'true'
+        working-directory: apps/api
+        env:
+          APP_ENV: development
+          FRONTEND_CHANGED: ${{ needs.scope.outputs.web }}
+        run: |
+          set -euo pipefail
+          listed="$(python3 scripts/ci/tests_reading_the_docs.py --mock)"
+          if [ "$FRONTEND_CHANGED" = "true" ]; then
+            frontend="$(python3 scripts/ci/tests_reading_the_browser.py)"
+            listed="$(printf '%s\n%s\n' "$listed" "$frontend")"
+          fi
+          mapfile -t modules < <(sort -u <<<"$listed" | grep -v '^$')
+          if [ "${#modules[@]}" -eq 0 ]; then
+            echo "No module to run: that cannot be right, and a bare pytest would collect the whole suite." >&2
+            exit 1
+          fi
+          echo "Running ${#modules[@]} modules that read what changed:"
+          printf '  %s\n' "${modules[@]}"
+          pytest "${modules[@]}" -v --tb=short -n auto --dist loadfile
+
       - name: Coverage — report it, and hold the recorded floor
-        if: needs.scope.outputs.api == 'true'
+        if: needs.scope.outputs.api == 'true' && needs.scope.outputs.docs_lane != 'true'
         working-directory: apps/api
         run: python scripts/ci/coverage_floor.py coverage.json
 
       - name: Keep the coverage report with the run
-        if: needs.scope.outputs.api == 'true'
+        if: needs.scope.outputs.api == 'true' && needs.scope.outputs.docs_lane != 'true'
         uses: actions/upload-artifact@v7
         with:
           name: backend-coverage
           path: apps/api/coverage.json
           retention-days: 14
+
+      # THE SAME FIGURES ON THE PULL REQUEST, IN ONE COMMENT THAT EVERY PUSH EDITS (POST-A-041). The script finds its own earlier
+      # comment by a hidden marker and edits it, and every body names the commit it measured, so twenty pushes leave one comment
+      # and an earlier push's figure is never read as this one's. It reads the report and the floors through coverage_floor.py, so
+      # the comment and the check cannot disagree.
+      #
+      # IT CAN NEVER TURN THE JOB RED: the script answers 0 whatever happens (a fork's read-only token, an API error) and says why
+      # in a warning, and the step is continue-on-error besides. The floor is held by the step above, not by this one.
+      #
+      # `!cancelled()` and not `success()`, ON PURPOSE: when the tests failed, or the coverage step found a package below its
+      # floor, the comment is still edited, to say there is no figure for this commit or which package is below. A comment left
+      # alone would go on showing the last good figure as though it were current.
+      - name: Post the coverage figures on the pull request
+        if: ${{ !cancelled() && needs.scope.outputs.api == 'true' && needs.scope.outputs.docs_lane != 'true' && github.event_name == 'pull_request' }}
+        continue-on-error: true
+        working-directory: apps/api
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TESTS_OUTCOME: ${{ steps.tests.outcome }}
+        run: python3 scripts/ci/coverage_comment.py coverage.json
 
       - name: No backend changes
         if: needs.scope.outputs.api != 'true'
@@ -339,13 +427,42 @@ jobs:
       # `-q` and `--durations=25` instead of `-v`: five thousand PASSED lines would push the failure summary out of the 5,000-line
       # window the log service returns, and the slowest tests are the next thing to attack.
       - name: Run real-Postgres regression suite (migration ratchet + atomic RPCs + RLS)
-        if: needs.scope.outputs.api == 'true'
+        if: needs.scope.outputs.api == 'true' && needs.scope.outputs.docs_lane != 'true'
         working-directory: apps/api
         env:
           # 127.0.0.1 (not localhost) so libpq targets the IPv4-published service
           # port directly and never stalls on an IPv6 ::1 attempt first.
           HARNESS_PG: "host=127.0.0.1 port=5432 user=postgres password=postgres"
         run: pytest tests/test_migrations_apply.py tests/test_atomic_journal_posting.py tests/test_*_pg.py -q -n 4 --dist loadfile --tb=short --durations=25
+
+      # THE DOCS LANE'S RUN, in place of the step above: only the real-Postgres modules that read docs/ or CLAUDE.md (the guard that every
+      # client table is assignment-scoped or says why is one). It needs the database the job already started and nothing else; the
+      # migration ratchet and the rest of the real-Postgres suite cannot be moved by a document. An empty list is an answer, not an error.
+      # WHERE A FRONTEND IS IN THE DIFF TOO, the real-Postgres modules that read a frontend (the column, status and sign-in-id guards) are
+      # added: they need the database this job already started, and a frontend-only change never gets them.
+      - name: Run the real-Postgres tests that read docs/ and CLAUDE.md (a docs-only change), and a frontend where one changed
+        if: needs.scope.outputs.api == 'true' && needs.scope.outputs.docs_lane == 'true'
+        working-directory: apps/api
+        env:
+          HARNESS_PG: "host=127.0.0.1 port=5432 user=postgres password=postgres"
+          FRONTEND_CHANGED: ${{ needs.scope.outputs.web }}
+        run: |
+          set -euo pipefail
+          listed="$(python3 scripts/ci/tests_reading_the_docs.py --pg)"
+          if [ "$FRONTEND_CHANGED" = "true" ]; then
+            frontend="$(python3 scripts/ci/tests_reading_the_browser.py)"
+            listed="$(printf '%s\n%s\n' "$listed" "$(grep -E '_pg\.py$' <<<"$frontend" || true)")"
+          fi
+          mapfile -t modules < <(sort -u <<<"$listed" | grep -v '^$' || true)
+          if [ "${#modules[@]}" -eq 0 ]; then
+            echo "No real-Postgres module reads what changed — nothing to run in the docs lane."
+            exit 0
+          fi
+          echo "Running ${#modules[@]} real-Postgres modules that read what changed:"
+          printf '  %s\n' "${modules[@]}"
+          # In parallel by file, exactly as the whole real-Postgres suite above runs these same modules: with a frontend in the diff the
+          # list is more than a dozen modules, the role-by-table matrix among them.
+          pytest "${modules[@]}" -q -n 4 --dist loadfile --tb=short
 
   # THE GUARD THAT PROTECTS THE REDESIGN USED TO BE SWITCHED OFF BY THE REDESIGN.
   #
@@ -374,15 +491,18 @@ jobs:
   # the orphan-endpoint guard has no path of its own and would be missed by a
   # grep.
   #
-  # ⚠️ ONE RESIDUAL, NAMED RATHER THAN HIDDEN. The three `*_pg.py` frontend
-  # guards (columns exist, status vocabulary, auth-id FKs) self-skip here
-  # because they need HARNESS_PG, and giving this job a Postgres service means
-  # applying 470 migrations — the cost this job exists to avoid. They protect
-  # against a frontend change naming a column or status the schema does not
-  # have, which IS a real apps/web risk, and today that is caught only when the
-  # same PR also touches apps/api. Closing it properly means a mock-mode
-  # variant reading the committed production snapshot in tests/fixtures/
-  # instead of a live database; that is a build, not a config change.
+  # THE THREE `*_pg.py` FRONTEND GUARDS (columns exist, status vocabulary,
+  # auth-id FKs) still self-skip here, because they need HARNESS_PG and giving
+  # this job a Postgres service means applying ~600 migrations, the cost this
+  # job exists to avoid. What runs here instead is their mock-mode variant,
+  # tests/test_frontend_schema_guards_read_the_committed_files.py (POST-A-038):
+  # the same scanners asked of the production snapshot in tests/fixtures/ and
+  # the migrations read as text, so a frontend-only PR that names a column or
+  # status nothing declares, or writes a sign-in id into a key to users, fails
+  # here. The import rule above picks it up, as it does the orphan guard. It
+  # can only be weaker than the real guards, never stricter: the real-Postgres
+  # job holds its reading to a migration-built database
+  # (test_the_schema_read_from_the_committed_files_agrees_with_a_migration_built_database_pg.py).
   browser-contract:
     name: browser contract — python guards that read a frontend
     runs-on: ubuntu-latest

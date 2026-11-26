@@ -54,7 +54,8 @@ import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput
 // form an <input> takes back, so it groups nothing (₹100000.00).
 import { formatPaise } from "@/lib/money/format";
 import { todayIstISO } from "@/lib/dates/format";
-import type { JournalEntryDetail, JournalLineIO } from "@/lib/api";
+import { api, type JournalEntryDetail, type JournalLineIO } from "@/lib/api";
+import { recentFirst, useRecentPartyIds } from "@/lib/lookups/recentParties";
 
 export const ENTRY_TYPES = [
   "Journal", "Sales", "Purchase", "Payment", "Receipt", "Contra", "Opening",
@@ -128,10 +129,25 @@ export interface JournalEditorProps {
     attachments: { name: string; url: string }[];
   }) => void | boolean | Promise<boolean | void>;
   onCancel: () => void;
+  /**
+   * Whether this person may put the entry on the books: Post Entry on a new entry or a saved draft, and Save Correction on an entry
+   * already posted. Both posting routes ask `accounting` `write` and then the firm's rule (POST-A-456): where the firm has a Partner
+   * approve every manual journal, only someone who may approve posts or corrects a posted entry, and everyone else saves a draft for
+   * Approvals. The page passes the server's answer for this person. Omitted, the buttons are offered.
+   */
+  mayPost?: boolean;
+  /** The sentence saying the firm's rule could not be read (Post is then offered and the server decides); null when it was read. */
+  postRuleNote?: string | null;
+  /**
+   * Whether this person may write to the books at all: Save Draft, Save Correction and a new entry's Post Entry ask
+   * `accounting` `write`, and an Executive's `accounting` is read only. Without it the entry is shown to read, with a
+   * sentence saying so (POST-A-455). Omitted, the form is editable.
+   */
+  mayWrite?: boolean;
 }
 
 export function JournalEditor({
-  accounts, clientId, existing, saving = false, serverError = null, onSave, onCancel,
+  accounts, clientId, existing, saving = false, serverError = null, onSave, onCancel, mayPost = true, postRuleNote = null, mayWrite = true,
 }: JournalEditorProps) {
   const isNew = existing === null;
   const isPosted = !!existing?.is_posted;
@@ -139,7 +155,11 @@ export function JournalEditor({
   const lockReason = existing?.is_reversed
     ? "This entry has been reversed, so it can no longer be edited."
     : existing?.lock_reason ?? null;
-  const readOnly = !isNew && lockReason !== null;
+  const locked = !isNew && lockReason !== null;
+  // A person who may not write to the books is shown the entry to read, the same as a locked one is; so is an entry on the books
+  // to someone the firm's rule does not let change one (POST-A-456).
+  const postedHeldForApproval = isPosted && mayWrite && !mayPost;
+  const readOnly = locked || !mayWrite || postedHeldForApproval;
   /* ACC-25, second half. The documents are a DRAFT-only edit and the control
      has to say so rather than accept a link the PATCH will refuse.
      `prevent_posted_journal_modification` lets a posted entry's header change
@@ -259,6 +279,10 @@ export function JournalEditor({
   const allAccounts = useMemo(
     () => [...accounts, ...created.filter((c) => !accounts.some((a) => a.id === c.id))],
     [accounts, created]);
+  // The accounts this client put on its newest manual journals go to the top of every line's picker (POST-A-155); nothing is
+  // pre-selected. Not read for an entry that cannot be changed: it has no picker to order.
+  const recentAccountIds = useRecentPartyIds(api.accounting.recentJournalAccounts, clientId, !readOnly);
+  const recentAccounts = useMemo(() => recentFirst(recentAccountIds, allAccounts), [recentAccountIds, allAccounts]);
   // Which line asked for it, by KEY and not by position, so removing a line
   // while the dialog is open cannot send the new ledger to the wrong one.
   const [quickAdd, setQuickAdd] = useState<{ name: string; lineKey: string } | null>(null);
@@ -366,7 +390,7 @@ export function JournalEditor({
    *  guard until it settles. */
   function handleSave(mode: JournalSaveMode): Promise<void> | void {
     setLocalError(null);
-    if (dates.first) { setLocalError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setLocalError); return; }
     if (hasUnparseable) { setLocalError("One of the amounts isn't a number. Check the highlighted cells."); return; }
     if (!narration.trim()) { setLocalError("Narration is required."); return; }
     if (!isBalanced) { setLocalError("Debits must equal credits before saving."); return; }
@@ -419,7 +443,22 @@ export function JournalEditor({
       )}
 
       {/* Why this cannot be changed — the sentence, not a disabled button. */}
-      {readOnly && (
+      {!mayWrite && !locked && (
+        <p role="status" className="text-xs text-ps-label bg-ps-bg rounded px-3 py-2">
+          Your access to this client&apos;s accounting is read only, so this entry is shown to read and nothing on it can be
+          saved or posted. Someone with write access to the books records and corrects journal entries.
+        </p>
+      )}
+      {postedHeldForApproval && !locked && (
+        <p role="status" className="text-xs text-ps-label bg-ps-bg rounded px-3 py-2">
+          This firm has a Partner approve every manual journal, and you may not approve, so an entry on the books is shown to read
+          here. Someone who may approve corrects it, or reverses it.
+        </p>
+      )}
+      {postRuleNote && !readOnly && (
+        <p role="status" className="text-xs text-ps-label bg-ps-bg rounded px-3 py-2">{postRuleNote}</p>
+      )}
+      {locked && (
         <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-4 py-3 space-y-1">
           <p className="text-sm text-amber-900 font-medium">This entry can no longer be edited.</p>
           <p className="text-xs text-amber-800">{lockReason}</p>
@@ -565,6 +604,7 @@ export function JournalEditor({
                     <td className="py-1.5 pr-2">
                       <AccountLookup
                         accounts={allAccounts}
+                        recent={recentAccounts}
                         value={line.account_id}
                         onChange={(id) => pickAccount(idx, id)}
                         id={`je-account-${line.key}`}
@@ -686,11 +726,15 @@ export function JournalEditor({
                         className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-40">
                   Save Draft
                 </Button>
-                <Button variant="plain" size="none" flight={flight}
-                        onClick={() => handleSave("post")} disabled={saving || !isBalanced}
-                        className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
-                  {saving ? "Saving…" : "Post Entry"}
-                </Button>
+                {mayPost ? (
+                  <Button variant="plain" size="none" flight={flight}
+                          onClick={() => handleSave("post")} disabled={saving || !isBalanced}
+                          className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
+                    {saving ? "Saving…" : "Post Entry"}
+                  </Button>
+                ) : (
+                  <p className="text-xs text-ps-label self-center">This firm has a Partner approve every manual journal, and you may not approve, so Post Entry is not shown to you: Save Draft, and the entry waits in the Approvals tab.</p>
+                )}
               </>
             )}
           </div>

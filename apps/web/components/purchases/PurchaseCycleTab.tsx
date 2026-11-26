@@ -38,6 +38,7 @@ import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { formatDate } from "@/lib/dates/format";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 type Tab = "orders" | "receipts";
 type Msg = { type: "ok" | "err"; text: string } | null;
@@ -254,7 +255,7 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
   }
 
   async function save() {
-    if (dates.first) { setMsg({ type: "err", text: dates.first }); return; }
+    if (dates.first) { dates.refuseWith(setMsg, (text) => ({ type: "err" as const, text })); return; }
     const body = buildLines();
     if (!body.length) {
       setMsg({ type: "err", text: "Add at least one line." });
@@ -306,7 +307,7 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
     setMatched(objectWithLists<ThreeWayMatch>(res.data, "caveats", "differences", "gaps", "lines") ?? null);
   }
 
-  if (loading) return <div className="p-6 text-sm text-ps-hint">Loading…</div>;
+  if (loading) return <LoadingRegion label="Loading the purchase cycle" className="p-6 text-sm text-ps-hint">Loading…</LoadingRegion>;
   if (loadFailed) {
     return (
       <div className="p-6">

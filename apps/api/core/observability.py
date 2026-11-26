@@ -220,6 +220,15 @@ def _release() -> Optional[str]:
     return os.environ.get("RENDER_GIT_COMMIT") or None
 
 
+def running_build() -> str:
+    """The commit this process was built from, or the word `unknown` (POST-A-514).
+
+    The same name `_release` tags an event with (`SENTRY_RELEASE` wins when somebody sets it, otherwise Render's own `RENDER_GIT_COMMIT`),
+    read by `/health` so a deploy that lags the website is visible from outside: `curl .../health` and compare it with the commit on
+    `main`. A process that does not know says so; nothing is invented, and an empty value is not a commit."""
+    return (os.environ.get("SENTRY_RELEASE") or os.environ.get("RENDER_GIT_COMMIT") or "").strip() or "unknown"
+
+
 def error_reporting_enabled() -> bool:
     """True if a Sentry client with a DSN is live in this process.
 

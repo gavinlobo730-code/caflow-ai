@@ -165,7 +165,27 @@ def test_every_health_swallow_names_the_operation_it_lost():
 # 175 -> 124 (POST-A-021, 18-10-2026): forty-six silent handlers on the money and ledger paths now report through
 # capture_soft_failure (a best-effort audit, timeline, delivery-log or settings read) or capture_posting_failure (a rollback that
 # did not run); tests/test_a_swallowed_failure_on_a_money_path_is_reported_not_silent.py holds those files at zero.
-MAX_SILENT_SWALLOWS_ELSEWHERE = 124
+#
+# 124 -> 83 (POST-A-021, second slice, 16-11-2026): the engagement-letter router (22) and the lifecycle router (18) report every
+# swallow through capture_soft_failure (the count stood at 123 when the slice began: one had gone in between);
+# tests/test_a_swallowed_failure_beyond_the_money_paths_is_reported.py holds those files at zero.
+#
+# 83 -> 57 (POST-A-021, third slice, 16-11-2026): the search router (7), the tasks router (6) and the AI copilot's context (9)
+# report through capture_soft_failure, and the memory pipeline's four per-row stamp parses name the errors they expect.
+#
+# 57 -> 30 (POST-A-021, fourth slice, 17-11-2026): the broad handlers in the documents, branding, DSC, engagement, practice,
+# relationship, scheduler-status, task-extras, task-template, year-end-review, portal, knowledge and AI-insight modules report;
+# the workflow engine's rule comparison and the request-token reset name what they expect.
+#
+# 30 -> 16 (POST-A-021, fifth slice, 18-11-2026): fourteen narrow `except ...: pass` handlers were triaged. A stored date or month that
+# does not read is reported where a figure falls back on it (credit terms, collections, overdue status, late-filing history, the
+# payslip and TDS return month); a check is asked instead of an exception caught where the absence is ordinary (an impossible date
+# in a notice's text, a trigger's due date, a mock invoice number); sales_invoices' private copy of the credit-terms rule delegates
+# to services/credit_terms; and an always-importable mock store is imported without a guard.
+# tests/test_a_narrow_swallow_is_triaged.py holds those files at zero. Left: the compliance builder's nine (taken when its item
+# closes) and seven that run inside an error path by design (core/exceptions 3, the AI gateway's error-body parses 2, the mail
+# transport 1, the request-token reset 1).
+MAX_SILENT_SWALLOWS_ELSEWHERE = 16
 
 _SCAN_DIRS = ("routers", "services", "domain", "repositories", "jobs", "core")
 

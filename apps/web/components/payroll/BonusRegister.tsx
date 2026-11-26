@@ -29,6 +29,7 @@ import { Callout, GapList } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
 import { formatDate } from "@/lib/services/formatting";
 import { Button } from "@/components/ui/button";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 function rupees(paise: number): string {
   return "₹" + (paise / 100).toLocaleString("en-IN", {
@@ -166,9 +167,11 @@ export function BonusRegisterTab({ clientId }: { clientId: string }) {
       {error && <Callout tone="problem">{error}</Callout>}
 
       {loading && !data && (
-        <div className="flex items-center gap-2 text-xs text-ps-hint">
-          <Loader2 size={12} className="animate-spin" /> Loading…
-        </div>
+        <LoadingRegion label="Loading the bonus register">
+          <div className="flex items-center gap-2 text-xs text-ps-hint">
+            <Loader2 size={12} className="animate-spin" /> Loading…
+          </div>
+        </LoadingRegion>
       )}
 
       {data && (

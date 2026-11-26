@@ -424,9 +424,9 @@ def test_the_not_included_list_is_a_rule_and_names_the_tables_the_files_point_at
     manifest = json.loads(files["manifest.json"])
     assert manifest["not_included"][0].startswith("Only the files listed in manifest.json are here")
     text = " ".join(manifest["not_included"])
-    for named in ("customer and vendor advances", "loans", "cost centres", "service catalogue", "delivery challans", "section 192"):
+    for named in ("budgets", "late-payment interest", "section 192", "Payroll", "Income tax"):
         assert named in text, named
-    assert any("cost_centre_id" in line for line in manifest["ids_that_lead_to_tables_not_in_the_export"])
+    assert any("source_id" in line for line in manifest["ids_that_lead_to_tables_not_in_the_export"])
     assert "IDS IN THESE FILES THAT LEAD TO TABLES THAT ARE NOT HERE" in files["README.txt"].decode("utf-8")
 
 

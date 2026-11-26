@@ -23,14 +23,17 @@ module counts rather than averages over.
 """
 from __future__ import annotations
 
+import logging
 from datetime import date, timedelta
 from typing import Optional
 
+from core import db_errors
 from core.authz import filter_by_client
 from core.db_paging import fetch_all
 from core.ist_clock import ist_today
 from domain.practice import capacity_risk as rule
-from domain.practice import task_estimate
+from domain.practice import obligation_estimate, task_estimate
+from repositories.compliance_effort_repository import compliance_effort_repo
 from domain.risk.register import SETTLED_FILING_STATUSES
 from repositories.capacity_repository import DEFAULT_WEEKLY_HOURS
 
@@ -46,6 +49,28 @@ _TASK_DONE = frozenset({"completed", "cancelled"})
 #: unpinned copy of that pair, and a status added to one and not the other would have counted an obligation as owed in the capacity forecast
 #: that the register called settled.
 _COMPLIANCE_SETTLED = SETTLED_FILING_STATUSES
+
+_logger = logging.getLogger("caflow.capacity_risk")
+
+
+def _stated_hours(firm_id: str) -> dict[str, float]:
+    """What the firm says one filing of each kind takes (POST-A-212), as hours by kind.
+
+    THE CODE DEPLOYS BEFORE ITS MIGRATION. Render serves a push to `main` while the job that applies migration 671 is still waiting on
+    the tests, so for a while this database has no `compliance_effort_estimates`. In that window the forecast answers as it did before
+    the table existed (no kind has a figure, so every obligation not worked as a task is an item without an estimate) and says so at
+    ERROR, rather than failing the whole forecast over the newer half of it. Only "the table is not there" is read that way
+    (`core.db_errors.is_missing_store`): any other failure (the database unreachable, a refusal) is raised, because an unread figure
+    is not a figure of nothing."""
+    try:
+        rows = compliance_effort_repo.find_all(firm_id=firm_id)
+    except Exception as exc:                                    # noqa: BLE001
+        if not db_errors.is_missing_store(exc):
+            raise
+        _logger.error("the filing-effort estimates are NOT read: this database has no compliance_effort_estimates (migration 671 has "
+                      "not been applied), so every obligation not worked as a task counts as an item without an estimate. %s", exc)
+        return {}
+    return obligation_estimate.hours_by_type(rows)
 
 
 def _effort_by_step(db, step_ids: list[str]) -> dict[str, float]:
@@ -137,6 +162,9 @@ def capacity_risk(db, current_user: dict, *,
     # which is the biggest population in that table. The fold is COUNTED, not
     # silent: a partner comparing this with the deadline list would otherwise
     # read the difference as the forecast being short.
+    # What the firm itself says one filing of each kind takes (POST-A-212, migration 671). An obligation worked as a task is counted by
+    # that task's own estimate above and never here; a kind the firm has not stated stays None, which the rule counts and never averages.
+    stated = _stated_hours(firm_id)
     folded = 0
     for o in obligations:
         linked = o.get("task_id")
@@ -146,7 +174,7 @@ def capacity_risk(db, current_user: dict, *,
         items.append(rule.DueItem(
             due_date=o.get("due_date") or "",
             source="compliance",
-            effort_hours=None,       # nothing records how long a filing takes
+            effort_hours=stated.get(str(o.get("compliance_type") or "")),   # None unless the firm stated it for this kind
             label=o.get("compliance_type"),
         ))
 

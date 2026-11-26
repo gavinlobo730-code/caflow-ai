@@ -1,5 +1,7 @@
 "use client";
 
+import { forgetCustomerLists, forgetVendorLists } from "@/lib/data/partyLists";
+import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { useEffect, useRef, useState } from "react";
 import { Plus, Loader2, AlertTriangle, Database, CheckCircle, XCircle } from "lucide-react";
 import { TransactionListSkeleton } from "@/components/ui/skeleton";
@@ -12,6 +14,7 @@ import { api, request } from "@/lib/api";
 import { arrayOrEmpty, objectOrNull, objectWithLists } from "@/lib/api/shape";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { pageFrameClass } from "@/components/ui/page-frame";
 import {
   ALL_IMPORT_TYPES, importTypeNote, migrationSubtitle, noClientOptionLabel,
 } from "@/lib/migration/writtenTypes";
@@ -281,6 +284,9 @@ export default function MigrationPage() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't roll the import back.");
     } finally {
+      // The rollback removes the masters the import wrote (POST-A-124). Forgotten whatever the answer was: a request that timed out here may
+      // have finished on the server, and a list kept over it would be painted as read (found by the independent review).
+      forgetCustomerLists(); forgetVendorLists();
       setBusyJob(null);
     }
   }
@@ -515,6 +521,9 @@ export default function MigrationPage() {
     } catch (e) {
       setError(sentenceOf(e, "The import could not be started."));
     } finally {
+      // The import writes customer and supplier masters: the cached lists of both are forgotten (POST-A-124) whatever the answer was, since a
+      // request that timed out here may have finished on the server (found by the independent review).
+      forgetCustomerLists(); forgetVendorLists();
       setWorking(false);
     }
   }
@@ -531,7 +540,7 @@ export default function MigrationPage() {
   const notImportedCategories = notSelectedForImport(parseResult?.parsed_counts, selectedTypes);
 
   return (
-    <div className="p-6 max-w-4xl space-y-4">
+    <div className={pageFrameClass("data", "space-y-4")}>
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold text-ps-ink">Migration Center</h2>
@@ -590,13 +599,13 @@ export default function MigrationPage() {
                   <label className="text-3xs text-ps-label mb-1 block">
                     Client — needed to import customers or vendors
                   </label>
-                  <select aria-label="Client — needed to import customers or vendors" value={clientId} onChange={e => setClientId(e.target.value)}
-                    className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg bg-white">
-                    <option value="">{noClientOptionLabel()}</option>
-                    {clients.map(c => (
-                      <option key={c.id} value={c.id}>{c.client_name ?? c.id}</option>
-                    ))}
-                  </select>
+                  <ClientLookup ariaLabel="Client — needed to import customers or vendors"
+                    clients={clients}
+                    value={clientId}
+                    onChange={setClientId}
+                    placeholder={noClientOptionLabel()}
+                    clearable
+                  />
                 </div>
               </div>
               <div>

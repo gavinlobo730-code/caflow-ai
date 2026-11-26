@@ -175,7 +175,7 @@ def test_the_year_end_summary_is_one_row_per_employee():
              "payroll_employees": {"name": "Bhaskar", "pan": "ABCPK9999F",
                                    "designation": "Executive"}},
         ]})
-    rows = prs.employee_year_totals(db, FIRM, "2026-27")
+    rows = prs.employee_year_totals(db, FIRM, "2026-27", narrow=lambda runs: runs)
     assert [r["employee_id"] for r in rows] == ["e1", "e2"]   # sorted by name
     asha = rows[0]
     assert asha["months"] == 2
@@ -186,7 +186,7 @@ def test_the_year_end_summary_is_one_row_per_employee():
 
 def test_a_year_with_no_runs_reads_nothing_rather_than_everything():
     db = _DB({"payroll_runs": []})
-    assert prs.employee_year_totals(db, FIRM, "2019-20") == []
+    assert prs.employee_year_totals(db, FIRM, "2019-20", narrow=lambda runs: runs) == []
     assert "payroll_slips" not in db.qs
 
 
@@ -202,7 +202,7 @@ def test_the_year_options_come_off_the_runs():
                                {"month": "2026-04"},
                                {"month": "2027-03"},
                                {"month": None}]})
-    assert prs.financial_years(db, FIRM) == ["2026-27", "2025-26"]
+    assert prs.financial_years(db, FIRM, narrow=lambda runs: runs) == ["2026-27", "2025-26"]
 
 
 # ── The screens ─────────────────────────────────────────────────────────────

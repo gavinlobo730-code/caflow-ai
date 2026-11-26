@@ -1,8 +1,10 @@
 /**
  * A DEDUCTION TYPED ON THE TDS SCREEN IS NAMED ON THE STATEMENT BUILT FROM THE BOOKS, AND THE YEAR IS NOT CALLED BELOW A THRESHOLD FOR A PAYEE THE SERVER COULD NOT LOOK UP (POST-A-078).
  *
- * The 26Q built from the books reads posted purchase bills and withholding advances only, so a deduction a CA typed on the TDS screen is not on it, and the two return
- * screens said nothing: a statement that is silent about the register's tax reads as a complete one. The server names them now (`excluded_typed`) and the screens draw what
+ * The 26Q built from the books carries the deductions a CA typed on the TDS screen as deductee rows (POST-A-078, the carrying half; the note of the rows it carries,
+ * `typed_on_statement`, is not driven here), and a typed row recorded for ANOTHER statement, or naming a supplier now recorded as non-resident, is left out of it
+ * (the server's sentence says which; the answer driven here is the first). The two return screens said nothing of what was left out: a
+ * statement that is silent about the register's tax reads as a complete one. The server names them (`excluded_typed`) and the screens draw what
  * it said: how many, the tax they withheld, its own sentence, and (folded away) which they are. Nothing is added to the statement. Here, on the client's TDS tab and on the
  * firm-level page, at 1280 px and at 440: the note is drawn from a whole answer, it is not drawn when nothing is left out or when the key is absent, an answer that is there
  * and cannot be read is SAID to be unreadable (silence would read as "none"), the list is drawn only when it is whole, and the box that holds it can be reached from the
@@ -24,7 +26,7 @@ import { openTdsDeductionForm } from "../flows.mjs";
 export const group = "typed-deductions-named";
 
 /** services/tds_return_service.EXCLUDED_TYPED_REASON. */
-const TYPED_REASON = "A statement built from the books carries posted purchase bills and advances only, so deductions typed on the TDS screen are not in its totals. Key them from the register when you key the statement, or leave them out knowingly.";
+const TYPED_REASON = "Their register rows are recorded for another statement, so they are not in this one's totals. Key them on the statement they are recorded for, or correct the register row if they belong on this one.";
 
 const ROW_ONE = { id: "t1", deductee_name: "Acme Services", deductee_pan: "AAACA1234A", section: "194J", section_1961: "194J", transaction_date: "2025-10-12", payment_amount_paise: 10000000, tds_paise: 1000000 };
 const ROW_TWO = { id: "t2", deductee_name: "Late Co", deductee_pan: null, section: "393(1)", section_1961: "194H", transaction_date: "2025-12-05", payment_amount_paise: 4000000, tds_paise: 80000 };
@@ -217,8 +219,8 @@ const firmPageNames = {
 
 // ── the typed form's sentence ────────────────────────────────────────────────
 
-/** domain/tds/manual_register.GAP_MESSAGES, both, in the server's words. */
-const GAP_NOT_UNIFIED = "This year's aggregate for this payee counts hand-entered deductions only. Purchase bills for the same payee are held in a separate register and are not added in, so a section with an annual threshold may not have been triggered yet.";
+/** domain/tds/manual_register.GAP_MESSAGES, the two a deduction with no supplier can carry (one or the other: with a usable PAN, or with none), in the server's words. */
+const GAP_NO_SUPPLIER = "This deduction names no supplier, so its year is added up with the other deductions typed for this PAN that name none, and not with any supplier's purchase bills or advances. Pick the supplier to count it in that supplier's year.";
 const GAP_NO_PAN = "No usable PAN is recorded for this payee, so the year's earlier payments to the same payee were not looked for. This payment is charged as if it were the payee's first of the year, and that says nothing about what the year's total is.";
 
 const BELOW = (aggregateTested, { section = "194J", noPan = false } = {}) => ({
@@ -228,8 +230,8 @@ const BELOW = (aggregateTested, { section = "194J", noPan = false } = {}) => ({
       ? "Charged at the non-individual rate: no PAN is on file to read the payee's type from, so the higher rate applies by default."
       : "Charged at the non-individual rate: PAN 4th character C.",
     fy_prior_taxable_paise: 0, fy_prior_tds_paise: 0, ...(aggregateTested === undefined ? {} : { aggregate_tested: aggregateTested }),
-    gaps: noPan ? ["tds_aggregate_excludes_purchase_bills", "tds_aggregate_not_read_without_a_pan"] : ["tds_aggregate_excludes_purchase_bills"],
-    gap_messages: noPan ? [GAP_NOT_UNIFIED, GAP_NO_PAN] : [GAP_NOT_UNIFIED],
+    gaps: noPan ? ["tds_aggregate_not_read_without_a_pan"] : ["tds_deduction_names_no_supplier"],
+    gap_messages: noPan ? [GAP_NO_PAN] : [GAP_NO_SUPPLIER],
   },
 });
 
@@ -288,4 +290,134 @@ const typedFormSaysWhatWasAddedUp = {
   },
 };
 
-export const scenarios = [clientTabNames, clientTabNarrow, firmPageNames, typedFormSaysWhatWasAddedUp];
+// ── the supplier the payment was made to ─────────────────────────────────────
+//
+// A deduction that names its supplier is counted in that supplier's year with its purchase bills and advances (POST-A-078). Picking one sends its id, shows its own
+// name and PAN in boxes that cannot be typed over, and offers its section; the server's own sentence about the charge replaces this form's two (which describe a
+// payee who is not a supplier); a supplier found by the PAN alone is NAMED, so a CA who only typed a PAN knows it was added to a supplier's bills; the reason none was
+// found where suppliers hold the PAN is shown; clearing the picker gives the boxes back; and a supplier list that cannot be read is said in words.
+
+const KAPOOR = { id: "v-kapoor", client_id: "c1", name: "Kapoor Associates", gstin: null, pan: "AAKPK1234F", tds_applicable: true, tds_section: "194J", tds_rate_bps: null, credit_days: null, credit_limit_paise: null, is_active: true };
+const TARA = { id: "v-tara", client_id: "c1", name: "Tara Traders", gstin: null, pan: null, tds_applicable: true, tds_section: "194C", tds_rate_bps: null, credit_days: null, credit_limit_paise: null, is_active: true };
+/** services/vendor_tds.resolve_resident_tds's sentence for a charge on a supplier's year (its shape; the figures are this scenario's). */
+const WHY = "§194J at 10% on the year's aggregate of ₹1,20,000, less ₹0 already withheld on earlier bills, advances and deductions typed on the TDS screen (§200).";
+/** routers/tds_workspace._supplier_of_the_deduction, for a PAN two active suppliers of the client hold. */
+const TWO_HOLD = "2 suppliers of this client hold PAN AAKCT5678G (a supplier registered in more than one state has a record for each), so this payment is not counted in either's year. Pick the supplier to count it in that supplier's year.";
+
+/** What the server answers: for a picked supplier, the bill path's charge; for a PAN one active supplier holds, that supplier named; for a PAN two hold, none and why. */
+function supplierAnswer(sent) {
+  const base = { payment_amount_paise: sent.payment_amount_paise, quarter: "Q2", financial_year: "2026-27" };
+  const explain = { reason: null, rate_basis: "Charged at the individual/HUF rate: PAN 4th character P.", aggregate_tested: true, shortfall_paise: 0, supplier_note: null, gaps: [], gap_messages: [] };
+  if (sent.vendor_id === KAPOOR.id) {
+    return { ...base, tds_rate_pct: 10, tds_paise: 1200000, explain: { ...explain, applies: true, rate_pct: 10, tds_paise: 1200000, fy_prior_taxable_paise: 2000000, fy_prior_tds_paise: 0, why: WHY, supplier: { id: KAPOOR.id, name: KAPOOR.name } } };
+  }
+  if (sent.vendor_id === TARA.id) {
+    return { ...base, tds_rate_pct: 2, tds_paise: 2000000, explain: { ...explain, applies: true, rate_pct: 2, tds_paise: 2000000, rate_basis: "Charged at the non-individual rate: no PAN is on file to read the payee's type from, so the higher rate applies by default.", fy_prior_taxable_paise: 0, fy_prior_tds_paise: 0, why: "§194C at 2% on ₹10,00,000.", supplier: { id: TARA.id, name: TARA.name }, shortfall_paise: 50000 } };
+  }
+  if (sent.deductee_pan === KAPOOR.pan) {
+    return { ...base, tds_rate_pct: 10, tds_paise: 1200000, explain: { ...explain, applies: true, rate_pct: 10, tds_paise: 1200000, fy_prior_taxable_paise: 2000000, fy_prior_tds_paise: 0, why: WHY, supplier: { id: KAPOOR.id, name: KAPOOR.name } } };
+  }
+  const note = sent.deductee_pan === "AAKCT5678G" ? TWO_HOLD : null;
+  return { ...base, tds_rate_pct: 0, tds_paise: 0, explain: { ...explain, applies: false, reason: "below_threshold", rate_pct: 0, tds_paise: 0, fy_prior_taxable_paise: 0, fy_prior_tds_paise: 0, why: null, supplier: null, supplier_note: note, gaps: ["tds_deduction_names_no_supplier"], gap_messages: [GAP_NO_SUPPLIER] } };
+}
+
+const COUNTED = (name, byPan) => `Counted in the year of supplier ${name}${byPan ? ", found by the PAN" : ""}, with its purchase bills and advances.`;
+
+/** The sections the form may record a deduction under, as `GET /api/tds/sections` answers them (only the two these suppliers carry and a third; the form offers a
+ *  supplier's own section only when the server lists it as one a deduction may be recorded under). */
+const SECTIONS = { fy: "2026-27", sections: [
+  { section: "194C", label: "Payments to contractors", vendor_eligible: true },
+  { section: "194J", label: "Fees for professional or technical services", vendor_eligible: true },
+  { section: "194H", label: "Commission or brokerage", vendor_eligible: true },
+] };
+
+async function openWithSuppliers(env, vendorsReply = () => ok([KAPOOR, TARA])) {
+  const { stub } = env;
+  stub.route({ method: "GET", re: /api\/vendors\/\?/, reply: vendorsReply });
+  stub.route({ method: "GET", re: /api\/tds\/sections/, reply: () => ok(SECTIONS) });
+  const previews = [];
+  stub.route({ method: "POST", re: PREVIEW, reply: (_req, raw) => { const sent = JSON.parse(raw); previews.push(sent); return ok(supplierAnswer(sent)); } });
+  const form = await openTdsDeductionForm(env);
+  await form.locator("#tds-payment-date").fill("15/08/2026");
+  await form.locator("#tds-payment-date").press("Tab");
+  return { form, previews };
+}
+
+const typedFormNamesItsSupplier = {
+  id: "a-typed-deduction-names-the-supplier-it-was-paid-to-and-is-counted-in-its-year",
+  title: "TDS > Add Deduction: picking a supplier sends its id, puts its own name and PAN in boxes that cannot be typed over and offers its section, the server's sentence about the supplier's year replaces the form's own, and the deduction is saved with the supplier",
+  async run(env) {
+    const { page, stub } = env;
+    const { form, previews } = await openWithSuppliers(env);
+    await pick(page, form.getByRole("button", { name: "Supplier (optional)" }), KAPOOR.name);
+    const name = form.getByLabel("Party / Vendor Name", { exact: true });
+    const pan = form.getByLabel("PAN of Party", { exact: true });
+    await until(async () => (await name.inputValue()) === KAPOOR.name, "the supplier's own name in the name box");
+    assert.equal(await pan.inputValue(), KAPOOR.pan, "the supplier's own PAN is not in the PAN box");
+    assert.equal(await name.getAttribute("readonly"), "", "the name box can be typed over while a supplier is picked");
+    assert.equal(await pan.getAttribute("readonly"), "", "the PAN box can be typed over while a supplier is picked");
+    assert.match(await form.getByRole("button", { name: "TDS Section", exact: true }).innerText(), /^\s*194J\b/, "the supplier's section was not offered");
+
+    await form.getByText(COUNTED(KAPOOR.name, false), { exact: true }).waitFor({ timeout: 4000 });
+    await form.getByText(WHY, { exact: true }).waitFor();
+    assert.ok(previews.some((p) => p.vendor_id === KAPOOR.id), "the preview did not carry the supplier");
+    // The form's own two sentences describe a payee who is not a supplier and are not said beside the server's.
+    assert.equal(await form.getByText(/already typed on this screen for this payee/).count(), 0);
+    assert.equal(await form.getByText(/Charged on the year's aggregate for this payee/).count(), 0);
+    assert.equal(await form.getByText(GAP_NO_SUPPLIER, { exact: true }).count(), 0, "the no-supplier sentence was shown for a deduction that names one");
+
+    stub.forgetWrites();
+    await form.getByRole("button", { name: "Add Deduction", exact: true }).click();
+    await stub.quiet();
+    const saved = stub.writesTo(/api\/tds-workspace\/deductions$/, "POST");
+    assert.equal(saved.length, 1, `expected one save, saw ${saved.length}`);
+    const body = JSON.parse(saved[0].body);
+    assert.equal(body.vendor_id, KAPOOR.id, "the deduction was saved without its supplier");
+    assert.equal(body.deductee_pan, KAPOOR.pan);
+  },
+};
+
+const typedFormSaysWhichSupplierItFound = {
+  id: "a-typed-deduction-says-which-supplier-its-pan-found-and-why-it-found-none",
+  title: "TDS > Add Deduction: with no supplier picked, a PAN one supplier holds is counted in that supplier's year and the form says so; a PAN two suppliers hold says why it was counted in neither; a supplier with no PAN shows an empty, read-only PAN box and a tax the payment cannot cover says how much is left; and clearing the picker gives the boxes back",
+  async run(env) {
+    const { page } = env;
+    const { form, previews } = await openWithSuppliers(env);
+    const pan = form.getByLabel("PAN of Party", { exact: true });
+
+    await pan.fill(KAPOOR.pan);
+    await form.getByText(COUNTED(KAPOOR.name, true), { exact: true }).waitFor({ timeout: 4000 });
+    assert.ok(previews.every((p) => !p.vendor_id), "a supplier id was sent although none was picked");
+
+    await pan.fill("AAKCT5678G");
+    await form.getByText(TWO_HOLD, { exact: true }).waitFor({ timeout: 4000 });
+    assert.equal(await form.getByText(/^Counted in the year of supplier/).count(), 0, "a supplier was named for a PAN two suppliers hold");
+    await form.getByText(GAP_NO_SUPPLIER, { exact: true }).waitFor();
+
+    await pick(page, form.getByRole("button", { name: "Supplier (optional)" }), TARA.name);
+    await form.getByText(COUNTED(TARA.name, false), { exact: true }).waitFor({ timeout: 4000 });
+    assert.equal(await pan.inputValue(), "", "a supplier with no PAN kept the PAN typed before it was picked");
+    assert.equal(await pan.getAttribute("placeholder"), "No PAN on the supplier's record");
+    assert.match(await form.getByRole("button", { name: "TDS Section", exact: true }).innerText(), /^\s*194C\b/);
+    await form.getByText("₹500.00 of the year's tax is not withheld on this payment, because it is more than the payment.", { exact: true }).waitFor();
+
+    await form.getByRole("button", { name: "Supplier (optional)" }).getByLabel("Clear").click();
+    await until(async () => (await pan.getAttribute("readonly")) === null, "the PAN box to be editable again once the supplier is cleared");
+    await pan.fill(KAPOOR.pan);
+    await form.getByText(COUNTED(KAPOOR.name, true), { exact: true }).waitFor({ timeout: 4000 });
+    assert.equal(previews[previews.length - 1].vendor_id, null, "the cleared supplier was still sent");
+  },
+};
+
+const typedFormSaysTheSuppliersCouldNotBeRead = {
+  id: "a-typed-deduction-form-says-when-the-clients-suppliers-could-not-be-read",
+  title: "TDS > Add Deduction: a supplier list the server refused is said in words, with the server's reason, and the form still quotes the payment",
+  async run(env) {
+    const { form } = await openWithSuppliers(env, () => ({ success: false, data: null, error: "Unable to complete vendor operation. Please try again." }));
+    await form.getByText(/The client's suppliers could not be read, so none can be picked here: Unable to complete vendor operation\. Please try again\./).waitFor({ timeout: 4000 });
+    await form.getByLabel("PAN of Party", { exact: true }).fill(KAPOOR.pan);
+    await form.getByText(COUNTED(KAPOOR.name, true), { exact: true }).waitFor({ timeout: 4000 });
+  },
+};
+
+export const scenarios = [clientTabNames, clientTabNarrow, firmPageNames, typedFormSaysWhatWasAddedUp, typedFormNamesItsSupplier, typedFormSaysWhichSupplierItFound, typedFormSaysTheSuppliersCouldNotBeRead];

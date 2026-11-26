@@ -7,6 +7,8 @@ admins pass, and destructive actions additionally require MFA (aal2). No DB need
 — the allowlist lookup is stubbed; the happy-path data behaviour is verified
 separately against the live database.
 """
+import time
+
 import pytest
 from fastapi import FastAPI, Depends
 from fastapi.testclient import TestClient
@@ -31,7 +33,7 @@ def _client(monkeypatch, *, is_admin: bool, aal: str = "aal1"):
     def me(ctx: dict = Depends(pa.is_platform_admin)):
         return {"is_platform_admin": ctx["is_platform_admin"]}
 
-    app.dependency_overrides[get_jwt_user] = lambda: {"auth_user_id": "u1", "email": "x@y.z", "aal": aal}
+    app.dependency_overrides[get_jwt_user] = lambda: {"auth_user_id": "u1", "email": "x@y.z", "aal": aal, "last_authenticator_code_at": time.time()}
     return TestClient(app, raise_server_exceptions=False)
 
 
@@ -75,7 +77,7 @@ def _real_router_client(monkeypatch, *, is_admin: bool, aal: str):
     monkeypatch.setattr(pa, "_is_platform_admin", lambda uid: is_admin)
     app = FastAPI()
     app.include_router(mod.router)
-    app.dependency_overrides[get_jwt_user] = lambda: {"auth_user_id": "u1", "email": "x@y.z", "aal": aal}
+    app.dependency_overrides[get_jwt_user] = lambda: {"auth_user_id": "u1", "email": "x@y.z", "aal": aal, "last_authenticator_code_at": time.time()}
     return TestClient(app, raise_server_exceptions=False)
 
 

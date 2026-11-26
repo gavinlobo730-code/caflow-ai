@@ -1,11 +1,18 @@
-"""A Partner's export of ONE client's books as a ZIP of CSV files with a manifest (POST-A-205, slice 1).
+"""A Partner's export of ONE client's books as a ZIP of CSV files with a manifest (POST-A-205, slices 1 to 3).
 
 WHAT IT IS, AND WHAT IT IS NOT
     "What happens if you shut down?" is the question a firm asks before it moves its practice here, and the honest answer used to be "take the per-report PDFs".
     This is the first part of a real answer: the client's chart of accounts, customers and vendors, every journal entry and line, the sales and purchase
     documents with their lines, the receipts and vendor payments with their allocations and the TDS register, as plain CSV, with a manifest that names every
     file, its row count and its SHA-256, and a trial balance computed FROM THE FILES so the person who receives them can check the books add up without us.
-    It is NOT the whole client. Payroll, the bank, document bytes, the audit log, GST return JSON, fixed assets, stock, PDFs and the whole-firm scope are not
+    Slice 2 (17-11-2026) added the registers beside the ledger: fixed assets with their movements, physical verifications and capital work in progress; the
+    item master (the service catalogue), godowns, batches, the stock ledger, stock counts, landed costs and hand settlements, with a stock position computed from
+    the stock ledger file; and the bank's accounts, imported statements and lines, splits, matches, reconciliations and matching rules.
+    Slice 3 (18-11-2026) added the records beside the books (cost centres, advances and credits, loans, deposits and related-party loans, FX revaluations, price
+    lists, recurring templates, quotations and orders with their lines, delivery and job-work challans with the lots returned, goods receipts, bills of entry and
+    post-dated cheques) and, under the GST permission, the registrations, the returns with their JSON, GST challans, GSTR-2B lines and reconciliations, the ITC
+    reversal register, reverse-charge documents and the e-invoice and e-way bill records.
+    It is NOT the whole client. Payroll, document bytes, the audit log, income tax, PDFs and the whole-firm scope are not
     in it, and `manifest.json` and `README.txt` say so in words, because an export that looks complete and is not is worse than none.
 
 WHY THE SHAPE
@@ -42,13 +49,14 @@ from decimal import Decimal
 from typing import Any, Callable, Iterable, Optional
 
 from core.db_paging import IN_CHUNK, iter_pages
+from core.db_provider import privileged_for
 from core.ist_clock import ist_now
 from domain.money_sentence import rupee_text
 from domain.reporting.export_document import ExportRefused
 
 _logger = logging.getLogger("caflow.data_export")
 
-SCHEMA = "practicesync-books-export/1"
+SCHEMA = "practicesync-books-export/3"
 
 #: Refused above this many journal entries (the largest client measured has 12,836) or this many rows in all.
 MAX_JOURNAL_ENTRIES = 25_000
@@ -67,7 +75,7 @@ class Child:
     """The rows that hang from a parent by a foreign key and carry no firm or client of their own."""
     file: str
     fk: str
-    read: Callable[[Any], Any]   # db -> a builder with the table and the projection `*` and nothing else
+    read: Callable[[Any, str], Any]   # (db, firm_id) -> a builder with the table and the projection `*`, and the firm where the table carries one
 
 
 @dataclass(frozen=True)
@@ -78,6 +86,8 @@ class Section:
     children: tuple[Child, ...] = ()
     #: Columns read but not written: a column that holds another kind of data than the file is named for. Named in the manifest.
     drop: frozenset = frozenset()
+    #: The permission tier whose `read` the screens of this table ask. A person blocked from it is not handed the file (`build(readable_tiers=)`).
+    tier: str = "accounting"
 
 
 # One literal chain per table, written out, so the firm-scope reader can see each one carries the firm and the client.
@@ -93,40 +103,173 @@ _SECTIONS: tuple[Section, ...] = (
         lambda db, f, c, **kw: db.table("vendors").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
     Section("journal_entries.csv", (
         lambda db, f, c, **kw: db.table("journal_entries").select("*", **kw).eq("firm_id", f).eq("client_id", c),),
-        (Child("journal_lines.csv", "journal_entry_id", lambda db: db.table("journal_lines").select("*")),)),
+        (Child("journal_lines.csv", "journal_entry_id", lambda db, f: db.table("journal_lines").select("*")),)),
     Section("sales_invoices.csv", (
         lambda db, f, c, **kw: db.table("client_sales_invoices").select("*", **kw).eq("firm_id", f).eq("client_id", c),),
-        (Child("sales_invoice_lines.csv", "sales_invoice_id", lambda db: db.table("client_sales_invoice_lines").select("*")),)),
+        (Child("sales_invoice_lines.csv", "sales_invoice_id", lambda db, f: db.table("client_sales_invoice_lines").select("*")),)),
     Section("purchase_bills.csv", (
         lambda db, f, c, **kw: db.table("purchase_bills").select("*", **kw).eq("firm_id", f).eq("client_id", c),),
-        (Child("purchase_bill_lines.csv", "bill_id", lambda db: db.table("purchase_bill_lines").select("*")),)),
+        (Child("purchase_bill_lines.csv", "bill_id", lambda db, f: db.table("purchase_bill_lines").select("*")),)),
     Section("credit_notes.csv", (
         lambda db, f, c, **kw: db.table("credit_notes").select("*", **kw).eq("firm_id", f).eq("client_id", c),),
-        (Child("credit_note_lines.csv", "credit_note_id", lambda db: db.table("credit_note_lines").select("*")),)),
+        (Child("credit_note_lines.csv", "credit_note_id", lambda db, f: db.table("credit_note_lines").select("*")),)),
     Section("debit_notes.csv", (
         lambda db, f, c, **kw: db.table("debit_notes").select("*", **kw).eq("firm_id", f).eq("client_id", c),),
-        (Child("debit_note_lines.csv", "debit_note_id", lambda db: db.table("debit_note_lines").select("*")),)),
+        (Child("debit_note_lines.csv", "debit_note_id", lambda db, f: db.table("debit_note_lines").select("*")),)),
     Section("sales_debit_notes.csv", (
         lambda db, f, c, **kw: db.table("sales_debit_notes").select("*", **kw).eq("firm_id", f).eq("client_id", c),),
-        (Child("sales_debit_note_lines.csv", "debit_note_id", lambda db: db.table("sales_debit_note_lines").select("*")),)),
+        (Child("sales_debit_note_lines.csv", "debit_note_id", lambda db, f: db.table("sales_debit_note_lines").select("*")),)),
     Section("purchase_credit_notes.csv", (
         lambda db, f, c, **kw: db.table("purchase_credit_notes").select("*", **kw).eq("firm_id", f).eq("client_id", c),),
-        (Child("purchase_credit_note_lines.csv", "credit_note_id", lambda db: db.table("purchase_credit_note_lines").select("*")),)),
+        (Child("purchase_credit_note_lines.csv", "credit_note_id", lambda db, f: db.table("purchase_credit_note_lines").select("*")),)),
     Section("receipts.csv", (
         lambda db, f, c, **kw: db.table("receipts").select("*", **kw).eq("firm_id", f).eq("client_id", c),),
-        (Child("receipt_allocations.csv", "receipt_id", lambda db: db.table("receipt_allocations").select("*")),)),
+        (Child("receipt_allocations.csv", "receipt_id", lambda db, f: db.table("receipt_allocations").select("*")),)),
     Section("purchase_payments.csv", (
         lambda db, f, c, **kw: db.table("purchase_payments").select("*", **kw).eq("firm_id", f).eq("client_id", c),),
-        (Child("purchase_payment_allocations.csv", "purchase_payment_id", lambda db: db.table("purchase_payment_allocations").select("*")),)),
+        (Child("purchase_payment_allocations.csv", "purchase_payment_id", lambda db, f: db.table("purchase_payment_allocations").select("*")),)),
     Section("tds_deductions.csv", (
-        lambda db, f, c, **kw: db.table("tds_deductions").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+        lambda db, f, c, **kw: db.table("tds_deductions").select("*", **kw).eq("firm_id", f).eq("client_id", c),), tier="tds"),
     Section("tds_challans.csv", (
-        lambda db, f, c, **kw: db.table("tds_challans").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+        lambda db, f, c, **kw: db.table("tds_challans").select("*", **kw).eq("firm_id", f).eq("client_id", c),), tier="tds"),
     # `fvu_json` is the statement's body, and on a 24Q it names every employee with their PAN and gross pay: payroll data, which this export does not carry.
     Section("tds_returns.csv", (
         lambda db, f, c, **kw: db.table("tds_returns").select("*", **kw).eq("firm_id", f).eq("client_id", c),),
-        drop=frozenset({"fvu_json"})),
+        drop=frozenset({"fvu_json"}), tier="tds"),
+    # ── fixed assets (slice 2) ──
+    Section("fixed_assets.csv", (
+        lambda db, f, c, **kw: db.table("fixed_assets").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("fixed_asset_movements.csv", (
+        lambda db, f, c, **kw: db.table("fixed_asset_movements").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("fixed_asset_verifications.csv", (
+        lambda db, f, c, **kw: db.table("fixed_asset_verifications").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("fixed_asset_verification_findings.csv", (
+        lambda db, f, c, **kw: db.table("fixed_asset_verification_findings").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("capital_work_in_progress.csv", (
+        lambda db, f, c, **kw: db.table("capital_work_in_progress").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("cwip_additions.csv", (
+        lambda db, f, c, **kw: db.table("cwip_additions").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    # ── stock (slice 2): the item master is the service catalogue, goods and services alike ──
+    Section("service_catalogue.csv", (
+        lambda db, f, c, **kw: db.table("service_catalogue").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("godowns.csv", (
+        lambda db, f, c, **kw: db.table("godowns").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("inventory_batches.csv", (
+        lambda db, f, c, **kw: db.table("inventory_batches").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("inventory_stock_ledger.csv", (
+        lambda db, f, c, **kw: db.table("inventory_stock_ledger").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("stock_count_sessions.csv", (
+        lambda db, f, c, **kw: db.table("stock_count_sessions").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("stock_count_lines.csv", (
+        lambda db, f, c, **kw: db.table("stock_count_lines").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("purchase_bill_landed_costs.csv", (
+        lambda db, f, c, **kw: db.table("purchase_bill_landed_costs").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("stock_effect_settlements.csv", (
+        lambda db, f, c, **kw: db.table("stock_effect_settlements").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    # ── beside the books (slice 3, 18-11-2026): cost centres, advances and credits, loans and deposits, FX revaluations, rate cards, recurring templates,
+    #    quotations, orders, delivery and job-work challans with the lots that came back, goods receipts, bills of entry and post-dated cheques ──
+    Section("cost_centres.csv", (
+        lambda db, f, c, **kw: db.table("cost_centres").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("party_credit_balances.csv", (
+        lambda db, f, c, **kw: db.table("party_credit_balances").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("party_credit_ledger.csv", (
+        lambda db, f, c, **kw: db.table("party_credit_ledger").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("loans.csv", (
+        lambda db, f, c, **kw: db.table("loans").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("fixed_deposits.csv", (
+        lambda db, f, c, **kw: db.table("fixed_deposits").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("related_party_loans.csv", (
+        lambda db, f, c, **kw: db.table("related_party_loans").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("fx_revaluations.csv", (
+        lambda db, f, c, **kw: db.table("fx_revaluations").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("fx_adjustments.csv", (
+        lambda db, f, c, **kw: db.table("fx_adjustments").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("price_lists.csv", (
+        lambda db, f, c, **kw: db.table("price_lists").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("price_list_items.csv", (
+        lambda db, f, c, **kw: db.table("price_list_items").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("recurring_journal_templates.csv", (
+        lambda db, f, c, **kw: db.table("recurring_journal_templates").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("recurring_invoice_templates.csv", (
+        lambda db, f, c, **kw: db.table("recurring_invoice_templates").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("recurring_purchase_bill_templates.csv", (
+        lambda db, f, c, **kw: db.table("recurring_purchase_bill_templates").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("sales_quotations.csv", (
+        lambda db, f, c, **kw: db.table("sales_quotations").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("sales_quotation_lines.csv", (
+        lambda db, f, c, **kw: db.table("sales_quotation_lines").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("sales_orders.csv", (
+        lambda db, f, c, **kw: db.table("sales_orders").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("sales_order_lines.csv", (
+        lambda db, f, c, **kw: db.table("sales_order_lines").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("purchase_orders.csv", (
+        lambda db, f, c, **kw: db.table("purchase_orders").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("purchase_order_lines.csv", (
+        lambda db, f, c, **kw: db.table("purchase_order_lines").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("delivery_challans.csv", (
+        lambda db, f, c, **kw: db.table("delivery_challans").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("delivery_challan_lines.csv", (
+        lambda db, f, c, **kw: db.table("delivery_challan_lines").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("delivery_challan_returns.csv", (
+        lambda db, f, c, **kw: db.table("delivery_challan_returns").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("goods_receipt_notes.csv", (
+        lambda db, f, c, **kw: db.table("goods_receipt_notes").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("goods_receipt_lines.csv", (
+        lambda db, f, c, **kw: db.table("goods_receipt_lines").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("bills_of_entry.csv", (
+        lambda db, f, c, **kw: db.table("bills_of_entry").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("post_dated_cheques.csv", (
+        lambda db, f, c, **kw: db.table("post_dated_cheques").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    # ── GST (slice 3, 18-11-2026): the registrations, the returns as the product built them (payload_json is the return's JSON), the GST challans, the
+    #    GSTR-2B lines and reconciliations, the ITC reversal register, the reverse-charge documents and the e-invoice and e-way bill records ──
+    Section("client_gst_registrations.csv", (
+        lambda db, f, c, **kw: db.table("client_gst_registrations").select("*", **kw).eq("firm_id", f).eq("client_id", c),), tier="gst"),
+    Section("gstr1_returns.csv", (
+        lambda db, f, c, **kw: db.table("gstr1_returns").select("*", **kw).eq("firm_id", f).eq("client_id", c),), tier="gst"),
+    Section("gstr3b_returns.csv", (
+        lambda db, f, c, **kw: db.table("gstr3b_returns").select("*", **kw).eq("firm_id", f).eq("client_id", c),), tier="gst"),
+    Section("gst_challans.csv", (
+        lambda db, f, c, **kw: db.table("gst_challans").select("*", **kw).eq("firm_id", f).eq("client_id", c),), tier="gst"),
+    Section("gstr2a_records.csv", (
+        lambda db, f, c, **kw: db.table("gstr2a_records").select("*", **kw).eq("firm_id", f).eq("client_id", c),), tier="gst"),
+    Section("gstr2b_reconciliations.csv", (
+        lambda db, f, c, **kw: db.table("gstr2b_reconciliations").select("*", **kw).eq("firm_id", f).eq("client_id", c),), tier="gst"),
+    Section("itc_reversal_register.csv", (
+        lambda db, f, c, **kw: db.table("itc_reversal_register").select("*", **kw).eq("firm_id", f).eq("client_id", c),), tier="gst"),
+    Section("rcm_documents.csv", (
+        lambda db, f, c, **kw: db.table("rcm_documents").select("*", **kw).eq("firm_id", f).eq("client_id", c),), tier="gst"),
+    Section("einvoice_records.csv", (
+        lambda db, f, c, **kw: db.table("einvoice_records").select("*", **kw).eq("firm_id", f).eq("client_id", c),), tier="gst"),
+    Section("eway_bill_records.csv", (
+        lambda db, f, c, **kw: db.table("eway_bill_records").select("*", **kw).eq("firm_id", f).eq("client_id", c),), tier="gst"),
+    # ── the bank (slice 2): accounts, imported statements and their lines, splits, matches, reconciliations and the matching rules. These tables are closed to a
+    #    signed-in session (POST-A-339), so each is read on the privileged client, visibly, after the door's Partner, client-scope and two-factor checks ──
+    Section("bank_accounts.csv", (
+        lambda db, f, c, **kw: privileged_for(db).table("bank_accounts").select("*", **kw).eq("firm_id", f).eq("client_id", c),), tier="banking"),
+    Section("bank_statements.csv", (
+        lambda db, f, c, **kw: privileged_for(db).table("bank_statements").select("*", **kw).eq("firm_id", f).eq("client_id", c),), tier="banking"),
+    Section("bank_transactions.csv", (
+        lambda db, f, c, **kw: privileged_for(db).table("bank_transactions").select("*", **kw).eq("firm_id", f).eq("client_id", c),),
+        (Child("bank_reconciliation_matches.csv", "bank_transaction_id",
+               lambda db, f: privileged_for(db).table("bank_reconciliation_matches").select("*").eq("firm_id", f)),), tier="banking"),
+    Section("bank_transaction_splits.csv", (
+        lambda db, f, c, **kw: privileged_for(db).table("bank_transaction_splits").select("*", **kw).eq("firm_id", f).eq("client_id", c),), tier="banking"),
+    Section("bank_reconciliations.csv", (
+        lambda db, f, c, **kw: privileged_for(db).table("bank_reconciliations").select("*", **kw).eq("firm_id", f).eq("client_id", c),), tier="banking"),
+    Section("bank_matching_rules.csv", (
+        lambda db, f, c, **kw: privileged_for(db).table("bank_matching_rules").select("*", **kw).eq("firm_id", f).eq("client_id", c),), tier="banking"),
 )
+
+#: The tiers the sections belong to, and what a person blocked from one is not handed, in words.
+TIERS: tuple[str, ...] = ("accounting", "tds", "banking", "gst")
+_TIER_WORDS = {
+    "accounting": "the books, fixed assets and stock (the chart, parties, journal, documents, receipts and payments, the asset and stock registers, the "
+                  "records beside the books, and the trial balance and stock position made from them)",
+    "tds": "the TDS register, challans and statements",
+    "banking": "the bank (accounts, imported statements and lines, splits, matches, reconciliations and matching rules)",
+    "gst": "GST (registrations, returns with their JSON, GST challans, GSTR-2B lines and reconciliations, the ITC reversal register, reverse-charge "
+           "documents, and e-invoice and e-way bill records)",
+}
 
 #: What this export does not hold, said in the manifest and the README. Kept as data so a test can hold the list against the claim in the screen.
 NOT_INCLUDED: tuple[str, ...] = (
@@ -134,23 +277,26 @@ NOT_INCLUDED: tuple[str, ...] = (
     "Payroll: runs, slips, employees, statutory remittances and returns (the most sensitive data in the product; a separate, deliberate export). "
     "The body of a saved TDS statement (tds_returns.fvu_json) is left out for the same reason: on a 24Q it names every employee with PAN and gross pay. "
     "A TDS register row under section 192 (salary), if one exists, is in tds_deductions.csv as it was recorded.",
-    "The bank: accounts, statements, lines, reconciliations.",
+    "The bank's uploaded statement files themselves (their imported lines are in bank_transactions.csv), the statement column layouts the importer learned, "
+    "and the foreign-currency bank balances.",
     "Uploaded documents themselves (the files); only the books' own records are here.",
     "The audit log (it is the firm's, not the client's, and holds no client column).",
-    "GST returns and their JSON, e-invoice and e-way bill records, and the GSTR-2B reconciliation.",
+    "GST: the GST portal's own snapshots and sync jobs, the annual reconciliation (GSTR-9C) working tables, the GSTR-4 and e-commerce operator tables, and "
+    "the GSTR-2B files as uploaded (their lines are in gstr2a_records.csv). A return here is the one the product built and the CA recorded; what was filed on "
+    "the portal is the portal's.",
     "Income tax: computations, ITR filings, tax audit, losses and advance tax.",
-    "Fixed assets, stock and stock movements, fixed-asset registers and the depreciation schedule.",
+    "The depreciation schedule as a report and the income-tax blocks of assets (the depreciation postings themselves are journal entries, and each asset's "
+    "accumulated depreciation and written-down value are columns of fixed_assets.csv).",
     "Statements and reports as PDF or Excel (use the report exports for those).",
     "Other clients, and the firm's own settings (this is one client's books).",
-    "Records that sit beside the books and are not in these files: customer and vendor advances and credits, loans, deposits and related-party loans, "
-    "foreign-currency revaluations, cost centres, the service catalogue, recurring templates, orders, quotations and delivery challans.",
+    "Records that sit beside the books and are not in these files: budgets, late-payment interest charges, the MSME supplier tracker, customer payment "
+    "links and statement deliveries, and saved narrations.",
 )
 
 #: Columns in the exported files that point at a table this export does not carry, so a recipient is not left holding an id that leads nowhere.
 REFERENCES_NOT_EXPORTED: tuple[str, ...] = (
-    "journal_lines.cost_centre_id (cost centres)",
-    "client_sales_invoice_lines.service_catalogue_id, purchase_bill_lines.service_catalogue_id and the other lines' service_catalogue_id (the service catalogue)",
-    "purchase_bill_lines.expense_account_id and purchase_order_line_id (the first is a chart_of_accounts id and is here; the second is an order line and is not)",
+    "inventory_stock_ledger.source_id where source_type names a document that is not a file here",
+    "any column naming a payroll run, a payslip or an employee (payroll is not in this export)",
 )
 
 _PLAIN_NUMBER = re.compile(r"[-+]?[0-9]+(\.[0-9]+)?", re.ASCII)
@@ -267,6 +413,19 @@ def _count(db, section: Section, firm_id: str, client_id: str) -> Optional[int]:
     return total
 
 
+def _quantity(value: Any) -> Decimal:
+    """A NUMERIC(10,3) quantity as PostgREST sends it (a number or a string), exactly; a blank is nothing moved."""
+    if value is None or value == "":
+        return Decimal(0)
+    return Decimal(str(value))
+
+
+def _quantity_text(value: Decimal) -> str:
+    """At most three decimals, as the column holds them, with no exponent and no trailing zeros."""
+    text = format(value.quantize(Decimal("0.001")), "f")
+    return text.rstrip("0").rstrip(".") if "." in text else text
+
+
 def _slug(text: str) -> str:
     out = re.sub(r"[^a-z0-9]+", "-", (text or "").lower()).strip("-")
     return out[:40] or "client"
@@ -292,6 +451,8 @@ class _Run:
         self.entries_with_lines: set[str] = set()
         self.tally: dict[str, list[int]] = {}
         self.dropped: dict[str, list[str]] = {}
+        self.items: dict[str, dict] = {}
+        self.stock: dict[str, list] = {}   # item id -> [quantity, value in paise, movements]
 
     # ── one file ────────────────────────────────────────────────────────────────────────────────────────────
     def _open(self, name: str) -> _CsvMember:
@@ -344,11 +505,21 @@ class _Run:
             for r in page:
                 if r.get("is_posted") and not r.get("deleted_at"):
                     self.live_entries.add(str(r["id"]))
+        elif file == "service_catalogue.csv":
+            for r in page:
+                self.items[str(r["id"])] = r
+        elif file == "inventory_stock_ledger.csv":
+            for r in page:
+                item = r.get("service_catalogue_id")
+                pos = self.stock.setdefault("" if item is None else str(item), [Decimal(0), 0, 0])
+                pos[0] += _quantity(r.get("quantity_delta"))
+                pos[1] += int(r.get("value_delta_paise") or 0)
+                pos[2] += 1
 
     def _write_child(self, child: Child, parent_file: str, parent_ids: list[str]) -> None:
         member = self._open(child.file)
         for chunk in _chunks(parent_ids, IN_CHUNK):
-            for page in iter_pages(lambda chunk=chunk: child.read(self.db).in_(child.fk, chunk), "id", label=child.file):
+            for page in iter_pages(lambda chunk=chunk: child.read(self.db, self.firm_id).in_(child.fk, chunk), "id", label=child.file):
                 self.clock.check(child.file)
                 member.write_rows(page)
                 if child.file == "journal_lines.csv":
@@ -385,12 +556,30 @@ class _Run:
                                  "(their ids are there).")
         return sum(v[0] for v in self.tally.values()), sum(v[1] for v in self.tally.values())
 
-    def manifest(self, *, client: dict, firm_id: str, exported_by: Optional[str], started_at, debit: int, credit: int) -> dict:
+    def write_stock_position(self) -> None:
+        """Each item's quantity and value as the stock ledger's own rows add them up, every row, every date: what a recipient gets by summing
+        quantity_delta and value_delta_paise of inventory_stock_ledger.csv per service_catalogue_id. It is arithmetic on the file and asserts nothing else."""
+        sp = self._open("stock_position_from_the_stock_ledger_file.csv")
+        rows = []
+        for item_id in sorted(self.stock, key=lambda i: (str(self.items.get(i, {}).get("name") or "~"), i)):
+            qty, value, n = self.stock[item_id]
+            item = self.items.get(item_id, {})
+            rows.append({"service_catalogue_id": item_id, "name": item.get("name"), "unit": item.get("unit"),
+                         "quantity": _quantity_text(qty), "value_paise": value, "movements": n})
+        sp.write_rows(rows)
+        self._finish(sp, expected_rows=None, kind="derived")
+        unknown = [i for i in self.stock if i not in self.items]
+        if unknown:
+            self.problems.append(f"{len(unknown)} items moved in inventory_stock_ledger.csv are not in service_catalogue.csv, so their name is blank in the stock "
+                                 "position (their ids are there).")
+
+    def manifest(self, *, client: dict, firm_id: str, exported_by: Optional[str], started_at, debit: Optional[int], credit: Optional[int],
+                 left_out: Optional[list[str]] = None) -> dict:
         counted = sum(1 for n in self.expected.values() if n is not None)
         if counted < len(self.expected):
             self.problems.append(f"The database did not report a row count for {len(self.expected) - counted} of the {len(self.expected)} main files, so those were not "
                                  "checked against it.")
-        if debit != credit:
+        if debit is not None and debit != credit:
             self.problems.append(f"The posted lines do not balance: debits {rupee_text(debit)}, credits {rupee_text(credit)}. The books themselves are out of balance, "
                                  "or the lines were not all read; the export has not hidden it.")
         return {
@@ -407,17 +596,21 @@ class _Run:
             "checks": {
                 "posted_lines_debit_paise": debit,
                 "posted_lines_credit_paise": credit,
-                "posted_lines_balance": debit == credit,
+                # None when the ledger was not read (the person is blocked from the books): not read is not balanced.
+                "posted_lines_balance": None if debit is None else debit == credit,
                 "main_files_counted_by_the_database": f"{counted} of {len(self.expected)}",
                 "every_counted_file_matches_the_database": all(f.get("matches_database_count", True) for f in self.files),
-                "posted_entries_without_a_line": len(self.live_entries - self.entries_with_lines),
+                "posted_entries_without_a_line": None if debit is None else len(self.live_entries - self.entries_with_lines),
                 "every_file_has_one_set_of_columns": all(f.get("columns_consistent", True) for f in self.files),
             },
             "problems": self.problems,
+            "left_out_for_the_persons_access": list(left_out or []),
             "not_included": list(NOT_INCLUDED),
             "ids_that_lead_to_tables_not_in_the_export": list(REFERENCES_NOT_EXPORTED),
             "how_to_check": ("Add debit_paise and credit_paise of journal_lines.csv per account_id for the lines whose journal_entry_id belongs to an entry in "
-                             "journal_entries.csv with is_posted = true and an empty deleted_at: that is trial_balance_from_the_ledger_files.csv."),
+                             "journal_entries.csv with is_posted = true and an empty deleted_at: that is trial_balance_from_the_ledger_files.csv. "
+                             "Add quantity_delta and value_delta_paise of inventory_stock_ledger.csv per service_catalogue_id: that is "
+                             "stock_position_from_the_stock_ledger_file.csv (every movement on every date; it is not compared with the Inventory account here)."),
         }
 
     def abort(self) -> None:
@@ -448,11 +641,20 @@ def _refuse_if_too_large(expected: dict[str, Optional[int]], max_entries: int, m
 
 def build(db, firm_id: str, client_id: str, *, exported_by: Optional[str] = None,
           now: Callable[[], float] = time.monotonic, deadline_seconds: float = DEADLINE_SECONDS,
-          max_entries: int = MAX_JOURNAL_ENTRIES, max_rows: int = MAX_ROWS) -> ExportResult:
+          max_entries: int = MAX_JOURNAL_ENTRIES, max_rows: int = MAX_ROWS,
+          readable_tiers: Optional[frozenset] = None) -> ExportResult:
     """The ZIP for one client's books. Raises `ExportRefused` (422) for a client over the ceilings and `ExportStopped` (503) when it runs out of time.
 
     `db` is the privileged client; every request here names the firm and the client (the line and allocation tables have neither, and are read by the ids of
-    parents that did). The caller has already established who may ask (`rbac`, the client scope, MFA) and written the audit row."""
+    parents that did). The caller has already established who may ask (`rbac`, the client scope, MFA) and written the audit row.
+
+    `readable_tiers` is the set of `TIERS` whose `read` the person holds after their own overrides (None: all). A section of another tier is neither counted nor
+    read, and the manifest and README say what was left out and why; the derived trial balance and stock position need the books, so they go with `accounting`."""
+    readable = frozenset(TIERS) if readable_tiers is None else frozenset(readable_tiers) & frozenset(TIERS)
+    if not readable:
+        raise ExportRefused("You are blocked from the books, TDS, the bank and GST for this firm, so there is nothing of this client's that this export may hand you.")
+    sections = tuple(sec for sec in _SECTIONS if sec.tier in readable)
+    left_out = [f"Left out because the person who took this export is blocked from it: {_TIER_WORDS[t]}." for t in TIERS if t not in readable]
     clock = _Clock(deadline_seconds, now)
     started_at = ist_now()
     client_rows = (db.table("clients").select("id, client_name, legal_name, pan, gstin")
@@ -462,7 +664,7 @@ def build(db, firm_id: str, client_id: str, *, exported_by: Optional[str] = None
     client = client_rows[0]
 
     expected: dict[str, Optional[int]] = {}
-    for section in _SECTIONS:
+    for section in sections:
         expected[section.file] = _count(db, section, firm_id, client_id)
         clock.check("the row counts")
     _refuse_if_too_large(expected, max_entries, max_rows)
@@ -471,11 +673,16 @@ def build(db, firm_id: str, client_id: str, *, exported_by: Optional[str] = None
     run = _Run(db, firm_id, client_id, clock, spool)
     run.expected = expected
     try:
-        for section in _SECTIONS:
+        for section in sections:
             run.write_section(section)
-        debit, credit = run.write_trial_balance()
+        debit: Optional[int] = None
+        credit: Optional[int] = None
+        if "accounting" in readable:
+            debit, credit = run.write_trial_balance()
+            run.write_stock_position()
         clock.check("the manifest")
-        manifest = run.manifest(client=client, firm_id=firm_id, exported_by=exported_by, started_at=started_at, debit=debit, credit=credit)
+        manifest = run.manifest(client=client, firm_id=firm_id, exported_by=exported_by, started_at=started_at, debit=debit, credit=credit,
+                                left_out=left_out)
         run.zf.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8"))
         run.zf.writestr("README.txt", _readme(manifest).encode("utf-8"))
         run.zf.close()
@@ -499,7 +706,7 @@ def _readme(manifest: dict) -> str:
         "",
         "WHAT THIS IS",
         "One client's books as plain CSV files. manifest.json lists every file with its row count and SHA-256.",
-        "Money columns are whole paise (1 rupee = 100 paise). Dates are ISO (YYYY-MM-DD). Text is UTF-8 with a byte-order mark so a spreadsheet reads the rupee sign and Indian-language names.",
+        "Money columns are whole paise (1 rupee = 100 paise), except the payload_json column of the GST return files, which is the return exactly as the portal reads it: rupees to two decimals for GSTR-1, whole rupees for GSTR-3B. Dates are ISO (YYYY-MM-DD). Text is UTF-8 with a byte-order mark so a spreadsheet reads the rupee sign and Indian-language names.",
         "Drafts, reversed and deleted rows are included; read is_posted, deleted_at and status before adding anything up.",
         "A text cell that begins with = + - or @ has a leading apostrophe so a spreadsheet does not run it; remove it if you need the original.",
         "",
@@ -508,6 +715,7 @@ def _readme(manifest: dict) -> str:
         "",
         "WHAT IS NOT HERE",
     ]
+    lines += [f"- {item}" for item in manifest["left_out_for_the_persons_access"]]
     lines += [f"- {item}" for item in manifest["not_included"]]
     lines += ["", "IDS IN THESE FILES THAT LEAD TO TABLES THAT ARE NOT HERE"] + [f"- {item}" for item in manifest["ids_that_lead_to_tables_not_in_the_export"]]
     if manifest["problems"]:

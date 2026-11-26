@@ -14,7 +14,7 @@ import FinancialYearPicker from "@/components/FinancialYearPicker";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { fetchActiveBankAccounts } from "@/lib/banking/activeBankAccounts";
-import { TableSkeleton } from "@/components/ui/skeleton";
+import { TableSkeleton, LoadingRegion } from "@/components/ui/skeleton";
 
 
 import { formatDate, formatDateTime, formatMonthYear, todayIstISO } from "@/lib/dates/format";
@@ -38,6 +38,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { istToday } from "@/lib/dateMath";
+import { usePermissions } from "@/lib/auth/AuthContext";
 // NO local API base and no bare fetch. Every call on this screen used to be
 // `fetch(`${API}/api/fixed-assets/...`, { credentials: "include" })`, and
 // `credentials` carries a COOKIE — which this API does not read. core/auth.py
@@ -203,7 +204,7 @@ interface RemainingLife {
   start_note: string | null;
   years: RemainingLifeYear[];
   total_paise: number;
-  ends: "fully_depreciated" | "nil_charge" | "rounds_to_nil" | "limit" | "not_depreciable" | "no_basis" | null;
+  ends: "fully_depreciated" | "nil_charge" | "limit" | "not_depreciable" | "no_basis" | null;
   end_note: string | null;
 }
 
@@ -349,6 +350,10 @@ function RegisterTab({ clientId, openDoc }:
     { clientId: string;
       /** ACC-22 — the asset a ledger drill-through arrived at. */
       openDoc?: string | null }) {
+  // Every write on this register (add, import the opening register, correct, delete, post or reverse depreciation, dispose) asks
+  // `accounting` `write`, a Manager's or a Partner's; the controls were drawn to an Executive, whose `accounting` is read only,
+  // and came back refused (POST-A-455).
+  const mayWriteBooks = usePermissions().can("accounting", "write");
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
   // True when the LAST load failed (thrown/PostgREST error) rather than the
@@ -444,19 +449,25 @@ function RegisterTab({ clientId, openDoc }:
 
       {/* Table header */}
       <div className="flex items-center justify-between">
+        {/* Blank while the register is being read: a count is not known until then, and the table below draws the placeholder
+            (and the slow-server sentence) for the same read. */}
         <p className="text-xs font-semibold text-ps-body">
-          {loading ? "Loading…" : `${assets.length} asset${assets.length !== 1 ? "s" : ""}`}
+          {loading ? "\u00a0" : `${assets.length} asset${assets.length !== 1 ? "s" : ""}`}
         </p>
         <div className="flex gap-2">
-          <button onClick={load} className="p-1.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label">
+          <button onClick={load} aria-label="Reload" title="Reload" className="p-1.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label">
             <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
           </button>
           {/* A migrated client's register, with the depreciation each asset
               already carries (accounting-18). Posts nothing to the ledger. */}
-          <OpeningRegisterImportButton clientId={clientId} onImported={load} />
-          <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark">
-            <Plus size={12} /> Add Asset
-          </button>
+          {mayWriteBooks && (
+            <>
+              <OpeningRegisterImportButton clientId={clientId} onImported={load} />
+              <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark">
+                <Plus size={12} /> Add Asset
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -538,18 +549,22 @@ function RegisterTab({ clientId, openDoc }:
                         first, is decided by the SERVER — the refusal is shown
                         verbatim because it names the way out. */}
                     <td className="px-3 py-2.5 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
-                      <button
-                        onClick={() => setCorrecting(a)}
-                        className="text-2xs text-blue-600 hover:underline"
-                      >
-                        Correct
-                      </button>
-                      <button
-                        onClick={() => setDeleting(a)}
-                        className="text-2xs text-red-600 hover:underline ml-3"
-                      >
-                        Delete
-                      </button>
+                      {mayWriteBooks && (
+                        <>
+                          <button
+                            onClick={() => setCorrecting(a)}
+                            className="text-2xs text-blue-600 hover:underline"
+                          >
+                            Correct
+                          </button>
+                          <button
+                            onClick={() => setDeleting(a)}
+                            className="text-2xs text-red-600 hover:underline ml-3"
+                          >
+                            Delete
+                          </button>
+                        </>
+                      )}
                     </td>
                   </tr>
                   {expanded === a.id && (
@@ -659,7 +674,7 @@ function CorrectAssetDrawer({ asset, onClose, onSaved }: { asset: Asset; onClose
   }
 
   return (
-    <Drawer open onClose={leave} ariaLabel={`Correct ${asset.asset_code ?? asset.asset_name}`} widthClass="sm:max-w-md">
+    <Drawer open onClose={() => { if (!saving) (leave)(); }} ariaLabel={`Correct ${asset.asset_code ?? asset.asset_name}`} widthClass="sm:max-w-md">
       <div className="p-6 space-y-4">
         <div>
           <h3 className="text-sm font-semibold text-ps-ink">Correct {asset.asset_code ?? asset.asset_name}</h3>
@@ -700,7 +715,7 @@ function CorrectAssetDrawer({ asset, onClose, onSaved }: { asset: Asset; onClose
         {error && <Callout tone="problem">{error}</Callout>}
 
         <div className="flex gap-2 pt-2">
-          <button onClick={leave} className="flex-1 text-xs border border-ps-border rounded-lg py-2 text-ps-body hover:bg-ps-bg">Cancel</button>
+          <button disabled={saving} onClick={leave} className="flex-1 text-xs border border-ps-border rounded-lg py-2 text-ps-body hover:bg-ps-bg">Cancel</button>
           <Button variant="plain" size="none" onClick={save} disabled={saving} className="flex-1 text-xs bg-brand text-white rounded-lg py-2 hover:bg-brand-dark disabled:opacity-50">
             {saving ? "Saving…" : "Save correction"}
           </Button>
@@ -809,6 +824,8 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
   const [bankAccounts, setBankAccounts] = useState<{ id: string; bank_name: string; account_no: string }[]>([]);
   const [bankAccountsUnreadable, setBankAccountsUnreadable] = useState(false);
   const [vendorBills, setVendorBills] = useState<{ id: string; bill_no: string | null; our_reference: string | null; bill_date: string | null }[]>([]);
+  // A read of the vendor's bills that did not come is not a vendor with none (POST-A-527): the picker says so.
+  const [vendorBillsUnread, setVendorBillsUnread] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   // `disabled={saving}` alone is not a submission guard: it only takes effect
@@ -902,17 +919,18 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
   // somebody else's bill would reclassify cost out of a purchase the client
   // never made, and a flat list of every bill is how that happens.
   useEffect(() => {
-    if (form.acquisition_mode !== "from_bill" || !form.vendor_id) { setVendorBills([]); return; }
+    if (form.acquisition_mode !== "from_bill" || !form.vendor_id) { setVendorBills([]); setVendorBillsUnread(false); return; }
     let cancelled = false;
     (async () => {
       const supabaseForBills = getSupabaseClient();
-      const { data } = await selectAll(() => supabaseForBills
+      const { data, error } = await selectAll(() => supabaseForBills
         .from("purchase_bills")
         .select("id, bill_no, our_reference, bill_date")
         .eq("client_id", clientId).eq("vendor_id", form.vendor_id)
         .in("status", ["received", "partially_paid", "paid"])
         .order("bill_date", { ascending: false }).order("id"));
-      if (!cancelled) setVendorBills((data as typeof vendorBills) ?? []);
+      // The pager hands a failure back as `error` and does not throw.
+      if (!cancelled) { setVendorBillsUnread(!!error); setVendorBills(error ? [] : (data as typeof vendorBills) ?? []); }
     })();
     return () => { cancelled = true; };
   }, [clientId, form.acquisition_mode, form.vendor_id]);
@@ -922,7 +940,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
 
   async function save() {
     if (submittingRef.current) return;
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError, undefined, ""); return; }
     if (!form.asset_name || !form.purchase_cost_paise) { setError("Asset name and cost are required."); return; }
     if (!form.asset_category) { setError("Pick a category."); return; }
     // The field names still say _paise (they are the payload keys); what the CA
@@ -1019,11 +1037,11 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
   }
 
   return (
-    <Drawer open onClose={leave} ariaLabel="Add fixed asset" widthClass="sm:max-w-[440px]">
+    <Drawer open onClose={() => { if (!saving) (leave)(); }} ariaLabel="Add fixed asset" widthClass="sm:max-w-[440px]">
       <div className="flex min-h-full flex-col">
         <div className="px-6 py-4 border-b border-ps-border flex items-center justify-between shrink-0">
           <h2 className="text-sm font-semibold text-ps-ink">Add Fixed Asset</h2>
-          <button onClick={leave} className="text-ps-hint hover:text-ps-ink"><span className="text-lg">×</span></button>
+          <button onClick={leave} disabled={saving} aria-label="Close" className="text-ps-hint hover:text-ps-ink disabled:opacity-50"><span className="text-lg">×</span></button>
         </div>
 
         <div className="flex-1 px-6 py-5 space-y-4 text-xs">
@@ -1066,7 +1084,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
           {/* Schedule II gives several classes under one heading — a server is
               six years and a laptop three, a lorry on hire six and a company
               car eight. The CA picks; only the ordinary case is the default. */}
-          {selected && selected.classes.length > 1 && (
+          {selected && (selected.classes ?? []).length > 1 && (
             <Field label="Schedule II class">
               <select
                 className={INPUT}
@@ -1203,6 +1221,11 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
                     </option>
                   ))}
                 </select>
+                {vendorBillsUnread && (
+                  <p role="alert" className="text-3xs text-state-problem mt-1">
+                    This vendor&apos;s bills could not be read, so none are listed. That is not a vendor with none: pick the vendor again.
+                  </p>
+                )}
                 <p className="text-3xs text-ps-hint mt-1">
                   A bill can be capitalised once. Its cost moves out of purchases
                   into this asset; the payable is untouched.
@@ -1321,7 +1344,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
         </div>
 
         <div className="px-6 py-4 border-t border-ps-border flex gap-3 shrink-0">
-          <button onClick={leave} className="flex-1 py-2 rounded-lg border border-ps-border text-xs text-ps-label hover:bg-ps-bg">Cancel</button>
+          <button disabled={saving} onClick={leave} className="flex-1 py-2 rounded-lg border border-ps-border text-xs text-ps-label hover:bg-ps-bg">Cancel</button>
           <Button variant="plain" size="none" onClick={save} disabled={saving} className="flex-1 py-2 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand-dark disabled:opacity-50">
             {saving ? "Saving…" : "Add Asset"}
           </Button>
@@ -1388,6 +1411,10 @@ function RemainingLifeTable({ life }: { life: RemainingLife }) {
 }
 
 function DepreciationTab({ clientId }: { clientId: string }) {
+  // Every write on this register (add, import the opening register, correct, delete, post or reverse depreciation, dispose) asks
+  // `accounting` `write`, a Manager's or a Partner's; the controls were drawn to an Executive, whose `accounting` is read only,
+  // and came back refused (POST-A-455).
+  const mayWriteBooks = usePermissions().can("accounting", "write");
   const [rows, setRows] = useState<ScheduleRow[]>([]);
   const [loading, setLoading] = useState(true);
   // True when the LAST load failed (error/timeout / success:false) rather than
@@ -1579,13 +1606,13 @@ function DepreciationTab({ clientId }: { clientId: string }) {
             value={toPeriod}
             onChange={e => setToPeriod(e.target.value)}
           />
-          <Button variant="plain" size="none"
+          {mayWriteBooks && <Button variant="plain" size="none"
             onClick={runDepreciation}
             disabled={running}
             className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark disabled:opacity-50"
           >
             <TrendingDown size={12} /> {running ? "Running…" : "Run depreciation"}
-          </Button>
+          </Button>}
         </div>
       </div>
 
@@ -1688,7 +1715,7 @@ function DepreciationTab({ clientId }: { clientId: string }) {
                       // as a zero: this asset has no statutory basis for a
                       // charge, so nothing is posted until a CA records one.
                       <span className="text-3xs text-state-attention">{r.statutory_gap}</span>
-                    ) : r.annual_depreciation_paise > 0 ? (
+                    ) : r.annual_depreciation_paise > 0 && mayWriteBooks ? (
                       <>
                         <Button variant="plain" size="none"
                           onClick={() => postDepreciation(r.asset_id)}
@@ -1704,7 +1731,7 @@ function DepreciationTab({ clientId }: { clientId: string }) {
                           <span className="block text-3xs text-red-600 mt-1 max-w-xs">{errors[r.asset_id]}</span>
                         )}
                       </>
-                    ) : (
+                    ) : r.annual_depreciation_paise > 0 ? null : (
                       <span className="text-3xs text-ps-hint">Fully depreciated</span>
                     )}
                     {r.unfinished_reversal ? (
@@ -1714,7 +1741,7 @@ function DepreciationTab({ clientId }: { clientId: string }) {
                       // the ordinary Reverse would be refused until it is.
                       <span className="block mt-1 max-w-xs" data-testid={`unfinished-reversal-${r.asset_id}`}>
                         <span className="block text-3xs text-state-attention">{r.unfinished_reversal.sentence}</span>
-                        {r.unfinished_reversal.can_finish_now && (
+                        {r.unfinished_reversal.can_finish_now && mayWriteBooks && (
                           <Button variant="plain" size="none"
                             onClick={() => reverseLastMonth(r.asset_id, r.unfinished_reversal!.month)}
                             disabled={posting === r.asset_id}
@@ -1724,7 +1751,7 @@ function DepreciationTab({ clientId }: { clientId: string }) {
                           </Button>
                         )}
                       </span>
-                    ) : r.depreciation_posted_through && (
+                    ) : r.depreciation_posted_through && mayWriteBooks && (
                       // FA-10: a month posted on a wrong cost or a wrong rate
                       // had no way back. The refusal that names it — "reverse
                       // it a month at a time" — is only actionable because of
@@ -1803,6 +1830,11 @@ const RULE_LABEL: Record<string, string> = {
 };
 
 function DisposalTab({ clientId }: { clientId: string }) {
+  // Every write on this register (add, import the opening register, correct, delete, post or reverse depreciation, dispose) asks
+  // `accounting` `write`, a Manager's or a Partner's; the controls were drawn to an Executive, whose `accounting` is read only,
+  // and came back refused (POST-A-455).
+  const { can: canDo, resolved: permissionsRead } = usePermissions();
+  const mayWriteBooks = canDo("accounting", "write");
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
   // True when the LAST load failed rather than genuinely finding no disposable
@@ -1915,7 +1947,7 @@ function DisposalTab({ clientId }: { clientId: string }) {
 
   async function dispose() {
     if (!selected) return;
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError, undefined, ""); return; }
     if (proceedsPaise === null) {
       setError("Sale proceeds must be an amount in rupees, e.g. 125000 or "
                + "125000.50 — without commas.");
@@ -1977,6 +2009,12 @@ function DisposalTab({ clientId }: { clientId: string }) {
           )}
         </div>
       )}
+      {permissionsRead && !mayWriteBooks && (
+        <p className="text-xs text-ps-label">
+          Recording a disposal needs write access to the books, so the Dispose button is not shown to you. The assets below are listed to read.
+        </p>
+      )}
+      {mayWriteBooks && (
       <div className="bg-state-problem-surface border border-red-100 rounded-xl px-4 py-3 flex gap-2">
         <AlertCircle size={14} className="text-state-problem shrink-0 mt-0.5" />
         <div>
@@ -1987,6 +2025,7 @@ function DisposalTab({ clientId }: { clientId: string }) {
           </p>
         </div>
       </div>
+      )}
 
       {loading ? (
         <TableSkeleton cols={5} rows={3} />
@@ -2021,12 +2060,14 @@ function DisposalTab({ clientId }: { clientId: string }) {
                     {fmt(a.purchase_cost_paise - a.accumulated_depreciation_paise)}
                   </td>
                   <td className="px-3 py-2.5">
-                    <button
-                      onClick={() => setSelected(selected?.id === a.id ? null : a)}
-                      className="text-xs text-red-600 hover:underline flex items-center gap-1"
-                    >
-                      <Trash2 size={11} /> Dispose
-                    </button>
+                    {mayWriteBooks && (
+                      <button
+                        onClick={() => setSelected(selected?.id === a.id ? null : a)}
+                        className="text-xs text-red-600 hover:underline flex items-center gap-1"
+                      >
+                        <Trash2 size={11} /> Dispose
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -2035,7 +2076,7 @@ function DisposalTab({ clientId }: { clientId: string }) {
         </div>
       )}
 
-      {selected && (
+      {selected && mayWriteBooks && (
         <div className="bg-white rounded-xl border border-state-problem-border px-5 py-5 space-y-4">
           <p className="text-xs font-semibold text-ps-ink">Dispose: {selected.asset_name}</p>
           {error && <Callout tone="problem">{error}</Callout>}
@@ -2499,7 +2540,7 @@ function RegisterIntegrity({ clientId }: { clientId: string }) {
       </div>
 
       {state.phase === "loading" && (
-        <p className="text-xs text-ps-hint">Checking…</p>
+        <LoadingRegion label="Checking the register against the ledger" className="text-xs text-ps-hint">Checking…</LoadingRegion>
       )}
 
       {state.phase === "error" && (

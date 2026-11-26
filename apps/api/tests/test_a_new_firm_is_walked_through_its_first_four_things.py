@@ -372,11 +372,16 @@ def test_it_persists_across_logins_because_a_second_partner_sees_what_the_first_
     assert first["steps"][0]["done"] is True
 
 
-def test_a_manager_sees_the_same_checklist_as_a_partner(served):
+def test_a_manager_sees_the_same_four_steps_as_a_partner(served):
+    """The four steps about clients are the firm's and are the same for both. The firm's own practice is a second list in a
+    Partner's answer only (POST-A-533; `tests/test_a_partner_is_walked_through_the_firms_own_practice.py`), and whether the
+    card still shows depends on it, so those two keys are the person's and are compared there."""
     _client(served)
     p = _app(PARTNER).get("/api/onboarding/status").json()["data"]["first_run"]
     m = _app(MANAGER).get("/api/onboarding/status").json()["data"]["first_run"]
-    assert _facts_of(p) == _facts_of(m)
+    firms = lambda fr: {k: v for k, v in _facts_of(fr).items() if k not in ("practice", "visible")}  # noqa: E731
+    assert firms(p) == firms(m)
+    assert m["practice"] is None and p["practice"] is not None
 
 
 @pytest.mark.parametrize("user", [EXECUTIVE, REVIEWER], ids=["Executive", "Reviewer"])
@@ -404,7 +409,9 @@ def test_the_older_checks_are_derived_from_the_same_facts_as_the_checklist(serve
 
 
 def test_the_whole_walk_a_fresh_firm_takes_ends_with_the_card_gone_and_a_time_on_record(served):
-    client = _app(PARTNER)
+    # A Manager's walk: the four steps about clients are the whole card. (A Partner's card goes on to the firm's own
+    # practice, which has its own test file.)
+    client = _app(MANAGER)
     start = client.get("/api/onboarding/status").json()["data"]["first_run"]
     assert start["visible"] and start["done_count"] == 0
 

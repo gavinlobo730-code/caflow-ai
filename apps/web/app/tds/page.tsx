@@ -25,11 +25,13 @@
  * Section 203: Issuance of TDS certificates
  */
 
+import { EntityLookup } from "@/components/lookups/EntityLookup";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useMemo, useRef } from "react";
+import { recentFirst, useRecentPartyIds } from "@/lib/lookups/recentParties";
 import Link from "next/link";
 import {
-  IndianRupee, Calendar, AlertCircle, Plus, X, FileText, Award, Upload, ArrowRight,
+  IndianRupee, Calendar, AlertCircle, Plus, FileText, Award, Upload, ArrowRight,
 } from "lucide-react";
 import CsvImportModal from "@/components/LazyCsvImportModal";
 import type { ImportRow } from "@/components/CsvImportModal";
@@ -69,6 +71,9 @@ const TDS_IMPORT_COLUMNS = [
 // PAN decides §206AA's 20% floor, so refusing a good one here sends the CA
 // back to the spreadsheet rather than letting them import the quarter.
 import { ClientLookup } from "@/components/lookups/ClientLookup";
+import { VendorLookup, type VendorLike } from "@/components/lookups/VendorLookup";
+import { api, type Vendor } from "@/lib/api";
+import { arrayOrEmpty } from "@/lib/api/shape";
 import { useClientPicker } from "@/lib/workspace/useClientPicker";
 import { formatPaise } from "@/lib/services/formatting";
 import { formatDate, todayIstISO } from "@/lib/dates/format";
@@ -78,6 +83,7 @@ import { RetractChallanModal } from "@/components/tds/RetractChallanModal";
 import { MatchChallanToLedgerModal } from "@/components/tds/MatchChallanToLedgerModal";
 import { UnlinkedChallansPanel } from "@/components/tds/UnlinkedChallansPanel";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 // The engine, reached through the API. Rates, thresholds, the
 // individual-vs-company split, §206AA and the year's aggregate are all
 // resolved server-side — CLAUDE.md: zero business logic in the frontend.
@@ -89,6 +95,7 @@ import {
 } from "@/lib/data/tds";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { NO_SECTIONS, sectionChoices, sectionOptionText, type SectionChoices } from "@/lib/tds/sectionChoices";
+import { wageMonthsOfQuarter } from "@/lib/tds/salaryChallanMonth";
 import { MINOR_HEAD_LABEL, minorHeadLabel } from "@/lib/tds/minorHead";
 import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
 import { YearPicker } from "@/components/ui/year-picker";
@@ -253,6 +260,17 @@ function AddDeductionModal({ clientId, choices, onClose, onAdded }: {
   const [partyName, setPartyName] = useState("");
   const [partyPan, setPartyPan] = useState("");
   const [section, setSection] = useState("194J");
+  // THE SUPPLIER THE PAYMENT WAS MADE TO, IF IT IS ONE (POST-A-078). Picking one sends its id: the server takes the name and PAN from its record and
+  // counts the payment in the supplier's year of purchase bills, advances and typed deductions, so a fee typed here and the supplier's bills are
+  // tested against one yearly threshold, and its s.197 certificate and s.194A class apply. Not picking one is ordinary (a dividend, a partner's
+  // remuneration, a landowner are not suppliers); the server then looks for the one active supplier holding the PAN and says what it found.
+  const [vendorId, setVendorId] = useState("");
+  const [vendors, setVendors] = useState<Vendor[]>([]);
+  // The suppliers this client billed against most recently go to the top of the picker (POST-A-155); nothing is pre-selected.
+  const recentVendorIds = useRecentPartyIds(api.vendors.recent, clientId, true);
+  const recentVendors = useMemo(() => recentFirst(recentVendorIds, vendors), [recentVendorIds, vendors]);
+  const [vendorsErr, setVendorsErr] = useState<string | null>(null);
+  const picked = vendorId ? vendors.find((v) => v.id === vendorId) ?? null : null;
   const [grossRupees, setGrossRupees] = useState("");
   const [paymentDate, setPaymentDate] = useState("");
   const [challanNo, setChallanNo] = useState("");
@@ -280,6 +298,31 @@ function AddDeductionModal({ clientId, choices, onClose, onAdded }: {
   // does not hold an amount.
   const grossPaise = grossRupees ? paiseFromRupeeInput(grossRupees) : null;
 
+  // The client's active suppliers, for the picker. A list that cannot be read is said in words, and the form still works: the server matches the
+  // PAN to a supplier on its own.
+  useEffect(() => {
+    if (!clientId) return;
+    let alive = true;
+    api.vendors.list(clientId)
+      .then((res) => {
+        if (!alive) return;
+        if (res.success) { setVendors(arrayOrEmpty<Vendor>(res.data)); setVendorsErr(null); }
+        else setVendorsErr(res.error ?? "The server did not say why.");
+      })
+      .catch((e) => { if (alive) setVendorsErr(e instanceof Error ? e.message : "The request failed."); });
+    return () => { alive = false; };
+  }, [clientId]);
+
+  function onPickSupplier(v: VendorLike | null) {
+    if (!v) { setVendorId(""); return; }
+    setVendorId(v.id);
+    // The boxes show what the server will store: the supplier's own name and PAN. They are read-only while a supplier is picked.
+    setPartyName(v.name);
+    setPartyPan((v.pan ?? "").toUpperCase());
+    // The supplier's own section, where it has one this form offers; the CA may still choose another.
+    if (v.tds_section && choices.deductible.includes(v.tds_section)) setSection(v.tds_section);
+  }
+
   // THE FIGURE COMES FROM THE SERVER, through the same function the save uses,
   // so what a CA approves is what lands. Debounced because it is a request per
   // keystroke otherwise.
@@ -292,6 +335,7 @@ function AddDeductionModal({ clientId, choices, onClose, onAdded }: {
     const t = setTimeout(() => {
       previewTdsDeduction({
         client_id: clientId,
+        vendor_id: vendorId || null,
         deductee_name: partyName.trim() || "—",
         deductee_pan: partyPan.trim().toUpperCase() || null,
         section,
@@ -303,10 +347,10 @@ function AddDeductionModal({ clientId, choices, onClose, onAdded }: {
         .finally(() => { if (alive) setQuoting(false); });
     }, 350);
     return () => { alive = false; clearTimeout(t); };
-  }, [clientId, section, grossPaise, paymentDate, partyPan, partyName]);
+  }, [clientId, vendorId, section, grossPaise, paymentDate, partyPan, partyName]);
 
   async function handleSubmit() {
-    if (dates.first) { setErr(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setErr); return; }
     if (!partyName.trim() || !paymentDate) {
       setErr("Party name and payment date are required.");
       return;
@@ -329,6 +373,7 @@ function AddDeductionModal({ clientId, choices, onClose, onAdded }: {
       // where rbac() never ran.
       await createTdsDeduction({
         client_id: clientId,
+        vendor_id: vendorId || null,
         deductee_name: partyName.trim(),
         deductee_pan: partyPan.trim().toUpperCase() || null,
         section,
@@ -347,31 +392,44 @@ function AddDeductionModal({ clientId, choices, onClose, onAdded }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-ps-ink">Add TDS Deduction</h3>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-label"><X className="w-4 h-4" /></button>
-        </div>
+    <Modal title="Add TDS Deduction" maxWidthClass="max-w-md" onClose={() => { if (!saving) onClose(); }}>
         {err && <Callout tone="problem">{err}</Callout>}
 
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
+            <label htmlFor="tds-supplier" className="text-xs font-medium text-ps-body block mb-1">Supplier (optional)</label>
+            <VendorLookup id="tds-supplier" vendors={vendors} recent={recentVendors} value={vendorId} onChange={setVendorId} onSelect={onPickSupplier}
+              ariaLabel="Supplier (optional)" placeholder="Not a supplier, or not chosen" clearable />
+            <p className="text-3xs text-ps-label mt-1">
+              {picked
+                ? "Counted in this supplier's year with its purchase bills and advances. Clear it to type a payee who is not a supplier."
+                : "Pick the supplier if the payment was made to one, so it is counted in the supplier's year with its purchase bills. Without a pick, the PAN finds the supplier where exactly one of the client's suppliers holds it."}
+            </p>
+            {vendorsErr && (
+              <p className="text-2xs text-state-attention bg-state-attention-surface rounded px-2 py-1 mt-1">
+                The client&apos;s suppliers could not be read, so none can be picked here: {vendorsErr} The payment is still matched to a supplier
+                by its PAN where exactly one active supplier holds it.
+              </p>
+            )}
+          </div>
+          <div className="col-span-2">
             <label className="text-xs font-medium text-ps-body block mb-1">Party / Vendor Name</label>
-            <input aria-label="Party / Vendor Name" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={partyName} onChange={e => setPartyName(e.target.value)} placeholder="Vendor name" />
+            <input aria-label="Party / Vendor Name" className={`w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand ${picked ? "bg-ps-bg" : ""}`} value={partyName} onChange={e => setPartyName(e.target.value)} placeholder="Vendor name" readOnly={!!picked} />
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">PAN of Party</label>
-            <input aria-label="PAN of Party" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-brand" value={partyPan} onChange={e => setPartyPan(e.target.value.toUpperCase())} placeholder="ABCDE1234F" maxLength={10} />
+            <input aria-label="PAN of Party" className={`w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-brand ${picked ? "bg-ps-bg" : ""}`} value={partyPan} onChange={e => setPartyPan(e.target.value.toUpperCase())} {...(picked ? { placeholder: "No PAN on the supplier's record" } : { placeholder: "ABCDE1234F" })} maxLength={10} readOnly={!!picked} />
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">TDS Section</label>
-            <select aria-label="TDS Section" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={section} onChange={e => setSection(e.target.value)}>
-              {choices.deductible.length === 0 && <option value={section}>{section}</option>}
-              {choices.deductible.map(k => (
-                <option key={k} value={k}>{sectionOptionText(k, choices.labels)}</option>
-              ))}
-            </select>
+            <EntityLookup ariaLabel="TDS Section"
+              items={choices.deductible.length === 0 ? [section] : choices.deductible}
+              value={section}
+              onChange={setSection}
+              getId={k => k}
+              getLabel={k => (choices.deductible.length === 0 ? k : sectionOptionText(k, choices.labels))}
+              searchPlaceholder="Search sections…"
+            />
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Gross Payment (₹)</label>
@@ -401,22 +459,48 @@ function AddDeductionModal({ clientId, choices, onClose, onAdded }: {
                 server ADDED UP, so it is said only when the server says it did (`aggregate_tested`): the register was asked, the payee has a usable PAN to be
                 looked up by (a blank, a placeholder or text that is not a PAN has none, and the nil is then "not looked for"), the year's rates are confirmed
                 (otherwise the server's gap says so), and the section HAS a yearly threshold to add them up against (s.194I tests a month and s.194B one transaction). A server that predates the field says nothing, which is not
-                "tested" either (POST-A-078). What was added up is the typed deductions, and the standing sentence below says the purchase bills are not in it. */}
-            {shown && !shown.explain.applies && (
+                "tested" either (POST-A-078). What was added up is the supplier's year (its bills, advances and typed deductions) where the server found a supplier, and
+                the typed deductions for the PAN that name none otherwise; the sentence says which, and the server's gap says when no supplier was found. */}
+            {/* WHOSE YEAR THIS PAYMENT IS COUNTED IN, said whenever the server found a supplier, including one it matched by the PAN alone: a CA who typed a PAN
+                needs to know it was added to that supplier's bills. And why it found none where a supplier holds the PAN (two do, or only an inactive one). */}
+            {shown?.explain.supplier && (
               <p className="text-2xs text-blue-800">
-                Nothing is deducted — this payment is below §{section}&apos;s threshold
-                {shown.explain.aggregate_tested === true
-                  ? ", and with the payments already typed on this screen for this payee in the year it is below the section's yearly threshold too."
-                  : "."}
+                Counted in the year of supplier {shown.explain.supplier.name}
+                {vendorId ? "" : ", found by the PAN"}, with its purchase bills and advances.
               </p>
+            )}
+            {shown?.explain.supplier_note && (
+              <p className="text-2xs text-blue-800">{shown.explain.supplier_note}</p>
+            )}
+            {/* A supplier's charge is worded by the bill path's own resolver (`why`, always sent where a supplier is named), which already names the year it was
+                charged on, a s.197 certificate or a s.194A class; the two sentences below are this door's own wording for a payee who is not a supplier, whose year is
+                the typed deductions for the PAN. */}
+            {shown?.explain.why ? (
+              <p className="text-2xs text-blue-800">{shown.explain.why}</p>
+            ) : (
+              <>
+                {shown && !shown.explain.applies && (
+                  <p className="text-2xs text-blue-800">
+                    Nothing is deducted — this payment is below §{section}&apos;s threshold
+                    {shown.explain.aggregate_tested === true
+                      ? ", and with the payments already typed on this screen for this payee in the year it is below the section's yearly threshold too."
+                      : "."}
+                  </p>
+                )}
+                {shown && (shown.explain.fy_prior_tds_paise ?? 0) > 0 && (
+                  <p className="text-2xs text-blue-800">
+                    Charged on the year&apos;s aggregate for this payee, crediting the{" "}
+                    {formatPaise(shown.explain.fy_prior_tds_paise ?? 0)} already withheld (IT Act §200).
+                  </p>
+                )}
+              </>
             )}
             {shown?.explain.rate_basis && (
               <p className="text-2xs text-blue-800">{shown.explain.rate_basis}</p>
             )}
-            {shown && shown.explain.fy_prior_tds_paise > 0 && (
+            {shown && (shown.explain.shortfall_paise ?? 0) > 0 && (
               <p className="text-2xs text-blue-800">
-                Charged on the year&apos;s aggregate for this payee, crediting the{" "}
-                {formatPaise(shown.explain.fy_prior_tds_paise)} already withheld (IT Act §200).
+                {formatPaise(shown.explain.shortfall_paise ?? 0)} of the year&apos;s tax is not withheld on this payment, because it is more than the payment.
               </p>
             )}
             {shown && shown.quarter && (
@@ -442,7 +526,7 @@ function AddDeductionModal({ clientId, choices, onClose, onAdded }: {
         </div>
 
         <div className="flex gap-2 pt-1">
-          <button onClick={onClose} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg">Cancel</button>
+          <button disabled={saving} onClick={onClose} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg">Cancel</button>
           {/* The shared button, not a `disabled={saving}` flag: state reaches the page a render after the click, so two clicks made back
               to back both ran this and recorded the deduction twice (found by driving the form in a browser, PRE-A-015). */}
           <Button type="button" variant="plain" size="none" onClick={handleSubmit} disabled={saving}
@@ -454,8 +538,7 @@ function AddDeductionModal({ clientId, choices, onClose, onAdded }: {
           {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
           Deposit TDS to the government account via e-Pay Tax on incometax.gov.in (challan ITNS 281). PracticeSync does not auto-submit.
         </p>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -640,6 +723,11 @@ function AddChallanModal({ clientId, choices, onClose, onAdded }: {
   const [interestRupees, setInterestRupees] = useState("");
   const [penaltyRupees, setPenaltyRupees] = useState("");
   const [minorHead, setMinorHead] = useState<"200" | "400">("200");
+  // POST-A-267: on a salary challan (the server marks which section is one), the wage month whose tax it deposits. It is what lets
+  // the challan close that month's salary deposit on the compliance calendar; blank closes none, and the server says so.
+  const [wageMonth, setWageMonth] = useState("");
+  const isSalary = choices.challan.some((c) => c.section === section && c.salary === true);
+  const wageMonths = isSalary ? wageMonthsOfQuarter(fy, period) : [];
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   // Text that is not a date reads as blank to the form (frontend_ux-19).
@@ -703,6 +791,9 @@ function AddChallanModal({ clientId, choices, onClose, onAdded }: {
         interest_paise: interestPaise,
         penalty_paise: penaltyPaise,
         minor_head: minorHead,
+        // Only a month the current quarter offers, and only on a salary challan: a month picked before the section, year or
+        // quarter changed is not sent.
+        ...(wageMonths.some((m) => m.value === wageMonth) ? { deduction_month: wageMonth } : {}),
       });
       onAdded(saved);
       onClose();
@@ -714,13 +805,7 @@ function AddChallanModal({ clientId, choices, onClose, onAdded }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-ps-ink">Add Challan 281</h3>
-          {/* Held while a request is out, as Add is: a challan recorded after the dialog was closed (and perhaps opened again) looks like one that was cancelled. */}
-          <button onClick={onClose} disabled={saving} aria-label="Close" className="disabled:opacity-50"><X className="w-4 h-4 text-ps-hint" /></button>
-        </div>
+    <Modal title="Add Challan 281" onClose={() => { if (!saving) onClose(); }}>
         <div className="space-y-3">
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">BSR Code</label>
@@ -801,11 +886,30 @@ function AddChallanModal({ clientId, choices, onClose, onAdded }: {
                 salary TDS is deposited on an ITNS 281 like any other — Payroll
                 computes it, and the CA records the challan. The deduction form
                 above deliberately excludes it. */}
-            <select aria-label="Section" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={section} onChange={e => setSection(e.target.value)}>
-              {choices.challan.length === 0 && <option value={section}>{section}</option>}
-              {choices.challan.map(c => <option key={c.section} value={c.section}>{sectionOptionText(c.section, choices.labels)}</option>)}
-            </select>
+            <EntityLookup ariaLabel="Section"
+              items={choices.challan.length === 0 ? [{ section, label: section }] : choices.challan}
+              value={section}
+              onChange={setSection}
+              getId={c => c.section}
+              getLabel={c => (choices.challan.length === 0 ? c.section : sectionOptionText(c.section, choices.labels))}
+              searchPlaceholder="Search sections…"
+            />
           </div>
+          {isSalary && (
+            <div>
+              <label htmlFor="tds-challan-wage-month" className="text-xs font-medium text-ps-body block mb-1">Wage month this challan pays</label>
+              <select id="tds-challan-wage-month" value={wageMonths.some((m) => m.value === wageMonth) ? wageMonth : ""}
+                onChange={e => setWageMonth(e.target.value)}
+                className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm bg-white">
+                <option value="">Not stated</option>
+                {wageMonths.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+              </select>
+              <p className="text-xs text-ps-hint mt-1">
+                Naming the month lets this challan close that month&apos;s salary TDS deposit on the compliance calendar, when the salary
+                challans for the month paid on time what payroll deducted. Left as not stated, it closes nothing.
+              </p>
+            </div>
+          )}
         </div>
         <div className="flex gap-2">
           <button onClick={onClose} disabled={saving} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg disabled:opacity-50">Cancel</button>
@@ -815,8 +919,7 @@ function AddChallanModal({ clientId, choices, onClose, onAdded }: {
             {saving ? "Saving…" : "Add"}
           </Button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -1370,7 +1473,7 @@ export default function TDSPage() {
       {depositForClient && Object.values(depositForClient.deductions).some(r => r.state === "not_deposited") && (
         <p className="text-xs text-ps-hint">Not deposited: {depositForClient.legend.not_deposited.sentence}</p>
       )}
-      {depositForClient && depositForClient.warnings.length > 0 && (
+      {depositForClient && (depositForClient.warnings ?? []).length > 0 && (
         <Callout tone="attention" title="About the challans recorded for this client">
           <ul className="list-disc pl-5 space-y-1">
             {depositForClient.warnings.map((w, i) => <li key={`${w.code}-${i}`}>{w.message}</li>)}
@@ -1649,8 +1752,19 @@ export default function TDSPage() {
                   <tr><td colSpan={7}><ListNotRead loading={loading} error={listErrors.certificates} what="certificates" /></td></tr>
                 )}
                 {certificates.length === 0 && !loading && !listErrors.certificates && (
-                  <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-ps-hint">
-                    No certificates for this client yet. Generate a draft from the client&apos;s Compliance → TDS tab.
+                  <tr><td colSpan={7}>
+                    <EmptyState
+                      className="py-10"
+                      title={selectedClientId ? "No certificates for this client yet" : "No client chosen"}
+                      description={selectedClientId
+                        ? "The Form 16 or 16A itself is generated on TRACES. Record that it was issued on the client's Compliance → TDS tab and it is listed here."
+                        : "Choose a client above to see the certificates recorded for them."}
+                      action={selectedClientId && (
+                        <EmptyStateActions>
+                          <EmptyStateAction requires={["tds", "compute"]} label="Open the client's TDS tab" href={`/clients/${selectedClientId}/compliance/tds`} variant="secondary" />
+                        </EmptyStateActions>
+                      )}
+                    />
                   </td></tr>
                 )}
               </tbody>

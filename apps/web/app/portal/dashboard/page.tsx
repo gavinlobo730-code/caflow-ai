@@ -28,8 +28,10 @@ import {
   PortalShell, PortalPanel, PortalTable, PortalRow, PortalEmpty,
 } from "@/components/portal/PortalShell";
 import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
+import { failureSentence } from "@/lib/api/failureSentence";
 import { DateInput } from "@/components/ui/date-input";
 import { OnlinePaymentNotice, PayOnlineControl } from "@/components/portal/PayOnlineControl";
+import { SectionPlaceholder } from "@/components/ui/page-frame";
 
 interface Section {
   key: string;
@@ -119,6 +121,9 @@ export default function PortalDashboardPage() {
   const [dash, setDash] = useState<Dashboard | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // Why the invitation in the link was not accepted, when it was not (POST-A-515 (d)). Said only where it matters: a person who still has
+  // no client portal afterwards is told their invitation did not go through, not just that they have no access.
+  const [inviteFailure, setInviteFailure] = useState<string | null>(null);
 
   const [active, setActive] = useState<string>("invoices");
   const [dues, setDues] = useState<PortalDues | null>(null);
@@ -182,7 +187,10 @@ export default function PortalDashboardPage() {
           // invitee reloaded this page after accepting once — memberships load
           // below already reflects that; only a genuinely failed acceptance
           // needs surfacing, and even then we still try to show what's active.
-          await api.portalSelf.acceptInvite(inviteToken).catch(() => null);
+          await api.portalSelf.acceptInvite(inviteToken).catch((e) => {
+            if (!cancelled) setInviteFailure(failureSentence(e, "The invitation could not be accepted.", "write"));
+            return null;
+          });
         }
         const res = await api.portalSelf.memberships() as ApiResp<{ memberships: Membership[] }>;
         const ms = res.data?.memberships ?? [];
@@ -374,7 +382,7 @@ export default function PortalDashboardPage() {
     finally { setBusy(false); }
   };
 
-  if (loading || redirecting) return <div className="p-8 text-sm text-ps-label">Loading your portal…</div>;
+  if (loading || redirecting) return <SectionPlaceholder label="Loading your portal" shape="dashboard" className="mx-auto max-w-5xl p-8" />;
   if (error) {
     return (
       <div className="p-8 max-w-md">
@@ -394,6 +402,11 @@ export default function PortalDashboardPage() {
         <p className="text-sm text-ps-body">
           You don&apos;t have access to a client portal right now.
         </p>
+        {inviteFailure && (
+          <p role="alert" className="mt-2 text-xs text-state-problem">
+            Your invitation was not accepted: {inviteFailure} Open the link in your invitation email again.
+          </p>
+        )}
         <p className="mt-2 text-xs text-ps-hint">
           If you believe you should have access, ask your accountant to invite you.
         </p>
@@ -413,7 +426,7 @@ export default function PortalDashboardPage() {
     <PortalShell
       title="Your Portal"
       subtitle="Your secure workspace with your accountant"
-      identity={dash?.contact.name ?? dash?.contact.email ?? null}
+      identity={dash?.contact?.name ?? dash?.contact?.email ?? null}
       actions={memberships.length > 1 ? (
         <label className="text-xs text-ps-label">
           <span className="sr-only">Client</span>
@@ -521,11 +534,11 @@ export default function PortalDashboardPage() {
             <Panel title="Account Statement">
               <div className="flex flex-wrap items-end gap-2 mb-3">
                 <label className="text-xs text-ps-label">From
-                  <DateInput value={stmtStart} onChange={(v) => setStmtStart(v)}
+                  <DateInput aria-label="Statement from" value={stmtStart} onChange={(v) => setStmtStart(v)}
                     className="ml-1 block sm:inline border border-ps-border rounded px-2 py-1 text-xs" />
                 </label>
                 <label className="text-xs text-ps-label">To
-                  <DateInput anchor={stmtStart || null} notBefore={stmtStart || null} value={stmtEnd} onChange={(v) => setStmtEnd(v)}
+                  <DateInput aria-label="Statement to" anchor={stmtStart || null} notBefore={stmtStart || null} value={stmtEnd} onChange={(v) => setStmtEnd(v)}
                     className="ml-1 block sm:inline border border-ps-border rounded px-2 py-1 text-xs" />
                 </label>
                 <button disabled={busy} onClick={reloadStatement}

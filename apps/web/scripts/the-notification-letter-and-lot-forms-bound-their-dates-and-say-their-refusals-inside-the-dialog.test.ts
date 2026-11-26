@@ -113,7 +113,8 @@ test("the statutory values dialog says its refusals inside itself, not on the pa
   assert.match(save, /if \(dates\.first \?\? missing\) \{\s*refusal\.refuse\(\);\s*return;\s*\}/, "save() does not refuse an unreadable or missing day through the latch");
   assert.doesNotMatch(save, /REQUIRED_SENTENCE/, "save() copies the missing-day sentence into formError again: it stays after the boxes are filled");
   // Close and Cancel wait for a Record that is out, each on its OWN element, so a late answer cannot act on a closed dialog.
-  assert.match(code, /<button onClick=\{\(\) => setShowForm\(false\)\} disabled=\{saving\} aria-label="Close"/, "the close button is live while a Record is out");
+  // (The shared Modal since POST-A-130's sixteenth step: its ×, Escape and a click beside it are one `onClose`, held while a Record is out.)
+  assert.match(code, /<Modal title="Record a notification"[^>]*onClose=\{\(\) => \{ if \(!saving\) setShowForm\(false\); \}\}/, "the dialog's close is live while a Record is out");
   assert.match(code, /<button onClick=\{\(\) => setShowForm\(false\)\} disabled=\{saving\}\s+className="px-4 py-1\.5 text-sm text-ps-label/, "Cancel is live while a Record is out");
   // Opened again, the dialog holds nothing of the last one, and the open button does nothing while the form is open (Enter on it from behind the overlay emptied the form).
   assert.match(bodyOf(code, /function reset\(\) \{/), /setFormError\(null\)/, "reset() leaves the last refusal on the form");
@@ -146,7 +147,7 @@ test("an engagement letter refuses an expiry before its start, in a sentence der
   assert.match(modal, /sentenceRef\.current\?\.scrollIntoView\?\.\(\{ block: "nearest" \}\)/, "the sentence is not brought into view in a card that scrolls");
   assert.match(modal, /\{sentence && <div ref=\{sentenceRef\}><Callout tone="problem">\{sentence\}<\/Callout><\/div>\}/, "the sentence is not rendered");
   // Close and Cancel wait for a Create that is out, each on its own element; the dialog is opened empty.
-  assert.match(modal, /<button onClick=\{onClose\} disabled=\{saving\} aria-label="Close"/, "the header Close is live while a Create is out");
+  assert.match(modal, /<Modal title="New Engagement Letter"[^>]*onClose=\{\(\) => \{ if \(!saving\) onClose\(\); \}\}/, "the dialog's close (Escape, a click beside it, its ×) is live while a Create is out");
   assert.match(modal, /onClick=\{onClose\}\s+disabled=\{saving\}\s+className="flex-1 rounded-lg border/, "Cancel is live while a Create is out");
   assert.match(modal, /if \(open\) \{\s*clearRefusal\(\);[\s\S]{0,700}setErr\(null\);/, "the dialog is opened again with the last refusal on it");
   // …and it is emptied BEFORE the first paint: the dialog stays mounted and is shown by `open`, so the reset in an ordinary effect ran after the first frame, which drew the last

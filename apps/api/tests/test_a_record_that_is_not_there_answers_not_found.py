@@ -87,8 +87,10 @@ def _router_cases():
     from routers import health, lifecycle, relationships
 
     return [
+        # The two edits below read their body through `models.clearable.patch_dict` (POST-A-399), which asks the request model what was
+        # SENT; a `_Bag` cannot say, so they are driven with the request models themselves.
         ("relationships.update_entity", relationships, lambda: relationships.update_entity(
-            "e-1", _Bag(), PARTNER)),
+            "e-1", relationships.EntityUpdateIn(), PARTNER)),
         ("relationships.get_entity", relationships, lambda: relationships.get_entity("e-1", PARTNER)),
         ("relationships.add_entity_role", relationships, lambda: relationships.add_entity_role(
             "e-1", _Bag(client_id=None, role_type="Director"), PARTNER)),
@@ -105,7 +107,7 @@ def _router_cases():
         ("relationships.create_property", relationships, lambda: relationships.create_property(
             _Bag(client_id="c-1", entity_id="e-1", cost_paise=0, annual_rent_paise=0), PARTNER)),
         ("lifecycle.update_lead", lifecycle, lambda: lifecycle.update_lead(
-            "l-1", _Bag(stage="won"), PARTNER)),
+            "l-1", lifecycle.LeadUpdateIn(stage="won"), PARTNER)),
         ("lifecycle.update_proposal_status", lifecycle, lambda: lifecycle.update_proposal_status(
             "p-1", _Bag(status="accepted"), PARTNER)),
         ("lifecycle.update_onboarding_task", lifecycle, lambda: lifecycle.update_onboarding_task(

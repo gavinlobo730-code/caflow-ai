@@ -7,7 +7,7 @@ test_batch2_guardrails_migration.py:
 
   G1  assert_can_view_client / assert_partner_for_internal_id (Partner-only).
   G2  client_repo.find_all / count exclude the internal client by default.
-  G4  assert_not_internal_for_payroll blocks payroll for the internal client.
+  G4  assert_practice_payroll_is_the_partners: the practice's own payroll is the Partner's alone (a module cap until 21-11-2026).
 """
 import pytest
 from fastapi import HTTPException
@@ -54,12 +54,16 @@ def test_g1_assert_partner_for_internal_id(monkeypatch):
     ics.assert_partner_for_internal_id("EXT", STAFF)     # external ok for staff
 
 
-def test_g4_payroll_blocked_for_internal(monkeypatch):
+def test_g4_the_practices_own_payroll_is_the_partners_alone(monkeypatch):
+    """G4 was a module cap until 21-11-2026 (no payroll for the practice at all, a 403 for everybody). The firm now runs its
+    own staff's payroll on the practice client (POST-A-532), and what stands at the door is G1: a non-Partner is told 404."""
     monkeypatch.setattr(ics, "get_internal_client_id", lambda firm_id: "INT")
     with pytest.raises(HTTPException) as ei:
-        ics.assert_not_internal_for_payroll("INT", "F1")
-    assert ei.value.status_code == 403
-    ics.assert_not_internal_for_payroll("EXT", "F1")     # external ok
+        ics.assert_practice_payroll_is_the_partners("INT", STAFF)
+    assert ei.value.status_code == 404
+    ics.assert_practice_payroll_is_the_partners("INT", PARTNER)   # the Partner runs it
+    ics.assert_practice_payroll_is_the_partners("EXT", STAFF)     # another client is not this rule's business
+    assert not hasattr(ics, "assert_not_internal_for_payroll"), "the old refusal is back beside the new rule"
 
 
 def test_g2_repo_excludes_internal_by_default():

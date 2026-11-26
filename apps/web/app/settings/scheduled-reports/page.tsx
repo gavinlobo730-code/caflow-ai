@@ -9,7 +9,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Plus, Trash2, Mail, Calendar, ToggleLeft, ToggleRight,
-  AlertCircle, Loader2, X,
+  AlertCircle, Loader2,
 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { deleteRowAndConfirm } from "@/lib/data/deleteRowAndConfirm";
@@ -18,9 +18,12 @@ import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { Callout } from "@/components/ui/callout";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/states";
 import { selectAll } from "@/lib/supabase/selectAll";
 
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
+import { SectionPlaceholder } from "@/components/ui/page-frame";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type ReportType = "pl" | "balance_sheet" | "gst_summary" | "tds_summary" | "payroll_summary";
@@ -258,10 +261,7 @@ export default function ScheduledReportsPage() {
 
       {/* List */}
       {loading ? (
-        <div className="text-center py-12 flex items-center justify-center gap-2 text-ps-hint">
-          <Loader2 className="w-4 h-4 animate-spin" />
-          <span className="text-sm">Loading schedules…</span>
-        </div>
+        <SectionPlaceholder label="Loading schedules" shape="list" rows={4} />
       ) : loadError ? (
         <div className="bg-white rounded-xl border border-ps-border px-5 py-14 text-center">
           <AlertCircle className="w-8 h-8 text-red-300 mx-auto mb-2" />
@@ -274,10 +274,12 @@ export default function ScheduledReportsPage() {
           </button>
         </div>
       ) : schedules.length === 0 ? (
-        <div className="bg-white rounded-xl border border-ps-border px-5 py-14 text-center">
-          <Calendar className="w-8 h-8 text-gray-200 mx-auto mb-2" />
-          <p className="text-sm text-ps-hint">No schedules yet</p>
-          <p className="text-xs text-ps-hint mt-1">Add the first report you plan to send</p>
+        <div className="bg-white rounded-xl border border-ps-border">
+          <EmptyState
+            icon={<Calendar size={32} />}
+            title="No schedules yet"
+            description="Press New Schedule at the top of the page to plan the first report you mean to send to a client."
+          />
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
@@ -313,7 +315,7 @@ export default function ScheduledReportsPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <button disabled={actionInFlight}
+                    <Button variant="plain" size="none" spinner={false} disabled={actionInFlight}
                       onClick={() => handleToggle(s.id, s.is_active)}
                       className={`flex items-center gap-1 text-xs font-medium ${
                         s.is_active ? "text-green-600" : "text-ps-hint"
@@ -324,7 +326,7 @@ export default function ScheduledReportsPage() {
                         : <ToggleLeft size={16} />
                       }
                       {s.is_active ? "Active" : "Inactive"}
-                    </button>
+                    </Button>
                   </td>
                   <td className="px-5 py-3">
                     <Button variant="plain" size="none" disabled={actionInFlight}
@@ -343,14 +345,24 @@ export default function ScheduledReportsPage() {
 
       {/* New Schedule Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-ps-ink">New Schedule</h3>
-              <button onClick={() => setShowModal(false)} className="text-ps-hint hover:text-ps-label">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+        // The shared dialog (POST-A-130). Its close is held while the schedule is being created.
+        <Modal title="New Schedule" maxWidthClass="max-w-md" onClose={() => { if (!saving) setShowModal(false); }}
+          footer={<>
+            <button disabled={saving}
+              onClick={() => setShowModal(false)}
+              className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <Button variant="plain" size="none" spinner={false}
+              onClick={handleCreate}
+              disabled={actionInFlight}
+              className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40 flex items-center gap-1.5"
+            >
+              {saving && <Loader2 size={12} className="animate-spin" />}
+              {saving ? "Creating…" : "Create Schedule"}
+            </Button>
+          </>}>
 
             <div className="space-y-3">
               <div>
@@ -419,24 +431,7 @@ export default function ScheduledReportsPage() {
               {formError && <Callout tone="problem">{formError}</Callout>}
             </div>
 
-            <div className="flex gap-3 justify-end pt-1">
-              <button
-                onClick={() => setShowModal(false)}
-                className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleCreate}
-                disabled={actionInFlight}
-                className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40 flex items-center gap-1.5"
-              >
-                {saving && <Loader2 size={12} className="animate-spin" />}
-                {saving ? "Creating…" : "Create Schedule"}
-              </button>
-            </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

@@ -71,32 +71,6 @@ export function shouldBounceFromLogin(state: LoginBounceState): boolean {
   return hasSession && onLogin && mfaPending === false && !isPortalRecovery;
 }
 
-// ── RoleGuard ────────────────────────────────────────────────────────────────
-//
-// The OTHER direction of the same rule. "Unresolved is not permission" keeps
-// the app from rendering too early — but a role that is still resolving is not
-// a REFUSAL either. RoleGuard used to redirect on `!loading && !permitted`, and
-// `loading` clears when the SESSION is known, a round trip before the ROLE is:
-// in between, `userRole` is null, `hasRole` reads that as least privilege, and
-// a Partner opening /settings directly was sent to "/" every time. Waiting
-// renders nothing; only a decided "no" redirects.
-
-export type RoleGuardDecision = "wait" | "allow" | "deny";
-
-export interface RoleGuardState {
-  /** The session is still being restored. */
-  loading: boolean;
-  /** This user's role is still being resolved. */
-  roleLoading: boolean;
-  /** hasRole(userRole, allowed) — meaningless until both of the above are false. */
-  permitted: boolean;
-}
-
-export function roleGuardDecision(state: RoleGuardState): RoleGuardDecision {
-  if (state.loading || state.roleLoading) return "wait";
-  return state.permitted ? "allow" : "deny";
-}
-
 // ── /signup ──────────────────────────────────────────────────────────────────
 //
 // AuthGuard already bounces a fully authenticated /login visitor to "/" (the
@@ -114,6 +88,18 @@ export interface SignupBounceState {
   mfaPending: MfaPending;
   hasFirm: boolean | null;
   onSignup: boolean;
+}
+
+/**
+ * Whether a path is the sign-up FORM or something under it that is also "Create your firm" (the bounce applies to those), as opposed to
+ * the page a sign-up LINK opens, `/signup/continue` (POST-A-485). That page is for a person who may already be signed in, as the link's
+ * own address or as somebody else, and it says what to do in each case; bouncing a signed-in member from it to "/" would be silent
+ * (the address already has a practice, and nobody would be told why the link did nothing).
+ */
+export function isSignupFormPath(pathname: string): boolean {
+  const bare = pathname.length > 1 && pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
+  if (bare === "/signup/continue") return false;
+  return bare === "/signup" || bare.startsWith("/signup/");
 }
 
 /** Whether AuthGuard should replace the URL with "/" from /signup. */

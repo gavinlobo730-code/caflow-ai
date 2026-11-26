@@ -21,7 +21,7 @@ import { formatDateTime } from "@/lib/services/formatting";
 import { termLabelForDays } from "@/lib/sales/paymentTerms";
 import { diffDaysISO } from "@/lib/sales/dateMath";
 import type { PurchaseBillDetail } from "@/components/purchases/PurchaseBillEditor";
-import { FormSkeleton, TableSkeleton } from "@/components/ui/skeleton";
+import { FormSkeleton, TableSkeleton, LoadingRegion } from "@/components/ui/skeleton";
 
 import { todayIstISO } from "@/lib/dates/format";
 import { arrayOrEmpty, objectOrNull, objectWithLists } from "@/lib/api/shape";
@@ -107,7 +107,8 @@ export function PurchaseBillViewDrawer({
   /** "Cancel Bill" — received bills only (drafts are deleted instead). The
    * caller confirms and POSTs /purchase-bills/{id}/cancel, which reverses the
    * posted journal and the inventory stock-in. */
-  onCancelBill: (bill: PurchaseBillDetail) => void;
+  /** Absent for a person who may not cancel a bill (`accounting` `approve`, a Partner's alone): Cancel Bill is not drawn. */
+  onCancelBill?: (bill: PurchaseBillDetail) => void;
   /** Called after a vendor payment or debit note is recorded so the caller
    * reloads its list (the bill's paid_paise / status may have changed). */
   onChanged: () => void;
@@ -318,7 +319,7 @@ export function PurchaseBillViewDrawer({
               {isDraft && <Action danger onClick={() => onDelete(bill)} icon={<Trash2 size={12} />}>Delete</Action>}
               {/* Received + unpaid only: the backend deletes drafts instead, and
                   refuses to cancel a bill with payments (reverse those first). */}
-              {bill.status === "received" && (bill.paid_paise ?? 0) === 0 && (
+              {bill.status === "received" && (bill.paid_paise ?? 0) === 0 && onCancelBill && (
                 <Action danger onClick={() => onCancelBill(bill)} icon={<Ban size={12} />}>Cancel Bill</Action>
               )}
               {bill.document_url && (
@@ -410,7 +411,7 @@ export function PurchaseBillViewDrawer({
             {showJournal && (
               <div className="border border-ps-border rounded-lg p-2 bg-ps-bg">
                 {journalLoading ? (
-                  <div className="flex items-center gap-2 text-2xs text-ps-hint py-2"><Loader2 size={12} className="animate-spin" /> Loading…</div>
+                  <LoadingRegion label="Loading the journal"><div className="flex items-center gap-2 text-2xs text-ps-hint py-2"><Loader2 size={12} className="animate-spin" /> Loading…</div></LoadingRegion>
                 ) : journal?.lines?.length ? (
                   <table className="w-full text-2xs">
                     <thead><tr className="text-ps-hint"><th className="text-left font-semibold py-1">Account</th><th className="text-right font-semibold">Debit</th><th className="text-right font-semibold">Credit</th></tr></thead>

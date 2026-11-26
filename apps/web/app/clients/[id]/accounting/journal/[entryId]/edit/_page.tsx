@@ -28,6 +28,9 @@ import { JournalEditor, type EditorAccount, type JournalSaveMode } from "@/compo
 import { ErrorState } from "@/components/ui/states";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import EntryHistory from "@/components/accounting/EntryHistory";
+import { usePermissions } from "@/lib/auth/AuthContext";
+import { useJournalApprovalRule } from "@/lib/accounting/journalApprovalRule";
+import { editedJournalReference, removedJournalReferenceProblem } from "@/lib/accounting/journalReference";
 
 function getEntryIdFromLocation(): string {
   if (typeof window === "undefined") return "";
@@ -52,6 +55,13 @@ export default function JournalEntryPageClient() {
   useEffect(() => { setEntryId(getEntryIdFromLocation()); }, [pathname]);
   const isNew = entryId === "new";
   const router = useRouter();
+  // Posting, a new entry or a saved draft, asks `accounting` `write` at both routes and then the firm's rule (POST-A-456): where the
+  // firm has a Partner approve every manual journal, only someone who may approve posts, or corrects an entry on the books. The
+  // rule is the server's answer for this person; while it is unknown Post is offered and the server decides.
+  const postingRule = useJournalApprovalRule();
+  const mayPost = usePermissions().can("accounting", "write") && postingRule.mayPost !== false;
+  // Saving a draft or a correction and posting a new entry ask `accounting` `write`; an Executive's is read only.
+  const mayWrite = usePermissions().can("accounting", "write");
 
   const [accounts, setAccounts] = useState<EditorAccount[] | null>(null);
   const [entry, setEntry] = useState<JournalEntryDetail | null>(null);
@@ -167,12 +177,18 @@ export default function JournalEntryPageClient() {
         return true;
       }
 
+      // A reference is changed and never removed (POST-A-399): every entry carries one, so an emptied box over the one on file
+      // is said beside the button and nothing is sent. It used to be sent as null, which the server reads as "not sent": the
+      // old reference stayed and this screen said the entry was corrected.
+      const referenceRefusal = removedJournalReferenceProblem(entry?.reference_no, payload.reference_no);
+      if (referenceRefusal) { setSaveError(referenceRefusal); return false; }
+
       // A posted entry must send its FULL line set — edit_posted_journal
       // rewrites them wholesale rather than diffing.
       await api.accounting.updateJournalEntry(entryId, {
         entry_date: payload.entry_date,
         entry_type: payload.entry_type,
-        reference_no: payload.reference_no || null,
+        reference_no: editedJournalReference(payload.reference_no),
         narration: payload.narration,
         lines: payload.lines,
         // ACC-25, second half. This was the one field the editor collected and
@@ -228,6 +244,9 @@ export default function JournalEntryPageClient() {
         saving={saving}
         serverError={saveError}
         onSave={handleSave}
+        mayPost={mayPost}
+        postRuleNote={postingRule.error}
+        mayWrite={mayWrite}
         onCancel={() => router.push(journalListHref(clientId))}
       />
       {/* Only for an entry that EXISTS: in create mode there is no row for the

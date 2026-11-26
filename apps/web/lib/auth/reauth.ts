@@ -21,7 +21,7 @@ import type { AuthError, UserResponse } from "@supabase/supabase-js";
 
 /** The minimal slice of supabase.auth this helper needs — keeps it mockable. */
 export interface ReauthCapableAuth {
-  updateUser(attributes: { password?: string; nonce?: string }): Promise<UserResponse>;
+  updateUser(attributes: { password?: string; nonce?: string; current_password?: string }): Promise<UserResponse>;
 }
 
 /** True when an updateUser() error indicates a bad/expired reauthentication nonce. */
@@ -43,6 +43,20 @@ export function isSessionMissingError(err: Pick<AuthError, "message"> | null | u
   return /auth session missing/i.test(err.message);
 }
 
+/**
+ * True when updateUser() refused because the password sent IS the one already on
+ * the account. Live on 18-11-2026 the sign-in service answered 422 with the code
+ * `same_password` ("New password should be different from the old password.");
+ * the message is checked too for a server that sends no code. On the sign-up
+ * wizard that means the password is already set, not that something failed
+ * (POST-A-478).
+ */
+export function isSamePasswordError(err: { code?: unknown; message?: unknown } | null | undefined): boolean {
+  if (!err) return false;
+  if (err.code === "same_password") return true;
+  return typeof err.message === "string" && /different from the old password/i.test(err.message);
+}
+
 /** The one message shown wherever a step 1 auth call finds no session. */
 export const SESSION_EXPIRED_MESSAGE =
   "This sign-up link has expired or you are not signed in. Please request a new sign-up link or sign in.";
@@ -56,11 +70,20 @@ export const RESET_LINK_ENDED_MESSAGE =
  * supabase.auth.reauthenticate(). The nonce is sent VERBATIM (only trimmed) —
  * never truncated, sliced, or parsed — so the exact code the user typed is the
  * exact value Supabase receives.
+ *
+ * `currentPassword` is for the screen where the person KNOWS it (Settings > Security): with the project's "Require current password
+ * when updating" switch on, the change is refused without it, nonce or no nonce (POST-A-512). A screen reached by an emailed link
+ * has no current password to send and passes none.
  */
 export async function setPasswordWithReauthNonce(
   auth: ReauthCapableAuth,
   password: string,
   nonce: string,
+  currentPassword?: string,
 ): Promise<UserResponse> {
-  return auth.updateUser({ password, nonce: nonce.trim() });
+  return auth.updateUser(
+    currentPassword === undefined
+      ? { password, nonce: nonce.trim() }
+      : { password, nonce: nonce.trim(), current_password: currentPassword },
+  );
 }

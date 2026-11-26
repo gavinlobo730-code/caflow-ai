@@ -46,6 +46,10 @@ const WHERE: { title: string; body: string; figures?: string }[] = [
       "Some features also send figures the product has already worked out from your records, such as counts, totals and ratios. Some of those figures are rupee amounts, such as the revenue, expenses and profit the statement analysis sends for two financial years. When you ask the assistant about one client, it is also given figures from that client's records, including rupee amounts. The product attaches no client name to these figures.",
   },
   {
+    title: "Sign-ins are recorded",
+    body: "The product records the address and the browser that people sign in from, and keeps them with the sign-in history that your firm's Partners and Managers can read. The address is the one our own server saw; it is not turned into a place.",
+  },
+  {
     title: "What is replaced on the way",
     body: "In the assistant and the copilot, anything shaped like a PAN or a GSTIN is replaced before it is sent. Names and amounts you type there are sent as written. A bill, a notice or a statement sent to be read is sent as it is, with every GSTIN and name on it.",
   },
@@ -140,9 +144,13 @@ export default function PrivacyPage() {
             </li>
           ))}
         </ul>
+        {/* There is no public contact yet (PRE-A-026), so this says so rather than
+            sending a person with a question about their data to a page with no
+            address on it; the Support page lists the address once there is one. */}
         <p className="mt-10 max-w-[60ch] text-[15px] leading-relaxed">
+          There is no public email address or phone line yet.{" "}
           <Link href="/support" className="font-semibold text-brand underline underline-offset-2 hover:text-brand-dark">
-            For a question about your data, see how to reach us on the Support page.
+            When there is one, the Support page lists it.
           </Link>
         </p>
       </Panel>

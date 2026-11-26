@@ -18,9 +18,12 @@ from domain.payroll import handoff as h
 
 MONTH = "2026-09"
 
+# Twelve members on Rs 15,000 each, EPFO's own sample member (User Manual v3.0, page 8: 1,800 / 1,250 / 550): column 7 is 12 x 1,800,
+# column 8 is 12 x 1,250, and column 9 (the employer's PF share) is column 7 less column 8, which the hand-off derives when the totals
+# do not carry it.
 ECR_TOTALS = {"members": 12, "gross_wages": 6_00_000, "epf_wages": 1_80_000,
-              "eps_wages": 1_80_000, "epf_contribution": 13_140,
-              "eps_contribution": 14_994}
+              "eps_wages": 1_80_000, "epf_contribution": 21_600,
+              "eps_contribution": 15_000}
 ESIC_TOTALS = {"members": 5, "wages_rupees": 75_000, "days": 130}
 
 
@@ -29,7 +32,7 @@ def _epf(**over):
         wage_month=MONTH, due_date="2026-10-15",
         establishment_code="MHBAN0012345000", identity_gaps=[],
         file_totals=ECR_TOTALS, edli_paise=90_000, admin_paise=50_000,
-        problems=[], filable=True, filename="ECR_202609.txt",
+        problems=[], filable=True, filename="ECR202609.txt",
         blocking_months=[], sequence_note=None, required_returns=["regular"],
         return_type_reason=None, interest_note=None, recorded=None)
     args.update(over)
@@ -123,6 +126,47 @@ def test_a_supplementary_return_is_called_out_before_the_upload():
     assert panel.record_options == ["regular", "supplementary"]
 
 
+def test_the_panel_tells_the_ca_what_the_portal_checks_that_the_product_cannot_see():
+    """POST-A-520. Before the download: mark exits on the portal first, and compare the file with the portal's own Active Member List. In plain words,
+    from EPFO's own FAQs and manual, and with no claim of what the portal will accept."""
+    warnings = _epf().warnings
+    assert h.EPF_MARK_EXITS_FIRST in warnings
+    assert h.EPF_COMPARE_WITH_THE_PORTALS_LIST in warnings
+    assert "Active Member List" in h.EPF_COMPARE_WITH_THE_PORTALS_LIST
+    assert "cannot see" in h.EPF_COMPARE_WITH_THE_PORTALS_LIST
+    # No promise either way about acceptance, and the word the ordinary-return test above guards against stays out.
+    for sentence in (h.EPF_MARK_EXITS_FIRST, h.EPF_COMPARE_WITH_THE_PORTALS_LIST, h.epf_rate_sentence(1200)):
+        low = sentence.lower()
+        assert "will accept" not in low and "will be accepted" not in low and "egular" not in sentence
+        assert "guarantee" not in low
+
+
+def test_a_run_with_no_file_says_nothing_about_uploading_one():
+    """A run in which nobody carries a PF contribution has no ECR; the three sentences about uploading a file are not said beside
+    "there is no ECR to build" (found by an independent read, 20-11-2026)."""
+    for problems in ([], ["R. Kumar has no UAN"]):
+        panel = _epf(filable=False, problems=problems, employee_rate_bps=1200)
+        warnings = " ".join(panel.warnings)
+        assert h.EPF_MARK_EXITS_FIRST not in panel.warnings
+        assert h.EPF_COMPARE_WITH_THE_PORTALS_LIST not in panel.warnings
+        assert "built at" not in warnings and "Active Member List" not in warnings
+        assert not panel.artefact.available
+
+
+def test_the_panel_says_which_rate_the_file_was_built_at_when_it_is_told():
+    panel = _epf(employee_rate_bps=1200)
+    rate = [w for w in panel.warnings if w.startswith("The portal's upload form asks for the contribution rate")]
+    assert len(rate) == 1
+    assert "built at 12%" in rate[0] and "12% or 10%" in rate[0]
+    # A caller that does not say the rate (every one written before this) gets no sentence about it, and no wrong one.
+    assert not any("upload form asks for the contribution rate" in w for w in _epf().warnings)
+
+
+@pytest.mark.parametrize("bps, said", [(1200, "12"), (1000, "10"), (833, "8.33"), (1250, "12.5")])
+def test_the_rate_is_said_in_integer_arithmetic(bps, said):
+    assert f"built at {said}%" in h.epf_rate_sentence(bps)
+
+
 def test_an_ordinary_regular_return_adds_no_noise():
     """ecr_sequence's values are LOWERCASE — REGULAR = "regular". Comparing
     against "Regular" would fire this warning on every ordinary month, which is
@@ -157,6 +201,30 @@ def test_the_ecr_wage_figures_are_reported_in_rupees_not_paise():
     by_label = {f.label: f for f in _epf().confirm}
     assert by_label["Total EPF wages"].rupees == 1_80_000
     assert by_label["Total EPF wages"].amount_paise is None
+
+
+def test_the_three_contribution_columns_are_shown_under_epfos_own_names():
+    """POST-A-517. EPFO's file has the employee's share in column 7, the pension share in column 8 and the employer's PF share in
+    column 9; a CA comparing this screen to the portal's return statement finds the same three names and the same three figures."""
+    by_label = {f.label: f for f in _epf().confirm}
+    assert by_label["Employee PF contribution (file column 7)"].rupees == 21_600
+    assert by_label["Employer EPS contribution (file column 8, A/c 10)"].rupees == 15_000
+    assert by_label["Employer PF contribution (file column 9)"].rupees == 6_600
+
+
+def test_account_1_is_the_employee_column_plus_the_employer_column_and_not_column_7_alone():
+    """The portal raises account 1 on the employee share plus the employer share (EPFO User Manual v3.0, pages 12 and 22: 23,400 +
+    7,150 = 30,550 for thirteen members). Here 21,600 + 6,600 = 28,200; column 7 alone (21,600) is the figure that read as the
+    whole of account 1 when column 7 carried both halves."""
+    by_label = {f.label: f for f in _epf().confirm}
+    assert by_label["EPF, A/c 1 (columns 7 and 9 together)"].rupees == 28_200
+
+
+def test_a_total_that_already_carries_the_employer_column_is_used_as_it_is():
+    totals = dict(ECR_TOTALS, employer_epf_contribution=6_600, account_1_contribution=28_200)
+    by_label = {f.label: f for f in _epf(file_totals=totals).confirm}
+    assert by_label["Employer PF contribution (file column 9)"].rupees == 6_600
+    assert by_label["EPF, A/c 1 (columns 7 and 9 together)"].rupees == 28_200
 
 
 def test_a_headcount_is_a_count_and_not_money():

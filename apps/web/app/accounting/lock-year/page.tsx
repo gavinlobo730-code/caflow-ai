@@ -1,14 +1,14 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Lock, Unlock, Shield, AlertTriangle, KeyRound, X, Eye, EyeOff } from "lucide-react";
+import { Lock, Unlock, Shield, AlertTriangle, KeyRound, Eye, EyeOff } from "lucide-react";
+import { Modal } from "@/components/ui/modal";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
-import { RoleGuard } from "@/components/RoleGuard";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
-import { doingOf, errorPageSentence, fetchPlain, looksLikeMarkup, notOursSentence } from "@/lib/api/failureSentence";
+import { doingOf, errorPageSentence, fetchBounded, looksLikeMarkup, notOursSentence } from "@/lib/api/failureSentence";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -23,7 +23,7 @@ async function callApi(
   const sb = getSupabaseClient();
   const { data: { session } } = await sb.auth.getSession();
   const token = session?.access_token;
-  const res = await fetchPlain(`${API_BASE}${path}`, {
+  const res = await fetchBounded(`${API_BASE}${path}`, {
     method,
     headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -115,21 +115,22 @@ function PinModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <KeyRound className="w-5 h-5 text-blue-600" />
-            <h2 className="text-base font-semibold text-ps-ink">
-              {isSettingPin ? "Set Lock PIN" : d.isLocked ? "Unlock Year" : "Lock Year"}
-            </h2>
-          </div>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
-        </div>
-
+    // The shared dialog (POST-A-130): named, modal, Tab kept inside, focus moved to the PIN box and given back. Nothing is in flight while
+    // it is open (confirming closes it and the page then sends the request), so nothing holds its close.
+    <Modal title={isSettingPin ? "Set Lock PIN" : d.isLocked ? "Unlock Year" : "Lock Year"} maxWidthClass="max-w-sm" onClose={onClose}
+      footer={<>
+        <button onClick={onClose}
+          className="flex-1 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg">
+          Cancel
+        </button>
+        <button onClick={submit}
+          className="flex-1 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark">
+          {isSettingPin ? "Set PIN & Lock" : "Confirm"}
+        </button>
+      </>}>
         <p className="text-sm text-ps-label">
           {isSettingPin
-            ? "No PIN is set yet. Create a PIN that Partners will use to lock or unlock financial years."
+            ? "No PIN is set yet. Create the PIN that is asked for whenever a financial year is locked or unlocked."
             : `Enter the firm PIN to ${d.isLocked ? "unlock" : "lock"} FY ${d.fy}.`}
         </p>
 
@@ -181,20 +182,8 @@ function PinModal({
           </div>
         )}
 
-        {err && <p className="text-xs text-red-600">{err}</p>}
-
-        <div className="flex gap-2 pt-1">
-          <button onClick={onClose}
-            className="flex-1 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg">
-            Cancel
-          </button>
-          <button onClick={submit}
-            className="flex-1 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark">
-            {isSettingPin ? "Set PIN & Lock" : "Confirm"}
-          </button>
-        </div>
-      </div>
-    </div>
+        {err && <p role="alert" className="text-xs text-state-problem">{err}</p>}
+    </Modal>
   );
 }
 
@@ -254,7 +243,7 @@ function LockYearContent() {
         back={{ href: "/accounting", label: "Accounting" }}
         icon={<Shield className="w-5 h-5 text-blue-600" />}
         title="Lock Financial Year"
-        subtitle="Partner-only — lock closed years to prevent accidental edits"
+        subtitle="Lock closed years to prevent accidental edits"
       />
 
       {/* Warning */}
@@ -262,7 +251,7 @@ function LockYearContent() {
         <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
         <div className="text-sm text-amber-800">
           <p className="font-medium">Locking a year prevents all journal entries, invoice edits, and adjustments for that period.</p>
-          <p className="text-xs mt-1 text-state-attention">Only Partners can lock or unlock. Unlock before making any corrections.</p>
+          <p className="text-xs mt-1 text-state-attention">Locking and unlocking need the permission to approve the books. Unlock before making any corrections.</p>
         </div>
       </div>
 
@@ -337,12 +326,16 @@ function LockYearContent() {
         Locking follows AS-1 (Accounting Standard on Disclosure of Accounting Policies) — once books are closed, entries should not be changed without proper rectification journals in the next open period.
       </p>
 
-      <PinModal
-        dialog={pinDialog}
-        pinSet={pinSet}
-        onConfirm={(fy, isLocked, pin) => toggleLock(fy, isLocked, pin)}
-        onClose={() => setPinDialog(null)}
-      />
+      {/* Mounted only while it is open: the dialog used to stay mounted and merely draw nothing, so a PIN typed into it was still in its
+          box (and behind its "show" eye) the next time anybody opened it on this screen. */}
+      {pinDialog && (
+        <PinModal
+          dialog={pinDialog}
+          pinSet={pinSet}
+          onConfirm={(fy, isLocked, pin) => toggleLock(fy, isLocked, pin)}
+          onClose={() => setPinDialog(null)}
+        />
+      )}
 
       {/* Toast */}
       {toast && (
@@ -354,10 +347,9 @@ function LockYearContent() {
   );
 }
 
+// WHO MAY OPEN THIS IS THE ONE TABLE'S ANSWER (`lib/access/screenAccess.ts`, POST-A-543): the permission the server asks to
+// set the lock, accounting approve, a Partner's by default. The page carried a Partner-only role guard of its own, which
+// refused somebody a Partner had ticked for it although the server would have let them lock the year.
 export default function LockYearPage() {
-  return (
-    <RoleGuard allowed={["Partner"]}>
-      <LockYearContent />
-    </RoleGuard>
-  );
+  return <LockYearContent />;
 }

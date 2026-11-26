@@ -1,7 +1,8 @@
 "use client";
 
+import { EntityLookup } from "@/components/lookups/EntityLookup";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, X, Network, Trash2, FileText } from "lucide-react";
+import { Plus, Network, Trash2, FileText } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Callout, StatutoryNotes } from "@/components/ui/callout";
@@ -23,6 +24,9 @@ import { windowDescription } from "@/lib/lists/window";
 import { useEntityRegister } from "@/lib/relationships/useEntityRegister";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { selectAll } from "@/lib/supabase/selectAll";
 
 /**
@@ -98,6 +102,8 @@ export default function ClientRelatedPartiesPage() {
   const [roleForm, setRoleForm] = useState({ entity_id: "", role_type: "Director", ownership_percent: "" });
   const [savingRole, setSavingRole] = useState(false);
   const [detectLoading, setDetectLoading] = useState(false);
+  // What the last Detect Matches found, apart from a failure (a press that finds nothing new used to change nothing on the screen).
+  const [detectNote, setDetectNote] = useState<string | null>(null);
   // The row being removed, or null. Per-ROW rather than one boolean: a shared
   // flag would disable every trash icon while one is in flight, which reads as
   // the screen having frozen.
@@ -154,11 +160,21 @@ export default function ClientRelatedPartiesPage() {
   async function handleDetectMatches() {
     if (actionInFlight) return;
     setDetectLoading(true);
+    setError(null);
+    setDetectNote(null);
     try {
-      await api.relatedParties.detectMatches();
+      const res = await api.relatedParties.detectMatches();
+      // The scan is a Partner's: an Executive's press is answered 403 in words, and that sentence used to be dropped, so the button
+      // seemed to do nothing, and a press that found nothing new changed nothing on the screen either (POST-A-515).
+      if (!res?.success) { setError(res?.error ?? "Matches could not be looked for just now."); return; }
+      const found = Number((res.data as { new_matches_detected?: number } | null | undefined)?.new_matches_detected ?? 0);
       await loadAll();
-    } catch { /* non-fatal — the list simply does not change */ }
-    finally { setDetectLoading(false); }
+      setDetectNote(found > 0
+        ? `${found} new cross-client match${found === 1 ? "" : "es"} found.`
+        : "No new cross-client matches found.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Matches could not be looked for just now.");
+    } finally { setDetectLoading(false); }
   }
 
   async function handleAddRole() {
@@ -246,6 +262,7 @@ export default function ClientRelatedPartiesPage() {
       />
 
       {error && <Callout tone="problem">{error}</Callout>}
+      {detectNote && <Callout tone="note">{detectNote}</Callout>}
 
       {/* ── The disclosure ─────────────────────────────────────────────── */}
       <Card>
@@ -268,10 +285,16 @@ export default function ClientRelatedPartiesPage() {
               The disclosure could not be loaded. The roles below are still current.
             </p>
           ) : included.length === 0 ? (
-            <p className="text-xs text-ps-hint">
-              No related party has been identified for this client yet. Link the
-              directors, partners or shareholders above and the note builds itself.
-            </p>
+            <EmptyState
+              className="py-6"
+              title="No related party has been identified for this client yet"
+              description="Link the directors, partners or shareholders with Link Entity and the note builds itself."
+              action={
+                <EmptyStateActions>
+                  <EmptyStateAction requires={["client", "write"]} icon={<Plus size={14} />} label="Link Entity" onClick={() => setAddRoleModal(true)} />
+                </EmptyStateActions>
+              }
+            />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
@@ -308,7 +331,7 @@ export default function ClientRelatedPartiesPage() {
             </div>
           )}
 
-          {note && note.section_185_loans.length > 0 && (
+          {note && (note.section_185_loans ?? []).length > 0 && (
             <div className="flex flex-wrap gap-2">
               <Badge className="bg-state-problem-surface text-state-problem text-3xs">
                 {note.section_185_loans.length} loan(s) flagged under Companies Act s.185
@@ -329,9 +352,16 @@ export default function ClientRelatedPartiesPage() {
         <Card>
           <CardContent className="p-0">
             {roles.length === 0 ? (
-              <p className="p-5 text-xs text-ps-hint">
-                No entity is linked to this client yet.
-              </p>
+              <EmptyState
+                className="py-8"
+                title="No entity is linked to this client yet"
+                description="Link a director, partner, shareholder or group company from the firm's Entity Registry."
+                action={
+                  <EmptyStateActions>
+                    <EmptyStateAction requires={["client", "write"]} icon={<Plus size={14} />} label="Link Entity" onClick={() => setAddRoleModal(true)} />
+                  </EmptyStateActions>
+                }
+              />
             ) : (
               <table className="w-full text-xs">
                 <thead>
@@ -429,104 +459,103 @@ export default function ClientRelatedPartiesPage() {
 
       {/* ── Link an entity ─────────────────────────────────────────────── */}
       {addRoleModal && (
-        <div className="fixed inset-0 bg-gray-900/60 flex items-center justify-center z-50 px-4">
-          <div className="bg-white border border-gray-200 rounded-xl shadow-xl p-6 w-full max-w-md">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-sm font-semibold text-brand">Link an entity to this client</h2>
-              <button onClick={() => setAddRoleModal(false)} className="text-gray-400 hover:text-gray-700">
-                <X size={16} />
-              </button>
-            </div>
-            <div className="space-y-3">
-              <div>
-                <label htmlFor="rp-entity" className="text-xs text-gray-600">Entity *</label>
-                <select
-                  id="rp-entity"
-                  value={roleForm.entity_id}
-                  onChange={(e) => setRoleForm({ ...roleForm, entity_id: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
-                >
-                  <option value="">
-                    {register.loading ? "Loading the entity register…" : entities.length ? "Choose an entity…" : "No entity to choose"}
-                  </option>
-                  {entities.map((e) => (
-                    <option key={e.id} value={e.id}>
-                      {e.full_name}{e.pan ? ` · ${e.pan}` : ""}
-                    </option>
-                  ))}
-                </select>
-                {register.error ? (
-                  <p role="alert" className="mt-1 text-3xs text-state-problem">
-                    The entity register could not be loaded: {register.error}
-                  </p>
-                ) : !register.loading && entities.length === 0 ? (
-                  <p className="mt-1 text-3xs text-ps-hint">
-                    No entity is registered yet — add one in the firm&apos;s Entity Registry first.
-                  </p>
-                ) : null}
-                {register.window && (
-                  <ListWindowNotice
-                    hasMore={register.window.hasMore}
-                    what={windowDescription(register.window.limit, "entities", "first", "by name")}
-                    limit={register.window.limit}
-                    maxLimit={register.window.maxLimit}
-                    onShowMore={register.showMore}
-                    busy={register.moreBusy}
-                  />
-                )}
-              </div>
-              <div>
-                <label htmlFor="rp-role" className="text-xs text-gray-600">Role *</label>
-                <select
-                  id="rp-role"
-                  value={roleForm.role_type}
-                  onChange={(e) => setRoleForm({ ...roleForm, role_type: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
-                >
-                  {ROLE_TYPES.map((r) => <option key={r} value={r}>{r}</option>)}
-                </select>
-              </div>
-              <div>
-                <label htmlFor="rp-holding" className="text-xs text-gray-600">
-                  Holding % (optional)
-                </label>
-                <input
-                  id="rp-holding"
-                  type="number" min="0" max="100"
-                  value={roleForm.ownership_percent}
-                  onChange={(e) => setRoleForm({ ...roleForm, ownership_percent: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
-                  placeholder="e.g. 51"
-                />
-                {/* AS 18 reaches a shareholder whose interest gives control or
-                    significant influence, not everybody on the register — so
-                    for a shareholder this box is what decides the note. */}
-                {roleForm.role_type === "Shareholder" && (
-                  <p className="mt-1 text-3xs text-ps-hint">
-                    A shareholder is only a related party where their holding
-                    gives control or significant influence, so without this
-                    figure the note cannot decide.
-                  </p>
-                )}
-              </div>
-            </div>
-            <div className="flex gap-2 mt-5">
-              <button
-                onClick={() => setAddRoleModal(false)}
-                className="flex-1 text-sm text-gray-600 border border-gray-200 py-2 rounded-md hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <Button variant="plain" size="none"
-                onClick={handleAddRole}
-                disabled={actionInFlight || !roleForm.entity_id}
-                className="flex-1 text-sm bg-brand text-white py-2 rounded-md hover:bg-brand-dark disabled:opacity-50"
-              >
-                {savingRole ? "Linking…" : "Link entity"}
-              </Button>
-            </div>
+        // The shared dialog (POST-A-130): named, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it, its ×) and its
+        // Cancel are held while its own request is out.
+        <Modal title="Link an entity to this client" maxWidthClass="max-w-md" onClose={() => { if (!savingRole) setAddRoleModal(false); }}
+          footer={<>
+            <button disabled={savingRole}
+              onClick={() => setAddRoleModal(false)}
+              className="flex-1 text-sm text-gray-600 border border-gray-200 py-2 rounded-md hover:bg-gray-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <Button variant="plain" size="none"
+              onClick={handleAddRole}
+              disabled={actionInFlight || !roleForm.entity_id}
+              className="flex-1 text-sm bg-brand text-white py-2 rounded-md hover:bg-brand-dark disabled:opacity-50"
+            >
+              {savingRole ? "Linking…" : "Link entity"}
+            </Button>
+          </>}>
+        <div className="space-y-3">
+          <div>
+            <label htmlFor="rp-entity" className="text-xs text-gray-600">Entity *</label>
+            <EntityLookup
+              id="rp-entity"
+              items={entities}
+              value={roleForm.entity_id}
+              onChange={(id) => setRoleForm({ ...roleForm, entity_id: id })}
+              getId={(e) => e.id}
+              getLabel={(e) => e.full_name}
+              getSecondary={(e) => e.pan ?? undefined}
+              getSearchFields={(e) => [e.full_name, e.pan ?? ""]}
+              placeholder={register.loading ? "Loading the entity register…" : entities.length ? "Choose an entity…" : "No entity to choose"}
+              searchPlaceholder="Search by name or PAN…"
+              disabled={register.loading}
+            />
+            {register.error ? (
+              <p role="alert" className="mt-1 text-3xs text-state-problem">
+                The entity register could not be loaded: {register.error}
+              </p>
+            ) : !register.loading && entities.length === 0 ? (
+              <EmptyState
+                className="px-2 py-3"
+                title="No entity is registered yet"
+                description="Add one in the firm's Entity Registry first, then link it here."
+                action={
+                  <EmptyStateActions>
+                    <EmptyStateAction requires={["client", "write"]} label="Open the Entity Registry" href="/relationships" variant="secondary" />
+                  </EmptyStateActions>
+                }
+              />
+            ) : null}
+            {register.window && (
+              <ListWindowNotice
+                hasMore={register.window.hasMore}
+                what={windowDescription(register.window.limit, "entities", "first", "by name")}
+                limit={register.window.limit}
+                maxLimit={register.window.maxLimit}
+                onShowMore={register.showMore}
+                busy={register.moreBusy}
+              />
+            )}
+          </div>
+          <div>
+            <label htmlFor="rp-role" className="text-xs text-gray-600">Role *</label>
+            <select
+              id="rp-role"
+              value={roleForm.role_type}
+              onChange={(e) => setRoleForm({ ...roleForm, role_type: e.target.value })}
+              className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
+            >
+              {ROLE_TYPES.map((r) => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="rp-holding" className="text-xs text-gray-600">
+              Holding % (optional)
+            </label>
+            <input
+              id="rp-holding"
+              type="number" min="0" max="100"
+              value={roleForm.ownership_percent}
+              onChange={(e) => setRoleForm({ ...roleForm, ownership_percent: e.target.value })}
+              className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
+              placeholder="e.g. 51"
+            />
+            {/* AS 18 reaches a shareholder whose interest gives control or
+                significant influence, not everybody on the register — so
+                for a shareholder this box is what decides the note. */}
+            {roleForm.role_type === "Shareholder" && (
+              <p className="mt-1 text-3xs text-ps-hint">
+                A shareholder is only a related party where their holding
+                gives control or significant influence, so without this
+                figure the note cannot decide.
+              </p>
+            )}
           </div>
         </div>
+        </Modal>
       )}
     </div>
   );

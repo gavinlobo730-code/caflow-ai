@@ -1,8 +1,10 @@
 import type { IssuePreflight } from "@/lib/invoices/issueReadiness";
 import { supabase } from "@/lib/supabase/client";
 import { explainMfaRefusal } from "@/lib/auth/mfaRefusal";
+import { LOCAL_ONLY_REASONS, closedAccountPath, closedAccountReason, isAlreadyOutside, type ClosedAccountReason } from "@/lib/auth/closedAccount";
 import { withReference } from "@/lib/api/requestReference";
-import { doingOf, errorPageSentence, fetchPlain, jsonPlain, looksLikeMarkup, modelSentence, plainFailure, stillNoAnswerSentence, timedOutSentence, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, errorPageSentence, fetchPlain, REQUEST_BOUND_MS, jsonPlain, looksLikeMarkup, modelSentence, plainFailure, stillNoAnswerSentence, timedOutSentence, type UntypedJson } from "@/lib/api/failureSentence";
+import { fetchUpload, type UploadProgress } from "@/lib/api/uploadWithProgress";
 import { exportQuery, type ExportFormat, type ExportParams, type ExportReport } from "@/lib/export/reportExport";
 import { recordsUrl } from "@/lib/einvoice/invoiceRecords";
 
@@ -78,6 +80,8 @@ export interface PayrollAttendanceBoard {
     id: string; employee_id: string; working_days: number; days_present: number;
     casual_leaves: number; sick_leaves: number; earned_leaves: number;
   }[];
+  /** The firm's own practice client, when its roster was added to the sheet because the screen was opened for it. */
+  practice_client_id?: string | null;
 }
 
 /** `GET /api/portal/employee/me`: the signed-in employee's own record. */
@@ -223,6 +227,49 @@ export interface NrvWritedownPreview {
   write_down_paise: number;
 }
 
+/** One item of the cross-item NRV review (`POST /api/inventory/nrv-review/preview`, POST-A-111). Every figure is the server's.
+ *  `nrv_per_unit_paise` is the value the CA typed, echoed back, and null where they typed none: the sheet never suggests one.
+ *  `write_down_paise` and `new_value_paise` are null for an item with no value typed. */
+export interface NrvReviewItem {
+  service_catalogue_id: string;
+  name: string;
+  unit: string | null;
+  quantity_units: string;
+  carrying_value_paise: number;
+  average_cost_paise: number;
+  nrv_per_unit_paise: number | null;
+  write_down_paise: number | null;
+  new_value_paise: number | null;
+  status: "not_entered" | "write_down" | "not_below_carrying_value" | "no_stock";
+}
+
+/** The NRV review sheet: every stock-tracked product that holds stock now, with the server's two sentences about what it is. */
+export interface NrvReviewSheet {
+  items: NrvReviewItem[];
+  item_count: number;
+  entered_count: number;
+  write_down_count: number;
+  carrying_value_paise: number;
+  write_down_paise: number;
+  measured_now: string;
+  no_nrv_of_our_own: string;
+}
+
+/** What one posted part of the NRV review did (`POST /api/inventory/nrv-review/post`). `message` is the server's sentence. */
+export interface NrvReviewPostResult {
+  reference_no: string;
+  writedown_date: string;
+  posted: { service_catalogue_id: string; name: string; nrv_per_unit_paise: number; write_down_paise: number;
+            movement_id: string | null; journal_posted: boolean | null }[];
+  not_needed: { service_catalogue_id: string; name: string; nrv_per_unit_paise: number; why: string }[];
+  failed: { service_catalogue_id: string; name: string; nrv_per_unit_paise: number; why: string }[];
+  posted_count: number;
+  not_needed_count: number;
+  failed_count: number;
+  write_down_paise: number;
+  message: string;
+}
+
 /** One kind of practice mail a person can switch on or off
  *  (`GET /api/notifications/email-preferences`). The vocabulary and the
  *  defaults are the server's (`domain/practice_notices`) and this screen
@@ -349,6 +396,10 @@ export interface AiUsageByFeature extends AiUsageFigures {
   feature: string | null;
   provider: string | null;
   models: string[];
+  /** The feature's name on a screen (POST-A-448); absent or null for a feature the server has no name for. */
+  label?: string | null;
+  /** The company the calls went to, by the name the status page shows. */
+  provider_label?: string | null;
 }
 export interface AiUsageByDay extends AiUsageFigures {
   day: string;
@@ -420,6 +471,8 @@ export interface ClientSummary {
   id: string;
   client_name: string;
   entity_type?: string | null;
+  /** The list route serves the whole client row, so the PAN is there for a picker to show (POST-A-487). */
+  pan?: string | null;
   gstin?: string | null;
 }
 
@@ -568,6 +621,18 @@ export type ProfitabilityStatus = "healthy" | "fair" | "at_risk" | "not_billed" 
  *  margin are `null`, never revenue less nothing (POST-B-321). `firm_metrics` narrows with the caller's book on this
  *  endpoint (deliberately: the totals are summed from the very per-client rows being filtered, so leaving them
  *  firm-wide would let an Executive recover the practice's position by subtracting their own clients). */
+/** Where the fee revenue behind an answer was read from (POST-B-193): the earlier fee bills and the fee bills in the firm's
+ *  own books. The server also says it in words, at the end of `not_measured`. */
+export interface RevenueSources {
+  earlier_fee_bills_paise: number;
+  practice_books_paise: number;
+  /** "read", or "not_set_up" when the firm has no practice client yet. */
+  practice_books: string;
+  /** Billed in the firm's own books to customers that are no client of the firm; `null` for a caller who is not told. */
+  unlinked_paise: number | null;
+  unlinked_customers: number | null;
+}
+
 export interface ProfitabilityPayload {
   period: string;
   firm_metrics: {
@@ -600,6 +665,7 @@ export interface ProfitabilityPayload {
   }[];
   /** What the figures are and are not, in the server's words. Rendered beside them. */
   not_measured: string[];
+  revenue_sources: RevenueSources;
   by_client?: {
     client_id: string;
     client_name: string;
@@ -692,6 +758,7 @@ export interface RealizationPayload {
     realization_rate: number | null;
   }[];
   not_measured: string[];
+  revenue_sources: RevenueSources;
 }
 
 /** `GET /api/intelligence/compliance-risk`. Per-client risk of missing a
@@ -937,13 +1004,17 @@ export interface TaxAuditDueDates {
 export interface PayrollTdsProjection {
   financial_year: string;
   employee_id: string;
-  months: { month: string; actual: boolean; gross_paise: number; tds_paise: number }[];
+  /** `opening` (POST-A-082): a month before the product ran this client's payroll. Its pay and tax are the opening
+   *  position's, in total, so the month's own `gross_paise` and `tds_paise` are null (unknown), never a paid zero. */
+  months: { month: string; actual: boolean; opening?: boolean; gross_paise: number | null; tds_paise: number | null }[];
   deducted_so_far_paise: number;
   months_paid: number;
   projected_monthly_paise: number;
   projected_monthly_gross_paise: number;
   estimated_annual_tds_paise: number;
   estimated_annual_gross_paise: number;
+  /** What the employee had been paid and had withheld before the first month here, as the CA recorded it; null when none. */
+  opening_position?: { first_month_here: string; months_paid: number; gross_paise: number; tds_paise: number } | null;
   gaps: string[];
 }
 
@@ -1368,6 +1439,9 @@ export type SettlementInput = {
   client_id: string;
   leaving_date: string;
   on_death_or_disablement?: boolean;
+  /** Only for an employee recorded as on fixed-term employment: the five years are waived where the employment ends by the expiry of
+   *  the term (section 53(1), second proviso), and the server asks. Never sent for anybody else (POST-A-526). */
+  fixed_term_contract_expired?: boolean;
   /** Decides §10(10AA) entirely. */
   on_retirement?: boolean;
   is_government_employee?: boolean;
@@ -1888,6 +1962,19 @@ export type UnrecordedStockDocument = {
 
 export type UnrecordedStock = { total: number; documents: UnrecordedStockDocument[] };
 
+/** A document the CA marked as settled by hand (POST-A-092, migration 620), as the server lists it. The reason is what the CA typed; `settled_by_name` and
+ *  `settled_at` say who and when. The mark moves no stock: it only stops the list offering to. */
+export type StockSettlement = {
+  id: string;
+  document_kind: UnrecordedStockDocument["kind"];
+  document_id: string;
+  reference: string | null;
+  document_date: string | null;
+  reason: string;
+  settled_by_name: string | null;
+  settled_at: string;
+};
+
 /** What a retry answered. `recorded` is true, false, or null when the document carries no goods line; `message` is the server's sentence. */
 export type StockRetryAnswer = { recorded: boolean | null; message: string; stock_effect: Record<string, unknown> | null };
 
@@ -2173,6 +2260,19 @@ export type ReportTransaction = {
   tds_paise: number; tds_section?: string | null;
   total_paise: number; paid_paise: number; outstanding_paise: number;
   is_interstate: boolean; place_of_supply?: string | null; status: string;
+};
+
+// Answer of GET /api/reports/party-totals: the P&L Statement of /reports, summed by the server (POST-A-469).
+// `party_name` is null when the document names no party the firm holds a name for; a screen says so in words.
+export type ReportPartyLine = { party_id: string | null; party_name: string | null; total_paise: number; documents: number };
+export type ReportPartyTotals = {
+  revenue: ReportPartyLine[]; expenses: ReportPartyLine[];
+  revenue_total_paise: number; expense_total_paise: number; net_paise: number;
+  sales_documents: number; purchase_documents: number;
+  // How much of each side is CGST section 34 notes, signed (a credit note takes from revenue, a debit note adds), and how
+  // many notes were counted (POST-A-502, migration 766). ABSENT in an answer from before that migration, which is
+  // "not read" and is never drawn as nil: the screen says nothing about notes then.
+  revenue_notes_paise?: number; expense_notes_paise?: number; note_documents?: number;
 };
 
 // ── The Schedule III ageing schedules ────────────────────────────────────────
@@ -2943,6 +3043,45 @@ export type Gstr8UnregisteredSupply = {
   notes: string | null;
 };
 
+/** One row of GSTR-8 Table 4 (POST-A-056): the figures a registered seller's row of an EARLIER month is revised to. `period` is the
+ *  statement it is declared in, `original_period` (MMYYYY) the month it amends; `net_liable_paise` is the server's. `action` is the
+ *  offline utility's own Add / Delete choice, kept as chosen. Recorded and checked, never netted against the row it amends. */
+export type Gstr8Amendment = {
+  id: string;
+  gstin: string;
+  period: string;
+  original_period: string;
+  original_supplier_gstin: string;
+  original_place_of_supply: string | null;
+  supplier_gstin: string;
+  place_of_supply: string | null;
+  gross_registered_paise: number;
+  returns_registered_paise: number;
+  gross_unregistered_paise: number;
+  returns_unregistered_paise: number;
+  igst_paise: number;
+  cgst_paise: number;
+  sgst_paise: number;
+  net_liable_paise: number;
+  action: "add" | "delete";
+  notes: string | null;
+};
+
+/** One row of GSTR-8 Table 4.1: an Enrolment-ID seller's row of an EARLIER month, revised. */
+export type Gstr8UnregisteredAmendment = {
+  id: string;
+  gstin: string;
+  period: string;
+  original_period: string;
+  original_enrolment_id: string;
+  enrolment_id: string;
+  gross_value_paise: number;
+  returns_paise: number;
+  net_liable_paise: number;
+  action: "add" | "delete";
+  notes: string | null;
+};
+
 export type Gstr8Finding = {
   supplier_gstin: string;
   problems: string[];
@@ -2968,6 +3107,14 @@ export type Gstr8Working = {
   findings: Gstr8Finding[];
   supplies: Gstr8Supply[];
   unregistered_supplies: Gstr8UnregisteredSupply[];
+  /** Table 4 / 4.1 (POST-A-056): counts and findings only, never a total, and the server's sentence saying they are not netted against
+   *  the rows they amend. `amendment_note` is null when the month has none. */
+  amendment_count?: number;
+  unregistered_amendment_count?: number;
+  amendment_findings?: Gstr8Finding[];
+  amendment_note?: string | null;
+  amendments?: Gstr8Amendment[];
+  unregistered_amendments?: Gstr8UnregisteredAmendment[];
   gstr8_rates_verified: boolean;
 };
 
@@ -3259,6 +3406,16 @@ export type ReportGSTSummary = {
   ca_review_required: true;
 };
 
+/** Which parties a client used most recently (`domain/party_recent`): ids newest first, read off a bounded window of its documents. */
+export type RecentParties = { ids: string[]; documents_read: number; window: number };
+
+/** A multipart POST. With a progress callback it goes through `XMLHttpRequest` (the only way to see bytes sent); without one it is `fetch`, as before. Never retried either way. */
+function uploadForm(url: string, token: string | undefined, form: FormData, onProgress?: (p: UploadProgress) => void): Promise<Response> {
+  const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+  if (onProgress) return fetchUpload(url, { headers, body: form }, "write", onProgress);
+  return fetchPlain(url, { method: "POST", headers, body: form }, "write");
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -3268,7 +3425,7 @@ function sleep(ms: number): Promise<void> {
 // a Render cold start; the warm-up ping (AuthContext) usually avoids hitting it.
 async function fetchWithTimeout(path: string, options: RequestInit | undefined, token: string | undefined): Promise<Response> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 45_000);
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_BOUND_MS);
   try {
     return await fetch(`${BASE_URL}${path}`, {
       ...options,
@@ -3308,7 +3465,18 @@ async function sessionTokenWithTimeout(): Promise<string | undefined> {
   }
 }
 
-export async function request<T>(path: string, options?: RequestInit): Promise<T> {
+/**
+ * What a caller may add to a request. `asked: "read"` says that a POST only ASKS (POST-A-414): it changes nothing, so a failure is said as a
+ * question that got no answer, and after a cold start it is sent once more, as a GET is. A POST is otherwise a change, said as "it is not known
+ * whether it went through" and never sent twice (POST-A-412). Only the POSTs on the named list in
+ * `scripts/a-post-that-only-asks-is-on-the-named-list.test.ts` may carry it: each was read on the server and writes nothing.
+ */
+export type RequestOptions = RequestInit & { asked?: "read" };
+
+export async function request<T>(path: string, requestOptions?: RequestOptions): Promise<T> {
+  // `asked` is ours, not fetch's: it is taken off before the request is made.
+  const { asked, ...rest } = requestOptions ?? {};
+  const options: RequestInit | undefined = requestOptions ? rest : undefined;
   // getSession() itself can fail on the FIRST call of a page's lifetime — not
   // only by hanging (the 10s bound above), but by rejecting outright: the auth
   // client's own one-time startup (reading the stored session, and racing a
@@ -3335,7 +3503,7 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
     }
   }
 
-  const doing = doingOf(options?.method);
+  const doing = asked === "read" ? "read" : doingOf(options?.method);
   let res: Response;
   try {
     res = await fetchWithTimeout(path, options, token);
@@ -3399,11 +3567,34 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
     }
   }
   if (!res.ok) {
-    throw new Error(await errorMessage(res));
+    const message = await errorMessage(res);
+    // The server says the account is closed (a firm suspended or deleted, a person removed or signed out): sign the
+    // person out at once and say so, instead of leaving them on a screen that can load nothing (POST-A-482).
+    const closed = closedAccountReason(res.status, message);
+    if (closed) void endSessionBecause(closed);
+    throw new Error(message);
   }
   // A proxy's page that arrives with a 200 is not JSON, and the browser's own "Unexpected token '<'…" is not a sentence for a person
   // (POST-A-406): `jsonPlain` says that the answer was not the product's, and for a change that it is not known whether it went through.
   return jsonPlain<T>(res, doing);
+}
+
+/** Many calls fail at once when an account is closed; the sign-out and the move happen once. */
+let endingSession = false;
+
+/** Sign the person out and send them to the page that says why (POST-A-482). Never from the page itself or the
+ *  sign-in, and never twice. A hard navigation, so nothing the closed account loaded stays on screen. */
+async function endSessionBecause(reason: ClosedAccountReason): Promise<void> {
+  if (endingSession || typeof window === "undefined") return;
+  if (isAlreadyOutside(window.location.pathname)) return;
+  endingSession = true;
+  try {
+    // A person who signed out their OTHER sessions keeps the one that asked: this device ends itself and nothing else.
+    await supabase.auth.signOut(LOCAL_ONLY_REASONS.includes(reason) ? { scope: "local" } : undefined);
+  } catch {
+    /* the session is refused by the server whatever the browser holds; the page below says so */
+  }
+  window.location.assign(closedAccountPath(reason));
 }
 
 /**
@@ -3769,6 +3960,45 @@ export interface Gstr2bBulkAnswer {
   results: Gstr2bBulkResult[];
   totals: Record<Gstr2bBulkStatus, number>;
   needs_attention: number;
+  /** POST-A-057: the drop this request was recorded under (the next request of
+   *  the same drop sends it back), and whether it was recorded. Absent from an
+   *  older backend, which the panel reads as "not recorded". */
+  drop_id?: string | null;
+  recorded?: boolean;
+  not_recorded?: string | null;
+}
+
+/** One row of a drop read back (POST-A-057): the answer's own row, with
+ *  `client_hidden` set when its client is not one the reader can see now
+ *  (the client and what was found are then not shown, and `reason` says so). */
+export interface Gstr2bBulkDropResult extends Gstr2bBulkResult {
+  client_hidden: boolean;
+}
+
+export interface Gstr2bBulkDrop {
+  id: string;
+  created_at: string | null;
+  /** Files the record holds. */
+  file_count: number;
+  /** Files of the drop that reached the server and are NOT in the record, and
+   *  the server's sentence for them (null when there are none). */
+  unrecorded_files: number;
+  unrecorded: string | null;
+  totals: Partial<Record<Gstr2bBulkStatus, number>>;
+  needs_attention: number;
+  results: Gstr2bBulkDropResult[];
+}
+
+/** The caller's own latest drops, newest first (POST-A-057). `recorded` false
+ *  means the record could not be read, never that there were no drops. */
+export interface Gstr2bBulkDrops {
+  drops: Gstr2bBulkDrop[];
+  limited_to: number;
+  more: boolean;
+  recorded: boolean;
+  not_recorded?: string | null;
+  /** What the record cannot hold: files the browser never sent. */
+  browser_only: string;
 }
 
 /**
@@ -3780,9 +4010,10 @@ export interface Gstr2bBulkAnswer {
 export type ItcTimeBarStatus = "open" | "closing_soon" | "closed";
 
 export interface ItcTimeBarItem {
-  /** A received bill whose credit §16(2)(aa) withholds, or a 2B document the
-   *  books have no bill for. */
-  kind: "withheld_bill" | "not_booked";
+  /** A received bill whose credit §16(2)(aa) withholds, a 2B document the
+   *  books have no bill for, or a withheld bill the supplier furnished in a
+   *  LATER month's 2B, shown as one row (POST-A-062). */
+  kind: "withheld_bill" | "not_booked" | "furnished_later";
   closes_on: string;
   days_left: number;
   status: ItcTimeBarStatus;
@@ -3797,6 +4028,8 @@ export interface ItcTimeBarItem {
   verdict: string;
   reason: string;
   credit_at_risk_paise: number;
+  /** On a `furnished_later` row: the tax the later month's GSTR-2B carries on the bill. */
+  furnished_credit_paise?: number;
 }
 
 export interface ItcTimeBar {
@@ -4163,6 +4396,8 @@ export interface Itc04Table4Row {
 }
 
 export interface Itc04Table5aRow {
+  /** The lot's own id, which a retraction names; null for a row derived from a whole-challan return (POST-A-418). */
+  lot_id?: string | null;
   challan_id: string;
   challan_line_id: string;
   job_worker: Itc04JobWorker;
@@ -4676,6 +4911,22 @@ export const api = {
     // NOT lock its period, so the books could still move under a return
     // already at the portal, while the client GST workspace showed the same
     // return as a draft.
+    /** Every calendar row one firm-level tracker lists (POST-A-208): `gst` = GSTR-1, GSTR-3B and GSTR-9, `itr` = the income-tax return, each row
+     *  with its client's name (and GSTIN, or PAN and entity type) under `clients`. The calendar, not the obligation store. The server reads
+     *  every page and narrows to the caller's clients; the trackers used to read the table from the browser. */
+    trackerRows: (family: "gst" | "itr") => request<ApiResp<Array<Record<string, unknown>>>>(
+      `/api/compliance/calendar/tracker?family=${family}`),
+    /** Add one return to the calendar, pending (POST-A-208). Never created filed: `markFiled` records that. A second row for the same client,
+     *  return and period start is a 409 in a sentence. */
+    addCalendarEntry: (body: {
+      client_id: string;
+      compliance_type: "GSTR1" | "GSTR3B" | "GSTR9" | "ITR";
+      period_start: string;
+      period_end: string;
+      due_date: string;
+      /** The ITR form the CA picked: the calendar's type is the bare "ITR". */
+      notes?: string | null;
+    }) => request<ApiResp<Record<string, unknown>>>("/api/compliance/calendar", { method: "POST", body: JSON.stringify(body) }),
     markFiled: (recordId: string, body: { filed_date: string; arn?: string | null }) =>
       request<ApiResp<MarkFiledResult>>(
         `/api/compliance/calendar/${encodeURIComponent(recordId)}/filed`,
@@ -4723,17 +4974,13 @@ export const api = {
   incomeTax: {
     /** File the notice's own document (`slot` "notice") or the reply to it ("response") against a tax notice. The server
      *  stores the file, names it and writes the path onto the notice; multipart, so the browser sets the boundary. */
-    attachToNotice: async (noticeId: string, slot: "notice" | "response", file: File) => {
+    attachToNotice: async (noticeId: string, slot: "notice" | "response", file: File, onProgress?: (p: UploadProgress) => void) => {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
       const form = new FormData();
       form.append("file", file);
       form.append("slot", slot);
-      const res = await fetchPlain(`${BASE_URL}/api/income-tax/notices/${noticeId}/attachment`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: form,
-      }, "write");
+      const res = await uploadForm(`${BASE_URL}/api/income-tax/notices/${noticeId}/attachment`, token, form, onProgress);
       if (!res.ok) throw new Error(await errorMessage(res));
       return jsonPlain<ApiResp<{ slot: string; storage_path: string }>>(res, "write");
     },
@@ -4836,6 +5083,19 @@ export const api = {
       if (opts?.bankRateBps !== undefined) p.set("bank_rate_bps", String(opts.bankRateBps));
       return request<ApiResp<Form3cdRegister>>(`/api/income-tax/form-3cd?${p.toString()}`);
     },
+    /** The register above as a printable working paper (PDF) or a spreadsheet, built by the server from the same function the
+     *  register's own read calls, so the file is what the screen shows. It carries what is SAVED on the register. A working paper,
+     *  not the portal's Form 3CD, and nothing is filed. A refusal is a thrown `API error 422: {"detail": …}`; read it with
+     *  `exportErrorMessage`. */
+    form3cdWorkingPaper: (client_id: string, fy: string, format: "pdf" | "xlsx", opts?: {
+      nature?: "business" | "profession";
+      bankRateBps?: number;
+    }) => {
+      const p = new URLSearchParams({ client_id, fy, format });
+      if (opts?.nature) p.set("nature", opts.nature);
+      if (opts?.bankRateBps !== undefined) p.set("bank_rate_bps", String(opts.bankRateBps));
+      return downloadFile(`/api/income-tax/form-3cd/export?${p.toString()}`, `form-3cd-working-paper-${fy}.${format}`);
+    },
     /** Record the CA's own answer for a clause this product does not derive.
      *  A code that IS derivable is stored but never rendered in its place —
      *  the GET only reads a manual entry for a code it could not resolve. */
@@ -4851,14 +5111,10 @@ export const api = {
     list: (client_id?: string) => request(`/api/documents${client_id ? `?client_id=${client_id}` : ""}`),
     /** Put a file in the firm's store. Multipart, so the browser sets the
      *  boundary and Content-Type is not ours to send. */
-    upload: async (form: FormData) => {
+    upload: async (form: FormData, onProgress?: (p: UploadProgress) => void) => {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
-      const res = await fetchPlain(`${BASE_URL}/api/documents/upload`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: form,
-      }, "write");
+      const res = await uploadForm(`${BASE_URL}/api/documents/upload`, token, form, onProgress);
       if (!res.ok) throw new Error(await errorMessage(res));
       return jsonPlain<UntypedJson>(res, "write");
     },
@@ -4879,14 +5135,10 @@ export const api = {
      *  answers 401 without a Bearer header, so document parsing never once
      *  worked against a real deployment; the caller read `.json()` of the 401
      *  body and got {detail: …} with no `success`. */
-    parse: async (formData: FormData) => {
+    parse: async (formData: FormData, onProgress?: (p: UploadProgress) => void) => {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
-      const res = await fetchPlain(`${BASE_URL}/api/documents/parse`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: formData,
-      }, "write");
+      const res = await uploadForm(`${BASE_URL}/api/documents/parse`, token, formData, onProgress);
       if (!res.ok) throw new Error(await errorMessage(res));
       return jsonPlain<UntypedJson>(res, "write");
     },
@@ -4899,14 +5151,10 @@ export const api = {
       request<ApiResp<ClientDocumentList>>(
         `/api/client-documents?client_id=${encodeURIComponent(clientId)}${withLinks ? "&with_links=true" : ""}`),
     /** Multipart, so the browser sets the boundary and Content-Type is not ours to send. Throws the server's sentence. */
-    upload: async (form: FormData) => {
+    upload: async (form: FormData, onProgress?: (p: UploadProgress) => void) => {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
-      const res = await fetchPlain(`${BASE_URL}/api/client-documents/upload`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: form,
-      }, "write");
+      const res = await uploadForm(`${BASE_URL}/api/client-documents/upload`, token, form, onProgress);
       if (!res.ok) throw new Error(await errorMessage(res));
       return jsonPlain<ApiResp<{ document: ClientDocumentRow }>>(res, "write");
     },
@@ -4984,6 +5232,24 @@ export const api = {
     filingChoices: (clientId: string, formType: string) => request<ApiResp<unknown>>(
       `/api/mca-workspace/filing-choices?client_id=${encodeURIComponent(clientId)}&form_type=${encodeURIComponent(formType)}`),
     /**
+     * Create an MCA filing through the route the client tab uses (POST-A-442), which asks `mca:write` and the client's access,
+     * checks the company is the client's, stores the category the Annual and Event tabs list by, and writes the audit event. The
+     * firm-level form used to insert the row straight into `mca_filings`. A filing is created Not started or Overdue, never
+     * Filed: that is `setFilingStatus`. The route answers a refusal as HTTP 200 with `{ success: false, error }`: check it.
+     */
+    createFiling: (body: {
+      client_id: string;
+      company_id?: string | null;
+      form_type: string;
+      financial_year?: string | null;
+      period?: string | null;
+      due_date: string;
+      /** The CIN as typed, read only where no company named holds one of its own. */
+      cin?: string | null;
+      status?: "not_started" | "overdue";
+      description?: string | null;
+    }) => request<ApiResp<Record<string, unknown>>>("/api/mca-workspace/filings", { method: "POST", body: JSON.stringify(body) }),
+    /**
      * Record an MCA filing's status through the route that asks `mca:approve` (Manager and above) for "filed" and
      * the CA's explicit confirmation (POST-A-225). The screen used to write `status: "filed"` with the SRN and date
      * straight into `mca_filings`, so an Executive could record a statutory filing as done, the confirmation and
@@ -5011,6 +5277,12 @@ export const api = {
     createAccount: (data: unknown, clientId?: string) => request(
       `/api/accounting/accounts${clientId ? `?client_id=${encodeURIComponent(clientId)}` : ""}`,
       { method: "POST", body: JSON.stringify(data) }),
+    /** The accounts this client used most recently on a manual journal (`journal`) or a bill line (`bill`), newest first: ids
+     *  only, for the top of the account picker (POST-A-155). */
+    recentJournalAccounts: (clientId: string) =>
+      request<ApiResp<RecentParties>>(`/api/accounting/accounts/recent?${new URLSearchParams({ client_id: clientId, used_on: "journal" })}`),
+    recentBillAccounts: (clientId: string) =>
+      request<ApiResp<RecentParties>>(`/api/accounting/accounts/recent?${new URLSearchParams({ client_id: clientId, used_on: "bill" })}`),
     updateAccount: (id: string, data: unknown) => request(`/api/accounting/accounts/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
     /** The Day Book: every POSTED entry of one client in a period, one page of it, newest first by default
      *  (POST-A-091). The page is cut in the database and the PDF and Excel files read the same function, so
@@ -5031,6 +5303,10 @@ export const api = {
     // captions the engine could not honour, and spelled five others
     // differently, which is how nine live mappings were being discarded.
     scheduleIiiCaptions: () => request("/api/accounting/schedule-iii/captions"),
+    /** The loans screen's EMI calculator: worked on the server in exact decimal arithmetic (POST-A-266). A guide; nothing stores it. */
+    emi: (principalPaise: number, annualRateBps: number, months: number) =>
+      request<ApiResp<{ emi_paise: number; principal_paise: number; annual_rate_bps: number; months: number; basis: string }>>(
+        `/api/accounting/emi?${new URLSearchParams({ principal_paise: String(principalPaise), annual_rate_bps: String(annualRateBps), months: String(months) })}`),
     // GET /api/accounting/journal (a date-windowed LIST across every entry) is
     // retired (apex-sales-purchases-01) — it read mock data only, in every
     // deployment, and this helper's one caller (six document-view drawers'
@@ -5134,15 +5410,11 @@ export const api = {
     sharedReportUrl: (sharedReportId: string) =>
       request<ApiResp<{ download_url: string; expires_in_seconds: number }>>(
         `/api/accounting/shared-reports/${sharedReportId}/download-url`),
-    shareReport: async (form: FormData) => {
+    shareReport: async (form: FormData, onProgress?: (p: UploadProgress) => void) => {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
-      const res = await fetchPlain(`${BASE_URL}/api/accounting/shared-reports`, {
-        method: "POST",
-        // No Content-Type — the browser sets the multipart boundary.
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: form,
-      }, "write");
+      // No Content-Type — the browser sets the multipart boundary.
+      const res = await uploadForm(`${BASE_URL}/api/accounting/shared-reports`, token, form, onProgress);
       // A 422 is a sentence written for the CA (an unknown report, an empty or
       // oversized workbook), so surface it rather than the status line.
       if (!res.ok) throw new Error(await errorMessage(res));
@@ -5248,6 +5520,15 @@ export const api = {
     journalsQueue: (params?: Record<string, string>) => request(`/api/accounting/journals${params ? "?" + new URLSearchParams(params) : ""}`),
     postDraftJournal: (journalId: string) => request(`/api/accounting/journals/${journalId}/post`, { method: "POST" }),
     /**
+     * Whether this firm has a Partner approve every manual journal, and what the CALLER may do under it (POST-A-456). The posting
+     * doors ask the same function, so a screen offers Post only where `may_post` is true.
+     */
+    journalApproval: () => request<ApiResp<JournalApprovalRule>>("/api/accounting/journal-approval"),
+    /** A Partner turns the firm's manual-journal approval on or off (`settings` `write`). */
+    setJournalApproval: (approvalRequired: boolean) =>
+      request<ApiResp<JournalApprovalRule>>("/api/accounting/journal-approval",
+        { method: "PUT", body: JSON.stringify({ approval_required: approvalRequired }) }),
+    /**
      * Delete a manual journal entry — a draft always, a POSTED one while its
      * period is still open (migration 275, the same gate that governs editing
      * one). The server refuses an auto-posted entry, or a period closed by a
@@ -5293,7 +5574,7 @@ export const api = {
     fxRevaluation: {
       preview: (clientId: string, body: { period_end: string; closing_rates?: Record<string, string> }) =>
         request(`/api/fx-revaluation/preview?client_id=${encodeURIComponent(clientId)}`, {
-          method: "POST", body: JSON.stringify(body),
+          method: "POST", body: JSON.stringify(body), asked: "read",
         }),
       run: (clientId: string, body: { period_end: string; closing_rates: Record<string, string> }) =>
         request(`/api/fx-revaluation/run?client_id=${encodeURIComponent(clientId)}`, {
@@ -5359,6 +5640,15 @@ export const api = {
      *  no journal; a line already recorded is not recorded twice. */
     retryStockEffect: (body: { client_id: string; kind: UnrecordedStockDocument["kind"]; document_id: string }) =>
       request<ApiResp<StockRetryAnswer>>(`/api/inventory/stock-effects/retry`, { method: "POST", body: JSON.stringify(body) }),
+    /** POST-A-092 — the client's documents marked as settled by hand, newest first. A failed read is a failure and never an empty list. */
+    settledStock: (clientId: string) =>
+      request<ApiResp<{ settlements: StockSettlement[] }>>(`/api/inventory/stock-effects/settled?${new URLSearchParams({ client_id: clientId })}`),
+    /** POST-A-092 — mark ONE listed document's stock as settled by hand, with the reason the CA gives. It moves no stock and posts no journal. */
+    settleStockEffect: (body: { client_id: string; kind: UnrecordedStockDocument["kind"]; document_id: string; reason: string }) =>
+      request<ApiResp<StockSettlement & { message: string }>>(`/api/inventory/stock-effects/settle`, { method: "POST", body: JSON.stringify(body) }),
+    /** POST-A-092 — take a mark back: the document is listed again if its stock is still not all recorded. */
+    unsettleStockEffect: (settlementId: string) =>
+      request<ApiResp<{ removed: boolean; message: string }>>(`/api/inventory/stock-effects/settled/${encodeURIComponent(settlementId)}`, { method: "DELETE" }),
     /** Closing stock AS AT a date — the statement that ties to the Inventories
      *  line on the balance sheet. Distinct from `items`, which is the CURRENT
      *  position and takes no date: the two answer different questions, and only
@@ -5400,6 +5690,17 @@ export const api = {
     writedownPreview: (serviceCatalogueId: string, body: { client_id: string; nrv_per_unit_paise: number }) =>
       request<ApiResp<NrvWritedownPreview | null>>(
         `/api/inventory/items/${serviceCatalogueId}/writedown-preview`,
+        { method: "POST", body: JSON.stringify(body), asked: "read" }),
+    // POST-A-111 — the cross-item NRV review. The sheet is a read (what each typed NRV would write down, from the function the
+    // posting runs) and the post writes each line down through the single-item door's function, under one reference.
+    nrvReview: (body: { client_id: string; lines: { service_catalogue_id: string; nrv_per_unit_paise: number }[] }) =>
+      request<ApiResp<NrvReviewSheet>>("/api/inventory/nrv-review/preview",
+        { method: "POST", body: JSON.stringify(body), asked: "read" }),
+    postNrvReview: (body: {
+      client_id: string; writedown_date: string; lines: { service_catalogue_id: string; nrv_per_unit_paise: number }[];
+      reference_no?: string; notes?: string;
+    }) =>
+      request<ApiResp<NrvReviewPostResult>>("/api/inventory/nrv-review/post",
         { method: "POST", body: JSON.stringify(body) }),
     // INV-08 — the physical count. One sheet, not a hundred adjustments. The
     // VARIANCE is derived on the server against the position as at the count
@@ -5496,6 +5797,12 @@ export const api = {
     // which way up its balance reads, so the form must not hold its own list.
     bankAccountTypes: () =>
       request<ApiResp<{ account_types: BankAccountTypeInfo[] }>>("/api/banking/account-types"),
+    /** POST-A-492. The ledgers a bank account of this client may be linked to (the server's rule: never another bank's, never a
+     *  cash ledger; an edited account keeps its own), and the name a new ledger would be given. */
+    ledgerChoices: (params: { client_id: string; bank_name?: string; account_no?: string; account_id?: string }) =>
+      request<ApiResp<{ ledgers: { id: string; account_code: string; account_name: string; account_type: string; account_subtype?: string | null }[];
+                       new_ledger_name: string | null }>>(
+        `/api/banking/accounts/ledger-choices?${new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined && v !== "")) as Record<string, string>)}`),
     listBankAccounts: (params?: Record<string, string>) => request(`/api/banking/accounts${params ? "?" + new URLSearchParams(params) : ""}`),
     createBankAccount: (data: unknown) => request("/api/banking/accounts", { method: "POST", body: JSON.stringify(data) }),
     updateBankAccount: (id: string, data: unknown) => request(`/api/banking/accounts/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
@@ -5528,15 +5835,11 @@ export const api = {
      *  expressly (the same statute services/bank_erasure.py names). */
     deleteStatement: (id: string) => request(`/api/banking/statements/${id}`, { method: "DELETE" }),
     /** Upload a CSV/XLSX statement — parsed, normalized & deduped SERVER-SIDE (B.1). */
-    uploadStatement: async (form: FormData) => {
+    uploadStatement: async (form: FormData, onProgress?: (p: UploadProgress) => void) => {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
-      const res = await fetchPlain(`${BASE_URL}/api/banking/statements/upload`, {
-        method: "POST",
-        // No Content-Type — the browser sets the multipart boundary.
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: form,
-      }, "write");
+      // No Content-Type — the browser sets the multipart boundary.
+      const res = await uploadForm(`${BASE_URL}/api/banking/statements/upload`, token, form, onProgress);
       // A 422 here is an answer written for the CA — the statement does not add
       // up, the format is unmappable — and it used to reach the screen as the
       // raw JSON body inside "API error 422: {...}". It now arrives as its
@@ -5546,15 +5849,11 @@ export const api = {
       return jsonPlain<UntypedJson>(res, "write");
     },
     /** Tier 3.2 — a multipart POST that returns JSON, same shape as uploadStatement. */
-    postStatementForm: async (path: string, form: FormData) => {
+    postStatementForm: async (path: string, form: FormData, onProgress?: (p: UploadProgress) => void) => {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
-      const res = await fetchPlain(`${BASE_URL}${path}`, {
-        method: "POST",
-        // No Content-Type — the browser sets the multipart boundary.
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: form,
-      }, "write");
+      // No Content-Type — the browser sets the multipart boundary.
+      const res = await uploadForm(`${BASE_URL}${path}`, token, form, onProgress);
       // A 422 here is a real answer (an unmappable file, a contradictory
       // mapping) and its message is written for the CA, so surface the body
       // rather than the status line. It is thrown as an ApiRefusal — still an
@@ -5571,11 +5870,11 @@ export const api = {
       return jsonPlain<UntypedJson>(res, "write");
     },
     /** Read a statement's header row + first rows so the CA can map the columns. */
-    inspectStatement: (form: FormData) =>
-      api.banking.postStatementForm("/api/banking/statements/inspect", form),
+    inspectStatement: (form: FormData, onProgress?: (p: UploadProgress) => void) =>
+      api.banking.postStatementForm("/api/banking/statements/inspect", form, onProgress),
     /** Parse with a mapping and show the result WITHOUT importing. */
-    previewStatement: (form: FormData) =>
-      api.banking.postStatementForm("/api/banking/statements/preview", form),
+    previewStatement: (form: FormData, onProgress?: (p: UploadProgress) => void) =>
+      api.banking.postStatementForm("/api/banking/statements/preview", form, onProgress),
     listColumnMappings: (params?: Record<string, string>) =>
       request(`/api/banking/statements/column-mappings${params ? "?" + new URLSearchParams(params) : ""}`),
     deleteColumnMapping: (id: string) =>
@@ -5617,7 +5916,11 @@ export const api = {
         request("/api/banking/entries/redraft", { method: "POST", body: JSON.stringify(data) }),
       /** One chunk of "Pass N ready". Every line comes back with its outcome. */
       passReady: (data: { client_id: string; limit?: number; only_trusted?: boolean;
-                          bank_account_id?: string; transaction_ids?: string[] }) =>
+                          bank_account_id?: string; transaction_ids?: string[];
+                          /** POST-A-489. The person's GST answer for the lines in this pass that they coded and that can
+                           *  carry GST: a rate in basis points, or 0 for "carries none". Absent, those lines are HELD on their
+                           *  rows, not posted, and the pass's last chunk names them in `gst_unanswered` ({id, category, money_in}). */
+                          gst_rate_bps?: number; is_interstate?: boolean }) =>
         request("/api/banking/entries/pass-ready", { method: "POST", body: JSON.stringify(data) }),
       /** Pass ONE line — the click is the CA accepting its draft. A refusal is a 422. */
       pass: (txnId: string, data?: { gst_rate_bps?: number | null; is_interstate?: boolean }) =>
@@ -5723,7 +6026,7 @@ export const api = {
           method: "PUT", body: JSON.stringify({ splits }),
         }),
     },
-    postingPreview: (txnId: string, data: { bank_account_id?: string; account_id?: string; to_bank_account_id?: string; gst_rate_bps?: number; is_interstate?: boolean }) => request(`/api/banking/transactions/${txnId}/posting-preview`, { method: "POST", body: JSON.stringify(data) }),
+    postingPreview: (txnId: string, data: { bank_account_id?: string; account_id?: string; to_bank_account_id?: string; gst_rate_bps?: number; is_interstate?: boolean }) => request(`/api/banking/transactions/${txnId}/posting-preview`, { method: "POST", body: JSON.stringify(data), asked: "read" }),
     // B.4 — reconciliation engine (sessions, manual reconcile, tie-out, report)
     reconciliations: {
       list: (params?: Record<string, string>) => request(`/api/banking/reconciliations${params ? "?" + new URLSearchParams(params) : ""}`),
@@ -5761,7 +6064,7 @@ export const api = {
        *  computed by the same tie-out the real reconcile uses, so the preview
        *  can never disagree with the result. */
       preview: (id: string, transaction_ids: string[]) =>
-        request(`/api/banking/reconciliations/${id}/preview`, { method: "POST", body: JSON.stringify({ transaction_ids }) }),
+        request(`/api/banking/reconciliations/${id}/preview`, { method: "POST", body: JSON.stringify({ transaction_ids }), asked: "read" }),
       /** Every certification this session has carried, newest first. */
       history: (id: string) => request(`/api/banking/reconciliations/${id}/history`),
     },
@@ -5842,10 +6145,23 @@ export const api = {
       request<ApiResp<{ obligation: Record<string, unknown>; message: string }>>(`/api/compliance/obligations/${id}/reopen`, {
         method: "POST", body: JSON.stringify({ reason }),
       }),
-    /** Which obligation types the reopen door accepts, so the screen offers it only on those and holds no list of its own. */
+    /** Records, with a reason, that an advance-tax obligation is not owed by the client (`compliance.approve`, POST-A-267 item 4). */
+    notRequired: (id: string, reason: string) =>
+      request<ApiResp<{ obligation: Record<string, unknown>; message: string }>>(`/api/compliance/obligations/${id}/not-required`, {
+        method: "POST", body: JSON.stringify({ reason }),
+      }),
+    /** Takes a "not required" record back, with a reason; the obligation returns to Not Started. */
+    requiredAgain: (id: string, reason: string) =>
+      request<ApiResp<{ obligation: Record<string, unknown>; message: string }>>(`/api/compliance/obligations/${id}/required-again`, {
+        method: "POST", body: JSON.stringify({ reason }),
+      }),
+    /** Which obligation types the reopen door accepts (and the not-required door, `not_requirable_types`), so the screen offers each
+     *  only on those and holds no list of its own. */
     reopenableTypes: () =>
-      request<ApiResp<{ obligation_types: string[]; max_reason_chars: number }>>(`/api/compliance/reopenable-types`),
+      request<ApiResp<{ obligation_types: string[]; not_requirable_types?: string[]; max_reason_chars: number }>>(`/api/compliance/reopenable-types`),
     runEscalations: () => request("/api/compliance/run-escalations", { method: "POST" }),
+    /** The caller's own open obligations, the ones they are named on as preparer, reviewer or approver (POST-A-206). */
+    mine: () => request<ApiResp<Record<string, unknown>>>(`/api/compliance/obligations/mine`),
   },
   // R3.13c — canonical client health engine (Product Bible Ch.16, routers/health.py).
   // Replaces the frontend's direct-Supabase health-score-compute.ts.
@@ -5862,13 +6178,9 @@ export const api = {
   // /api/document-intelligence-v2 (called directly via fetch() from the
   // pages that use them, e.g. app/clients/[id]/purchases/page.tsx).
   risks: {
-    list: (params?: Record<string, string>) => request(`/api/risks${params ? "?" + new URLSearchParams(params) : ""}`),
-    stats: () => request("/api/risks/stats"),
-    clientRisks: (clientId: string) => request(`/api/risks/client/${clientId}`),
-    update: (riskId: string, data: unknown) => request(`/api/risks/${riskId}`, { method: "PATCH", body: JSON.stringify(data) }),
-    firmScore: () => request("/api/risks/firm/score"),
-    // The firm-wide statutory register. A SEPARATE endpoint from `list`, which
-    // reads `document_risks`; see routers/risks.py for why they are not one.
+    // The firm-wide statutory register, and the only route on this prefix: the five over the risks recorded against
+    // documents (list, stats, one client's, the firm's score and the update) were retired on 22-11-2026 (POST-A-548).
+    // No screen called them and nothing records such a risk; see routers/risks.py.
     register: () => request("/api/risks/register"),
   },
   aiInsights: {
@@ -5881,15 +6193,12 @@ export const api = {
   automation: {
     rules: () => request("/api/automation/rules"),
     toggleRule: (id: string, enabled: boolean) => request(`/api/automation/rules/${id}/toggle`, { method: "PATCH", body: JSON.stringify({ enabled }) }),
-    executions: () => request("/api/automation/executions"),
-    stats: () => request("/api/automation/stats"),
   },
   notifications: {
     list: (unreadOnly?: boolean) => request(`/api/notifications${unreadOnly ? "?unread_only=true" : ""}`),
     count: () => request("/api/notifications/count"),
     markRead: (id: string) => request(`/api/notifications/${id}/read`, { method: "PATCH" }),
     markAllRead: () => request("/api/notifications/read-all", { method: "PATCH" }),
-    stats: () => request("/api/notifications/stats"),
     /** Which of the practice's own mail THIS person gets, event by event, and
      *  whether they chose it or it is the event's default. */
     emailPreferences: () =>
@@ -5909,6 +6218,25 @@ export const api = {
   // name, GSTIN and PAN to Groq and now returns 410. An unused helper that still
   // builds the URL is the thing someone wires a button to next.
   payroll: {
+    /** POST-A-082 — what each employee had been paid and had deducted this financial year BEFORE the client's payroll ran
+     *  here. A record the CA enters, not a run. The server says what it carries and what it does not. */
+    openingPositions: (clientId: string, financialYear: string) =>
+      request<ApiResp<OpeningPositions>>(
+        `/api/payroll/opening-positions?${new URLSearchParams({ client_id: clientId, financial_year: financialYear })}`),
+    saveOpeningPositions: (body: { client_id: string; rows: OpeningPositionInput[] }) =>
+      request<ApiResp<{ saved: number; does_not_carry: string }>>(
+        "/api/payroll/opening-positions", { method: "PUT", body: JSON.stringify(body) }),
+    /** A spreadsheet of opening positions, its cells as text, read and refused whole by the server (POST-A-082, part 2). */
+    importOpeningPositions: (clientId: string, rows: Record<string, string>[], dryRun = false) =>
+      request<ApiResp<{ ok: boolean; problems: string[]; recorded?: number; would_record?: number; does_not_carry?: string }>>(
+        "/api/payroll/opening-positions/import", {
+          method: "POST",
+          body: JSON.stringify({ client_id: clientId, rows, dry_run: dryRun }),
+        }),
+    deleteOpeningPosition: (clientId: string, employeeId: string, financialYear: string) =>
+      request<ApiResp<{ deleted: number }>>(
+        `/api/payroll/opening-positions/${encodeURIComponent(employeeId)}?${new URLSearchParams({ client_id: clientId, financial_year: financialYear })}`,
+        { method: "DELETE" }),
     /** PAY-23 — the annual statutory bonus register (Payment of Bonus Act
      *  1965). Who is owed, who is out and why, §19's due date and the
      *  employer's own §10/§11 rate. Every sentence is the server's; the
@@ -5963,6 +6291,12 @@ export const api = {
       request(`/api/payroll/employees/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
     deleteEmployee: (id: string) =>
       request(`/api/payroll/employees/${id}`, { method: "DELETE" }),
+    /** The firm's OWN payroll as the Team screen needs it (POST-A-540): is there one, is it switched on, and each employee with
+     *  the team member they are linked to. A Partner's alone; no pay, identifier or bank detail is in the answer. */
+    practiceStaff: () => request("/api/payroll/practice-staff"),
+    /** Say which team member an employee of the firm's own payroll is, or (null) that they are none. A link, never a merge. */
+    linkStaff: (employeeId: string, staffUserId: string | null) =>
+      request(`/api/payroll/employees/${employeeId}/staff-link`, { method: "PUT", body: JSON.stringify({ staff_user_id: staffUserId }) }),
     listRuns: (clientId?: string) =>
       request(`/api/payroll/runs${clientId ? `?client_id=${clientId}` : ""}`),
     createRun: (body: { client_id: string; month: string }) =>
@@ -6025,12 +6359,16 @@ export const api = {
     // of them. See domain/payroll/attendance.py.
     /** The firm-wide attendance sheet for one month ("2026-08"): every employee the caller may see (four columns, leavers
      *  included) and the rows entered. The server reads them in pages of its own and narrows them to the caller's clients. */
-    attendanceBoard: (month: string) =>
-      request<ApiResp<PayrollAttendanceBoard>>(`/api/payroll/attendance-board?month=${encodeURIComponent(month)}`),
+    attendanceBoard: (month: string, clientId?: string) =>
+      // `clientId` is the client the screen was opened for (the link from a client's Payroll page). The firm-wide sheet leaves
+      // the firm's own practice out; naming it is how a Partner reaches the practice's own roster (POST-A-532).
+      request<ApiResp<PayrollAttendanceBoard>>(
+        `/api/payroll/attendance-board?month=${encodeURIComponent(month)}${clientId ? `&client_id=${encodeURIComponent(clientId)}` : ""}`),
     /** One line per employee the caller may see: the entitlement recorded for a calendar year (null when none) and the leave
      *  taken in it, added up by the server. */
-    leaveLedger: (year: number) =>
-      request<ApiResp<PayrollLeaveLedger>>(`/api/payroll/leave-ledger?year=${year}`),
+    // `clientId` as for `attendanceBoard`: the client the screen was opened for, so the practice's own staff are on the list.
+    leaveLedger: (year: number, clientId?: string) =>
+      request<ApiResp<PayrollLeaveLedger>>(`/api/payroll/leave-ledger?year=${year}${clientId ? `&client_id=${encodeURIComponent(clientId)}` : ""}`),
     getAttendance: (clientId: string, month: string) =>
       request(`/api/payroll/attendance?client_id=${encodeURIComponent(clientId)}&month=${encodeURIComponent(month)}`),
     // `rows` must carry ONLY the employees the CA actually touched. lop_days is
@@ -6083,8 +6421,12 @@ export const api = {
      */
     payrollEmployeeExceptions: (financialYear?: string) =>
       request(`/api/payroll/employee-exceptions${financialYear ? `?financial_year=${encodeURIComponent(financialYear)}` : ""}`),
-    payrollClientStates: (month?: string) =>
-      request(`/api/payroll/client-states${month ? `?month=${encodeURIComponent(month)}` : ""}`),
+    // `clientId` is the client whose own Payroll page is asking. The firm-wide answer leaves the firm's own practice out;
+    // naming it is how the practice's page reads its own line (POST-A-532). Any other id changes nothing.
+    payrollClientStates: (month?: string, clientId?: string) => {
+      const q = [month ? `month=${encodeURIComponent(month)}` : "", clientId ? `client_id=${encodeURIComponent(clientId)}` : ""].filter(Boolean).join("&");
+      return request(`/api/payroll/client-states${q ? `?${q}` : ""}`);
+    },
     /** Switch payroll on or off for one client. PARTNER ONLY (migration 332).
      *
      *  Through the API and NOT PostgREST, and that is not a convention here —
@@ -6304,7 +6646,7 @@ export const api = {
       request<ApiResp<{ run_id: string; month: string;
                         reconciliation: EsicMappedIpCheck | null }>>(
         `/api/payroll/runs/${runId}/esic/mapped-ips`,
-        { method: "POST", body: JSON.stringify({ mapped_ips: mappedIps }) }),
+        { method: "POST", body: JSON.stringify({ mapped_ips: mappedIps }), asked: "read" }),
 
     /** THE MONTH-END LIST (Track F, phase F4). Every ESI / professional-tax
      *  remittance recorded as PAID with no journal entry tied to it, each with
@@ -6402,7 +6744,7 @@ export const api = {
     previewSettlement: (employeeId: string, body: SettlementInput) =>
       request<{ success: boolean; data: SettlementResult; error: string | null }>(
         `/api/payroll/employees/${employeeId}/settlement`,
-        { method: "POST", body: JSON.stringify(body) }),
+        { method: "POST", body: JSON.stringify(body), asked: "read" }),
 
     /** Record it: store, withhold under §192, post to the ledger, close the
      *  employee. `payroll:finalize`, not `write`. */
@@ -6500,17 +6842,21 @@ export const api = {
      *  outstanding for ever. */
     recordEcrFiled: (runId: string, body: {
       return_type: string; status: string;
-      submitted_on?: string; approved_on?: string; trrn?: string;
+      submitted_on?: string; approved_on?: string;
+      /** The RETURN's own reference: the Return File ID the portal gives when the file passes its checks. */
+      return_file_id?: string;
+      /** The CHALLAN's reference, issued when the dues are prepared for payment after the return is approved. */
+      trrn?: string;
     }) => request(`/api/payroll/runs/${runId}/ecr/filed`,
                   { method: "POST", body: JSON.stringify(body) }),
 
     // ── Employee portal provisioning ──────────────────────────────────────
-    // The activation link is returned ONCE, here. Only its sha256 is stored,
-    // so it cannot be fetched again — a caller that needs to re-send must
-    // re-invite, which mints a fresh token and invalidates this one.
+    // The activation link is returned to NOBODY (POST-A-552): it signs its holder in as the invitation's
+    // address, so the server mails it and says here only whether that mail went. Sending again makes a
+    // new link and stops the earlier one.
     invitePortal: (employeeId: string, email: string) =>
       request<ApiResp<{ employee_id: string; email: string;
-                        token: string; activation_url: string }>>(
+                        mail?: { sent: boolean; problem: string | null } }>>(
         `/api/payroll/employees/${employeeId}/portal-invite`,
         { method: "POST", body: JSON.stringify({ email }) }),
     revokePortal: (employeeId: string) =>
@@ -6594,6 +6940,12 @@ export const api = {
     dismiss: () => request<ApiResp<{ dismissed: boolean; dismissed_at: string }>>(
       "/api/onboarding/first-run/dismiss", { method: "POST" }),
   },
+  // "Where is…?" (POST-A-538): which screens answer a person's question. `offered` is the ids of the screens the person is
+  // offered (lib/guide/whereIs.offeredIds); the answer is at most three of those ids, read with the guide's own reader.
+  guide: {
+    where: (question: string, offered: string[]) =>
+      request<ApiResp<unknown>>("/api/guide/where", { method: "POST", body: JSON.stringify({ question, offered }) }),
+  },
   onboarding: {
     /** Start a 10-step Product Bible Ch. 7 onboarding checklist for a client. */
     start: (body: { client_id: string; entity_type?: string; notes?: string }) =>
@@ -6614,6 +6966,19 @@ export const api = {
     listActive: (firmId?: string) =>
       request(`/api/lifecycle/onboarding/checklist/active${firmId ? `?firm_id=${firmId}` : ""}`),
   },
+  /* POST-A-068. The income-tax filing season at firm level: every client's return for a year by stage, and a bulk re-run of the
+     saved computations. Read-only list; the run saves DRAFT computations only and moves no return. */
+  itrSeason: {
+    list: (params: { financial_year: string; stage?: string; limit?: number; offset?: number }) => {
+      const q = new URLSearchParams({ financial_year: params.financial_year });
+      if (params.stage) q.set("stage", params.stage);
+      if (params.limit != null) q.set("limit", String(params.limit));
+      if (params.offset != null) q.set("offset", String(params.offset));
+      return request<ApiResp<ItrSeasonPayload>>(`/api/itr/season?${q.toString()}`);
+    },
+    compute: (body: { financial_year: string; chosen_clients: string[] }) =>
+      request<ApiResp<ItrSeasonComputePayload>>(`/api/itr/season/compute`, { method: "POST", body: JSON.stringify(body) }),
+  },
   workload: {
     capacityList: () => request("/api/workload/capacity"),
     setCapacity: (body: { user_id: string; weekly_capacity_hours: number; max_concurrent_tasks: number }) =>
@@ -6624,6 +6989,19 @@ export const api = {
     capacityRisk: (weeksAhead = 13) =>
       request<ApiResp<CapacityRiskPayload>>(
         `/api/workload/capacity-risk?weeks_ahead=${weeksAhead}`),
+    /** How long one filing of each obligation type takes in this practice, as the firm stated it (POST-A-212). Nothing is defaulted. */
+    obligationEstimates: () =>
+      request<ApiResp<{
+        estimates: { compliance_type: string; estimated_minutes: number; updated_at?: string | null }[];
+        types_without_an_estimate: string[];
+        max_minutes: number;
+      }>>(`/api/workload/obligation-estimates`),
+    setObligationEstimate: (body: { compliance_type: string; estimated_minutes: number }) =>
+      request<ApiResp<{ estimate: { compliance_type: string; estimated_minutes: number } }>>(
+        `/api/workload/obligation-estimates`, { method: "PUT", body: JSON.stringify(body) }),
+    clearObligationEstimate: (complianceType: string) =>
+      request<ApiResp<{ cleared: string }>>(
+        `/api/workload/obligation-estimates?compliance_type=${encodeURIComponent(complianceType)}`, { method: "DELETE" }),
   },
   /* 3b-2. Its own prefix rather than an /api/accounting/reports entry: that
      one serves the AS-3 cash flow STATEMENT (what happened), this is a
@@ -6712,8 +7090,6 @@ export const api = {
       request(`/api/memory/clients/${clientId}/profile/compute`, { method: "POST" }),
     listProfiles: (params?: Record<string, string>) =>
       request("/api/memory/profiles", { params } as RequestInit),
-    getFirmProfile: () =>
-      request("/api/memory/firm/profile"),
     listTriggers: (params?: Record<string, string>) =>
       request(`/api/memory/triggers${params ? "?" + new URLSearchParams(params) : ""}`),
     acknowledgeTrigger: (id: string) =>
@@ -6794,7 +7170,9 @@ export const api = {
     // above: an employee is neither firm staff nor a client contact, so it is
     // guarded by the JWT alone and the token is what authorises the bind.
     acceptEmployeeInvite: (token: string) =>
-      request<ApiResp<{ employee_id: string; name?: string; client_id?: string }>>(
+      request<ApiResp<{ employee_id: string; name?: string; client_id?: string;
+                        /** True when this sign-in is already a member of staff (POST-A-549): no password is asked for. */
+                        staff_sign_in?: boolean }>>(
         "/api/portal/employee/accept-invite",
         { method: "POST", body: JSON.stringify({ token }) }),
     // Turns a bare invite token into the ingredients for a real Supabase
@@ -7062,7 +7440,7 @@ export const api = {
                   default_rate_paise: number | null; gst_rate_bps: number | null }[];
     }>>("/api/billing/service-options"),
     previewRun: (asOf?: string) =>
-      request(`/api/billing/preview-run${asOf ? `?as_of=${asOf}` : ""}`, { method: "POST" }),
+      request(`/api/billing/preview-run${asOf ? `?as_of=${asOf}` : ""}`, { method: "POST", asked: "read" }),
     generate: (scheduleId: string) =>
       request<ApiResp<BillingGenerateResult>>(
         `/api/billing/schedules/${scheduleId}/generate`, { method: "POST" }),
@@ -7083,6 +7461,17 @@ export const api = {
     unbilledWork: (clientId?: string) =>
       request<ApiResp<unknown>>(
         `/api/billing/unbilled-work${clientId ? `?client_id=${clientId}` : ""}`),
+    /** Hourly billing (POST-B-194). One client's unbilled time entry by entry, each priced by the server and each saying
+     *  why it cannot be billed yet when it cannot. Read through `lib/billing/timeInvoice.readUnbilledEntries`. */
+    unbilledEntries: (clientId: string) =>
+      request<ApiResp<unknown>>(`/api/billing/unbilled-work/entries?client_id=${encodeURIComponent(clientId)}`),
+    /** The lines a draft would carry for the chosen entries. Writes nothing. */
+    previewTimeInvoice: (body: { client_id: string; entry_ids: string[]; group_by: string }) =>
+      request<ApiResp<unknown>>("/api/billing/time-invoices/preview", { method: "POST", body: JSON.stringify(body) }),
+    /** Make ONE draft sales invoice in the practice's own books for the chosen entries and mark them billed by it. The
+     *  rate of GST and the practice's service are stated here; the server holds no default for either. */
+    createTimeInvoice: (body: { client_id: string; entry_ids: string[]; group_by: string; service_id: string; gst_rate_percent: number }) =>
+      request<ApiResp<unknown>>("/api/billing/time-invoices", { method: "POST", body: JSON.stringify(body) }),
     // What an hour of each PERSON bills at (practice_management-11) — not
     // `cost_rate_paise`, which is what the hour costs the firm. null clears it.
     listBillableRates: () =>
@@ -7112,6 +7501,12 @@ export const api = {
     list: (clientId: string, params?: Record<string, string>) =>
       request(`/api/sales-invoices/?client_id=${clientId}${params ? "&" + new URLSearchParams(params) : ""}`),
     get: (id: string) => request(`/api/sales-invoices/${id}`),
+    /** The unit rate before GST that a GST-inclusive price stands for, as the invoice will compute the line (POST-A-490).
+     *  Computes and writes nothing; a figure it cannot work back is refused in a sentence. */
+    inclusiveRate: (question: {
+      client_id: string; inclusive_paise: number; basis: "unit" | "line"; quantity: number; gst_rate_bps: number;
+      discount_percent_bps: number | null; has_cess: boolean;
+    }) => request<ApiResp<unknown>>("/api/sales-invoices/inclusive-rate", { method: "POST", body: JSON.stringify(question) }),
     /** Everything that would stop `issue` right now, as the server lists it (POST-A-125). Reads and writes nothing. */
     issuePreflight: (id: string) =>
       request<ApiResp<IssuePreflight>>(`/api/sales-invoices/${id}/issue-preflight`),
@@ -7324,13 +7719,19 @@ export const api = {
       request(`/api/approvals${status ? `?status=${status}` : ""}`) as Promise<
         ApiResp<{ requests: ApprovalRequest[] }>
       >,
-    get: (id: string) => request(`/api/approvals/${id}`) as Promise<ApiResp<ApprovalRequest>>,
     create: (request_type: string, payload: Record<string, unknown>) =>
       request<ApiResp<ApprovalRequest>>("/api/approvals", { method: "POST", body: JSON.stringify({ request_type, payload }) }),
     approve: (id: string) => request(`/api/approvals/${id}/approve`, { method: "POST" }),
     reject: (id: string, reason?: string) =>
       request(`/api/approvals/${id}/reject`, { method: "POST", body: JSON.stringify({ reason }) }),
     cancel: (id: string) => request(`/api/approvals/${id}/cancel`, { method: "POST" }),
+    /** Ask the firm's Partners for one permission (POST-A-543). Any member of staff may; the server says what may be
+     *  asked for and that nobody approves their own. `asked_from` and `note` are the asker's own words, shown as such. */
+    requestAccess: (body: { resource: string; action: string; asked_from?: string; note?: string }) =>
+      request<ApiResp<{ id: string; status: string; asked_at: string | null }>>(
+        "/api/approvals/access-requests", { method: "POST", body: JSON.stringify(body) }),
+    /** The caller's OWN requests for access and what became of each, newest first. Read through `readMine`. */
+    myAccessRequests: () => request<ApiResp<unknown>>("/api/approvals/access-requests/mine"),
   },
   // Module 9.0/M1: authoritative, append-only audit trail (Partner-only read).
   // Backed by the audit_log table, written server-side by audit_service.log_event
@@ -7403,16 +7804,12 @@ export const api = {
     get: () => request("/api/settings/branding"),
     update: (body: unknown) =>
       request("/api/settings/branding", { method: "PUT", body: JSON.stringify(body) }),
-    uploadLogo: async (file: File) => {
+    uploadLogo: async (file: File, onProgress?: (p: UploadProgress) => void) => {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
       const form = new FormData();
       form.append("file", file);
-      const res = await fetchPlain(`${BASE_URL}/api/settings/branding/logo`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: form,
-      }, "write");
+      const res = await uploadForm(`${BASE_URL}/api/settings/branding/logo`, token, form, onProgress);
       if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`);
       return jsonPlain<UntypedJson>(res, "write");
     },
@@ -7683,6 +8080,9 @@ export const api = {
       if (includeInactive) q.set("include_inactive", "true");
       return request<ApiResp<{ id: string; name: string }[]>>(`/api/customers/?${q}`);
     },
+    /** The customers this client invoiced most recently, newest first: ids only, for the top of the picker (POST-A-155). */
+    recent: (clientId: string) =>
+      request<ApiResp<RecentParties>>(`/api/customers/recent?${new URLSearchParams({ client_id: clientId })}`),
   },
 
   vendors: {
@@ -7691,6 +8091,9 @@ export const api = {
       if (includeInactive) q.set("include_inactive", "true");
       return request<ApiResp<Vendor[]>>(`/api/vendors/?${q}`);
     },
+    /** The suppliers this client billed against most recently, newest first: ids only, for the top of the picker (POST-A-155). */
+    recent: (clientId: string) =>
+      request<ApiResp<RecentParties>>(`/api/vendors/recent?${new URLSearchParams({ client_id: clientId })}`),
     create: (body: VendorWrite & { client_id: string }) =>
       request<ApiResp<Vendor & { duplicate?: boolean }>>("/api/vendors/",
         { method: "POST", body: JSON.stringify(body) }),
@@ -7744,8 +8147,10 @@ export const api = {
     listSupplies: (clientId: string, period: string, gstin?: string) => {
       const q = new URLSearchParams({ client_id: clientId, period });
       if (gstin) q.set("gstin", gstin);
-      return request<ApiResp<{ registered: Gstr8Supply[]; unregistered: Gstr8UnregisteredSupply[] }>>(
-        `/api/ecommerce-operator/supplies?${q}`);
+      return request<ApiResp<{
+        registered: Gstr8Supply[]; unregistered: Gstr8UnregisteredSupply[];
+        amendments?: Gstr8Amendment[]; unregistered_amendments?: Gstr8UnregisteredAmendment[];
+      }>>(`/api/ecommerce-operator/supplies?${q}`);
     },
     recordSupply: (body: {
       client_id: string; gstin?: string; period: string; supplier_gstin: string;
@@ -7769,6 +8174,35 @@ export const api = {
     deleteUnregisteredSupply: (supplyId: string, clientId: string) =>
       request<ApiResp<{ id: string; deleted: boolean }>>(
         `/api/ecommerce-operator/unregistered-supplies/${supplyId}?client_id=${encodeURIComponent(clientId)}`,
+        { method: "DELETE" }),
+    /** GSTR-8 Table 4 — an amendment of a registered seller's row of an EARLIER month (POST-A-056). */
+    recordAmendment: (body: {
+      client_id: string; gstin?: string; period: string; original_period: string;
+      original_supplier_gstin: string; original_place_of_supply?: string | null;
+      supplier_gstin: string; place_of_supply?: string | null;
+      gross_registered_paise?: number; returns_registered_paise?: number;
+      gross_unregistered_paise?: number; returns_unregistered_paise?: number;
+      igst_paise?: number; cgst_paise?: number; sgst_paise?: number;
+      action: "add" | "delete"; notes?: string | null;
+    }) =>
+      request<ApiResp<Gstr8Amendment>>("/api/ecommerce-operator/amendments",
+        { method: "POST", body: JSON.stringify(body) }),
+    deleteAmendment: (amendmentId: string, clientId: string) =>
+      request<ApiResp<{ id: string; deleted: boolean }>>(
+        `/api/ecommerce-operator/amendments/${amendmentId}?client_id=${encodeURIComponent(clientId)}`,
+        { method: "DELETE" }),
+    /** GSTR-8 Table 4.1 — an amendment of an Enrolment-ID seller's row of an EARLIER month. */
+    recordUnregisteredAmendment: (body: {
+      client_id: string; gstin?: string; period: string; original_period: string;
+      original_enrolment_id: string; enrolment_id: string;
+      gross_value_paise?: number; returns_paise?: number;
+      action: "add" | "delete"; notes?: string | null;
+    }) =>
+      request<ApiResp<Gstr8UnregisteredAmendment>>("/api/ecommerce-operator/unregistered-amendments",
+        { method: "POST", body: JSON.stringify(body) }),
+    deleteUnregisteredAmendment: (amendmentId: string, clientId: string) =>
+      request<ApiResp<{ id: string; deleted: boolean }>>(
+        `/api/ecommerce-operator/unregistered-amendments/${amendmentId}?client_id=${encodeURIComponent(clientId)}`,
         { method: "DELETE" }),
   },
 
@@ -8070,6 +8504,11 @@ export const api = {
       request<ApiResp<{ id: string; challan_marked_received_back: boolean }>>(
         `/api/sales-cycle/challans/${challanId}/returns`,
         { method: "POST", body: JSON.stringify(body) }),
+    /** POST-A-418 — take back a lot recorded by mistake: a soft delete that keeps the day, the person and the reason. A write: not sent again after a dropped connection. */
+    retractChallanReturn: (challanId: string, lotId: string, clientId: string, reason: string) =>
+      request<ApiResp<{ id: string; challan_back_to_issued: boolean }>>(
+        `/api/sales-cycle/challans/${challanId}/returns/${lotId}/retract`,
+        { method: "POST", body: JSON.stringify({ client_id: clientId, reason }) }),
   },
 
   openingDocuments: {
@@ -8238,6 +8677,14 @@ export const api = {
       return request<ApiResp<{ transactions: ReportTransaction[] }>>(
         `/api/reports/transactions${qs ? `?${qs}` : ""}`);
     },
+    partyTotals: (clientId?: string, dateFrom?: string, dateTo?: string) => {
+      const q = new URLSearchParams();
+      if (clientId) q.set("client_id", clientId);
+      if (dateFrom) q.set("date_from", dateFrom);
+      if (dateTo) q.set("date_to", dateTo);
+      const qs = q.toString();
+      return request<ApiResp<ReportPartyTotals>>(`/api/reports/party-totals${qs ? `?${qs}` : ""}`);
+    },
     gstSummary: (clientId: string, month: string) =>
       request<ApiResp<ReportGSTSummary>>(
         `/api/reports/gst-summary?client_id=${encodeURIComponent(clientId)}` +
@@ -8349,10 +8796,16 @@ export const api = {
      *  says whose it is and which month. At most five files a request — the
      *  caller sends them in turn, because this module aborts a request at 45
      *  seconds and never retries it. */
-    reconcileGstr2bFiles: (files: { name: string; raw_data: Record<string, unknown> }[]) =>
+    reconcileGstr2bFiles: (files: { name: string; raw_data: Record<string, unknown> }[],
+                           dropId?: string | null) =>
       request<ApiResp<Gstr2bBulkAnswer>>(
         "/api/gst-workspace/gstr2b/bulk",
-        { method: "POST", body: JSON.stringify({ files }) }),
+        { method: "POST", body: JSON.stringify(dropId ? { files, drop_id: dropId } : { files }) }),
+
+    /** POST-A-057 — what the caller's latest bulk drops did to each file, read
+     *  back from the server after the screen that sent them was closed. */
+    gstr2bBulkDrops: () =>
+      request<ApiResp<Gstr2bBulkDrops>>("/api/gst-workspace/gstr2b/bulk/drops"),
 
     /** gst-13 — a DRAFT purchase bill from a GSTR-2B document the books have no
      *  bill for. Never receives, never posts, never claims credit; the server
@@ -8401,21 +8854,57 @@ export const api = {
     posture: () =>
       request<ApiResp<SecurityPosture>>("/api/security/posture"),
   },
+  /** The sign-up link, kept and mailed by the SERVER (POST-A-485, 497). Public: the person has no account yet, so none of these carries a session. */
+  signup: {
+    /** Ask for a link that starts a new practice. The server mails it to `email`; it throws the server's own sentence when it refuses
+     *  (a wait, a blank name, a mail that did not go). It answers the same whether or not the address has an account. */
+    requestLink: (body: { email: string; firm_name: string; full_name: string }) =>
+      request<ApiResp<{ sent: boolean; valid_until: string; wait_seconds: number }>>(
+        "/api/signup/link", { method: "POST", body: JSON.stringify(body) }),
+    /** What a link is for, signing nobody in: the address, the firm name and the person's name it was asked for with, and when it ends.
+     *  A POST that only ASKS (see the named list in scripts/a-post-that-only-asks-is-on-the-named-list.test.ts). */
+    look: (token: string) =>
+      request<ApiResp<{ email: string; firm_name: string; full_name: string; valid_until: string }>>(
+        "/api/signup/link/look", { method: "POST", body: JSON.stringify({ token }), asked: "read" }),
+    /** A sign-in for the link's own address, opened at the press, with the names the link was asked for. Redeemed with
+     *  `supabase.auth.verifyOtp({ token_hash, type })`. Nothing is used up: pressing again signs in again. */
+    session: (token: string) =>
+      request<ApiResp<{ token_hash: string; verification_type: string; email: string; firm_name: string; full_name: string }>>(
+        "/api/signup/link/session", { method: "POST", body: JSON.stringify({ token }) }),
+  },
   identity: {
     listUsers: () => request<ApiResp<{
       users: Array<{
         id: string; full_name: string; email: string; role: string;
         is_active?: boolean; created_at?: string; auth_user_id?: string; firm_id?: string;
+        /** PRE-A-020: the server's word for the member (active, invited, invite_expired, inactive). */
+        member_state?: string; invite_expires_at?: string | null;
       }>;
     }>>("/api/identity/users"),
+    /** Invite a member. The SERVER mails the invitation, naming the practice and the Partner, and the answer says
+     *  what the mail service did with it; it never carries the invitation's token (POST-A-445). */
     createUser: (full_name: string, email: string, role: string) =>
-      request<ApiResp<{ id: string; invite_token: string }>>(
+      request<ApiResp<InvitedMember>>(
         "/api/identity/users", { method: "POST", body: JSON.stringify({ full_name, email, role }) }),
-    // F21 fix: the only way a users row's auth_user_id can be set — token comes
-    // from createUser's response, never from URL params.
+    /** Send a member's invitation again: a fresh link replaces the old one, which stops working (POST-A-445). */
+    resendInvite: (userId: string) =>
+      request<ApiResp<InvitedMember>>(`/api/identity/users/${userId}/resend-invite`, { method: "POST" }),
+    // F21 fix: the only way a users row's auth_user_id can be set. The token comes
+    // from the invitation's own link, never from anything else in the URL.
     acceptInvite: (token: string) =>
-      request<ApiResp<{ firm_id: string; role: string; full_name?: string }>>(
+      request<ApiResp<{ firm_id: string; role: string; full_name?: string; already_joined?: boolean }>>(
         "/api/identity/accept-invite", { method: "POST", body: JSON.stringify({ token }) }),
+    /** A sign-in for the invitation's own address, opened from its link with no session (POST-A-445). Redeemed with
+     *  `supabase.auth.verifyOtp({ token_hash, type })`; nothing is used up until acceptInvite. */
+    inviteSession: (token: string) =>
+      request<ApiResp<{ token_hash: string; verification_type: string; email: string }>>(
+        "/api/identity/accept-invite/session", { method: "POST", body: JSON.stringify({ token }) }),
+    /** Whose invitation this is (its address), opening NO sign-in: asked when the browser is signed in as somebody
+     *  else, so merely looking creates nothing (POST-A-445). */
+    inviteAddress: (token: string) =>
+      request<ApiResp<{ email: string }>>(
+        "/api/identity/accept-invite/session",
+        { method: "POST", body: JSON.stringify({ token, open_sign_in: false }) }),
     changeRole: (userId: string, role: string) =>
       request(`/api/identity/users/${userId}/role`, { method: "PATCH", body: JSON.stringify({ role }) }),
     suspend: (userId: string) => request(`/api/identity/users/${userId}/suspend`, { method: "POST" }),
@@ -8428,6 +8917,19 @@ export const api = {
       request(`/api/identity/login-history${limit ? `?limit=${limit}` : ""}`) as Promise<ApiResp<{ events: LoginEvent[]; has_more?: boolean; limit?: number; max_limit?: number }>>,
     recordLoginEvent: (event: "login" | "logout") =>
       request("/api/identity/login-event", { method: "POST", body: JSON.stringify({ event }) }),
+    /** A tab somebody is using says it is still there (every few minutes, lib/auth/deviceSeen). Best-effort. */
+    sessionSeen: () => request("/api/identity/session-seen", { method: "POST" }),
+    /** The devices the CALLER's login is signed in on now (POST-A-486). Takes no id: the person is the verified token's. */
+    myDevices: () => request<ApiResp<DeviceSummary>>("/api/identity/my-devices"),
+    /** One member's devices (Partner or Manager). */
+    memberDevices: (userId: string) => request<ApiResp<DeviceSummary>>(`/api/identity/users/${userId}/devices`),
+    /** Who in the firm is signed in on which devices now (Partner or Manager). */
+    firmDevices: () =>
+      request<ApiResp<{ members: FirmDeviceMember[]; live_window_minutes: number }>>("/api/identity/devices"),
+    /** End every other session of the caller's login, not this one. The browser then asks the sign-in service to end their
+     *  refresh tokens too (`signOut({ scope: "others" })`): this call is what stops them at the API. */
+    signOutOtherSessions: () =>
+      request<ApiResp<{ ended: number }>>("/api/identity/sign-out-other-sessions", { method: "POST" }),
     // The caller's own display name. Deliberately takes no user id — the row is
     // addressed server-side from the verified token, so this can only ever edit
     // the caller's own profile.
@@ -8769,6 +9271,7 @@ export type ConcentrationPayload = {
    *  bill of health nobody issued. */
   icai_fee_dependence: string;
   not_measured: string[];
+  revenue_sources: RevenueSources;
 };
 
 /** One figure or ratio across the firm's clients for one financial year.
@@ -8944,10 +9447,48 @@ export type ReconciliationRunResult = {
   error?: string;
 };
 
+/** A member as the server answers an invitation or a resend (POST-A-445): its state, the instant the invitation stops
+ *  working, and what the mail service did with the email. `invite_mail.problem` is the sentence to show when it did
+ *  not go. The invitation's token is never in it. */
+export type InvitedMember = {
+  id: string; full_name?: string; email?: string; role?: string;
+  member_state?: string; invite_expires_at?: string | null;
+  invite_mail: { sent: boolean; problem: string | null };
+};
+
 export type LoginEvent = {
   id: string; user_id?: string; email?: string; event: string;
   ip?: string; user_agent?: string; created_at?: string;
+  /** The browser in words ("Chrome on Windows"), made by the server from `user_agent`; null where none was recorded. */
+  browser?: string | null;
 };
+
+/** One device a login is signed in on now (POST-A-486), as the server describes it. The sign-in service's session id is never sent. */
+export type LiveDevice = {
+  id: string;
+  browser: string;
+  address: string | null;
+  started_at: string | null;
+  last_seen_at: string | null;
+  /** True for the caller's own device on `my-devices`; null where the question does not apply (a Partner reading a member's). */
+  is_current: boolean | null;
+};
+
+/** The devices of one login that are signed in now, with the server's sentence ("Signed in on 2 devices"). */
+export type DeviceSummary = {
+  devices: LiveDevice[];
+  count: number;
+  sentence: string;
+  more_than_one: boolean;
+  /** The server last heard from each listed session within this many minutes. */
+  window_minutes: number;
+  /** `my-devices` only: whether this sign-in names its session, which "sign out my other sessions" needs. */
+  can_keep_this_session?: boolean;
+  /** `my-devices` only: whether the caller's own session is on the list. False means the count leaves this device out. */
+  this_device_listed?: boolean;
+};
+
+export type FirmDeviceMember = DeviceSummary & { user_id: string; name: string; is_you: boolean };
 
 /** One staff member's access, as the server resolves it (migration 403).
  *
@@ -9169,3 +9710,83 @@ export type BonusRegister = {
   } | null;
   section_9_grounds: { value: string; label: string }[];
 };
+
+
+export interface OpeningPositionInput {
+  employee_id: string;
+  first_month_here: string;
+  months_paid: number;
+  gross_paise: number;
+  tds_paise: number;
+  pf_employee_paise: number;
+  pf_employer_paise: number;
+  esi_employee_paise: number;
+  esi_employer_paise: number;
+  pt_paise: number;
+  esi_contributed_earlier_in_period: boolean | null;
+  source_note: string | null;
+}
+
+export interface OpeningPositions {
+  client_id: string;
+  financial_year: string;
+  rows: (OpeningPositionInput & { id: string; employee_name: string | null; first_month_here: string })[];
+  without: { employee_id: string; employee_name: string | null; joining_date: string | null }[];
+  carries: string;
+  does_not_carry: string;
+}
+
+/** One client's row of `GET /api/itr/season`. */
+export interface ItrSeasonRow {
+  client_id: string;
+  client_name: string | null;
+  entity_type: string | null;
+  stage: string;
+  stage_label: string;
+  itr_form: string | null;
+  filing_status: string | null;
+  acknowledgement_number: string | null;
+  filing_date: string | null;
+  computation_version: number | null;
+  computation_status: string | null;
+  net_payable_paise: number | null;
+  is_refund: boolean | null;
+}
+
+export interface ItrSeasonPayload {
+  financial_year: string;
+  total_clients: number;
+  counts: Record<string, number>;
+  stage_labels: Record<string, string>;
+  matching: number;
+  limit: number;
+  offset: number;
+  rows: ItrSeasonRow[];
+  not_tracked: string[];
+  max_bulk_clients: number;
+}
+
+/** One client's answer from `POST /api/itr/season/compute`. */
+export interface ItrSeasonComputeResult {
+  client_id: string;
+  client_name: string | null;
+  state: string;
+  message: string;
+  version?: number;
+  previous_version?: number;
+}
+
+export interface ItrSeasonComputePayload {
+  financial_year: string;
+  results: ItrSeasonComputeResult[];
+  tally: Record<string, number>;
+  did_not: string[];
+}
+
+/** `GET /api/accounting/journal-approval` (POST-A-456): the firm's setting and what the caller may do under it. */
+export interface JournalApprovalRule {
+  approval_required: boolean;
+  may_post: boolean;
+  may_approve: boolean;
+  may_change_setting: boolean;
+}

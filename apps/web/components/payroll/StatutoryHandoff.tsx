@@ -50,10 +50,11 @@ import { Callout } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
-import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { formatMonthYear, formatDate, todayIstISO } from "@/lib/dates/format";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 type PayrollRun = { id: string; month: string; status: string };
 
@@ -136,6 +137,11 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
   // The date is what a payment record is dated by: text that is not a date reads as blank and the record would go in without it, or be
   // refused with a word about a date that is in the box (frontend_ux-19).
   const dates = useDateProblems();
+  // Said here, beside Record it, and withdrawn the moment the date is right (POST-A-381): handed to the page's note, the sentence stayed
+  // after the date was put right, because the note is cleared by the next answer and nothing else.
+  // A blank box is said the same way: derived from the box, so it goes once a date is typed.
+  const missing = on ? null : "Date: enter the date of the payment or filing.";
+  const refusal = useDateRefusal(dates.first ?? missing);
 
   const isEpf = obligation.scheme === "epf";
   // WHICH RETURN EPFO IS ACTUALLY EXPECTING. The server decides this
@@ -148,10 +154,9 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
   const [returnType, setReturnType] = useState(options[0]);
 
   async function submit() {
-    if (dates.first) { onError(dates.first); return; }
     // A cleared box is not an unreadable one and reports no problem, but "" goes to the server as no date at all and the server dates the record
     // today (the filing and the payment alike): a payment date this screen invented, said as "Recorded." Ask for it instead.
-    if (!on) { onError("Date: enter the date of the payment or filing."); return; }
+    if (dates.first ?? missing) { refusal.refuse(); return; }
     const paise = amount.trim() ? paiseFromRupeeInput(amount) : 0;
     if (paise === null) {
       onError("That amount is not an amount. Type it as ₹ and paise — "
@@ -173,7 +178,9 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
           status: paid ? "approved" : "submitted",
           submitted_on: on,
           approved_on: paid ? on : undefined,
-          trrn: reference.trim() || undefined,
+          // The RETURN's reference is the Return File ID the portal gives when the file passes its checks. The TRRN is the
+          // challan's, issued after the return is approved, and this form records the return and not the payment (POST-A-518).
+          return_file_id: reference.trim() || undefined,
         })) as ApiResp<unknown>;
         if (!res?.success) throw new Error(res?.error ?? "That did not save.");
       } else {
@@ -240,10 +247,10 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
         )}
         <div>
           <label className="block text-3xs text-ps-label mb-0.5">
-            {isEpf ? "TRRN" : "Challan number"}
+            {isEpf ? "Return File ID" : "Challan number"}
           </label>
-          <input aria-label={isEpf ? "TRRN" : "Challan number"} value={reference} onChange={(e) => setReference(e.target.value)}
-            placeholder={isEpf ? "as shown on the receipt" : "from the challan"}
+          <input aria-label={isEpf ? "Return File ID" : "Challan number"} value={reference} onChange={(e) => setReference(e.target.value)}
+            placeholder={isEpf ? "as shown under In-Process Returns" : "from the challan"}
             className="w-full border border-ps-border rounded-lg px-2 py-1.5 text-xs
                        outline-none focus:border-brand" />
         </div>
@@ -278,7 +285,7 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
       )}
       <label className="flex items-center gap-2 text-2xs text-ps-label">
         <input type="checkbox" checked={paid} onChange={(e) => setPaid(e.target.checked)} />
-        {isEpf ? "The portal shows this as approved — which is what clears the month"
+        {isEpf ? "You have approved the return statement on the portal — which is what clears the month"
                : "The money has gone — this is paid, not just filed"}
       </label>
       {isEpf && !paid && (
@@ -287,6 +294,7 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
           month at EPFO. Come back and mark it approved once the portal does.
         </p>
       )}
+      {refusal.shown && <p role="alert" className="text-xs text-state-problem">{refusal.shown}</p>}
       <Button variant="plain" size="none" onClick={submit} disabled={busy}
         className="px-3 py-1.5 text-xs bg-brand text-white rounded-lg
                    hover:bg-brand-dark disabled:opacity-40">
@@ -439,7 +447,7 @@ function ObligationCard({ o, clientId, runId, onChanged }: {
     } finally { setBusy(false); }
   }
 
-  const recorded = o.recorded as (Remittance & { trrn?: string; status?: string }) | null;
+  const recorded = o.recorded as (Remittance & { trrn?: string; return_file_id?: string; return_type?: string; status?: string }) | null;
 
   return (
     <div className="bg-white rounded-xl border border-ps-border p-4 space-y-3">
@@ -570,6 +578,8 @@ function ObligationCard({ o, clientId, runId, onChanged }: {
             <Check size={12} className="mt-0.5 shrink-0" />
             <span>
               Recorded as filed
+              {recorded.return_type ? ` — ${recorded.return_type} return` : ""}
+              {recorded.return_file_id ? ` — Return File ID ${recorded.return_file_id}` : ""}
               {recorded.trrn ? ` — TRRN ${recorded.trrn}` : ""}
               {recorded.challan_number ? ` — challan ${recorded.challan_number}` : ""}
               {typeof recorded.amount_paise === "number" && recorded.amount_paise > 0
@@ -917,7 +927,7 @@ export default function StatutoryHandoff({ clientId }: { clientId: string }) {
   useEffect(() => { load(); }, [load]);
 
   if (loading) {
-    return <p className="p-5 text-xs text-ps-hint">Loading…</p>;
+    return <LoadingRegion label="Loading the statutory hand-off" className="p-5 text-xs text-ps-hint">Loading…</LoadingRegion>;
   }
   if (!runs.length) {
     return (

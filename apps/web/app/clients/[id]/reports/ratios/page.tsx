@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, RefreshCw, AlertTriangle, Loader2, Check, X } from "lucide-react";
+import { ArrowLeft, RefreshCw, AlertTriangle, Check, X } from "lucide-react";
 import {
   api, type ScheduleIiiRatioNote, type ScheduleIiiRatio,
 } from "@/lib/api";
@@ -12,6 +12,7 @@ import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { objectOrNull } from "@/lib/api/shape";
 import { Callout, GapList } from "@/components/ui/callout";
 import { istToday } from "@/lib/dateMath";
+import { SectionPlaceholder } from "@/components/ui/page-frame";
 
 /**
  * The eleven Schedule III ratios — Division I, General Instructions, Additional
@@ -185,9 +186,7 @@ export default function ClientRatioNotePage() {
       </div>
 
       {loading && (
-        <div className="flex items-center gap-2 text-2xs text-ps-hint py-8">
-          <Loader2 size={14} className="animate-spin" /> Computing both years…
-        </div>
+        <SectionPlaceholder label="Computing both years" rows={8} cols={4} />
       )}
 
       {error && <Callout tone="problem">{error}</Callout>}

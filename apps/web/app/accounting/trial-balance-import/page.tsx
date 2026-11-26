@@ -117,7 +117,7 @@ export default function TrialBalanceImportPage() {
 
   async function runImport() {
     if (dates.first) {
-      setErr(dates.first);
+      dates.refuseWith(setErr, undefined, "");
       return;
     }
     if (!selectedClientId) {

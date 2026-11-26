@@ -35,11 +35,18 @@ import routers.purchase_bills as pb
 import routers.purchase_credit_notes as pcn
 import routers.sales_debit_notes as sdn
 import routers.sales_invoices as si
+from models.banking import BankAccountUpdateIn, MatchingRuleUpdateIn
+from models.payroll import EMPLOYEE_IDENTIFIERS, EmployeeUpdateIn
 from models.clearable import clearable_fields, patch_dict
+from models.parties import CUSTOMER_IDENTIFIERS, PARTY_IDENTIFIERS, CustomerUpdateIn, VendorUpdateIn
 from models.invoices import (InvoiceLineIn, PurchaseBillIn, PurchaseBillLineIn, PurchaseBillUpdateIn, SalesInvoiceIn,
                              SalesInvoiceUpdateIn)
 from tests.e2e_harness import FakeDB, seed_standard_coa, wire_e2e
 
+from routers.relationships import ENTITY_IDENTIFIERS, EntityUpdateIn
+from routers.lifecycle import LeadUpdateIn
+from models.firm_hsn_library import FirmHsnLibraryUpdateIn
+from models.service_catalogue import ServiceCatalogueUpdateIn
 FIRM = "FIRM-A"
 CALLER = {"firm_id": FIRM, "auth_user_id": "u1", "email": "ca@firma.test", "role": "Partner"}
 API = Path(__file__).resolve().parents[1]
@@ -387,6 +394,34 @@ CLEARABLE_MODELS = [
     (pcn.PurchaseCreditNoteUpdateIn, "purchase_credit_notes"),
 ]
 
+#: The masters (POST-A-399, second slice): a party and a bank account. A figure may be clearable on a master only where its NULL is its own answer
+#: ("nobody has said", which every reader already reports), and the three that are are named here with the migration that made the column nullable.
+MASTER_MODELS = [
+    (CustomerUpdateIn, "customers"),
+    (VendorUpdateIn, "vendors"),
+    (BankAccountUpdateIn, "bank_accounts"),
+    (EmployeeUpdateIn, "payroll_employees"),   # POST-A-399, third slice
+    (EntityUpdateIn, "entities"),              # POST-A-399, fifth slice: a person or company on the related-party register
+    (LeadUpdateIn, "leads"),                   # POST-A-399, fifth slice: a prospect on the pipeline
+    (ServiceCatalogueUpdateIn, "service_catalogue"),   # POST-A-399, fifth slice: a client's product or service
+]
+
+#: A firm's own SETTING (POST-A-399, the bank matching rule): every name it may clear is a condition or a proposal whose NULL is its own answer
+#: ("no bound", "no ledger proposed", "no GST split"); the router judges the merged rule by the create door's shape after any clear, held by
+#: tests/test_an_emptied_box_on_a_bank_rule_clears_it.py.
+SETTING_MODELS = [
+    (MatchingRuleUpdateIn, "bank_matching_rules"),
+    # POST-A-399, fifth slice: a code in the firm's own HSN/SAC library. Its rate is only what a new line is pre-filled with, never what a
+    # document is taxed at, so "no rate recorded" is its own answer; held by tests/test_an_emptied_box_on_an_entity_a_lead_or_a_library_code_clears_it.py.
+    (FirmHsnLibraryUpdateIn, "firm_hsn_library"),
+]
+MASTER_FIGURES_WHOSE_NULL_IS_AN_ANSWER = {
+    "credit_limit_paise",  # "no limit recorded", against 0 which is cash only (migrations 378 and 414)
+    "credit_days",         # on a vendor: "no payment terms confirmed", against 0 which is due on receipt (migration 202); NOT NULL on a customer
+    "treaty_rate_bps",     # unset: the s.195 engine refuses rather than assume a rate
+    "purchase_price_paise",  # on a product or service: "no purchase price recorded", so a bill line picked from it starts blank (a hint, never a posting)
+}
+
 #: A model's field and its column are not always one name; none of the six differ today.
 _COLUMN_OF: dict[tuple[str, str], str] = {}
 
@@ -403,7 +438,7 @@ def _columns(table):
     return cols
 
 
-@pytest.mark.parametrize("model,table", CLEARABLE_MODELS, ids=[t for _, t in CLEARABLE_MODELS])
+@pytest.mark.parametrize("model,table", CLEARABLE_MODELS + MASTER_MODELS + SETTING_MODELS, ids=[t for _, t in CLEARABLE_MODELS + MASTER_MODELS + SETTING_MODELS])
 def test_every_clearable_name_is_an_optional_field_of_its_model_and_a_nullable_column(model, table):
     clearable = getattr(model, "CLEARABLE", frozenset())
     assert clearable, f"{model.__name__} names nothing it may clear"
@@ -430,7 +465,7 @@ def test_no_clearable_set_is_named_that_this_file_does_not_know_the_table_of():
                     target = stmt.target if isinstance(stmt, ast.AnnAssign) else (stmt.targets[0] if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1 else None)
                     if isinstance(target, ast.Name) and target.id == "CLEARABLE":
                         named.add(node.name)
-    known = {m.__name__ for m, _ in CLEARABLE_MODELS}
+    known = {m.__name__ for m, _ in CLEARABLE_MODELS + MASTER_MODELS + SETTING_MODELS}
     assert named, "the scan found no CLEARABLE set at all"
     assert named == known, f"models with a CLEARABLE set this file does not know the table of: {sorted(named - known)}; known models that no longer have one: {sorted(known - named)}"
 
@@ -443,3 +478,32 @@ def test_the_clearable_names_are_free_text_and_never_a_date_an_amount_or_evidenc
         names = clearable_fields(model())
         assert not (names & forbidden), f"{model.__name__}.CLEARABLE names {sorted(names & forbidden)}: a date, a figure and the evidence of a document are corrected and not cleared"
         assert not any(n.endswith(("_date", "_paise", "_bps", "_on", "_at")) for n in names), f"{model.__name__}.CLEARABLE names a date or a figure: {sorted(names)}"
+
+
+#: The identifiers each master's edit refuses to empty because a return reads them: a party's GSTIN and state code, and a vendor's PAN and foreign
+#: tax number. A customer's PAN and TAN are not among them (no return reads them off a customer) and are clearable.
+MASTER_IDENTIFIERS = {CustomerUpdateIn: set(CUSTOMER_IDENTIFIERS), VendorUpdateIn: set(PARTY_IDENTIFIERS), BankAccountUpdateIn: set(),
+                      EmployeeUpdateIn: set(EMPLOYEE_IDENTIFIERS),
+                      # An entity's PAN and GSTIN are what the register matches one person across clients on; a lead carries no identifier.
+                      EntityUpdateIn: set(ENTITY_IDENTIFIERS), LeadUpdateIn: set(),
+                      # A product's code and unit are hints a line copies when the item is picked and then keeps as its own; no return reads
+                      # them off the item, and both are optional on a new one.
+                      ServiceCatalogueUpdateIn: set()}
+
+
+def test_a_master_clears_a_soft_particular_or_an_unstated_answer_and_never_an_identifier_a_date_or_evidence():
+    """On a party or a bank account: a tax identifier a return reads is corrected and not removed (refused by the route), a date and the evidence of a
+    declaration are not cleared, and the only figures are those whose NULL is its own answer."""
+    always = {"name", "bank_name", "account_type", "coa_account_id", "opening_balance_paise", "opening_balance_date",
+              "no_pe_declaration_on", "no_pe_declaration_ref", "no_pe_declaration_on_file", "is_active", "tds_section"}
+    assert set(MASTER_IDENTIFIERS) == {m for m, _ in MASTER_MODELS}
+    for model, _ in MASTER_MODELS:
+        # `bank_name` is the bank ACCOUNT's own name on BankAccountUpdateIn (a NOT NULL column); on an employee it is a free-text note of where the
+        # salary is banked, nullable and read by nothing statutory, so it is clearable there.
+        forbidden = (always - {"bank_name"} if model is EmployeeUpdateIn else always) | MASTER_IDENTIFIERS[model]
+        names = clearable_fields(model())
+        assert names, f"{model.__name__} names nothing it may clear"
+        assert not (names & forbidden), f"{model.__name__}.CLEARABLE names {sorted(names & forbidden)}"
+        figures = {n for n in names if n.endswith(("_paise", "_bps", "_days"))}
+        assert figures <= MASTER_FIGURES_WHOSE_NULL_IS_AN_ANSWER, f"{model.__name__}.CLEARABLE names a figure whose NULL is not an answer: {sorted(figures - MASTER_FIGURES_WHOSE_NULL_IS_AN_ANSWER)}"
+        assert not any(n.endswith(("_date", "_on", "_at")) for n in names), f"{model.__name__}.CLEARABLE names a date: {sorted(names)}"

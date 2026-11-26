@@ -40,6 +40,10 @@ import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 import { PageHeader } from "@/components/ui/page-header";
 import { formatPaise } from "@/lib/money/format";
 import { istToday } from "@/lib/dateMath";
+import { CLIENT_LIST_UNREAD } from "@/lib/clients/clientListUnread";
+import { SectionPlaceholder } from "@/components/ui/page-frame";
+import { openedForChoice } from "@/lib/payroll/openedFor";
+import { useOpenedFor } from "@/lib/payroll/useOpenedFor";
 
 type Client = { id: string; client_name: string };
 
@@ -52,7 +56,21 @@ const MONTHS = [
 export default function StatutoryPage() {
   const now = istToday();
   const [clients, setClients] = useState<Client[]>([]);
+  // A client list that could not be read is not a firm with no clients (POST-A-515 (d)): the picker says so.
+  const [clientsFailed, setClientsFailed] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState("");
+  // OPENED FOR ONE CLIENT (POST-A-534): `?client=` from a client's own Payroll page. The firm's own practice is in no list of
+  // clients, so it is offered here only when the screen was opened for it, by a Partner; see lib/payroll/openedFor.
+  const { openedFor, practiceId } = useOpenedFor();
+  const opened = openedForChoice(clients, openedFor, practiceId);
+  const openedChoice = opened.choose;
+  // Once: the first time the address's client can be chosen. After that the picker is the CA's.
+  const [arrived, setArrived] = useState(false);
+  useEffect(() => {
+    if (arrived || !openedChoice) return;
+    setSelectedClientId(openedChoice);
+    setArrived(true);
+  }, [arrived, openedChoice]);
   const [selMonth, setSelMonth] = useState(now.getMonth() + 1);
   const [selYear, setSelYear] = useState(now.getFullYear());
   const [summary, setSummary] = useState<StatutorySummary | null>(null);
@@ -69,12 +87,15 @@ export default function StatutoryPage() {
         // Paged: the client picker on a statutory screen must not silently
         // stop at 1000, and the name ordering is applied to the rows that come
         // back because selectAll orders by its own key inside the query.
-        const { data } = await selectAll(() => sb.from("clients")
+        const { data, error } = await selectAll(() => sb.from("clients")
           .select("id, client_name").eq("firm_id", fid).eq("is_internal", false).order("id"));
+        // The pager hands a failure back as `error` and does not throw: a read that stopped partway is not the firm's clients.
+        if (error) throw error;
         setClients([...(data ?? [])].sort((a, b) =>
           String(a.client_name).localeCompare(String(b.client_name))));
       } catch (e) {
         console.error("load clients:", e);
+        setClientsFailed(true);
       } finally {
         setLoading(false);
       }
@@ -134,9 +155,8 @@ export default function StatutoryPage() {
     // government upload must still never receive one.
     const content = [
       `# Statutory Summary — ${MONTHS[selMonth - 1]} ${selYear}`,
-      `# PF: Employees' Provident Funds and Misc. Provisions Act 1952`,
-      `# ESIC: Employees' State Insurance Act 1948`,
-      `# Gratuity: Payment of Gratuity Act 1972 Section 4`,
+      `# PF and ESIC: Code on Social Security, 2020`,
+      `# Gratuity: Code on Social Security, 2020 section 53`,
       `# CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT`,
       header,
       toCsvRows(dataRows),
@@ -150,7 +170,7 @@ export default function StatutoryPage() {
         <PageHeader
           back={{ href: "/payroll", label: "Payroll" }}
           title="Statutory Deductions"
-          subtitle="PF (EPF Act 1952) &middot; ESIC (ESI Act 1948) &middot; Gratuity (Gratuity Act 1972 Sec 4)"
+          subtitle="PF &middot; ESIC &middot; Gratuity &middot; Code on Social Security, 2020"
           className="mb-6"
         />
 
@@ -160,9 +180,10 @@ export default function StatutoryPage() {
               <div className="flex flex-wrap gap-4 items-end">
                 <div>
                   <label className="block text-xs font-medium text-ps-body mb-1">Client</label>
-                  <ClientLookup clients={clients} value={selectedClientId}
+                  <ClientLookup clients={opened.clients} value={selectedClientId}
                     onChange={setSelectedClientId} ariaLabel="Client"
                     placeholder="Select client…" />
+                  {clientsFailed && <p role="alert" className="mt-1 max-w-[260px] text-2xs text-state-problem">{CLIENT_LIST_UNREAD}</p>}
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-ps-body mb-1">Month</label>
@@ -207,7 +228,7 @@ export default function StatutoryPage() {
         <GapList gaps={summary?.gaps ?? []} tone="attention" className="mb-4" />
 
         {loading && (
-          <Card><CardContent className="py-12 text-center text-ps-label">Loading…</CardContent></Card>
+          <Card><CardContent className="py-12 text-center text-ps-label"><SectionPlaceholder label="Loading the statutory summary" shape="table" rows={4} /></CardContent></Card>
         )}
 
         {!loading && loadFailed && (
@@ -232,7 +253,7 @@ export default function StatutoryPage() {
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-white rounded-lg p-4 border border-blue-500/20">
-                  <p className="text-xs font-semibold uppercase text-blue-600 mb-3">PF Challan (EPF Act 1952)</p>
+                  <p className="text-xs font-semibold uppercase text-blue-600 mb-3">PF Challan</p>
                   <table className="w-full text-sm"><tbody>
                     <tr><td className="py-1 text-ps-label">Employee PF</td><td className="text-right font-mono">{formatPaise(totalEmpPF)}</td></tr>
                     <tr><td className="py-1 text-ps-label">Employer EPF</td><td className="text-right font-mono">{formatPaise(t.pf_employer_epf_paise ?? 0)}</td></tr>
@@ -251,7 +272,7 @@ export default function StatutoryPage() {
                   </p>
                 </div>
                 <div className="bg-white rounded-lg p-4 border border-green-100">
-                  <p className="text-xs font-semibold uppercase text-green-600 mb-3">ESIC Challan (ESI Act 1948)</p>
+                  <p className="text-xs font-semibold uppercase text-green-600 mb-3">ESIC Challan</p>
                   <table className="w-full text-sm"><tbody>
                     <tr><td className="py-1 text-ps-label">Employee ESIC (0.75%)</td><td className="text-right font-mono">{formatPaise(totalEmpESIC)}</td></tr>
                     <tr><td className="py-1 text-ps-label">Employer ESIC (3.25%)</td><td className="text-right font-mono">{formatPaise(totalEmprESIC)}</td></tr>
@@ -264,7 +285,7 @@ export default function StatutoryPage() {
                   </p>
                 </div>
                 <div className="bg-white rounded-lg p-4 border border-orange-100">
-                  <p className="text-xs font-semibold uppercase text-orange-600 mb-3">Gratuity Liability (Gratuity Act 1972)</p>
+                  <p className="text-xs font-semibold uppercase text-orange-600 mb-3">Gratuity Liability (Code on Social Security, 2020, section 53)</p>
                   <table className="w-full text-sm"><tbody>
                     <tr><td className="py-1 text-ps-label">Eligible employees</td>
                       <td className="text-right font-mono">{rows.filter((r) => r.gratuity_eligible).length}</td></tr>
@@ -328,7 +349,7 @@ export default function StatutoryPage() {
                             )}
                             {r.pf_applicable && !r.eps_eligible && (
                               <span className="text-3xs px-1.5 py-0.5 rounded bg-ps-muted text-ps-label"
-                                    title="Excluded from EPS by GSR 609(E) — the whole employer 12% goes to EPF">
+                                    title="Not a member of the Employees' Pension Scheme — the whole employer 12% goes to EPF">
                                 No EPS
                               </span>
                             )}

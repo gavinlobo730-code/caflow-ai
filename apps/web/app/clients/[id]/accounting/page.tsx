@@ -1,5 +1,7 @@
 "use client";
 
+import { useJournalApprovalRule } from "@/lib/accounting/journalApprovalRule";
+import { deleteActsOn, deleteAppliesTo, POSTED_LEFT_ALONE } from "@/lib/accounting/journalDeleteScope";
 import { useEffect, useState, useCallback, useMemo, useRef, Fragment } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Plus, RefreshCw, CheckCircle, Printer, Download, Share2, Trash2, Undo2 } from "lucide-react";
@@ -23,10 +25,15 @@ import {
   type ReconciliationCheck,
   type ReconciliationCheckCatalogue,
 } from "@/lib/api";
+import { UploadProgress } from "@/components/ui/upload-progress";
+import type { UploadProgress as BytesSent } from "@/lib/api/uploadWithProgress";
 import { cachedReport, reportKey } from "@/lib/accounting/reportCache";
 import {
   bankCountDecision, readingFromAnswer, unmatchedBankTile, type UnmatchedBankReading,
 } from "@/lib/accounting/unmatchedBankTile";
+import {
+  figureText, netReading, reportReading, unreadReportsSentence, type FigureReading,
+} from "@/lib/accounting/dashboardFigures";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import {
   plBucket, bsBucket, PL_REV_ORDER, PL_EXP_ORDER, BS_ASSET_ORDER, BS_LIAB_ORDER, BS_EQ_ORDER,
@@ -37,8 +44,9 @@ import { useLedgerSpan } from "@/lib/accounting/useLedgerSpan";
 import { documentTarget, noRouteReason, sourceLabel, journalEntryHref }
   from "@/lib/accounting/sourceDocument";
 import { cfUnion, cfAmount, aggregateCashFlow, cashFlowTiesOut, mapWithLimit, type CFData, type CFSection, type CFColumn } from "@/lib/accounting/cashFlowMatrix";
-import { TableSkeleton, StatementSkeleton, MetricCardSkeleton } from "@/components/ui/skeleton";
+import { TableSkeleton, StatementSkeleton, MetricCardSkeleton, LoadingRegion } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/use-toast";
+import { unreadColumnsSentence } from "@/lib/export/unread";
 
 
 import { formatIstLabelled } from "@/lib/dates/formatIst";
@@ -57,7 +65,10 @@ import { windowDescription } from "@/lib/lists/window";
 import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
 import { Field, Input, Select } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
+import { Drawer } from "@/components/ui/drawer";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { EmptyState, ErrorState } from "@/components/ui/states";
 import { DateInput } from "@/components/ui/date-input";
 import { NO_FILTER, accountCounts, filterNotice, filterRows, filterStatementRows, isFiltering, typeChoices, type TrialBalanceFilter } from "@/lib/accounting/trialBalanceFilter";
 import { StatementFilterBar } from "@/components/accounting/StatementFilterBar";
@@ -78,7 +89,9 @@ type AccountingTab =
   | "day-book"
   | "cost-centres";
 
-const TABS: { id: AccountingTab; label: string }[] = [
+// `requires` is the permission a tab's own first read asks (POST-A-454): Verify Books loads the reconciliation checks and runs, which
+// ask `accounting` `approve` (Partner only), so a Manager and an Executive were offered a tab that refused them on arrival.
+const TABS: { id: AccountingTab; label: string; requires?: readonly [string, string] }[] = [
   { id: "dashboard",     label: "Dashboard" },
   { id: "coa",           label: "Accounts" },
   { id: "journal",       label: "Journal" },
@@ -88,7 +101,7 @@ const TABS: { id: AccountingTab; label: string }[] = [
   { id: "balance-sheet", label: "Balance Sheet" },
   { id: "cashflow",      label: "Cash Flow" },
   { id: "approvals",     label: "Approvals" },
-  { id: "verify-books",  label: "Verify Books" },
+  { id: "verify-books",  label: "Verify Books", requires: ["accounting", "approve"] },
   { id: "reports",       label: "Reports" },
   { id: "opening-balances", label: "Opening Balances" },
   // ACC-13. A TAB rather than a route, which costs zero of D10's
@@ -265,6 +278,7 @@ export default function AccountingPage() {
   // switched back to a report tab, instead of once per client for this whole
   // page.
   const ledgerSpan = useLedgerSpan(clientId);
+  const { can: tabsCan, resolved: tabsResolved } = usePermissions();
   // The tab lives in the URL, not only in state, so it survives leaving the
   // page and coming back — which the journal editor does on every save. Before
   // this, "Back to Journal" landed the CA on the Dashboard.
@@ -361,7 +375,7 @@ export default function AccountingPage() {
       {/* Sub-tab bar */}
       <div className="flex-shrink-0 overflow-x-auto px-6 pt-5 pb-0 print:hidden">
         <div className="flex gap-0.5 bg-ps-bg rounded-lg p-1 w-fit">
-          {TABS.map((t) => (
+          {TABS.filter((t) => !t.requires || !tabsResolved || tabsCan(t.requires[0], t.requires[1])).map((t) => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
@@ -404,7 +418,14 @@ export default function AccountingPage() {
           <ApprovalQueue clientId={clientId} />
         )}
         {tab === "verify-books" && (
-          <VerifyBooks clientId={clientId} />
+          // Reached by a link or a typed address by someone the tab is not offered to: say so rather than load and be refused.
+          tabsResolved && !tabsCan("accounting", "approve") ? (
+            <p role="status" className="text-sm text-ps-label">
+              Verify Books runs the checks a Partner signs off, so it needs permission to approve the books, which your access does not include.
+            </p>
+          ) : (
+            <VerifyBooks clientId={clientId} />
+          )
         )}
         {tab === "opening-balances" && (
           <OpeningBalancesTab clientId={clientId} />
@@ -449,6 +470,11 @@ function AccountingDashboard({
     revenue_paise: 0, expenses_paise: 0, cash_paise: 0,
     journal_count: 0,
   });
+  // What each of the two report calls actually said (lib/accounting/dashboardFigures). `stats` keeps the figures; THIS says whether a
+  // figure is one the report gave or the nothing a failed request leaves behind, which a tile prints as a dash and never as ₹0.
+  const [readings, setReadings] = useState<{ revenue: FigureReading; expenses: FigureReading; cash: FigureReading }>({
+    revenue: { kind: "unknown" }, expenses: { kind: "unknown" }, cash: { kind: "unknown" },
+  });
   // The unmatched-bank count is its own reading with four states (see
   // lib/accounting/unmatchedBankTile). It comes from the server, behind
   // banking:read, because the bank tables answer a person whose Banking access is
@@ -484,16 +510,18 @@ function AccountingDashboard({
       //
       // The two report calls keep a .catch each, which is what the try/catch
       // that used to wrap only them gave them: a reporting engine that is
-      // briefly unavailable leaves its own tiles at zero and lets the rest of
-      // the dashboard load. Merging them into the shared Promise.all without
-      // that would have made an unrelated P&L timeout blank the journal list
-      // too. The Supabase calls report failure through `error` instead of
-      // rejecting, so they need no equivalent — hence the explicit check below.
+      // briefly unavailable lets the rest of the dashboard load. Merging them
+      // into the shared Promise.all without that would have made an unrelated
+      // P&L timeout blank the journal list too. The Supabase calls report
+      // failure through `error` instead of rejecting, so they need no
+      // equivalent — hence the explicit check below. What the catch gives back
+      // is NOT a zero: it is "no answer", and the tiles for that report print a
+      // dash and say so (POST-A-515 (d); the catch used to leave them at ₹0).
       let revenue = 0, expenses = 0, cash = 0;
       try {
         const [plRes, cfRes, recentRes, journalCount] = await Promise.all([
-          (api.accounting.profitLoss({ client_id: clientId, start_date: start, end_date: end }) as Promise<{ success: boolean; data: { revenue: { total_paise: number }; cost_of_sales: { total_paise: number }; operating_expenses: { total_paise: number } } }>).catch(() => null),
-          (api.accounting.cashFlow({ client_id: clientId, start_date: start, end_date: end }) as Promise<{ success: boolean; data: { closing_cash_paise: number } }>).catch(() => null),
+          (api.accounting.profitLoss({ client_id: clientId, start_date: start, end_date: end }) as Promise<{ success: boolean; data: { revenue: { total_paise: number }; cost_of_sales: { total_paise: number }; operating_expenses: { total_paise: number } } }>).catch(() => /* no answer: read as unknown by reportReading below, a dash and never a zero */ null),
+          (api.accounting.cashFlow({ client_id: clientId, start_date: start, end_date: end }) as Promise<{ success: boolean; data: { closing_cash_paise: number } }>).catch(() => /* no answer: read as unknown by reportReading below, a dash and never a zero */ null),
           // Recent journal entries
           supabase
             .from("journal_entries")
@@ -513,15 +541,20 @@ function AccountingDashboard({
             .lte("entry_date", end),
         ]);
 
-        if (plRes?.success) {
-          revenue = plRes.data.revenue?.total_paise ?? 0;
-          // Cost of Goods Sold lives in its own section, separate from
-          // operating_expenses (see PLApiData above) — must be added in or the
-          // dashboard's headline "Expenses" stat undercounts the same way the
-          // P&L tab did.
-          expenses = (plRes.data.cost_of_sales?.total_paise ?? 0) + (plRes.data.operating_expenses?.total_paise ?? 0);
-        }
-        if (cfRes?.success) cash = cfRes.data.closing_cash_paise ?? 0;
+        // Cost of Goods Sold lives in its own section, separate from
+        // operating_expenses (see PLApiData above) — must be added in or the
+        // dashboard's headline "Expenses" stat undercounts the same way the
+        // P&L tab did. Both totals must be present for the figure to be one.
+        const revenueReading = reportReading(plRes, (d) => d.revenue?.total_paise);
+        const expensesReading = reportReading(plRes, (d) => {
+          const cogs = d.cost_of_sales?.total_paise;
+          const opex = d.operating_expenses?.total_paise;
+          return typeof cogs === "number" && typeof opex === "number" ? cogs + opex : null;
+        });
+        const cashReading = reportReading(cfRes, (d) => d.closing_cash_paise);
+        if (revenueReading.kind === "known") revenue = revenueReading.paise;
+        if (expensesReading.kind === "known") expenses = expensesReading.paise;
+        if (cashReading.kind === "known") cash = cashReading.paise;
 
         if (recentRes.error || journalCount.error) throw new Error("dashboard query failed");
 
@@ -529,9 +562,11 @@ function AccountingDashboard({
           revenue_paise: revenue, expenses_paise: expenses, cash_paise: cash,
           journal_count: journalCount.count ?? 0,
         });
+        setReadings({ revenue: revenueReading, expenses: expensesReading, cash: cashReading });
         setRecentEntries((recentRes.data as JournalEntry[]) ?? []);
       } catch {
         setStats({ revenue_paise: 0, expenses_paise: 0, cash_paise: 0, journal_count: 0 });
+        setReadings({ revenue: { kind: "unknown" }, expenses: { kind: "unknown" }, cash: { kind: "unknown" } });
         setRecentEntries([]);
         setLoadFailed(true);
       } finally {
@@ -561,19 +596,22 @@ function AccountingDashboard({
   }, [clientId, bankDecision]);
 
   const bankTile = unmatchedBankTile(bankReading);
-  const netPL = stats.revenue_paise - stats.expenses_paise;
+  const netReadingPL = netReading(readings.revenue, readings.expenses);
+  const netPL = netReadingPL.kind === "known" ? netReadingPL.paise : 0;
   /** A figure, or "—" when the load failed. Never a zero we cannot stand behind. */
   const unknownIfFailed = (value: string) => (loadFailed ? "—" : value);
+  // The whole load did not fail, but one report may not have answered: its tiles are a dash and this says why.
+  const unreadReports = loadFailed ? null : unreadReportsSentence(readings.revenue, readings.cash);
 
   if (loading) return (
-    <div className="space-y-3 max-w-ps-data mx-auto">
+    <LoadingRegion label="Loading the accounting dashboard" className="space-y-3 max-w-ps-data mx-auto">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[...Array(4)].map((_, i) => <MetricCardSkeleton key={i} />)}
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         {[...Array(3)].map((_, i) => <MetricCardSkeleton key={i} />)}
       </div>
-    </div>
+    </LoadingRegion>
   );
 
   return (
@@ -593,18 +631,23 @@ function AccountingDashboard({
           connection and reopen this tab.
         </div>
       )}
+      {unreadReports && (
+        <div role="status" className="rounded-lg border border-state-attention-border bg-state-attention-surface px-4 py-3 text-xs text-amber-900">
+          {unreadReports}
+        </div>
+      )}
 
       {/* Stat strip */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <DashCard label="Revenue" value={unknownIfFailed(fmt(stats.revenue_paise))} accent="green" action={() => onNavigate("pl")} />
-        <DashCard label="Expenses" value={unknownIfFailed(fmt(stats.expenses_paise))} accent="red" action={() => onNavigate("pl")} />
+        <DashCard label="Revenue" value={unknownIfFailed(figureText(readings.revenue, fmt))} accent="green" action={() => onNavigate("pl")} />
+        <DashCard label="Expenses" value={unknownIfFailed(figureText(readings.expenses, fmt))} accent="red" action={() => onNavigate("pl")} />
         <DashCard
           label={netPL >= 0 ? "Net Profit" : "Net Loss"}
-          value={unknownIfFailed(fmt(Math.abs(netPL)))}
+          value={unknownIfFailed(figureText(netReadingPL, (paise) => fmt(Math.abs(paise))))}
           accent={netPL >= 0 ? "emerald" : "orange"}
           action={() => onNavigate("pl")}
         />
-        <DashCard label="Cash & Bank" value={unknownIfFailed(fmt(stats.cash_paise))} accent="blue" action={() => onNavigate("balance-sheet")} />
+        <DashCard label="Cash & Bank" value={unknownIfFailed(figureText(readings.cash, fmt))} accent="blue" action={() => onNavigate("balance-sheet")} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
@@ -821,13 +864,10 @@ function AddAccountModal({ clientId, onClose, onSaved }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex justify-end" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="bg-white w-[440px] h-full overflow-y-auto shadow-2xl flex flex-col">
-        <div className="px-6 py-4 border-b border-ps-border flex items-center justify-between shrink-0">
-          <h2 className="text-sm font-semibold text-ps-ink">Add Account</h2>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-ink"><span className="text-lg">×</span></button>
-        </div>
-
+    // The shared side sheet (POST-A-130): named, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it, its ×) is
+    // held while the save is out.
+    <Drawer open title={<span className="font-sans">Add Account</span>} ariaLabel="Add Account" widthClass="sm:max-w-[440px]" onClose={() => { if (!saving) onClose(); }}>
+      <div className="flex min-h-[calc(100%-3rem)] flex-col">
         <div className="flex-1 px-6 py-5 space-y-4 text-xs">
           {error && <Callout tone="problem">{error}</Callout>}
 
@@ -864,14 +904,14 @@ function AddAccountModal({ clientId, onClose, onSaved }: {
           </label>
         </div>
 
-        <div className="px-6 py-4 border-t border-ps-border flex gap-3 shrink-0">
-          <button onClick={onClose} className="flex-1 py-2 rounded-lg border border-ps-border text-xs text-ps-label hover:bg-ps-bg">Cancel</button>
+        <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-ps-border flex gap-3 shrink-0">
+          <button disabled={saving} onClick={onClose} className="flex-1 py-2 rounded-lg border border-ps-border text-xs text-ps-label hover:bg-ps-bg">Cancel</button>
           <Button variant="plain" size="none" onClick={save} disabled={saving} className="flex-1 py-2 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand-dark disabled:opacity-50">
             {saving ? "Saving…" : "Add Account"}
           </Button>
         </div>
       </div>
-    </div>
+    </Drawer>
   );
 }
 
@@ -915,20 +955,17 @@ function EditAccountModal({ account, onClose, onSaved }: {
   }
 
   return (
-    // stopPropagation UNCONDITIONALLY, not only on a backdrop click: this
-    // modal renders as a sibling of LedgerDrillDown's own content box (not a
-    // descendant of it), so a click anywhere in here — including on an
-    // input, not just the backdrop — would otherwise bubble up to that
-    // outer modal's own `onClick={onClose}` and close THE LEDGER behind it.
-    <div className="fixed inset-0 bg-brand-dark/60 z-[110] flex items-center justify-center p-4"
-         onClick={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) onClose(); }}>
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col">
-        <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between shrink-0">
-          <h2 className="text-sm font-semibold text-ps-ink">Edit Account</h2>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-ink"><span className="text-lg">×</span></button>
-        </div>
-
-        <div className="px-5 py-4 space-y-4 text-xs">
+    // A shared dialog over the ledger's shared dialog (POST-A-130): the top of the stack, so Escape and a click beside it are its own and
+    // never the ledger's. There is no backdrop of the ledger's above it in the component tree any more, so a click inside it closes
+    // nothing. Its close is held while its save is out.
+    <Modal title="Edit Account" maxWidthClass="max-w-md" onClose={() => { if (!saving) onClose(); }}
+      footer={<>
+        <button disabled={saving} onClick={onClose} className="flex-1 py-2 rounded-lg border border-ps-border text-xs text-ps-label hover:bg-ps-bg">Cancel</button>
+        <Button variant="plain" size="none" onClick={save} disabled={saving} className="flex-1 py-2 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand-dark disabled:opacity-50">
+          {saving ? "Saving…" : "Save Changes"}
+        </Button>
+      </>}>
+        <div className="space-y-4 text-xs">
           {error && <Callout tone="problem">{error}</Callout>}
 
           <Field label="Account Name" required>
@@ -950,15 +987,7 @@ function EditAccountModal({ account, onClose, onSaved }: {
             Active
           </label>
         </div>
-
-        <div className="px-5 py-4 border-t border-ps-border flex gap-3 shrink-0">
-          <button onClick={onClose} className="flex-1 py-2 rounded-lg border border-ps-border text-xs text-ps-label hover:bg-ps-bg">Cancel</button>
-          <Button variant="plain" size="none" onClick={save} disabled={saving} className="flex-1 py-2 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand-dark disabled:opacity-50">
-            {saving ? "Saving…" : "Save Changes"}
-          </Button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -990,6 +1019,16 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
 }) {
   const router = useRouter();
   const dayBook = mode === "day_book";
+  // A bulk action is offered only to someone its route admits (POST-A-455): Delete asks `accounting` `write` (Manager and
+  // above) and Reverse posted asks `accounting` `approve` (a Partner), and both were offered to every member, who was refused.
+  const { can: canDo } = usePermissions();
+  const mayDeleteEntries = canDo("accounting", "write");
+  // New Journal Entry and the voucher import write the books too (`accounting` `write`), and were drawn to an Executive.
+  const mayWriteBooks = canDo("accounting", "write");
+  const mayReverseEntries = canDo("accounting", "approve");
+  // Where the firm has a Partner approve every manual journal, a posted entry is deleted only by someone who may approve
+  // (POST-A-462): the server's own answer for this person (`may_post`), never a copy of the rule.
+  const deleteRule = useJournalApprovalRule();
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [entriesLoading, setEntriesLoading] = useState(true);
   const [entriesError, setEntriesError] = useState<string | null>(null);
@@ -1255,7 +1294,7 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
     await loadEntries();
   }, [loadEntries]);
 
-  const journalBulkActions: BulkAction<JournalEntry>[] = useMemo(() => [
+  const journalBulkActions: BulkAction<JournalEntry>[] = useMemo(() => ([
     {
       id: "discard",
       // "Delete", not "Discard". A CA arriving from Tally goes looking for
@@ -1264,11 +1303,13 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
       label: "Delete",
       icon: <Trash2 size={13} />,
       variant: "danger",
+      // Not offered for a selection of posted entries alone when the server says this person may not change them (POST-A-462).
+      appliesTo: (rows) => deleteAppliesTo(deleteRule.mayPost, rows),
       // Drafts always; a MANUAL posted entry while its period is open
       // (migration 275, the same gate that governs editing one). The server
       // decides — an auto-posted entry, a locked year or a filed return each
       // come back with a sentence naming the reason, which runBulk shows.
-      confirm:
+      confirm: deleteRule.mayPost === false ? POSTED_LEFT_ALONE :
         "Delete the selected entries? Drafts go immediately. A posted entry goes " +
         "only if you typed it yourself and its period is still open — anything " +
         "auto-posted or covered by a filed return is refused and named. An entry " +
@@ -1277,10 +1318,11 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
         "report, and stay in Settings → Audit Log with their lines.",
       run: (rows) => runBulk(
         rows,
-        // No client-side eligibility rule beyond "not already gone". Deciding
-        // here which posted entries qualify would be a second copy of the
-        // period gate, and the two would drift.
-        () => true,
+        // No client-side eligibility rule beyond "not already gone" and the
+        // server's own answer on posted entries (POST-A-462). Deciding here
+        // which posted entries qualify would be a second copy of the period
+        // gate, and the two would drift.
+        deleteActsOn(deleteRule.mayPost),
         // with_pair, because the confirm above said so. Half a pair is still
         // refused by the server either way round — it would strand the other.
         (e) => api.accounting.discardJournalEntry(e.id, true),
@@ -1314,7 +1356,8 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
       ),
     },
     exportSelectedAction("journal.csv", journalColumns),
-  ], [runBulk, journalColumns]);
+  ] satisfies BulkAction<JournalEntry>[]).filter((a) => (a.id !== "discard" || mayDeleteEntries) && (a.id !== "reverse-posted" || mayReverseEntries)),
+  [runBulk, journalColumns, mayDeleteEntries, mayReverseEntries, deleteRule.mayPost]);
 
   return (
     <div className="space-y-2">
@@ -1336,11 +1379,11 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
             <ReportExportButtons report="day-book" clientId={clientId} formats={["pdf", "xlsx"]}
               params={{ start_date: journalRange.start, end_date: journalRange.end }} />
           )}
-          {!dayBook && (
+          {!dayBook && mayWriteBooks && (
             <VoucherImportButton clientId={clientId} onImported={loadEntries}
               onSummary={(description) => toast({ title: "Voucher import", description })} />
           )}
-          {!dayBook && (
+          {!dayBook && mayWriteBooks && (
             <button
               onClick={() => router.push(journalEditorHref(clientId, "new"))}
               className="text-xs px-3 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark flex items-center gap-1"
@@ -1515,11 +1558,8 @@ function LedgerDrillDown({
   // A different account or window is a different ledger — page one of it.
   useEffect(() => { setPage(0); }, [accountId, startDate, endDate]);
 
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose(); }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  // The ledger is the shared dialog (POST-A-130) and the account editor is a shared dialog over it: the shared stack gives Escape to the
+  // top one alone, so the key listener the hand-built ledger kept for that is gone.
 
   // The side is the SERVER's (`is_debit` on the ledger page), not the sign's:
   // a bank overdraft is a credit balance on an asset ledger.
@@ -1573,27 +1613,19 @@ function LedgerDrillDown({
   ];
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-[100] flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[88vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-        <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between shrink-0">
-          <div>
-            <p className="text-sm font-semibold text-ps-ink">{accountName || "Ledger"}</p>
-            <p className="text-2xs text-ps-hint mt-0.5">Account ledger</p>
-          </div>
-          <div className="flex items-center gap-3">
-            {selectedAccount && (
-              <button
-                onClick={() => setEditing(true)}
-                className="text-xs text-blue-600 hover:underline"
-              >
-                Edit
-              </button>
-            )}
-            <button onClick={onClose} className="text-ps-hint hover:text-ps-body text-xl leading-none" aria-label="Back">×</button>
-          </div>
-        </div>
-
-        <div className="px-5 py-3 border-b border-ps-border flex items-end gap-3 flex-wrap shrink-0">
+    <Modal title={accountName || "Ledger"} maxWidthClass="max-w-5xl" onClose={onClose}
+      note={<>
+        Account ledger
+        {selectedAccount && (
+          <button
+            onClick={() => setEditing(true)}
+            className="ml-3 text-xs text-blue-600 hover:underline"
+          >
+            Edit
+          </button>
+        )}
+      </>}>
+        <div className="pb-3 border-b border-ps-border flex items-end gap-3 flex-wrap">
           <div className="w-64">
             <label className="block text-3xs font-medium text-ps-hint mb-1">Account</label>
             <AccountLookup
@@ -1628,7 +1660,7 @@ function LedgerDrillDown({
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-5">
+        <div>
           {!accountId ? (
             <div className="text-center py-10 text-ps-hint text-sm">Choose an account to view its ledger.</div>
           ) : !loading && ledger && hasActivity ? (
@@ -1725,7 +1757,6 @@ function LedgerDrillDown({
             </div>
           ) : null}
         </div>
-      </div>
 
       {editing && selectedAccount && (
         <EditAccountModal
@@ -1734,7 +1765,7 @@ function LedgerDrillDown({
           onSaved={onAccountUpdated}
         />
       )}
-    </div>
+    </Modal>
   );
 }
 
@@ -2606,7 +2637,12 @@ function ProfitAndLoss({ clientId, financialYear, onFinancialYearChange, onDrill
           <BasisToggle />
           <button disabled={loading} onClick={() => load(true)} className="disabled:opacity-40 p-1.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
           <button
-            onClick={() => downloadCsv(`profit-and-loss-${financialYear}.csv`, toCsv(buildPlExportRows(), plExportColumns))}
+            onClick={() => {
+              // A period whose read failed is refused in words, never written as 0.00 (POST-A-464).
+              const refused = unreadColumnsSentence(columns, "profit and loss");
+              if (refused) { toast({ title: refused, variant: "destructive" }); return; }
+              downloadCsv(`profit-and-loss-${financialYear}.csv`, toCsv(buildPlExportRows(), plExportColumns));
+            }}
             disabled={plExportDisabled}
             className="p-1.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label"
             title="Export CSV"
@@ -2964,7 +3000,12 @@ function BalanceSheet({ clientId, financialYear, onFinancialYearChange, onDrillD
           <BasisToggle />
           <button disabled={loading} onClick={() => load(true)} className="disabled:opacity-40 p-1.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
           <button
-            onClick={() => downloadCsv(`balance-sheet-${financialYear}.csv`, toCsv(buildBsExportRows(), bsExportColumns))}
+            onClick={() => {
+              // A period whose read failed is refused in words, never written as 0.00 (POST-A-464).
+              const refused = unreadColumnsSentence(columns, "balance sheet");
+              if (refused) { toast({ title: refused, variant: "destructive" }); return; }
+              downloadCsv(`balance-sheet-${financialYear}.csv`, toCsv(buildBsExportRows(), bsExportColumns));
+            }}
             disabled={bsExportDisabled}
             className="p-1.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label"
             title="Export CSV"
@@ -3064,7 +3105,11 @@ function BalanceSheet({ clientId, financialYear, onFinancialYearChange, onDrillD
               <button disabled={loading} onClick={() => load(true)} className="disabled:opacity-40 text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
             </div>
           ) : unionAccounts.length === 0 && (
-            <div className="text-center py-8 text-ps-hint text-sm">No posted journal entries found for this client.</div>
+            <EmptyState
+              className="py-8"
+              title="No posted journal entries found for this client"
+              description="The balance sheet is built from posted entries. Record a sale, a purchase, a bank line or a journal for this client and it appears here once posted."
+            />
           )}
         </div>
       )}
@@ -3428,7 +3473,12 @@ function CashFlow({ clientId, financialYear, onFinancialYearChange, ledgerSpan }
           />
           <button disabled={loading} onClick={() => load(true)} className="disabled:opacity-40 p-1.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
           <button
-            onClick={() => downloadCsv(`cash-flow-${overall.start}-to-${overall.end}.csv`, toCsv(buildCfExportRows(), cfExportColumns))}
+            onClick={() => {
+              // A period whose read failed is refused in words, never written as 0.00 (POST-A-464).
+              const refused = unreadColumnsSentence(columns, "cash flow");
+              if (refused) { toast({ title: refused, variant: "destructive" }); return; }
+              downloadCsv(`cash-flow-${overall.start}-to-${overall.end}.csv`, toCsv(buildCfExportRows(), cfExportColumns));
+            }}
             disabled={!withData.length}
             className="p-1.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label"
             title="Export CSV"
@@ -3611,6 +3661,12 @@ const SOURCE_LABEL: Record<string, string> = {
 };
 
 function ApprovalQueue({ clientId }: { clientId: string }) {
+  // Approve & Post asks `accounting` `write` and then the firm's rule (POST-A-456): where the firm has a Partner approve every manual
+  // journal, only someone who may approve posts a draft. The rule is the server's answer for this person; while it is unknown the
+  // button is offered to someone the route admits and the server decides.
+  const { can: canDo, resolved: permissionsRead } = usePermissions();
+  const postingRule = useJournalApprovalRule();
+  const mayPost = canDo("accounting", "write") && postingRule.mayPost !== false;
   const [status, setStatus] = useState<"draft" | "posted">("draft");
   const [rows, setRows] = useState<QueueJournal[]>([]);
   const [loading, setLoading] = useState(false);
@@ -3688,12 +3744,14 @@ function ApprovalQueue({ clientId }: { clientId: string }) {
                     <td className="px-3 py-2 text-right font-mono text-ps-body">{fmt(j.total_debit_paise)}</td>
                     <td className="px-3 py-2 text-right font-mono text-ps-body">{fmt(j.total_credit_paise)}</td>
                     <td className="px-3 py-2 text-right whitespace-nowrap">
-                      {status === "draft" ? (
+                      {status === "draft" && mayPost ? (
                         <Button variant="plain" size="none" onClick={() => approve(j.id)} disabled={busy[j.id] || !balanced}
                           title={balanced ? "Approve & post to the ledger" : "Entry is not balanced"}
                           className="text-xs px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed">
                           {busy[j.id] ? "Posting…" : "Approve & Post"}
                         </Button>
+                      ) : status === "draft" ? (
+                        <span className="text-ps-label">{permissionsRead ? "Awaiting someone who may post journal entries" : ""}</span>
                       ) : (
                         <span className="text-ps-label">{formatIstLabelled(j.posted_at)}</span>
                       )}
@@ -3707,7 +3765,12 @@ function ApprovalQueue({ clientId }: { clientId: string }) {
       )}
 
       <p className="text-3xs text-ps-hint text-center">
-        Approving posts the draft to the books and triggers any deferred action (e.g. bank settlement). Requires approval permission; locked financial years are blocked.
+        Approving posts the draft to the books and triggers any deferred action (e.g. bank settlement); locked financial years are blocked.{" "}
+        {postingRule.rule
+          ? (postingRule.rule.approval_required
+            ? "This firm has a Partner approve every manual journal: only someone who may approve posts a draft."
+            : "This firm lets anyone who may write the books post a draft; a Partner can require approval in Settings.")
+          : postingRule.error ?? ""}
       </p>
     </div>
   );
@@ -3946,8 +4009,12 @@ function VerifyBooks({ clientId }: { clientId: string }) {
       {loadingRuns || loadingFindings ? (
         <TableSkeleton cols={3} rows={4} />
       ) : !activeRun ? (
-        <div className="bg-white rounded-xl border border-ps-border p-10 text-center text-sm text-ps-hint">
-          No verification has been run for this client yet. Click &ldquo;Verify Books&rdquo; to check it now.
+        <div className="bg-white rounded-xl border border-ps-border">
+          <EmptyState
+            className="py-10"
+            title="No verification has been run for this client yet"
+            description="Press Verify Books above to run the checks now. The nightly sweep also runs them."
+          />
         </div>
       ) : activeRun.status === "failed" ? (
         <div className="bg-state-problem-surface border border-state-problem-border rounded-xl p-5 text-sm text-state-problem">
@@ -4044,6 +4111,7 @@ function VerifyBooks({ clientId }: { clientId: string }) {
 function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcActive, ledgerSpan }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void; mcActive: boolean; ledgerSpan: LedgerSpan }) {
   // Which grouped report is open; null = the hub index.
   const [openReport, setOpenReport] = useState<null | "fx">(null);
+  const { can: canDo, resolved: permissionsRead } = usePermissions();
   // Exports follow the same basis the user is viewing (URL-persisted).
   const searchParams = useSearchParams();
   const basis = (searchParams.get("basis") as "accrual" | "cash") ?? "accrual";
@@ -4053,21 +4121,29 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
     id: string; report_type: string; report_label: string; financial_year: string; file_name: string; created_at: string; storage_path: string;
   }[]>([]);
   const [loadingShared, setLoadingShared] = useState(true);
+  // A list that could not be read is not a client with nothing shared (POST-A-515 (d)): the empty state below would say it was.
+  const [sharedFailed, setSharedFailed] = useState(false);
   const [exporting, setExporting] = useState<string | null>(null);
   const [sharing, setSharing] = useState<string | null>(null);
+  const [sent, setSent] = useState<BytesSent | null>(null);
   // A report's link is being fetched: one at a time, so a second click does not open a second tab.
   const [openingReport, setOpeningReport] = useState(false);
   const [shareSuccess, setShareSuccess] = useState<string | null>(null);
 
   const loadShared = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
+    setSharedFailed(false);
     try {
       const supabase = getSupabaseClient();
-      const { data } = await supabase.from("shared_reports")
+      const { data, error } = await supabase.from("shared_reports")
         .select("id, report_type, report_label, financial_year, file_name, created_at, storage_path")
         .eq("client_id", clientId).order("created_at", { ascending: false }).limit(20);
+      if (error) throw error;
       setSharedReports(data ?? []);
-    } catch { /* skip */ } finally {
+    } catch {
+      setSharedReports([]);
+      setSharedFailed(true);
+    } finally {
       setLoadingShared(false);
     }
   }, [clientId]);
@@ -4087,6 +4163,11 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
     // column of an exported trial balance returned 0 — silently, because
     // SheetJS writes no `ignoredErrors` so Excel shows no warning either.
     const money = moneyCell;
+    // A READ THAT FAILED IS NOT A REPORT OF ZEROS (POST-A-360). Each branch used to export `d?.total ?? 0` over a refused or empty
+    // answer, so a sheet of nil figures left the building under the client's name; now the export is refused in words instead.
+    const refuse = (what: string): never => {
+      throw new Error(`The ${what} could not be read, so nothing was exported. Try again in a moment.`);
+    };
 
     if (reportType === "trial") {
       // ACC-08. `start` as well as `end`, because this function's own contract
@@ -4097,7 +4178,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
       const res = (await api.accounting.trialBalance({
         basis, as_of_date: end, start_date: start, client_id: clientId })) as
         { success: boolean; data: TBApiData | null };
-      const d = res.data;
+      const d = res.success && res.data ? res.data : refuse("trial balance");
       const periodic = !!d?.start_date;
       const rows: Record<string, string | number | null>[] = (d?.lines ?? []).map((l) => ({
         "Account Code": l.account_code, "Account Name": l.account_name, "Type": l.account_type,
@@ -4125,25 +4206,27 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
     if (reportType === "pl") {
       const res = (await api.accounting.profitLoss({ basis, start_date: start, end_date: end, client_id: clientId })) as
         { success: boolean; data: PLApiData | null };
-      const d = res.data;
+      // The three sections are checked here, where the answer is read: `d?.revenue.lines` passed `{}` to the read and threw there.
+      const d = res.success && res.data && res.data.revenue && res.data.cost_of_sales && res.data.operating_expenses
+        ? res.data : refuse("profit and loss");
       const rows: Record<string, string | number | null>[] = [];
       // Prefer the backend's own Schedule III caption (single source of
       // truth); plBucket() is only a fallback for the brief window where the
       // frontend has redeployed ahead of the backend.
       const captionOf = (l: PLApiLine, type: string) => l.schedule_iii_caption ?? plBucket(type, l.account_subtype ?? null);
-      for (const l of d?.revenue.lines ?? [])
+      for (const l of d.revenue.lines ?? [])
         rows.push({ "Schedule III Category": captionOf(l, "Revenue"), "Account Code": l.account_code ?? "", "Account Name": l.account_name, "Type": "Revenue", "Amount (₹)": money(l.amount_paise) });
-      rows.push({ "Schedule III Category": "", "Account Code": "", "Account Name": "Total Revenue", "Type": "", "Amount (₹)": money(d?.revenue.total_paise ?? 0) });
+      rows.push({ "Schedule III Category": "", "Account Code": "", "Account Name": "Total Revenue", "Type": "", "Amount (₹)": money(d.revenue.total_paise ?? 0) });
       // Cost of Goods Sold — own section, separate from operating_expenses
       // (see PLApiData above); both bucket into "Cost of Materials Consumed"
       // via the shared caption, so must be exported alongside
       // operating_expenses or the XLSX undercounts Total Expenses the same
       // way the on-screen P&L did.
-      for (const l of d?.cost_of_sales.lines ?? [])
+      for (const l of d.cost_of_sales.lines ?? [])
         rows.push({ "Schedule III Category": captionOf(l, "Expense"), "Account Code": l.account_code ?? "", "Account Name": l.account_name, "Type": "Expense", "Amount (₹)": money(l.amount_paise) });
-      for (const l of d?.operating_expenses.lines ?? [])
+      for (const l of d.operating_expenses.lines ?? [])
         rows.push({ "Schedule III Category": captionOf(l, "Expense"), "Account Code": l.account_code ?? "", "Account Name": l.account_name, "Type": "Expense", "Amount (₹)": money(l.amount_paise) });
-      rows.push({ "Schedule III Category": "", "Account Code": "", "Account Name": "Total Expenses", "Type": "", "Amount (₹)": money((d?.cost_of_sales.total_paise ?? 0) + (d?.operating_expenses.total_paise ?? 0)) });
+      rows.push({ "Schedule III Category": "", "Account Code": "", "Account Name": "Total Expenses", "Type": "", "Amount (₹)": money((d.cost_of_sales.total_paise ?? 0) + (d.operating_expenses.total_paise ?? 0)) });
       rows.push({ "Schedule III Category": "", "Account Code": "", "Account Name": "Net Profit", "Type": "", "Amount (₹)": money(d?.net_profit_paise ?? 0) });
       return { rows, sheetName: `P&L ${basisLabel}`.slice(0, 31),
                moneyColumns: ["Amount (₹)"] };
@@ -4151,7 +4234,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
 
     const res = (await api.accounting.balanceSheet({ basis, as_of_date: end, client_id: clientId })) as
       { success: boolean; data: BSApiData | null };
-    const d = res.data;
+    const d = res.success && res.data ? res.data : refuse("balance sheet");
     const rows: Record<string, string | number | null>[] = [];
     const section = (secs: BSApiSection[] | undefined, type: string) => {
       for (const s of secs ?? []) for (const l of s.lines ?? [])
@@ -4223,7 +4306,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
       form.append("report_id", reportType);
       form.append("report_label", label);
       form.append("financial_year", financialYear);
-      const res = await api.accounting.shareReport(form);
+      const res = await api.accounting.shareReport(form, setSent);
       if (!res?.success) throw new Error(res?.error || "Share failed");
 
       setShareSuccess(reportType);
@@ -4232,6 +4315,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
     } catch (e) {
       toast({ title: e instanceof Error ? e.message : "Share failed", variant: "destructive" });
     } finally {
+      setSent(null);
       setSharing(null);
     }
   }
@@ -4285,6 +4369,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-ps-ink">{r.label}</p>
                 <p className="text-3xs text-ps-hint mt-0.5">{r.description}</p>
+                {sharing === r.id && sent && <UploadProgress progress={sent} what="the workbook" />}
               </div>
               <div className="flex items-center gap-2">
                 {/* No print button on these rows (PRE-A-016). It called window.print(),
@@ -4381,8 +4466,19 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
         </div>
         {loadingShared ? (
           <TableSkeleton cols={5} rows={2} bare />
+        ) : sharedFailed ? (
+          <ErrorState
+            className="m-4 py-6"
+            title="The shared reports could not be read"
+            message="This is not a client with nothing shared; try again."
+            onRetry={() => { setLoadingShared(true); loadShared(); }}
+          />
         ) : sharedReports.length === 0 ? (
-          <div className="text-center py-8 text-ps-hint text-sm">No reports shared yet.</div>
+          <EmptyState
+            className="py-8"
+            title="No reports shared yet"
+            description="Press Share beside a report above to send it to this client's portal; it is listed here once shared."
+          />
         ) : (
           <table className="w-full text-xs">
             <thead><tr className="border-b border-ps-border text-ps-hint"><th className="px-5 py-2 text-left font-semibold">Report</th><th className="px-3 py-2 text-left font-semibold">FY</th><th className="px-3 py-2 text-left font-semibold">File</th><th className="px-4 py-2 text-left font-semibold">Shared On</th><th className="px-3 py-2"></th></tr></thead>
@@ -4394,6 +4490,8 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
                   <td className="px-3 py-2.5 text-ps-label font-mono text-3xs truncate max-w-[130px]">{r.file_name}</td>
                   <td className="px-4 py-2.5 text-ps-hint">{formatDate(r.created_at)}</td>
                   <td className="px-3 py-2.5">
+                    {/* The link is made only for someone the books are open to (POST-A-467); offered while permissions load. */}
+                    {(!permissionsRead || canDo("accounting", "read")) ? (
                     <button
                       disabled={openingReport}
                       onClick={async () => {
@@ -4413,6 +4511,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
                     >
                       <Download size={10} /> Download
                     </button>
+                    ) : <span className="text-3xs text-ps-hint">Books access needed</span>}
                   </td>
                 </tr>
               ))}

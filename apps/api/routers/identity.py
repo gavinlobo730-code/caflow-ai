@@ -9,35 +9,43 @@ role, force-logout (single + firm-wide), login history. Every mutation is writte
 to audit_log; session-affecting actions also record a login_events row and bump
 users.sessions_revoked_at so existing JWTs are rejected immediately.
 """
-import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from middleware.public_rate_limit import public_limit
 from models.common import api_response
-from core.auth import get_current_user, get_jwt_user
+from core.auth import get_current_user, get_jwt_user, refuse_a_member_whose_session_has_ended
+from core.client_ip import client_ip
 from core.list_window import probe, split
 from core.permissions import rbac, Role, canonical_role, get_accessible_resources
+from domain.firm.invite_token import is_stored_form, opens_a_sign_in
+from domain.identity import devices
+from domain.firm.member_state import member_state
 from repositories.user_repository import user_repo
 from repositories.login_events_repository import login_events_repo
+from services import login_devices_service, staff_invite_service
 from services.audit_service import log_event
 
 router = APIRouter(prefix="/api/identity", tags=["identity"])
 
 # Mounted in main.py WITHOUT _MFA_GUARD: the invitee has no users row yet, and
 # mfa_guard's get_current_user refuses exactly that caller, so on the guarded
-# router no invite could ever be accepted. Nothing else belongs on it.
+# router no invite could ever be accepted. Two routes belong on it and nothing
+# else: accept-invite, and the sign-in the join page opens from the invitation's
+# own link before it accepts (POST-A-445).
 invite_router = APIRouter(prefix="/api/identity", tags=["identity"])
 
 _CANONICAL = {r.value for r in Role}
 
-# F21 fix: an invite must be accepted within this window. Chosen to match the
-# window already advertised in the (previously non-functional) invite email
-# copy — "This link expires in 7 days" (services/email_service.send_firm_invite).
-_INVITE_TTL = timedelta(days=7)
+_INVALID_INVITE = "Invalid or expired invite."
+
+#: Why a sign-in that already belongs to a practice cannot accept another invitation (POST-A-445).
+ALREADY_A_MEMBER = ("This sign-in already belongs to a member of a practice on PracticeSync, and one sign-in can "
+                    "belong to one practice. Ask the practice that invited you to send the invitation to another "
+                    "email address.")
 
 
 def _now() -> str:
@@ -63,14 +71,31 @@ def _get_member(user_id: str, firm_id: str) -> dict:
     return member
 
 
+#: Keys of a member row that name a session of the sign-in service: never sent to a screen (devices.present says the same of the lists).
+_SESSION_KEYS = ("other_sessions_kept_session_id", "other_sessions_revoked_at")
+
+
+def _without_session_keys(row):
+    return {k: v for k, v in row.items() if k not in _SESSION_KEYS} if isinstance(row, dict) else row
+
+
 @router.get("/users")
 def list_users(current_user: dict = Depends(rbac("team", "read"))):
-    # The list now carries every member of the firm (the repository reads as
-    # the service role), so a pending invitee's bearer secret is stripped: it
-    # is returned once, to the Partner who created it, by POST /users.
-    users = [{k: v for k, v in u.items() if k != "invite_token"}
+    # The list carries every member of the firm (the repository reads as the service role). No row carries an
+    # invitation's token: the repository returns none but through `find_by_invite_token` (POST-A-445), and the
+    # strip below is the second lock. Each row carries `member_state` (PRE-A-020), so the Team screen shows
+    # Invited or Invite expired for someone who has not accepted, never Active.
+    now = datetime.now(timezone.utc)
+    users = [{**{k: v for k, v in u.items() if k != "invite_token" and k not in _SESSION_KEYS}, "member_state": member_state(u, now)}
              for u in user_repo.find_all(firm_id=current_user["firm_id"])]
     return api_response(True, {"users": users})
+
+
+def _invite_answer(row: dict, mail: "staff_invite_service.MailResult", now: datetime) -> dict:
+    """A member row as the Team screen is sent it after an invitation: its state, what became of the mail, and
+    never the token (POST-A-445). The token reaches the invitee's mailbox and nobody else."""
+    return {**{k: v for k, v in row.items() if k != "invite_token" and k not in _SESSION_KEYS},
+            "member_state": member_state(row, now), "invite_mail": mail.as_dict()}
 
 
 @router.post("/users")
@@ -78,25 +103,132 @@ def create_user(body: CreateUserBody, current_user: dict = Depends(rbac("team", 
     if body.role not in _CANONICAL:
         raise HTTPException(400, f"Invalid role. Must be one of: {', '.join(sorted(_CANONICAL))}")
     firm_id = current_user["firm_id"]
-    # F21 fix: the invite link now carries a single-use, expiring, server-issued
-    # token (not the firm_id/role themselves) — /join exchanges the token for a
-    # link via POST /api/identity/accept-invite; it can no longer insert a users
-    # row with client-supplied firm_id/role.
-    invite_token = secrets.token_urlsafe(32)
+    # F21 fix: the invite link carries a single-use, expiring, server-issued token (never the firm_id or role
+    # themselves); /join exchanges it through POST /api/identity/accept-invite. POST-A-445: the server mails it,
+    # naming the practice and the Partner, and the answer no longer carries it.
+    now = datetime.now(timezone.utc)
+    invitation = staff_invite_service.fresh_invitation(now)
     created = user_repo.create({
         "firm_id": firm_id, "full_name": body.full_name, "email": body.email,
-        "role": body.role, "is_active": True, "status": "invited",
-        "invite_token": invite_token,
-        "invite_expires_at": (datetime.now(timezone.utc) + _INVITE_TTL).isoformat(),
+        "role": body.role, "is_active": True, "status": "invited", **invitation.columns,
     })
     log_event(firm_id, "user", str(created.get("id", "")), "create",
               actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
               new_data={"email": body.email, "role": body.role})
-    return api_response(True, {**created, "invite_token": invite_token})
+    mail = staff_invite_service.send({**created, "firm_id": firm_id}, invitation, current_user)
+    return api_response(True, _invite_answer({**created, **invitation.columns}, mail, now))
+
+
+@router.post("/users/{user_id}/resend-invite")
+def resend_invite(user_id: str, current_user: dict = Depends(rbac("team", "write"))):
+    """Send a member's invitation again, with a fresh token and expiry (POST-A-445).
+
+    The fresh token REPLACES the old one, so the link in an earlier mail stops working: a mail sent to a wrong or
+    lost address is withdrawn by sending the right one. If the new mail does not go, the old token and expiry are
+    put back, so a link that still worked keeps working, and the answer says so (`invite_mail.kept_previous`). Only
+    somebody still waiting to join is sent one: a member who has joined has nothing to accept, and a withdrawn
+    invitation is switched back on first (Activate), because a Partner who withdrew it decided once already and a
+    resend is not the place to undo that silently."""
+    firm_id = current_user["firm_id"]
+    member = _get_member(user_id, firm_id)
+    name = member.get("full_name") or member.get("email") or "This member"
+    now = datetime.now(timezone.utc)
+    state = member_state(member, now)
+    if member.get("auth_user_id"):
+        raise HTTPException(409, f"{name} has already joined, so there is no invitation to send.")
+    if state == "inactive":
+        raise HTTPException(409, f"The invitation to {name} was withdrawn. Activate them first, "
+                                 "then send the invitation again.")
+    if state not in ("invited", "invite_expired"):
+        raise HTTPException(409, f"{name} is not waiting on an invitation, so there is none to send.")
+    previous = user_repo.invite_columns(user_id, firm_id=firm_id)
+    # Only an earlier invitation whose link still WORKS is worth putting back if the new mail fails: one that is
+    # live (`invited`) and kept hashed, i.e. one the server mailed and whose link can still sign its owner in.
+    previous_works = bool(previous) and state == "invited" and is_stored_form(previous.get("invite_token"))
+    invitation = staff_invite_service.fresh_invitation(now)
+    updated = user_repo.update(user_id, invitation.columns, firm_id=firm_id)
+    if not updated:
+        raise HTTPException(404, "User not found in firm")
+    mail = staff_invite_service.send({**member, **updated, "firm_id": firm_id}, invitation, current_user)
+    restored = None
+    if not mail.sent and previous_works:
+        # The new mail did not go: put the earlier invitation back, so its link keeps working, but only while the row
+        # still holds the invitation this request wrote (a withdraw, an acceptance or another resend that landed
+        # while the mail was being sent is never undone).
+        restored = user_repo.restore_invitation(user_id, previous, replacing=invitation.columns["invite_token"],
+                                                firm_id=firm_id)
+    if not mail.sent:
+        mail = staff_invite_service.MailResult(False, mail.problem, kept_previous=bool(restored))
+    answer = _invite_answer({**member, **(restored or updated)}, mail, now)
+    log_event(firm_id, "user", user_id, "invite_resent" if mail.sent else "invite_resend_not_sent",
+              actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+              new_data={"email": member.get("email"), "invite_expires_at": answer.get("invite_expires_at")})
+    return api_response(True, answer)
 
 
 class AcceptInviteBody(BaseModel):
     token: str
+
+
+class InviteSessionBody(BaseModel):
+    token: str
+    #: False asks only whose invitation this is (its address), opening no sign-in: the join page asks that when the
+    #: browser is signed in as somebody else, so merely looking creates nothing at Supabase (POST-A-445).
+    open_sign_in: bool = True
+
+
+def _live_invitation(token: str) -> dict:
+    """The member row `token` invites, while the invitation can still be accepted, or the one 404 every refusal
+    shares (no such token, already used, withdrawn, past its expiry): telling them apart would let somebody probe
+    which tokens exist."""
+    invite = user_repo.find_by_invite_token(token)
+    if not invite or member_state(invite) != "invited":
+        raise HTTPException(status_code=404, detail=_INVALID_INVITE)
+    return invite
+
+
+@invite_router.post("/accept-invite/session", dependencies=[Depends(public_limit("invite"))])
+def invite_session(body: InviteSessionBody):
+    """Open a sign-in from the invitation's own link (POST-A-445). No login: before this there is no session to
+    require one from, and the invitation's token is what authorises the call, exactly as it authorises
+    accept-invite. The join page redeems the answer with `supabase.auth.verifyOtp({token_hash, type})` and then
+    calls accept-invite with the session it produces. Nothing is consumed here; accept-invite is what uses the
+    token. The sign-in is for the invitation's OWN address, never one the request names, only for an invitation the
+    server mailed (kept hashed; one issued before POST-A-445 is accepted from the sign-in its own mail carried), and
+    never for an address that already has a sign-in (409 in words: that person signs in as usual and opens the link
+    again)."""
+    invite = _live_invitation(body.token)
+    if not opens_a_sign_in(invite):
+        raise HTTPException(status_code=404, detail=_INVALID_INVITE)
+    if not body.open_sign_in:
+        return api_response(True, {"email": str(invite.get("email") or "").strip()})
+    return api_response(True, staff_invite_service.sign_in_for(invite, body.token))
+
+
+def _already_joined(jwt_user: dict) -> Optional[dict]:
+    """The caller's own membership when the caller IS an active member whose address is the one the sign-in carries,
+    else None (POST-A-481).
+
+    A repeat of accept-invite (a second click, a reload, the link opened in another tab or on a phone after the
+    first one joined) found the token spent and answered the one refusal every spent token shares, so a person who
+    had just joined was told their invitation "could not be used". It reveals nothing about the token: the answer is
+    the caller's OWN membership, read from their own verified sign-in, and a caller with no membership still gets the
+    404."""
+    linked = user_repo.find_linked_member(jwt_user.get("auth_user_id") or "")
+    if not linked or not linked.get("id") or not linked.get("firm_id"):
+        return None
+    row = user_repo.find_by_id(str(linked["id"]), firm_id=str(linked["firm_id"]))
+    if not row or member_state(row) != "active":
+        return None
+    if (row.get("email") or "").strip().lower() != (jwt_user.get("email") or "").strip().lower():
+        return None
+    # The caller IS this member. They are told so only while they could use any other route: a member whose sessions were all signed out
+    # (a suspension, a force sign-out), whose session was signed out from another device, whose account was disabled or whose firm is
+    # suspended or deleted is refused here in the words every other route uses, and not handed their firm, role and name (POST-A-498).
+    # The second-factor level is not asked: this answer is the caller's own membership, the same that /me gives at the first level.
+    refuse_a_member_whose_session_has_ended(jwt_user.get("auth_user_id") or "", jwt_user.get("session_claims") or {})
+    return {"firm_id": row.get("firm_id"), "role": row.get("role"), "full_name": row.get("full_name"),
+            "already_joined": True}
 
 
 @invite_router.post("/accept-invite", dependencies=[Depends(public_limit("invite"))])
@@ -110,23 +242,27 @@ def accept_invite(body: AcceptInviteBody, jwt_user: dict = Depends(get_jwt_user)
     ever be set; there is no client-side insert/update path left (see migration
     153, which also removed the RLS/grant paths that made the old raw insert
     possible)."""
-    invite = user_repo.find_by_invite_token(body.token)
-    if not invite:
-        raise HTTPException(status_code=404, detail="Invalid or expired invite.")
-    expires_at = invite.get("invite_expires_at")
-    if not expires_at or datetime.fromisoformat(expires_at.replace("Z", "+00:00")) < datetime.now(timezone.utc):
-        raise HTTPException(status_code=404, detail="Invalid or expired invite.")
+    # The invitation must be live: found, switched on (a Partner who deactivated a pending invitee has withdrawn
+    # it, and accepting must not reactivate them; that is POST /users/{id}/reactivate, a Partner's act), and not
+    # past its expiry. One rule, `member_state`, which the Team screen and the sign-in below also read.
+    try:
+        invite = _live_invitation(body.token)
+    except HTTPException as refused:
+        # A repeat by the person who already joined is answered with their membership, not a refusal (POST-A-481).
+        joined = _already_joined(jwt_user) if refused.status_code == 404 else None
+        if joined is not None:
+            return api_response(True, joined)
+        raise
     if (invite.get("email") or "").strip().lower() != (jwt_user.get("email") or "").strip().lower():
         # Defense in depth: the token alone (a 256-bit random secret only ever
         # transmitted to the invited email) is already unforgeable, but a mismatch
         # here means the wrong mailbox somehow held the link — refuse rather than
         # silently link the wrong identity.
-        raise HTTPException(status_code=404, detail="Invalid or expired invite.")
-    if invite.get("is_active") is False:
-        # A Partner who deactivated a pending invitee has withdrawn the invite;
-        # accepting it must not reactivate them. Reactivation is
-        # POST /users/{id}/reactivate, a Partner's act, never the invitee's.
-        raise HTTPException(status_code=404, detail="Invalid or expired invite.")
+        raise HTTPException(status_code=404, detail=_INVALID_INVITE)
+    if user_repo.find_linked_member(jwt_user["auth_user_id"]):
+        # One sign-in, one practice: `core/auth` reads a sign-in's member row with `maybe_single`, so a second row
+        # linked to the same sign-in would lock its owner out of both practices (POST-A-445).
+        raise HTTPException(status_code=409, detail=ALREADY_A_MEMBER)
 
     updated = user_repo.update(invite["id"], {
         "auth_user_id": jwt_user["auth_user_id"],
@@ -151,7 +287,7 @@ def change_role(user_id: str, body: RoleBody, current_user: dict = Depends(rbac(
     log_event(current_user["firm_id"], "user_role", user_id, "update",
               actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
               old_data={"role": old}, new_data={"role": body.role})
-    return api_response(True, updated)
+    return api_response(True, _without_session_keys(updated))
 
 
 @router.post("/users/{user_id}/suspend")
@@ -167,7 +303,8 @@ def suspend_user(user_id: str, current_user: dict = Depends(rbac("team", "write"
     log_event(current_user["firm_id"], "user", user_id, "suspend",
               actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"))
     login_events_repo.record(current_user["firm_id"], user_id, member.get("email"), "suspended")
-    return api_response(True, updated)
+    login_devices_service.end_all(current_user["firm_id"], user_id, "suspended")
+    return api_response(True, _without_session_keys(updated))
 
 
 @router.post("/users/{user_id}/reactivate")
@@ -176,7 +313,7 @@ def reactivate_user(user_id: str, current_user: dict = Depends(rbac("team", "wri
     updated = user_repo.update(user_id, {"is_active": True}, firm_id=current_user["firm_id"])
     log_event(current_user["firm_id"], "user", user_id, "reactivate",
               actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"))
-    return api_response(True, updated)
+    return api_response(True, _without_session_keys(updated))
 
 
 @router.post("/users/{user_id}/force-logout")
@@ -186,7 +323,8 @@ def force_logout(user_id: str, current_user: dict = Depends(rbac("team", "write"
     log_event(current_user["firm_id"], "user", user_id, "force_logout",
               actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"))
     login_events_repo.record(current_user["firm_id"], user_id, member.get("email"), "forced_logout")
-    return api_response(True, updated)
+    login_devices_service.end_all(current_user["firm_id"], user_id, "forced")
+    return api_response(True, _without_session_keys(updated))
 
 
 @router.post("/force-logout-all")
@@ -197,6 +335,7 @@ def force_logout_all(current_user: dict = Depends(rbac("team", "write"))):
     count = 0
     for m in user_repo.find_all(firm_id=firm_id):
         user_repo.update(m["id"], {"sessions_revoked_at": now}, firm_id=firm_id)
+        login_devices_service.end_all(firm_id, m["id"], "forced")
         count += 1
     log_event(firm_id, "firm", firm_id, "force_logout_all",
               actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
@@ -204,10 +343,17 @@ def force_logout_all(current_user: dict = Depends(rbac("team", "write"))):
     return api_response(True, {"users_affected": count})
 
 
+def _with_browser(event: dict) -> dict:
+    """A history row with the browser in words (`Chrome on Windows`) beside the raw text the browser sent, so a screen shows the first
+    and does not parse the second. The sign-in service's session id is dropped: it names a session and a screen has no use for it."""
+    shown = {k: v for k, v in event.items() if k != "session_id"}
+    return {**shown, "browser": devices.browser_label(event.get("user_agent")) if event.get("user_agent") else None}
+
+
 @router.get("/users/{user_id}/login-history")
 def user_login_history(user_id: str, current_user: dict = Depends(rbac("team", "read"))):
     _get_member(user_id, current_user["firm_id"])
-    return api_response(True, {"events": login_events_repo.list_for_user(current_user["firm_id"], user_id)})
+    return api_response(True, {"events": [_with_browser(e) for e in login_events_repo.list_for_user(current_user["firm_id"], user_id)]})
 
 
 #: The most login events one read of the firm's history may ask for. Served to the screen as `max_limit`.
@@ -222,6 +368,7 @@ def firm_login_history(
     """The firm's latest `limit` login events and whether older ones exist (core/list_window). The screen used to decide
     it had been cut short by comparing the row count to the number it expected the server to default to (POST-A-262)."""
     events, has_more = split(login_events_repo.list_for_firm(current_user["firm_id"], limit=probe(limit)), limit)
+    events = [_with_browser(e) for e in events]
     return api_response(True, {
         "events": events, "returned": len(events), "has_more": has_more,
         "limit": limit, "max_limit": LOGIN_HISTORY_MAX,
@@ -424,7 +571,7 @@ def update_my_profile(body: MyProfileBody,
     log_event(current_user.get("firm_id"), "user", str(current_user["id"]), "profile_update",
               actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
               new_data={"full_name": name})
-    return api_response(True, updated)
+    return api_response(True, _without_session_keys(updated))
 
 
 class LoginEventBody(BaseModel):
@@ -435,11 +582,94 @@ class LoginEventBody(BaseModel):
 # signed in, not anything AI), and a read-level action guarding a WRITE:
 # it persists a row via login_events_repo.record below.
 @router.post("/login-event")
-def record_login_event(body: LoginEventBody,
+def record_login_event(body: LoginEventBody, request: Request,
                        current_user: dict = Depends(rbac("identity", "write"))):
-    """Recorded by the frontend on sign-in / sign-out for the current user."""
+    """Recorded by the frontend on sign-in / sign-out for the current user.
+
+    It records the caller's address (the one our own proxy wrote, core/client_ip.py, never the first entry of a forwarded chain the
+    caller typed), the browser and the sign-in service's session id (POST-A-486), so two devices on one login can be told apart.
+    A sign-in also opens the session (and tells the Partners when it is a second device); a sign-out closes it."""
     if body.event not in ("login", "logout"):
         raise HTTPException(400, "event must be 'login' or 'logout'")
+    ip = client_ip(request)
+    agent = devices.clean_user_agent(request.headers.get("user-agent"))
     ev = login_events_repo.record(current_user.get("firm_id"), current_user.get("id"),
-                                  current_user.get("email"), body.event)
+                                  current_user.get("email"), body.event, ip=ip, user_agent=agent,
+                                  session_id=current_user.get("session_id"))
+    if body.event == "login":
+        login_devices_service.register(current_user, ip, agent)
+    else:
+        login_devices_service.end_here(current_user)
     return api_response(True, ev)
+
+
+@router.post("/session-seen")
+def session_seen(request: Request, current_user: dict = Depends(rbac("identity", "write"))):
+    """A signed-in tab somebody is using says it is still there (every few minutes, apps/web/lib/auth/deviceSeen.ts). It opens the
+    session if the server has not heard of it, which is how a sign-in by a door that records no login event (an invitation, a reset
+    link, a refreshed page after this feature shipped) is still counted, and tells the Partners when it is a second device."""
+    result = login_devices_service.register(current_user, client_ip(request), request.headers.get("user-agent"))
+    return api_response(True, {"registered": result["registered"]})
+
+
+def _devices_unreadable(exc: Exception) -> HTTPException:
+    return HTTPException(503, "The devices signed in on this login could not be read just now. Please try again in a moment.")
+
+
+@router.get("/my-devices")
+def my_devices(current_user: dict = Depends(rbac("identity", "read"))):
+    """The devices the CALLER's login is signed in on now, with which one is this. No id of anybody else is accepted: the person is
+    addressed from the verified token. A read: it writes nothing (the page asks `session-seen` first, so a session that predates this
+    feature, or whose sign-in record failed, is on the list it reads).
+
+    `this_device_listed` says whether the caller's own session is on the list, and the screen says when it is not (a token that names
+    no session cannot be listed, and the person is told, instead of being shown a count that leaves their own device out)."""
+    session_id = current_user.get("session_id")
+    try:
+        summary = login_devices_service.devices_of(current_user["firm_id"], current_user["id"],
+                                                   current_session_id=session_id or "")
+    except Exception as exc:                                    # noqa: BLE001
+        raise _devices_unreadable(exc) from exc
+    return api_response(True, {**summary, "can_keep_this_session": bool(session_id),
+                               "this_device_listed": any(d["is_current"] is True for d in summary["devices"])})
+
+
+@router.post("/sign-out-other-sessions")
+def sign_out_other_sessions(current_user: dict = Depends(rbac("identity", "write"))):
+    """End every other session of the caller's login, and not this one (POST-A-486). A person acting on themselves: no id is taken.
+    The API refuses the other sessions' tokens from now (a mark on the person's row); the browser then asks the sign-in service to end
+    their refresh tokens too."""
+    try:
+        result = login_devices_service.sign_out_other_sessions(current_user)
+    except login_devices_service.MarkNotWritten as exc:
+        raise HTTPException(503, "Your other sessions could not be signed out just now, and nothing was changed. "
+                                 "Please try again in a moment.") from exc
+    except login_devices_service.NoSessionId as exc:
+        raise HTTPException(409, "This sign-in does not say which session it is, so the others cannot be told apart from it. "
+                                 "Sign out and sign in again, then try this once more.") from exc
+    log_event(current_user["firm_id"], "user", str(current_user["id"]), "sign_out_other_sessions",
+              actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+              metadata={"known_sessions_ended": result["ended"]})
+    return api_response(True, result)
+
+
+@router.get("/users/{user_id}/devices")
+def member_devices(user_id: str, current_user: dict = Depends(rbac("team", "read"))):
+    """The devices one member's login is signed in on now (a Partner's or Manager's view; the same read as the member's login history)."""
+    _get_member(user_id, current_user["firm_id"])
+    try:
+        return api_response(True, login_devices_service.devices_of(current_user["firm_id"], user_id))
+    except Exception as exc:                                    # noqa: BLE001
+        raise _devices_unreadable(exc) from exc
+
+
+@router.get("/devices")
+def firm_devices(current_user: dict = Depends(rbac("team", "read"))):
+    """Who in the firm is signed in on which devices now: only members who are signed in anywhere, most devices first."""
+    try:
+        members = login_devices_service.devices_of_firm(current_user["firm_id"], user_repo.find_all(firm_id=current_user["firm_id"]))
+    except Exception as exc:                                    # noqa: BLE001
+        raise _devices_unreadable(exc) from exc
+    for member in members:
+        member["is_you"] = member["user_id"] == current_user.get("id")
+    return api_response(True, {"members": members, "live_window_minutes": int(devices.LIVE_WINDOW.total_seconds() // 60)})

@@ -98,8 +98,9 @@
  * --no-headers    walk WITHOUT out/_headers (the build is then not the product as served)
  * --anon          do NOT sign in, so the sign-in screens render as
  *                 themselves. Looking only — see `anon` below.
- * --shots          write a PNG per route to .smoke/ (the visual baseline —
- *                  NOT a regression gate; these are supposed to change)
+ * --shots          write a JPEG per route and a contact sheet to .smoke/ (.smoke/client/
+ *                  with --real-client), the visual baseline — NOT a regression
+ *                  gate; these are supposed to change
  * --real-client    put a UUID in /clients/:id instead of the static-export
  *                  placeholder, so the CLIENT WORKSPACE renders its own shell.
  *                  Without it every client screen wears the firm chrome and
@@ -113,11 +114,14 @@ import { fileURLToPath } from "node:url";
 import { screenRoutes } from "./refresh-screen-snapshot.js";
 import { headersFor, parseHeadersFile } from "./security-headers.mjs";
 import {
-  AXE_PACKAGE_VERSION, NAMED_ROUTE_PATHS, auditPage, axeMode, compareToBaseline, describeFailure,
+  AXE_PACKAGE_VERSION, NAMED_ROUTE_KEYS, NAMED_ROUTE_PATHS, auditPage, axeRouteKey, axeMode, compareToBaseline, describeFailure,
   initialBaseline, loadAxeBuilder, parseBaseline, planShrink, serialiseBaseline, settleVerdict,
   summaryMarkdown,
 } from "./axeAudit.mjs";
-import { auditNamedScreens, slowServerScenario } from "./walkAudits.mjs";
+import {
+  auditNamedScreens, frameBaselineFrom, judgeFrame, layoutVerdict, measureFrame, slowServerScenario, waitingVerdict,
+} from "./walkAudits.mjs";
+import { CLIENT_UUID, knownRead } from "./walkStub.mjs";
 
 
 /**
@@ -278,6 +282,7 @@ function serve(root, headerRules = []) {
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
       const url = decodeURIComponent(req.url.split("?")[0]);
+      const query = req.url.includes("?") ? req.url.slice(req.url.indexOf("?") + 1) : "";
       // The headers Cloudflare Pages would add to a static asset (security_privacy-05): the SAME file the
       // deploy ships, parsed by the same function the generator's tests use, applied to every static
       // response and not to the two stub prefixes (they stand in for other hosts, not for assets).
@@ -302,6 +307,11 @@ function serve(root, headerRules = []) {
         if (url.startsWith("/__supabase/rest/v1/firms")) {
           return sendJson(res, wantsObject ? FAKE_FIRM_ROW : [FAKE_FIRM_ROW]);
         }
+        // The ONE lookup keyed on the client the walk names (`clients?id=eq.<CLIENT_UUID>`), which the client
+        // workspace's gate needs before it renders a screen (POST-A-036; scripts/walkStub.mjs says why and what
+        // stays empty).
+        const known = knownRead(url, query, wantsObject);
+        if (known !== undefined) return sendJson(res, known);
         // Everything else stays EMPTY, deliberately. The no-data state is the
         // one a developer with a seeded database never looks at and the one a
         // redesign most often breaks — see the note above `serve`. This row
@@ -373,6 +383,9 @@ function sessionScript() {
   return `(() => { try {
     for (const ref of ${JSON.stringify(refs)})
       localStorage.setItem("sb-" + ref + "-auth-token", ${JSON.stringify(JSON.stringify(FAKE_SESSION))});
+    // The browser-session rule (POST-A-483) signs a stored session out at page start unless this browser session is the one the person
+    // signed in during; a tab says so with this marker. Without it every route of the walk is the sign-in screen.
+    sessionStorage.setItem("practicesync_session_marker", "1");
   } catch {} })();`;
 }
 
@@ -441,10 +454,6 @@ const EXPECTED_LANDINGS = {
   //   /signup: a signed-in visitor who already has a firm is bounced, the mirror of /login
   //     (lib/auth/guardDecision `shouldBounceFromSignup`; sweep-auth-and-public-02).
   "/signup": "/",
-  //   the two redirect stubs, kept so a bookmark or an emailed link still lands somewhere (a
-  //   static export has no server-side redirect to issue).
-  "/onboarding/checklist": "/clients/onboarding",
-  "/team/work-allocation": "/team/workload",
   // The walk feeds every :id the string "_placeholder", which resolves to no
   // client, and the workspace index returns to the list rather than showing a
   // shell for a client that is not there. A seeded demo firm (T2) is what
@@ -455,6 +464,12 @@ const EXPECTED_LANDINGS = {
 const args = process.argv.slice(2);
 const only = args.includes("--only") ? args[args.indexOf("--only") + 1] : null;
 const shots = args.includes("--shots");
+// `--frame` (POST-A-530): after the walk, open each route once more and measure how it sits on the page and what it draws while
+// its data is out (scripts/walkAudits.mjs has the two measurements). Off by default: it holds the stubbed API for every route.
+const frame = args.includes("--frame");
+// `--frame-only`: take the measurement and skip the walk itself, for the person converting screens who wants the numbers again
+// in minutes. It proves nothing about whether a screen renders; the walk without it does.
+const frameOnly = frame && args.includes("--frame-only");
 /** `--no-axe` skips the accessibility scan; `--axe-init` / `--axe-shrink` write scripts/axe-baseline.json (see
  *  axeAudit.mjs). `--slow-server` / `--no-slow-server` force or skip the slow-server scenario. */
 const noAxe = args.includes("--no-axe");
@@ -510,7 +525,14 @@ const anon = args.includes("--anon");
  * and the build has one page per shape, not per record.
  */
 const realClient = args.includes("--real-client");
-const CLIENT_UUID = "00000000-0000-4000-8000-000000000001";
+
+/**
+ * Where `--shots` writes. The client-workspace pass writes into a folder of its own, `.smoke/client/`, because the
+ * nightly runs it after the full walk in the same checkout and both write a contact sheet called `index.html` (and the
+ * firm-level /clients screens under the same file names): in one folder the second pass overwrote the first walk's
+ * sheet, and the failed-run artifact then showed 44 client screens and not the walk that failed.
+ */
+const shotDir = realClient ? path.join(SHOT_DIR, "client") : SHOT_DIR;
 
 /**
  * ⚠️ THE ROUTE LIST IS THE LIVE `app/` TREE, AND IT USED TO BE
@@ -705,14 +727,14 @@ if (anon) {
               (only ? "" : "  NO --only: every protected route will redirect " +
                "to the sign-in page, which is not a walk of anything."));
 }
-if (shots) fs.mkdirSync(SHOT_DIR, { recursive: true });
+if (shots) fs.mkdirSync(shotDir, { recursive: true });
 
 const broken = [];
 const timings = [];            // how long each screen took to settle, for --report
 const walkStarted = Date.now();
 let walked = 0;
 
-for (const route of routes) {
+for (const route of frameOnly ? [] : routes) {
   const routeStarted = Date.now();
   const page = await context.newPage();
   const errors = [];
@@ -765,10 +787,12 @@ for (const route of routes) {
       // The accessibility scan, on the page as it stands: only where it STAYED PUT (a redirect is the
       // destination's page, scanned under its own route) and not on a route a named screen covers (that scan is
       // stricter and its own).
-      if (scanRoutes && text && !NAMED_ROUTE_PATHS.has(trim(routePath))) {
+      // A real client's screen is keyed `/clients/{client}/…` (POST-A-036), so the baseline names the screen and not the stub's id.
+      const axeKey = axeRouteKey(trim(routePath), realClient ? CLIENT_UUID : null);
+      if (scanRoutes && text && !NAMED_ROUTE_PATHS.has(trim(routePath)) && !NAMED_ROUTE_KEYS.has(axeKey)) {
         const scan = await auditPage(axeLoaded.AxeBuilder, page);
-        if (scan.error) axeUnaudited.push({ route: trim(routePath), error: scan.error });
-        else axeFound.set(trim(routePath), scan.findings);
+        if (scan.error) axeUnaudited.push({ route: axeKey, error: scan.error });
+        else axeFound.set(axeKey, scan.findings);
       }
     }
     if (shots) {
@@ -778,7 +802,7 @@ for (const route of routes) {
       // is ~150KB and every difference a design review cares about survives.
       const name = (route === "/" ? "root" : route.slice(1).replace(/[/?=&]/g, "_")) + ".jpg";
       await page.screenshot({
-        path: path.join(SHOT_DIR, name), fullPage: true, type: "jpeg", quality: 72,
+        path: path.join(shotDir, name), fullPage: true, type: "jpeg", quality: 72,
       });
       captured.push({ route, file: name });
     }
@@ -801,7 +825,10 @@ for (const route of routes) {
 // sign-in screens). They are scanned whatever the route walk did, and a screen that did not land where it was
 // asked is a failure, not a clean row.
 let axeNamed = [];
-if (axe.run) {
+// The client-workspace pass (`--real-client`) runs after the full walk, which has already scanned the six named screens with the
+// same stub client, so it does not scan them again: they are judged once a night, and the pass's minutes are the nightly's slack.
+if (axe.run && realClient) console.log("\naxe: the six named screens are scanned by the full walk, not by this client-workspace pass.");
+if (axe.run && !realClient) {
   process.stdout.write("\n\naxe: scanning the six named screens … ");
   axeNamed = await auditNamedScreens({
     browser, AxeBuilder: axeLoaded.AxeBuilder, port: PORT, clientId: CLIENT_UUID, viewport: VIEWPORT,
@@ -812,6 +839,57 @@ if (axe.run) {
 
 // The slow-server notice, against an API that takes 24 s (frontend_ux-05). Holds the walk for about half a minute.
 let slowProblems = null;
+const frameRows = [];
+const FRAME_BASELINE_FILE = path.join(__dirname, "frame-baseline.json");
+let frameVerdict = null;
+if (frame) {
+  console.log("\nframe: measuring each screen's layout and what it draws while it waits …");
+  let n = 0;
+  for (const route of routes) {
+    const [routePath, routeQuery = ""] = route.split("?");
+    const withSlash = routePath.endsWith("/") ? routePath : routePath + "/";
+    const url = `http://127.0.0.1:${PORT}${withSlash}${routeQuery ? "?" + routeQuery : ""}`;
+    // `--shots` with `--frame` keeps two pictures per route, at the wide window: while it waits, and once it has settled.
+    const shotBase = shots ? path.join(shotDir, "frame-" + (route === "/" ? "root" : route.slice(1).replace(/[/?=&]/g, "_"))) : null;
+    const m = await measureFrame({ context, url, stub, sealOff, escaped, shotBase });
+    // A route that lands somewhere else drew the destination, which is measured under its own route.
+    // …and so did a route pinned as a redirect, even when the measurement caught it before it left (the platform gate's spinner).
+    const moved = EXPECTED_LANDINGS[route] !== undefined || (m.landed && trim(m.landed) !== trim(new URL(url).pathname));
+    frameRows.push({
+      route, key: axeRouteKey(trim(routePath), realClient ? CLIENT_UUID : null),
+      waiting: moved ? "redirected" : waitingVerdict(m.waiting), layout: moved ? "redirected" : layoutVerdict(m.layout), detail: m,
+    });
+    process.stdout.write(m.error ? "X" : ".");
+    if (++n % 60 === 0) process.stdout.write(` ${n}\n`);
+  }
+  const tally = (key) => Object.entries(frameRows.reduce((a, r) => ({ ...a, [r[key]]: (a[r[key]] || 0) + 1 }), {}))
+    .map(([k, v]) => `${v} ${k}`).join(", ");
+  console.log(`\nframe: waiting — ${tally("waiting")}`);
+  console.log(`frame: layout — ${tally("layout")}`);
+
+  // Against the committed list, which only shrinks (`--frame-init` writes it, `--frame-shrink` deletes the lines a run cleared).
+  const old = fs.existsSync(FRAME_BASELINE_FILE) ? JSON.parse(fs.readFileSync(FRAME_BASELINE_FILE, "utf8")) : null;
+  if (args.includes("--frame-init") || (args.includes("--frame-shrink") && old)) {
+    const next = frameBaselineFrom(frameRows, old);
+    if (args.includes("--frame-shrink")) {
+      // Shrink deletes; it never adds. A screen that is newly wrong is still a failure below.
+      next.hugs_left = next.hugs_left.filter((k) => old.hugs_left.includes(k));
+      next.no_placeholder = next.no_placeholder.filter((k) => old.no_placeholder.includes(k));
+    }
+    fs.writeFileSync(FRAME_BASELINE_FILE, JSON.stringify(next, null, 2) + "\n");
+    console.log(`frame: wrote ${path.relative(WEB, FRAME_BASELINE_FILE)} (${next.hugs_left.length} hug the left, ${next.no_placeholder.length} wait without a shape)`);
+  }
+  const now = fs.existsSync(FRAME_BASELINE_FILE) ? JSON.parse(fs.readFileSync(FRAME_BASELINE_FILE, "utf8")) : null;
+  if (now) {
+    frameVerdict = judgeFrame(frameRows, now);
+    for (const f of frameVerdict.fresh) console.log(`frame: NEW  ${f.route} — ${f.saw} (not on the list; fix the screen)`);
+    for (const f of frameVerdict.stale) console.log(`frame: DONE ${f.route} — no longer ${f.list === "hugs_left" ? "hugs the left" : "waits without a shape"}; delete its line (--frame-shrink)`);
+    if (!frameVerdict.fresh.length && !frameVerdict.stale.length) console.log("frame: every measured screen agrees with the list.");
+  } else {
+    console.log("frame: no list to judge against (scripts/frame-baseline.json); --frame-init writes one.");
+  }
+}
+
 if (runSlowServer) {
   process.stdout.write("slow-server notice: holding the API for 24 s on /tasks … ");
   slowProblems = await slowServerScenario({ context, port: PORT, stub, sealOff, escaped });
@@ -881,7 +959,7 @@ if (shots) {
   const cards = captured.map(({ route, file }) =>
     `<figure><a href="${file}"><img src="${file}" loading="lazy" alt="${route}"></a>` +
     `<figcaption>${route}</figcaption></figure>`).join("\n");
-  fs.writeFileSync(path.join(SHOT_DIR, "index.html"),
+  fs.writeFileSync(path.join(shotDir, "index.html"),
     `<!doctype html><meta charset="utf-8"><title>PracticeSync screens</title>` +
     `<style>body{font:14px system-ui;margin:0;padding:24px;background:#F8FAFC;color:#0F172A}` +
     `h1{font-size:18px;margin:0 0 4px}p{color:#64748B;margin:0 0 24px}` +
@@ -892,7 +970,7 @@ if (shots) {
     `overflow:hidden;text-overflow:ellipsis;white-space:nowrap}</style>` +
     `<h1>${captured.length} screens</h1><p>Rendered with no data, at 1440x900. ` +
     `Click a card for the full page.</p><div class="grid">${cards}</div>`);
-  console.log(`\n${captured.length} screenshots and a contact sheet in ${SHOT_DIR}`);
+  console.log(`\n${captured.length} screenshots and a contact sheet in ${shotDir}`);
 }
 // ── The accessibility verdict (frontend_ux-03; scripts/axeAudit.mjs) ─────────────────────────────────────
 //
@@ -963,7 +1041,9 @@ if (slowProblems) {
 }
 
 const failed = Boolean(
-  broken.length || (!anon && herds.length) || (axeVerdict && !axeVerdict.ok) || (slowProblems && slowProblems.length),
+  broken.length || (!anon && herds.length) || (axeVerdict && !axeVerdict.ok) || (slowProblems && slowProblems.length)
+  // POST-A-530: a screen newly wrong, or a line of the list a run has cleared and nobody deleted.
+  || frameVerdict?.fresh.length || frameVerdict?.stale.length,
 );
 
 if (reportPath) {
@@ -1000,6 +1080,8 @@ if (reportPath) {
         lowerable: axeVerdict.lowerable,
       }
       : { ran: false, reason: axe.line },
+    // POST-A-530. null means `--frame` was not asked for on this run.
+    frame: frame ? { verdict: frameVerdict, rows: frameRows } : null,
     // frontend_ux-05. null means the scenario was not asked for on this run.
     slow_server: slowProblems === null ? null : { ok: slowProblems.length === 0, problems: slowProblems },
   };

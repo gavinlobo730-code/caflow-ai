@@ -485,20 +485,6 @@ def preview_due(firm_id: str, as_of: Optional[str] = None) -> list[dict]:
 MOCK_COST_RATES: dict = {}   # mock-mode staff cost rates {user_id: paise}
 
 
-def unbilled_value_paise(minutes: Optional[int], billable_rate_paise: Optional[int],
-                         hourly_rate_paise: Optional[int]) -> int:
-    """Billable value of a time entry in integer paise (minutes x rate / 60).
-    Prefers billable_rate_paise; falls back to the legacy hourly_rate_paise.
-
-    An entry with NEITHER is worth 0 HERE and that is this function's old
-    contract, kept for its callers — it is NOT how the unbilled-work total reads
-    one any more: `domain/billing/time_rate.fold_unbilled` lists such an entry as
-    "no rate" instead of adding a zero, because "nobody said what it is worth"
-    is not "it is worth nothing"."""
-    rate = billable_rate_paise if billable_rate_paise is not None else hourly_rate_paise
-    return time_rate.value_paise(minutes, rate) or 0
-
-
 def group_unbilled(entries: list[dict]) -> dict:
     """Group billable, not-yet-billed time entries by client and by work item.
     Pure: filters is_billable AND billed_invoice_id IS NULL. No cost, no margin.
@@ -617,18 +603,9 @@ def set_staff_cost_rate(firm_id: str, user_id: str, cost_rate_paise: Optional[in
     return {"user_id": user_id, "cost_rate_paise": row.data[0].get("cost_rate_paise")}
 
 
-def mark_time_entries_billed(firm_id: str, entry_ids: list[str], invoice_id: str) -> dict:
-    """System-controlled billed linkage for future time-based billing. Sets
-    billed_invoice_id (authoritative); is_billed derives automatically (generated
-    column). Not exposed for manual editing."""
-    if _USE_MOCK or not entry_ids:
-        return {"marked": 0}
-    db = _db()
-    count = 0
-    for eid in entry_ids:
-        db.table("time_entries").update({"billed_invoice_id": invoice_id}).eq("id", eid).eq("firm_id", firm_id).execute()
-        count += 1
-    return {"marked": count}
+# `mark_time_entries_billed` WAS HERE AND IS GONE (POST-B-194). Nothing called it, it marked an entry whether or not it was
+# already billed, and it counted its attempts as rows. Marking is `time_billing_service._claim` now: one statement that
+# takes only entries still unbilled, compared with what was asked for.
 
 
 def run_due(firm_id: str, current_user: dict, as_of: Optional[str] = None) -> dict:

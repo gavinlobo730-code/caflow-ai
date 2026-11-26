@@ -30,7 +30,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from domain.accounting import journal_source, ledger_anomalies
+from domain.accounting import journal_exceptions, journal_source, ledger_anomalies
 from domain.money_sentence import rupee_text
 from domain.reporting.sources import SupabaseLedgerSource
 from core.db_paging import fetch_all, fetch_all_in
@@ -726,6 +726,107 @@ def check_ledger_anomalies(db, firm_id: str, client_id: str, entries) -> list[di
     ]
 
 
+def _exception_details(x) -> dict:
+    out = {"entry_id": x.entry_id, "entry_date": x.entry_date,
+           "reference_no": x.reference_no, "innocent_reading": x.also_could_be}
+    out.update(x.details or {})
+    return out
+
+
+# ── Four entry-level exceptions (POST-A-090). `domain/accounting/
+# journal_exceptions` is the rule; these fetch and file. Each is a WARNING
+# carrying its innocent reading, for the reason `check_ledger_anomalies` gives.
+# The literal check name in each `_finding` call is what the catalogue guard
+# reads, and `tests/test_the_nightly_check_finds_entry_level_exceptions.py`
+# pins the four literals to `journal_exceptions.ALL_KINDS`.
+
+def check_round_figure_journals(db, firm_id: str, client_id: str, entries) -> list[dict]:
+    """A one-off manual journal for a large round sum. Reads only `entries`."""
+    from core.ist_clock import ist_today
+    return [
+        _finding("journal_round_figure", "warning", f"{x.summary} {x.also_could_be}",
+                 amount_paise=x.amount_paise, **_exception_details(x))
+        for x in journal_exceptions.round_figure_journals(entries.values(), as_of=ist_today())
+    ]
+
+
+def check_sunday_journals(db, firm_id: str, client_id: str, entries) -> list[dict]:
+    """A manual journal dated on a Sunday, for a client that does not trade on
+    Sundays. Reads only `entries`."""
+    from core.ist_clock import ist_today
+    return [
+        _finding("journal_dated_on_a_sunday", "warning", f"{x.summary} {x.also_could_be}",
+                 amount_paise=x.amount_paise, **_exception_details(x))
+        for x in journal_exceptions.sunday_journals(entries.values(), as_of=ist_today())
+    ]
+
+
+def check_entries_after_their_maker_was_suspended(db, firm_id: str, client_id: str,
+                                                  entries) -> list[dict]:
+    """An entry made after the member it names was suspended.
+
+    Two narrow reads, both bounded by the ANSWER: the firm's suspended members
+    (a handful), then only this client's entries naming one of them and made
+    after the earliest suspension. A firm with nobody suspended reads nothing
+    more."""
+    members = fetch_all(lambda: (
+        db.table("users").select("id, is_active, sessions_revoked_at")
+        .eq("firm_id", firm_id).eq("is_active", False)
+        .not_.is_("sessions_revoked_at", "null")),
+        label="reconciliation.suspended_members")
+    if not members:
+        return []
+    earliest = min(str(m["sessions_revoked_at"]) for m in members)
+    rows = fetch_all_in(
+        lambda: (db.table("journal_entries")
+                 .select("id, entry_date, created_at, created_by, reference_no")
+                 .eq("firm_id", firm_id).eq("client_id", client_id)
+                 .eq("is_posted", True).is_("deleted_at", "null")
+                 .gte("created_at", earliest)),
+        "created_by", [str(m["id"]) for m in members],
+        label="reconciliation.entries_by_suspended_members")
+    for r in rows:
+        e = entries.get(r.get("id"))
+        r["amount_paise"] = sum(ln.debit_paise for ln in e.lines) if e else None
+    return [
+        _finding("entry_made_after_its_maker_was_suspended", "warning",
+                 f"{x.summary} {x.also_could_be}", amount_paise=x.amount_paise,
+                 **_exception_details(x))
+        for x in journal_exceptions.departed_member_entries(rows, members)
+    ]
+
+
+def check_receipts_against_output_tax(db, firm_id: str, client_id: str, entries) -> list[dict]:
+    """Money received rose while the output tax charged on sales fell.
+
+    The chart is the one fetch (firm-wide and this client's accounts, bounded by
+    the chart's size); the months are folded out of `entries`. Which accounts
+    are output tax is `domain/gst/tax_control_accounts`, the rule the GST
+    return reads; which are bank and cash is `ledger_anomalies.is_bank_or_cash`."""
+    from core.ist_clock import ist_today
+    from domain.gst import tax_control_accounts
+
+    coa = fetch_all(lambda: (
+        db.table("chart_of_accounts")
+        .select("id, client_id, system_account_key, account_name, account_type, account_subtype")
+        .eq("firm_id", firm_id).or_(f"client_id.eq.{client_id},client_id.is.null")),
+        label="reconciliation.receipts_against_output_tax.chart")
+    output_ids, _input_ids = tax_control_accounts.output_and_input_ids(coa)
+    money_ids = {c["id"] for c in coa
+                 if ledger_anomalies.is_bank_or_cash(c.get("account_subtype"),
+                                                     c.get("system_account_key"))}
+    if not output_ids or not money_ids:
+        return []
+    receipts, output = journal_exceptions.monthly_receipts_and_output_tax(
+        entries.values(), money_accounts=money_ids, output_accounts=output_ids)
+    return [
+        _finding("receipts_rise_while_output_tax_falls", "warning",
+                 f"{x.summary} {x.also_could_be}", amount_paise=x.amount_paise,
+                 **_exception_details(x))
+        for x in journal_exceptions.receipts_against_output_tax(receipts, output, as_of=ist_today())
+    ]
+
+
 # ── What this engine checks, in the CA's words ───────────────────────────────
 #
 # THE BROWSER USED TO KEEP THIS AND HAD DRIFTED BOTH WAYS. `CHECK_LABEL` in
@@ -831,6 +932,31 @@ CHECK_CATALOGUE: dict[str, dict[str, str]] = {
         "label": "Balance That Never Moves",
         "looks_for": "An account carrying a balance with no movement at all in the period.",
     },
+    "journal_round_figure": {
+        "label": "Round-Figure Manual Journal",
+        "looks_for": (
+            f"A one-off manual journal in the last {journal_exceptions.RECENT_MONTHS} months for a "
+            "multiple of ₹10,000 of at least ₹1,00,000. A narration and account set that "
+            "recurs in another month is left alone."),
+    },
+    "journal_dated_on_a_sunday": {
+        "label": "Manual Journal Dated on a Sunday",
+        "looks_for": (
+            "A manual journal dated on a Sunday, for a client whose own documents are "
+            f"dated on a Sunday less than one time in {journal_exceptions.SUNDAY_TRADING_ONE_IN}. "
+            f"Needs at least {journal_exceptions.MIN_DOCUMENT_ENTRIES} documents in the window."),
+    },
+    "entry_made_after_its_maker_was_suspended": {
+        "label": "Entry After Its Maker Was Suspended",
+        "looks_for": "An entry made after the member it names as its maker was suspended in this product.",
+    },
+    "receipts_rise_while_output_tax_falls": {
+        "label": "Receipts Up, Output Tax Down",
+        "looks_for": (
+            "Money received in the last three complete months up by a quarter or more "
+            "(and by at least ₹1,00,000) while the output tax charged on sales fell by a "
+            "quarter or more, against the three months before."),
+    },
     ledger_anomalies.OUTLIER_MONTH: {
         "label": "Month Far Above the Usual",
         "looks_for": (
@@ -844,7 +970,7 @@ CHECK_CATALOGUE: dict[str, dict[str, str]] = {
 #: The last three are judgement calls, not invariants. Said out loud on the
 #: screen, because a CA reading sixteen chips of equal weight will treat the
 #: heuristic ones as defects and the invariants as noise.
-HEURISTIC_CHECKS: frozenset[str] = frozenset(ledger_anomalies.ALL_KINDS)
+HEURISTIC_CHECKS: frozenset[str] = frozenset(ledger_anomalies.ALL_KINDS) | frozenset(journal_exceptions.ALL_KINDS)
 
 
 def check_catalogue() -> dict:
@@ -863,7 +989,7 @@ def check_catalogue() -> dict:
         "not_checked": [
             sentence.format(other_checks=other_checks)
             for sentence in ledger_anomalies.NOT_CHECKED
-        ],
+        ] + list(journal_exceptions.NOT_CHECKED),
     }
 
 
@@ -878,6 +1004,10 @@ _CHECKS = [
     check_orphan_money_journals,
     check_fixed_asset_register,
     check_ledger_anomalies,
+    check_round_figure_journals,
+    check_sunday_journals,
+    check_entries_after_their_maker_was_suspended,
+    check_receipts_against_output_tax,
 ]
 
 
@@ -945,6 +1075,14 @@ def run_reconciliation(db, firm_id: str, client_id: str, *, trigger: str, trigge
         "findings_count": len(all_findings),
         "completed_at": datetime.now(timezone.utc).isoformat(),
     }).eq("id", run_id).execute()
+
+    # POST-A-050: the three results the digest could not compute per page load
+    # (GSTR-2B/ITC, near-duplicate bills, recurring journals) are stored here,
+    # from the ledger this run already holds. After the run is marked complete
+    # and never raising, so a failure in a stage the books check did not have
+    # yesterday cannot turn a finished check into a failed one.
+    from services import nightly_exception_results_service
+    nightly_exception_results_service.refresh_client(db, firm_id, client_id, entries)
 
     return {
         "run_id": run_id, "status": "completed", "checks_run": checks_run,

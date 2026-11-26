@@ -136,24 +136,21 @@ def test_a_hundred_percent_rate_leaves_no_residual_to_protect():
     assert fa._wdv_residual_at_end_of_life(_asset(), Decimal("100")) == 0
 
 
-def test_straight_line_is_untouched():
+def test_straight_line_is_untouched_by_the_wdv_floor_and_its_last_year_takes_what_is_left():
     """SL divides by the life, so it already terminates. The floor must not
     reach it — an SL asset's terminal is the stored salvage and always was.
 
-    Asserted as "the same arithmetic it always did", including the trailing
-    paisa: ₹1,00,000 over three years floors to ₹33,333.33 a year, three of
-    which leave one paisa that falls into a fourth charge. That tail is
-    pre-existing, is not what FA-13 is about — which is a charge with no
-    terminal at all, not a rounding remainder — and moving it into year three
-    would change the final-year charge on every SL asset in the register. That
-    is exactly the "changes what is already recorded" hazard the probe pass
-    warned about, so it stays and is written down instead.
+    ₹1,00,000 over three years floors to ₹33,333.33 a year, three of which
+    leave one paisa. That paisa used to fall into a fourth year on its own
+    (and, being under twelve paise, its months' shares were nil and blocked
+    the months after them); since POST-A-437 the third year, the last of the
+    life, takes what is left, so the asset reaches nil at the end of its life.
     """
     charges = _walk(_asset(depreciation_method="SL", wdv_rate_percent=None), 5)
     assert sum(charges) == 100_000_00, charges
-    assert charges[:3] == [math.floor(100_000_00 / 3)] * 3, charges
-    assert charges[3] == 100_000_00 - 3 * math.floor(100_000_00 / 3)
-    assert charges[4] == 0
+    assert charges[:2] == [math.floor(100_000_00 / 3)] * 2, charges
+    assert charges[2] == 100_000_00 - 2 * math.floor(100_000_00 / 3)
+    assert charges[3:] == [0, 0]
 
 
 def test_the_floor_is_not_a_five_percent_constant():

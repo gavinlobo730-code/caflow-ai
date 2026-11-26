@@ -52,8 +52,9 @@ def test_a_levying_state_we_do_not_model_is_a_gap(code):
     """The bug. These states levy PT; nothing was deducted; that must be said."""
     r = pt.classify_state(code)
     assert r.is_gap
-    assert "levies professional tax" in r.note
-    assert "Article 276" in r.note, "the note should say who carries the shortfall"
+    assert "is listed here as levying professional tax" in r.note
+    assert "NOTHING has been deducted" in r.note
+    assert "not a finding that nothing is due" in r.note, "the note should say the zero is a gap, not an answer"
 
 
 def test_an_unrecognised_code_is_a_gap_not_a_zero():

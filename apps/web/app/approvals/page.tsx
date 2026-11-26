@@ -9,9 +9,12 @@ import { ListSkeleton } from "@/components/ui/skeleton";
 import { MFA_SETUP_HREF, isMfaRefusal } from "@/lib/auth/mfaRefusal";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
-import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { confirmDialog, promptDialog } from "@/components/ui/confirm-dialog";
 import { AUTHENTICATOR_RESET, askedWithText } from "@/lib/auth/authenticatorReset";
 import { formatRelativeTime } from "@/lib/services/formatting";
+import { pageFrameClass } from "@/components/ui/page-frame";
+import { ACCESS_REQUEST } from "@/lib/access/accessRequest";
+import { pairWords } from "@/lib/access/permissionGroups";
 
 // Module 9.0 M4 — Governance Approval Inbox (maker-checker).
 // Partners approve/reject; everyone with access sees pending + history.
@@ -21,6 +24,13 @@ const STATUS_STYLE: Record<string, string> = {
   rejected: "bg-state-problem-surface text-state-problem",
   cancelled: "bg-state-done-surface text-state-done",
 };
+
+/** The permission a request for access asks for, in a person's words ("See payroll"), from the pair the server stored. */
+function accessWords(r: ApprovalRequest): string {
+  const resource = typeof r.payload?.resource === "string" ? r.payload.resource : "";
+  const action = typeof r.payload?.action === "string" ? r.payload.action : "";
+  return resource && action ? pairWords(resource, action) : (r.summary || "access");
+}
 
 export default function ApprovalsPage() {
   // Maker/checker, read off the matrix instead of restated as a role:
@@ -72,10 +82,37 @@ export default function ApprovalsPage() {
       });
       if (!ok) return;
     }
+    if (action === "approve" && request?.request_type === ACCESS_REQUEST) {
+      // An approval switches the permission on at once, so the Partner is told in a person's words what it is and for whom
+      // before the click does anything. A "no" leaves the request exactly as it was.
+      const who = typeof request.payload?.user_name === "string" ? request.payload.user_name : "this person";
+      const what = accessWords(request);
+      const ok = await confirmDialog({
+        title: "Give this access?",
+        message: `${who} will be allowed to: ${what}. It takes effect straight away and is recorded in the audit log. You can take it back at any time from Team, under Permissions.`,
+        confirmLabel: "Give access",
+      });
+      if (!ok) return;
+    }
+    // A declined request for access tells the asker the reason given, so the Partner is asked for one (it may be left
+    // empty) and whatever they typed is what is sent: a stock phrase would be shown to the asker as a Partner's own words.
+    let declineReason: string | undefined = "Rejected by Partner";
+    if (action === "reject" && request?.request_type === ACCESS_REQUEST) {
+      const who = typeof request.payload?.user_name === "string" ? request.payload.user_name : "The person who asked";
+      const typed = await promptDialog({
+        title: "Decline this request?",
+        message: `${who} is told it was declined, with the reason you give here. You can leave the reason empty.`,
+        label: "Reason (optional)",
+        confirmLabel: "Decline",
+        multiline: true,
+      });
+      if (typed === null) return;
+      declineReason = typed.trim() || undefined;
+    }
     setBusy(id); setError(null); setActionError(null);
     try {
       if (action === "approve") await api.approvals.approve(id);
-      else if (action === "reject") await api.approvals.reject(id, "Rejected by Partner");
+      else if (action === "reject") await api.approvals.reject(id, declineReason);
       else await api.approvals.cancel(id);
       await load();
     } catch (e) {
@@ -92,11 +129,11 @@ export default function ApprovalsPage() {
   }
 
   return (
-    <div className="p-6 max-w-4xl">
+    <div className={pageFrameClass("data")}>
       <PageHeader
         icon={<ShieldCheck size={18} className="text-brand" />}
         title="Approvals"
-        subtitle="A Partner approves or rejects requests here, including a request to reset a lost authenticator app. Every decision is recorded in the audit log."
+        subtitle="A Partner approves or rejects requests here: a member of staff asking for access to a part of the product, or a request to reset a lost authenticator app. Every decision is recorded in the audit log."
         className="mb-4"
       />
 
@@ -148,14 +185,27 @@ export default function ApprovalsPage() {
       ) : !error ? (
         <div className="space-y-2">
           {items.map((r) => (
-            <div key={r.id} className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-brand truncate">{r.summary || r.request_type}</p>
-                <p className="text-2xs text-ps-hint mt-0.5">
+            // On a phone the request's words take the row and its actions wrap under them; side by side the summary was squeezed
+            // to its first few letters (POST-A-131).
+            <div key={r.id} className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0 flex-1 basis-56">
+                <p className="text-sm font-medium text-brand truncate">
+                  {r.request_type === ACCESS_REQUEST && typeof r.payload?.user_name === "string"
+                    ? `${r.payload.user_name} asks to: ${accessWords(r)}`
+                    : r.summary || r.request_type}
+                </p>
+                <p className="text-2xs text-ps-hint mt-0.5 break-words">
                   <span className="font-mono">{r.request_type}</span>
                   {r.requested_by_email ? ` · by ${r.requested_by_email}` : ""}
                   {r.reason ? ` · ${r.reason}` : ""}
                 </p>
+                {r.request_type === ACCESS_REQUEST && (
+                  <p className="text-2xs text-gray-500 mt-0.5 break-words" data-access-request-detail>
+                    {typeof r.payload?.user_role === "string" ? `${r.payload.user_role}. ` : ""}
+                    {typeof r.payload?.asked_from === "string" && r.payload.asked_from ? `Asked from the ${r.payload.asked_from} screen. ` : ""}
+                    {typeof r.payload?.note === "string" && r.payload.note ? `Their note: ${r.payload.note}` : "No note given."}
+                  </p>
+                )}
                 {r.request_type === AUTHENTICATOR_RESET && typeof r.payload?.reason === "string" && (
                   <p className="text-2xs text-gray-500 mt-0.5">Reason given: {r.payload.reason}</p>
                 )}

@@ -23,18 +23,25 @@ import { MAIN_CONTENT_ID } from "@/components/shell/SkipToContent";
  */
 export function WorkspaceShell({
   onOpenSearch,
+  onOpenGuide,
   children,
 }: {
   onOpenSearch: () => void;
+  onOpenGuide: () => void;
   children: React.ReactNode;
 }) {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-ps-bg print:block print:h-auto print:overflow-visible">
-      <WorkspaceTopBar onOpenSearch={onOpenSearch} />
+      <WorkspaceTopBar onOpenSearch={onOpenSearch} onOpenGuide={onOpenGuide} />
       {/* The skip link's target. `tabIndex={-1}` so a jump to it moves focus
           here, `outline-none` because it is a landmark and not a control —
           both explained at SkipToContent. */}
-      <main id={MAIN_CONTENT_ID} tabIndex={-1} className="min-h-0 flex-1 overflow-y-auto outline-none print:overflow-visible">{children}</main>
+      {/* `relative` (PRE-A-024): an absolutely positioned descendant with no positioned ancestor of its own (a
+          screen-reader-only table caption is one) is otherwise placed against the WINDOW, escapes this scrolling
+          area, and makes the window itself as tall as the content: on a long page the window then scrolled past
+          the end, the top bar went out of view and a screen of blank space showed below. Positioned here, every
+          such descendant is laid out and clipped inside the area that scrolls. */}
+      <main id={MAIN_CONTENT_ID} tabIndex={-1} className="relative min-h-0 flex-1 overflow-y-auto outline-none print:overflow-visible">{children}</main>
     </div>
   );
 }

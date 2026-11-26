@@ -62,12 +62,33 @@ def _all_bills(db, firm_id: str, client_id: Optional[str]) -> list[dict]:
         q = (db.table("purchase_bills")
              .select("id, bill_no, bill_date, vendor_id, status, total_paise, "
                      "paid_paise, tds_paise, cgst_paise, sgst_paise, igst_paise, "
-                     "debited_paise, credit_note_paise, is_opening")
+                     "debited_paise, credit_note_paise, is_opening, "
+                     "ineligible_itc_cgst_paise, ineligible_itc_sgst_paise, "
+                     "ineligible_itc_igst_paise")
              .eq("firm_id", firm_id)
              .in_("status", list(_LIVE_STATUSES)))
         return q.eq("client_id", client_id) if client_id else q
 
     return _opening.without_carried_over(fetch_all(query, label="rule37.purchase_bills"))
+
+
+def _blocked_head(row: dict, head: str) -> int:
+    """The tax of one head a document's lines marked blocked under CGST Act
+    s.17(5) (migrations 240 and 685), never more than the head itself."""
+    whole = max(0, int(row.get(f"{head}_paise") or 0))
+    return min(whole, max(0, int(row.get(f"ineligible_itc_{head}_paise") or 0)))
+
+
+def _creditable(row: dict, head: str) -> int:
+    """The tax of one head the document moved GST Input by: its whole tax
+    less what its lines marked blocked. A row read before the blocked
+    columns existed carries none, so its whole tax is creditable, which is
+    what every such document posted."""
+    return max(0, int(row.get(f"{head}_paise") or 0)) - _blocked_head(row, head)
+
+
+def _blocked(row: dict) -> int:
+    return sum(_blocked_head(row, h) for h in ("cgst", "sgst", "igst"))
 
 
 def _fold_notes(rows: list, sign: int, out: dict) -> None:
@@ -86,11 +107,18 @@ def _fold_notes(rows: list, sign: int, out: dict) -> None:
             continue
         if str(n.get("status") or "").lower() == "cancelled":
             continue
-        acc = out.setdefault(bill, {"total": 0, "cgst": 0, "sgst": 0, "igst": 0})
+        acc = out.setdefault(bill, {"total": 0, "cgst": 0, "sgst": 0, "igst": 0,
+                                    "blocked": 0})
         acc["total"] += sign * int(n.get("total_paise") or 0)
-        acc["cgst"] += sign * int(n.get("cgst_paise") or 0)
-        acc["sgst"] += sign * int(n.get("sgst_paise") or 0)
-        acc["igst"] += sign * int(n.get("igst_paise") or 0)
+        # THE NOTE'S CREDITABLE TAX, NOT ITS WHOLE TAX (POST-A-463). Since
+        # POST-A-459 a purchase note moves GST Input by the tax its lines
+        # did not mark blocked under CGST Act s.17(5), as the bill did; the
+        # blocked part went to the cost and was never credit. Netting the
+        # whole tax against the bill's credit would take blocked tax off
+        # credit that never held it.
+        for head in ("cgst", "sgst", "igst"):
+            acc[head] += sign * _creditable(n, head)
+        acc["blocked"] += sign * _blocked(n)
 
 
 def _note_adjustments(db, firm_id: str, client_id: Optional[str]) -> dict:
@@ -113,14 +141,18 @@ def _note_adjustments(db, firm_id: str, client_id: Optional[str]) -> dict:
     def debit_notes():
         q = (db.table("debit_notes")
              .select("id, purchase_bill_id, total_paise, cgst_paise, "
-                     "sgst_paise, igst_paise, status, deleted_at")
+                     "sgst_paise, igst_paise, status, deleted_at, "
+                     "ineligible_itc_cgst_paise, ineligible_itc_sgst_paise, "
+                     "ineligible_itc_igst_paise")
              .eq("firm_id", firm_id))
         return q.eq("client_id", client_id) if client_id else q
 
     def purchase_credit_notes():
         q = (db.table("purchase_credit_notes")
              .select("id, purchase_bill_id, total_paise, cgst_paise, "
-                     "sgst_paise, igst_paise, status, deleted_at")
+                     "sgst_paise, igst_paise, status, deleted_at, "
+                     "ineligible_itc_cgst_paise, ineligible_itc_sgst_paise, "
+                     "ineligible_itc_igst_paise")
              .eq("firm_id", firm_id))
         return q.eq("client_id", client_id) if client_id else q
 
@@ -151,14 +183,18 @@ def rule37_report(db, firm_id: str, client_id: Optional[str] = None,
         # `debited_paise` / `credit_note_paise` are what the BILL row records
         # was noted against it; the per-head tax is only on the notes. Both are
         # read, and they answer different halves of the same proportion.
-        n = notes.get(r.get("id")) or {"cgst": 0, "sgst": 0, "igst": 0}
+        n = notes.get(r.get("id")) or {"cgst": 0, "sgst": 0, "igst": 0,
+                                       "blocked": 0}
         reversal = reversal_for_bill(
             total_paise=int(r.get("total_paise") or 0),
             paid_paise=int(r.get("paid_paise") or 0),
             tds_paise=int(r.get("tds_paise") or 0),
-            cgst_paise=int(r.get("cgst_paise") or 0),
-            sgst_paise=int(r.get("sgst_paise") or 0),
-            igst_paise=int(r.get("igst_paise") or 0),
+            # The bill's CREDITABLE tax per head (POST-A-463): Rule 37(1)
+            # reverses the credit availed, and tax the bill's lines marked
+            # blocked under s.17(5) was posted to the cost, never availed.
+            cgst_paise=_creditable(r, "cgst"),
+            sgst_paise=_creditable(r, "sgst"),
+            igst_paise=_creditable(r, "igst"),
             debited_paise=int(r.get("debited_paise") or 0),
             credit_note_paise=int(r.get("credit_note_paise") or 0),
             debit_note_cgst_paise=max(0, -n["cgst"]),
@@ -184,6 +220,10 @@ def rule37_report(db, firm_id: str, client_id: Optional[str] = None,
             "tds_paise": int(r.get("tds_paise") or 0),
             "debited_paise": int(r.get("debited_paise") or 0),
             "credit_note_paise": int(r.get("credit_note_paise") or 0),
+            # The tax on this supply blocked under s.17(5), net of the
+            # notes' blocked tax: never availed, so never reversed. Shown so
+            # a reversal smaller than the bill's tax says why.
+            "blocked_itc_paise": max(0, _blocked(r) + n["blocked"]),
             # The value of the supply AS IT NOW STANDS, which is what the
             # proportion runs on. Shown because a CA reading "₹59,000 unpaid"
             # against a ₹1,18,000 bill needs to see why.

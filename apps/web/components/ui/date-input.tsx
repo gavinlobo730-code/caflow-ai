@@ -167,6 +167,10 @@ export interface DateInputProps
   /** `YYYY-MM-DD`: the date this one belongs on or before. A SHORT form that would land after it is read in an earlier year (month), and a date
    *  typed in full that is after it gets the `max` hint. */
   notAfter?: string | null;
+  /** `YYYY-MM-DD`: another date this one sits beside on NO side that can be claimed (a notice's response date beside the day it was received).
+   *  A day and month typed with no year is read in the year that puts it nearest, within half a year. Never today: an expiry or a needed-by is
+   *  nearly always ahead, and keeps the financial-year reading. See the header of lib/dates/typedDate.ts. */
+  near?: string | null;
   /** Marks the box invalid for a reason the PARENT knows (the server refused the
    *  date). The field's own unreadable-text state needs no help. */
   invalid?: boolean;
@@ -249,7 +253,7 @@ function boxFor(value: string, min?: string, max?: string): Box {
 
 export const DateInput = React.forwardRef<HTMLInputElement, DateInputProps>(
   function DateInput(
-    { value, onChange, onStateChange, financialYear, anchor, min: minHint, max: maxHint, notBefore, notAfter, invalid, refuseAfterMax, wrapperClassName,
+    { value, onChange, onStateChange, financialYear, anchor, min: minHint, max: maxHint, notBefore, notAfter, near, invalid, refuseAfterMax, wrapperClassName,
       id, onFocus, onBlur, onKeyDown, disabled, readOnly, ...rest },
     ref,
   ) {
@@ -271,7 +275,9 @@ export const DateInput = React.forwardRef<HTMLInputElement, DateInputProps>(
     // The bounds the parent was last told about the box against (by the mount, a value of its own, a keystroke or a commit).
     const toldAgainst = React.useRef<{ min: string | undefined; max: string | undefined }>({ min, max });
 
-    React.useEffect(() => {
+    // A value the parent changes is taken in BEFORE the paint (a layout effect): taken in after it, a dialog opened again over a value its parent reset in an
+    // effect drew the last day it held for one frame (POST-A-395).
+    React.useLayoutEffect(() => {
       if (value === handedUp.current) return;
       handedUp.current = value;
       const next = boxFor(value, min, max);
@@ -301,7 +307,7 @@ export const DateInput = React.forwardRef<HTMLInputElement, DateInputProps>(
     }, []);
 
     function context(): TypedDateContext {
-      return { financialYear, anchor: anchorAtFocus.current ?? anchor ?? (value || null), min, max, notBefore, notAfter };
+      return { financialYear, anchor: anchorAtFocus.current ?? anchor ?? (value || null), min, max, notBefore, notAfter, near };
     }
 
     /** What the box holds changed: tell the parent what it IS, not yet its value. */

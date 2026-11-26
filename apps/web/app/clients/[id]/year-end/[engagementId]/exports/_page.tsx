@@ -11,6 +11,7 @@ import { useClientEntityType } from "@/lib/clients/useClientEntityType";
 import { usesScheduleIII } from "@/lib/entityObligations";
 import { formatDate } from "@/lib/dates/format";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/states";
 import { objectOrNull } from "@/lib/api/shape";
 
 function timeAgo(iso: string): string {
@@ -350,8 +351,12 @@ export default function ExportsPage() {
       )}
 
       {exports.length === 0 && (
-        <div className="bg-white rounded-xl border border-ps-border text-center py-10">
-          <p className="text-xs text-ps-hint">No exports generated yet. Click Generate above.</p>
+        <div className="bg-white rounded-xl border border-ps-border">
+          <EmptyState
+            className="py-10"
+            title="No exports generated yet"
+            description="Press Generate above to produce one; each export is listed here with the time it was made."
+          />
         </div>
       )}
     </div>

@@ -9,15 +9,16 @@ import uuid
 import logging
 from datetime import datetime, timezone, date, timedelta
 from decimal import Decimal
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ValidationError as PydanticValidationError
-from models.clearable import patch_dict
+from models.clearable import draft_only_clears, patch_dict, put_back_on_a_draft, without
 from models.common import api_response
 from models.invoices import SalesInvoiceIn, SalesInvoiceUpdateIn
 from domain.gst import discount as gst_discount
 from domain.sales.line_tax import compute_line_gst
+from domain.sales import inclusive_price
 from domain.sales import credit_limit
 from domain.accounting import journal_figures, journal_source as JS, opening_documents
 from domain.inventory import stock_effect as stock_effects
@@ -292,14 +293,14 @@ def _record_hsn_preferences(db, firm_id: str, client_id: str, lines: list[dict])
             )
             if existing.data:
                 row = existing.data[0]
-                db.table("hsn_sac_preferences").update({
+                privileged_for(db).table("hsn_sac_preferences").update({
                     "use_count":          (row.get("use_count") or 0) + 1,
                     "last_used_at":       now_iso,
                     "sample_description": desc,
                     "gst_rate_bps":       gst_rate_bps,
-                }).eq("id", row["id"]).execute()
+                }).eq("id", row["id"]).eq("firm_id", firm_id).eq("client_id", client_id).execute()
             else:
-                db.table("hsn_sac_preferences").insert({
+                privileged_for(db).table("hsn_sac_preferences").insert({
                     "firm_id":            firm_id,
                     "client_id":          client_id,
                     "description_key":    key,
@@ -651,6 +652,7 @@ def _resolve_credit_terms(
     try:
         inv_d: Optional[date] = date.fromisoformat(str(invoice_date)[:10])
     except (ValueError, TypeError):
+        # 'Never raises on malformed input' (docstring): with no readable invoice date, no due date or credit days are derived from it.
         inv_d = None
 
     if due_date:
@@ -659,6 +661,7 @@ def _resolve_credit_terms(
             try:
                 cd = (date.fromisoformat(str(due_date)[:10]) - inv_d).days
             except (ValueError, TypeError):
+                # The due date given is not a date: it is passed through as given and no credit days are derived from it.
                 cd = None
         return str(due_date)[:10], (int(cd) if cd is not None else None)
 
@@ -673,39 +676,18 @@ def _resolve_credit_terms(
 
 
 def _apply_credit_days_due_date(data: dict, base_invoice_date: Optional[str]) -> None:
-    """On a draft edit: when credit_days is set without an explicit due_date,
-    recompute due_date from the (new or stored) invoice_date in place, so an edited
-    credit period reflects in the stored due date. No-op otherwise."""
-    if data.get("credit_days") is None or data.get("due_date"):
-        return
-    if not base_invoice_date:
-        return
-    try:
-        data["due_date"] = (
-            date.fromisoformat(str(base_invoice_date)[:10])
-            + timedelta(days=max(0, int(data["credit_days"])))
-        ).isoformat()
-    except (ValueError, TypeError):
-        pass
+    """On a draft edit: when credit_days is set without an explicit due_date, recompute due_date from the (new or stored)
+    invoice_date in place. The rule is `services.credit_terms`'s, which purchase bills already use (POST-A-021: this was a second
+    copy whose unreadable date was swallowed with no word)."""
+    from services.credit_terms import apply_credit_days_due_date
+    apply_credit_days_due_date(data, base_invoice_date)
 
 
 def _apply_due_date_credit_days(data: dict, base_invoice_date: Optional[str]) -> None:
-    """Mirror of _apply_credit_days_due_date: when due_date is set directly without
-    an explicit credit_days (e.g. the post-issue Edit Details modal), recompute and
-    re-store credit_days as the actual day-gap, so the derived "Terms" label
-    (lib/sales/paymentTerms.ts) never goes stale relative to the real due date.
-    No-op otherwise."""
-    if not data.get("due_date") or data.get("credit_days") is not None:
-        return
-    if not base_invoice_date:
-        return
-    try:
-        data["credit_days"] = (
-            date.fromisoformat(str(data["due_date"])[:10])
-            - date.fromisoformat(str(base_invoice_date)[:10])
-        ).days
-    except (ValueError, TypeError):
-        pass
+    """Mirror of _apply_credit_days_due_date: when due_date is set without credit_days, re-store credit_days as the day-gap, so the
+    derived "Terms" label never goes stale. `services.credit_terms`'s rule, as above."""
+    from services.credit_terms import apply_due_date_credit_days
+    apply_due_date_credit_days(data, base_invoice_date)
 
 
 @router.post("/")
@@ -1377,6 +1359,45 @@ class _BulkInvoicesIn(BaseModel):
     invoices: list[dict]
 
 
+class InclusiveRateIn(BaseModel):
+    """What a person typed to have a GST-inclusive price worked back (POST-A-490). Paise and basis points, as everywhere."""
+    client_id: str
+    #: The figure typed, including GST: the price of one unit, or of the whole line, per `basis`.
+    inclusive_paise: int
+    basis: Literal["unit", "line"]
+    quantity: float = 1.0
+    gst_rate_bps: int
+    #: The line's own discount as typed on the line, if it has one (the same two fields a line carries).
+    discount_percent_bps: Optional[int] = None
+    discount_paise: Optional[int] = None
+    #: Whether the line carries compensation cess. Such a line is refused in words, not answered without the cess.
+    has_cess: bool = False
+
+
+@router.post("/inclusive-rate")
+def inclusive_rate(
+    data: InclusiveRateIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """The unit rate before GST that a GST-inclusive figure stands for, with the line it gives, as the invoice will
+    compute it (`domain/sales/inclusive_price` has the whole account, and why an exact rate does not always exist).
+
+    IT COMPUTES AND WRITES NOTHING. The person reads the answer and, if they accept it, the rate goes into the line's
+    rate box and the line is saved like any other, so CGST s.15's value of supply, the tax, the journal and GSTR-1 are
+    untouched by this route. It asks `accounting:write` because it is a tool of the invoice editor and of nobody who
+    cannot raise an invoice, and it asserts the client the caller named, as every route in this router does.
+    """
+    assert_client_access(current_user, data.client_id)
+    try:
+        answer = inclusive_price.rate_for_inclusive(
+            inclusive_paise=data.inclusive_paise, basis=data.basis, quantity=data.quantity,
+            gst_rate_bps=data.gst_rate_bps, discount_percent_bps=data.discount_percent_bps,
+            discount_paise=data.discount_paise, has_cess=data.has_cess)
+    except inclusive_price.CannotWorkBack as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    return api_response(True, answer.as_dict())
+
+
 @router.post("/bulk")
 def bulk_create_invoices(
     payload: _BulkInvoicesIn,
@@ -1794,6 +1815,25 @@ def _reject_an_edit_the_invoice_cannot_take(status: str, data: dict) -> None:
                     "lines with it and the totals are worked out again."))
 
 
+def _what_the_edit_sent(model: SalesInvoiceUpdateIn) -> tuple[dict, dict, Optional[dict]]:
+    """What an invoice edit writes, what only a draft may take away, and the per-line units, read off the request once.
+
+    A reference or a note SENT AS NULL is cleared (POST-A-399); every other null (the due date and the credit days included) still reads as
+    "not sent". What only a DRAFT may take away (its place of supply) is held aside until the stored invoice is read: on an issued invoice
+    it is frozen and a null for it reads "not sent", as it always did.
+    """
+    draft_clears = draft_only_clears(model)
+    data = without(patch_dict(model), draft_clears)
+    # The request model field is is_inter_state; the DB column is is_interstate.
+    # Map it so the flag (the form's IGST checkbox) both drives the GST recompute
+    # below and persists correctly — without this the column write would 400.
+    if "is_inter_state" in data:
+        data["is_interstate"] = data.pop("is_inter_state")
+    # Always allowed regardless of status — unit alone never touches
+    # rate/quantity/amount/GST, unlike a full `lines` replace.
+    return data, draft_clears, data.pop("line_units", None)
+
+
 @router.patch("/{invoice_id}")
 def update_invoice(
     invoice_id: str,
@@ -1806,16 +1846,7 @@ def update_invoice(
     _reject_locked_invoice_fields. CANCELLED: cannot be updated at all."""
     _assert_invoice_scope(current_user, invoice_id)
     try:
-        # A reference or a note SENT AS NULL is cleared (POST-A-399); every other null (the due date and the credit days included) still reads as "not sent".
-        data = patch_dict(data)
-        # The request model field is is_inter_state; the DB column is is_interstate.
-        # Map it so the flag (the form's IGST checkbox) both drives the GST recompute
-        # below and persists correctly — without this the column write would 400.
-        if "is_inter_state" in data:
-            data["is_interstate"] = data.pop("is_inter_state")
-        # Always allowed regardless of status — unit alone never touches
-        # rate/quantity/amount/GST, unlike a full `lines` replace.
-        line_units = data.pop("line_units", None)
+        data, draft_clears, line_units = _what_the_edit_sent(data)
 
         if _USE_MOCK:
             for i, inv in enumerate(MOCK_SALES_INVOICES):
@@ -1823,6 +1854,7 @@ def update_invoice(
                     status = inv.get("status")
                     if status == "cancelled":
                         raise HTTPException(status_code=422, detail="Cancelled invoices cannot be updated")
+                    put_back_on_a_draft(data, draft_clears, status)
                     _reject_an_edit_the_invoice_cannot_take(status, data)
                     if "invoice_no" in data:
                         _assert_invoice_no_available(
@@ -1852,6 +1884,7 @@ def update_invoice(
         status = resp.data[0]["status"]
         if status == "cancelled":
             raise HTTPException(status_code=422, detail="Cancelled invoices cannot be updated")
+        put_back_on_a_draft(data, draft_clears, status)
         _reject_an_edit_the_invoice_cannot_take(status, data)
         if "invoice_no" in data:
             _assert_invoice_no_available(
@@ -2197,6 +2230,13 @@ def _post_and_mark_issued(db, current_user: dict, inv: dict, invoice_id: str):
         return None, None, api_response(
             False, None, "Cannot issue — this invoice is no longer a draft (it was issued or changed a moment ago). "
                          "Reload the invoice to see where it stands.")
+    except journal_figures.InvoiceBillsMoreThanItsOrder:
+        # The database holds what issued invoices bill against an order line (migration 650, POST-A-440): another invoice billing the
+        # same line was issued between this route's check and the database's lock. Nothing was posted.
+        return None, None, api_response(
+            False, None, "Cannot issue — another invoice billing the same sales order line was issued a moment ago, and together they "
+                         "would bill more than was ordered. Nothing was posted and this invoice remains a draft. Reload the order to "
+                         "see what is left to bill.")
     except journal_figures.EntryCannotBeReused as ve:
         # An entry from an earlier issue that did not finish is in the ledger and the draft no longer matches it (POST-A-092).
         # The sentence is whole, and the advice to seed the chart of accounts would be wrong here.
@@ -2340,6 +2380,19 @@ def issue_invoice(
         return api_response(False, None, "Unable to complete invoice operation. Please try again.")
 
 
+def _release_billed_time(db, firm_id: str, invoice_id: str, client_id) -> Optional[int]:
+    """Unmark the time a cancelled invoice had billed, and answer how many entries (None when it could not be done). The cancellation is
+    already committed when this runs and stands whatever happens here; a failure is logged and reported, never raised."""
+    try:
+        from services.time_billing_service import release_for_invoice
+        return release_for_invoice(db, firm_id, invoice_id)
+    except Exception as e:  # noqa: BLE001 - reported here; the cancellation stands
+        from core.observability import capture_soft_failure
+        _logger.error("cancel_invoice: the time billed by %s could not be released: %s", invoice_id, e, exc_info=True)
+        capture_soft_failure(e, operation="sales_invoice.cancel.release_time", firm_id=firm_id, client_id=client_id)
+        return None
+
+
 @router.post("/{invoice_id}/cancel")
 def cancel_invoice(
     invoice_id: str,
@@ -2445,11 +2498,17 @@ def cancel_invoice(
         except Exception as e:
             _logger.error("cancel_invoice: inventory reversal failed for %s: %s", invoice_id, e, exc_info=True)
 
+        # Time billed by this invoice is unbilled again (POST-B-194): a cancelled invoice bills nothing, so the entries it
+        # carried are released and offered for the next invoice. An invoice that billed no time releases nothing. After
+        # the cancellation is committed and never blocking it; a release that fails is reported, because entries left
+        # marked against a cancelled invoice would never be billed.
+        time_released = _release_billed_time(db, firm_id or "", invoice_id, inv.get("client_id"))
+
         log_event(
             firm_id or "", "sales_invoice", invoice_id,
             "cancel", actor_id=current_user.get("auth_user_id"),
             actor_email=current_user.get("email"),
-            new_data={"status": "cancelled", "reversed_journal": jrnl_id},
+            new_data={"status": "cancelled", "reversed_journal": jrnl_id, "time_entries_released": time_released},
         )
         return api_response(True, updated)
     except HTTPException:

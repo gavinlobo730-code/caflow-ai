@@ -1,0 +1,4 @@
+{
+  "comment": "POST-A-505. Narrow handlers (ValueError, TypeError, KeyError and the like) whose WHOLE body is a constant substitution and that say nothing why. Frozen on 20-11-2026 at 146; READ ONE BY ONE on 22-11-2026: 142 carry the reason inside the handler and four that guarded a stored record now report through capture_soft_failure, so the list is EMPTY and stays so: a new one is refused by tests/test_a_narrow_handler_that_substitutes_a_value_says_so.py.",
+  "frozen": {}
+}

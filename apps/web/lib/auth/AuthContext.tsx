@@ -1,5 +1,6 @@
 "use client";
 
+import { bindReadCacheToUser, forgetReads } from "@/lib/cache/readCache";
 import {
   createContext,
   useContext,
@@ -14,6 +15,8 @@ import { supabase, getSupabaseClient } from "@/lib/supabase/client";
 import { authErrorMessage } from "@/lib/auth/authErrorMessage";
 import { browserSessionStorage, clearAllDrafts } from "@/lib/drafts/unsentDraft";
 import { browserKeepAwake, type KeepAwake } from "@/lib/api/keepAwake";
+import { enforceBrowserSession, forgetKeepSignedIn, markBrowserSession, rememberKeepSignedIn } from "@/lib/auth/browserSessionGlue";
+import { LOGOUT_RECORD_WAIT_MS } from "@/lib/auth/browserSession";
 import {
   can as canDo,
   normalizeRole,
@@ -103,6 +106,7 @@ async function resolvePermissions(): Promise<PermissionMap | null> {
     if (!res?.success) return null;
     return parsePermissionMap(res.data?.permissions);
   } catch {
+    // null is "not read": can() then says no everywhere, so action controls are hidden, never offered, as the note above says.
     return null;
   }
 }
@@ -117,6 +121,7 @@ async function resolveMfaPolicy(): Promise<MfaPolicy | null> {
     if (!res?.success) return null;
     return parseMfaPolicy(res.data);
   } catch {
+    // null is "not read": an unknown policy must not tell an enrolled Partner their account is unsecured, as the note above says.
     return null;
   }
 }
@@ -167,16 +172,22 @@ interface AuthContextValue {
    * them (lib/auth/mfaEnrolment.ts). False while anything is unknown.
    */
   mustEnrolMfa: boolean;
+  /** The server's sentence naming what the authenticator guard locks for this caller (PRE-A-021), or null. */
+  mfaLockedSentence: string | null;
   /** Fetch the policy and the factor list afresh and answer the same question,
    *  for a caller that must decide NOW (onboarding's last step). */
   resolveEnrolmentRequired: () => Promise<boolean>;
-  signIn: (email: string, password: string) => Promise<{ error: string | null }>;
+  /** `keepSignedIn` is the sign-in page's tickbox (POST-A-483): off, the session ends when the browser closes. */
+  signIn: (email: string, password: string, keepSignedIn?: boolean) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
+  /** End the session on THIS device only (idle sign-out, POST-A-483): the person's other devices are left alone. */
+  endSessionHere: () => Promise<void>;
 }
 
 import { resolveAssurance, resolveVerifiedFactor, toMfaPending } from "./mfaAssurance";
 import { enrolmentRequired, parseMfaPolicy, type MfaPolicy } from "./mfaEnrolment";
 import { keepLastGood, latestWins } from "./latestWins";
+import { mayKeepAssurance, type KnownAssurance } from "./assuranceCarry";
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
@@ -233,6 +244,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // changed and this is a genuine refresh rather than a duplicate.
   const contextInFlightFor = useRef<string | null | undefined>(undefined);
   const [mfaPending, setMfaPending] = useState<boolean | null>(null);
+  // What the assurance in state was read for. An announcement of the sign-in service that cannot have changed which session this
+  // is (the hourly token refresh, a password saved, the library announcing the stored session again when a tab regains focus) keeps
+  // it while a fresh read is made, so the guard does not draw nothing and unmount the page under the person (POST-A-493), and so
+  // does a verified code on a session that was already admitted, which raises its level and never changes which session it is
+  // (POST-A-515 (c); lib/auth/assuranceCarry says exactly which announcements, and why everything else is read afresh).
+  const assuranceKnown = useRef<KnownAssurance>({ userId: null, accessToken: null, pending: null });
+  // Only the most recently STARTED read of the assurance may settle it (the independent review of POST-A-515 (c), 20-11-2026): reads are
+  // started by every announcement and by the stored session, and an older one that answered after a newer one wrote its answer, and the
+  // user and token it was read for, over the newer. A late "nothing is owed" over a newer "a challenge is owed" admitted the person for
+  // the seconds until the newer read answered; the other way round only held them at the challenge. Order of arrival is the network's;
+  // order of asking is ours (lib/auth/latestWins).
+  const assuranceGate = useRef(latestWins());
+
+  /** Read the assurance for `forSession` and settle it, remembering what it was read for. A failed read is "a challenge is owed". */
+  function readAssurance(forSession: Session | null) {
+    const userId = forSession?.user?.id ?? null;
+    const accessToken = forSession?.access_token ?? null;
+    const settle = assuranceGate.current.begin<boolean | null>((pending) => {
+      assuranceKnown.current = { userId, accessToken, pending };
+      setMfaPending(pending);
+    });
+    resolveMfaPending(forSession).then(settle).catch(() => settle(true));
+  }
   const [hasFirm, setHasFirm] = useState<boolean | null>(null);
   const [fullName, setFullName] = useState<string | null>(null);
   const [permissions, setPermissions] = useState<PermissionMap | null>(null);
@@ -359,15 +393,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // gates AuthGuard / first paint. Until it resolves, userRole is null, which
     // the permission helpers treat as least-privilege (fail-closed), so nothing
     // is over-exposed during the brief window.
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    // A browser closed since the person signed in, with "keep me signed in" off, ends the stored session HERE, before it
+    // is used (lib/auth/browserSession says what can and cannot be known). Never allowed to stop the app starting.
+    // When it ends the stored session it also says so to the server (best-effort, bounded), so the session it leaves behind is closed
+    // and a sign-in a few minutes later is not told to the Partners as a second device (POST-A-486).
+    enforceBrowserSession(getSupabaseClient(), undefined, () => import("@/lib/api").then(({ api }) => api.identity.recordLoginEvent("logout"))).catch(() => "kept").then(() => supabase.auth.getSession()).then(({ data: { session } }) => {
       clearTimeout(timeout);
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
       applyContext(session?.user ?? null);
       // Resolve MFA assurance for the restored session (null = computing).
+      assuranceKnown.current = { userId: session?.user?.id ?? null, accessToken: session?.access_token ?? null, pending: null };
       setMfaPending(null);
-      resolveMfaPending(session).then(setMfaPending).catch(() => setMfaPending(true));
+      readAssurance(session);
       if (!isPortalPrincipalPath()) refreshFactorState(session);
     }).catch(() => {
       clearTimeout(timeout);
@@ -377,15 +416,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
+        // Whoever signs in AFTER the page's start decision, by any route (password, a code, an invitation), belongs to this browser
+        // session. The announcement of a session recovered from storage arrives BEFORE the decision and marks nothing: the marker
+        // is a no-op until the decision is made (lib/auth/browserSessionGlue), which is what lets the decision see the truth.
+        if (_event === "SIGNED_IN") markBrowserSession();
         setSession(session);
         setUser(session?.user ?? null);
+        // A different person (or nobody) at this tab is not painted from the last one's lists (POST-A-124).
+        bindReadCacheToUser(session?.user?.id ?? null);
         // Non-blocking role + firm resolution.
         applyContext(session?.user ?? null);
         // Recompute MFA assurance on every auth transition (login, refresh, verify).
         // Set null first so the guard never treats an unresolved aal1 session as
-        // "fully authenticated" and skips the challenge.
-        setMfaPending(null);
-        resolveMfaPending(session).then(setMfaPending).catch(() => setMfaPending(true));
+        // "fully authenticated" and skips the challenge, EXCEPT for an announcement that cannot have changed which session this
+        // is, or that only raises the level of one already admitted (a verified code): that keeps the value already read while the
+        // fresh read is made, so the page is not unmounted (POST-A-493, POST-A-515 (c)). A kept value is replaced by the fresh read
+        // when it answers (the most recently started read always settles), so a level that did change takes the page away on the
+        // next render.
+        const nextUserId = session?.user?.id ?? null;
+        const nextAccessToken = session?.access_token ?? null;
+        if (mayKeepAssurance({ event: _event, known: assuranceKnown.current, nextUserId, nextAccessToken })) {
+          assuranceKnown.current = { ...assuranceKnown.current, accessToken: nextAccessToken };
+        } else {
+          assuranceKnown.current = { userId: nextUserId, accessToken: nextAccessToken, pending: null };
+          setMfaPending(null);
+        }
+        readAssurance(session);
         // A factor verified on the security page arrives here as
         // MFA_CHALLENGE_VERIFIED, which is what takes the banner down.
         if (!isPortalPrincipalPath()) refreshFactorState(session);
@@ -467,11 +523,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loginToRecord.current = false;
     import("@/lib/api")
       .then(({ api }) => api.identity.recordLoginEvent("login"))
-      .catch(() => {});
+      .catch(() => { /* best-effort: the sign-in has happened and nobody waits for the record */ });
   }, [session, mfaPending]);
 
-  const signIn = useCallback(async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+  const signIn = useCallback(async (email: string, password: string, keepSignedIn?: boolean) => {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    // The tickbox decides how long this sign-in lasts: off (the default), until the browser closes (POST-A-483). The flag names
+    // the person who ticked it, so nobody who signs in here later by another door inherits it.
+    if (!error) { rememberKeepSignedIn(keepSignedIn === true, data?.user?.id ?? null); markBrowserSession(); }
     // M6: login history (best-effort; never blocks sign-in) — recorded by the
     // effect above once any MFA challenge has been passed.
     if (!error) loginToRecord.current = true;
@@ -482,12 +541,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Record logout while the token is still valid, then sign out.
     try {
       const { api } = await import("@/lib/api");
-      await api.identity.recordLoginEvent("logout").catch(() => {});
+      await api.identity.recordLoginEvent("logout").catch(() => { /* best-effort: signing out must not wait for the record */ });
     } catch { /* best-effort */ }
     // Half-typed vouchers kept in this tab for a reload (frontend_ux-23) belong
     // to the person signing out; the next person at this tab is offered none.
     clearAllDrafts(browserSessionStorage());
+    forgetReads();
+    forgetKeepSignedIn();
     await supabase.auth.signOut();
+  }, []);
+
+  const endSessionHere = useCallback(async () => {
+    // Another tab that reached the same moment may already have ended this session: then there is nothing to end and nothing to record.
+    try {
+      const { data } = await getSupabaseClient().auth.getSession();
+      if (!data.session) return;
+    } catch { /* go on and end it */ }
+    // The record of the logout is best-effort and must not hold the sign-out: a cold API would otherwise leave the session live for the
+    // whole of its time limit (found by the independent review).
+    try {
+      const { api } = await import("@/lib/api");
+      await Promise.race([
+        api.identity.recordLoginEvent("logout").catch(() => { /* best-effort: signing out must not wait for the record */ }),
+        new Promise<void>((resolve) => setTimeout(resolve, LOGOUT_RECORD_WAIT_MS)),
+      ]);
+    } catch { /* best-effort */ }
+    clearAllDrafts(browserSessionStorage());
+    forgetReads();
+    forgetKeepSignedIn();
+    await getSupabaseClient().auth.signOut({ scope: "local" });
   }, []);
 
   const can = useCallback(
@@ -496,7 +578,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   return (
-    <AuthContext.Provider value={{ session, user, userRole, loading, roleLoading, mfaPending, hasFirm, fullName, permissions, can, refreshUserContext, mustEnrolMfa, resolveEnrolmentRequired, signIn, signOut }}>
+    <AuthContext.Provider value={{ session, user, userRole, loading, roleLoading, mfaPending, hasFirm, fullName, permissions, can, refreshUserContext, mustEnrolMfa, mfaLockedSentence: mfaPolicy?.lockedSentence ?? null, resolveEnrolmentRequired, signIn, signOut, endSessionHere }}>
       {children}
     </AuthContext.Provider>
   );

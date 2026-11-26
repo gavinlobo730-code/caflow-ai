@@ -81,7 +81,7 @@ test("the categories and their lives are fetched", () => {
 
 test("both Schedule II lives for computers reach the CA", () => {
   const s = page();
-  assert.match(s, /selected\.classes\.length > 1/,
+  assert.match(s, /\(selected\.classes \?\? \[\]\)\.length > 1/,
     "a category with more than one prescribed life must offer the choice — servers " +
     "are six years and end user devices three, and picking is the CA's job");
   assert.match(s, /schedule_ii_class/, "and the chosen class must be part of the form state");

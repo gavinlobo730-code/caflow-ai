@@ -3,8 +3,8 @@
 /**
  * Loan & Fixed Deposit Tracker
  *
- * Loan interest calculations follow standard reducing balance method.
- * EMI formula: P × r × (1+r)^n / ((1+r)^n - 1) where r = monthly interest rate
+ * The EMI calculator asks the server (GET /api/accounting/emi, domain/loans/emi.py), which works the reducing-balance
+ * formula in exact decimal arithmetic; this screen holds no copy of it.
  * All monetary values stored as integer paise — never floating point.
  *
  * TDS on FD interest per IT Act Section 194A. This screen states NO limit: it
@@ -18,7 +18,6 @@ import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput
 import { useState, useEffect, useCallback } from "react";
 import {
   Plus,
-  X,
   AlertTriangle,
   Calculator,
   IndianRupee,
@@ -29,6 +28,8 @@ import {
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { formatPaise } from "@/lib/services/formatting";
+import { api } from "@/lib/api";
+import { usePermissions } from "@/lib/auth/AuthContext";
 import { daysBetweenLocalISO } from "@/lib/dateMath";
 import { chooseMaturity, estimateFDMaturityPaise, isEstimate } from "@/lib/loans/fdMaturity";
 import { formatDate, todayIstISO } from "@/lib/dates/format";
@@ -36,9 +37,11 @@ import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { Callout } from "@/components/ui/callout";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/states";
 import { selectAll, selectAllKeyset } from "@/lib/supabase/selectAll";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -114,24 +117,6 @@ const LOAN_TYPE_LABELS: Record<LoanType, string> = {
 
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-/**
- * EMI formula: P × r × (1+r)^n / ((1+r)^n - 1)
- * where r = monthly interest rate (annual rate / 12 / 100)
- * Returns EMI in paise (integer arithmetic).
- */
-function calculateEMIPaise(
-  principalPaise: number,
-  annualRatePercent: number,
-  tenureMonths: number
-): number {
-  if (tenureMonths <= 0 || annualRatePercent <= 0) return 0;
-  // Use integer-safe arithmetic: work in paise throughout
-  const r = annualRatePercent / 12 / 100;
-  const pow = Math.pow(1 + r, tenureMonths);
-  const emi = (principalPaise * r * pow) / (pow - 1);
-  return Math.round(emi); // integer paise
-}
 
 /**
  * An interest rate as typed → the percent number the API field carries, or
@@ -225,6 +210,11 @@ export default function LoansAndFDPage() {
   const [calcRate, setCalcRate] = useState("");
   const [calcTenure, setCalcTenure] = useState("");
   const [calcResult, setCalcResult] = useState<number | null>(null);
+  const [calcBusy, setCalcBusy] = useState(false);
+  const [calcError, setCalcError] = useState<string | null>(null);
+  // The calculator asks GET /api/accounting/emi, which is rbac("accounting", "read").
+  const { can, resolved: permissionsResolved } = usePermissions();
+  const mayCalculate = can("accounting", "read");
 
   // Load data
   const loadData = useCallback(async () => {
@@ -291,7 +281,7 @@ export default function LoansAndFDPage() {
     if (principal <= 0) { setLoanError("Enter a valid principal amount"); return; }
     if (outstanding < 0) { setLoanError("Enter a valid outstanding amount"); return; }
     if (rate === null || rate <= 0) { setLoanError("Enter a valid interest rate"); return; }
-    if (loanDates.first) { setLoanError(loanDates.first); return; }
+    if (loanDates.first) { loanDates.refuseWith(setLoanError); return; }
     if (!loanForm.disbursement_date) { setLoanError("Disbursement date is required"); return; }
 
     setLoanSaving(true);
@@ -359,7 +349,7 @@ export default function LoansAndFDPage() {
     }
     if (principal <= 0) { setFDError("Enter a valid principal amount"); return; }
     if (rate === null || rate <= 0) { setFDError("Enter a valid interest rate"); return; }
-    if (fdDates.first) { setFDError(fdDates.first); return; }
+    if (fdDates.first) { fdDates.refuseWith(setFDError); return; }
     if (!fdForm.start_date) { setFDError("Start date is required"); return; }
     if (!fdForm.maturity_date) { setFDError("Maturity date is required"); return; }
     if (fdForm.maturity_date <= fdForm.start_date) { setFDError("Maturity date must be after start date"); return; }
@@ -423,14 +413,26 @@ export default function LoansAndFDPage() {
 
   // ─── EMI Calculator ────────────────────────────────────────────────────────
 
-  function runEMICalc() {
-    // The EMI calculator is read-only, so an unreadable principal simply
-    // computes nothing rather than an EMI on a coerced figure.
+  async function runEMICalc() {
+    // The instalment is the server's (POST-A-266): the browser reads what was typed and shows the answer. An unreadable
+    // figure computes nothing rather than an EMI on a coerced one, and says which box to correct.
+    setCalcResult(null);
     const p = paiseFromRupeeInput(calcPrincipal);
-    const r = ratePercentFromInput(calcRate);
+    const bps = bpsFromPercentInput(calcRate.replace(/[,\s%]/g, ""));
     const n = monthsFromInput(calcTenure);
-    if (p !== null && r !== null && n !== null && p > 0 && r > 0 && n > 0) {
-      setCalcResult(calculateEMIPaise(p, r, n));
+    if (p === null || p <= 0) { setCalcError("Enter the principal in rupees, e.g. 1000000."); return; }
+    if (bps === null || bps <= 0) { setCalcError("Enter the annual interest rate, e.g. 10.5."); return; }
+    if (n === null || n <= 0 || n > 1200) { setCalcError("Enter the tenure in whole months, from 1 to 1200."); return; }
+    setCalcError(null);
+    setCalcBusy(true);
+    try {
+      const res = await api.accounting.emi(p, bps, n);
+      if (!res.success || typeof res.data?.emi_paise !== "number") throw new Error(res.error || "The instalment did not come back.");
+      setCalcResult(res.data.emi_paise);
+    } catch (e) {
+      setCalcError(e instanceof Error ? e.message : "The instalment could not be worked out.");
+    } finally {
+      setCalcBusy(false);
     }
   }
 
@@ -567,16 +569,12 @@ export default function LoansAndFDPage() {
             {loading ? (
               <TableSkeleton cols={9} bare />
             ) : loans.length === 0 ? (
-              <div className="px-5 py-12 text-center space-y-2">
-                <TrendingDown className="w-10 h-10 text-gray-200 mx-auto" />
-                <p className="text-sm text-ps-label">No loans recorded yet</p>
-                <button
-                  onClick={() => setShowAddLoan(true)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-600 text-xs font-medium rounded-lg hover:bg-blue-100 transition-colors"
-                >
-                  <Plus className="w-3.5 h-3.5" /> Add first loan
-                </button>
-              </div>
+              <EmptyState
+                className="py-12"
+                icon={<TrendingDown size={40} />}
+                title="No loans recorded yet"
+                description="Press Add Loan at the top of the page to record a client's borrowing. An Executive, Manager or Partner can add one; a Reviewer reads them."
+              />
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -684,12 +682,17 @@ export default function LoansAndFDPage() {
               </div>
             </div>
             <div className="mt-4 flex items-center gap-4">
-              <button
-                onClick={runEMICalc}
-                className="px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors"
-              >
-                Calculate EMI
-              </button>
+              {permissionsResolved && !mayCalculate ? (
+                <p className="text-xs text-ps-label">Your role cannot use the calculator: it needs the accounting read permission.</p>
+              ) : (
+                <button
+                  onClick={() => { void runEMICalc(); }}
+                  disabled={!permissionsResolved || calcBusy}
+                  className="px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors disabled:opacity-50"
+                >
+                  {calcBusy ? "Calculating…" : "Calculate EMI"}
+                </button>
+              )}
               {calcResult !== null && (
                 <div className="bg-blue-50 rounded-lg px-4 py-2">
                   <span className="text-xs text-blue-600 font-medium">Monthly EMI: </span>
@@ -697,6 +700,11 @@ export default function LoansAndFDPage() {
                 </div>
               )}
             </div>
+            {calcError && <p role="alert" className="mt-2 text-xs text-state-problem">{calcError}</p>}
+            <p className="mt-2 text-3xs text-ps-hint">
+              A guide, worked out by the server and not saved. A lender rounds its instalment its own way and may charge
+              a broken first period; the instalment in the loan agreement is the one to record on the loan.
+            </p>
           </div>
         </>
       )}
@@ -770,16 +778,12 @@ export default function LoansAndFDPage() {
             {loading ? (
               <TableSkeleton cols={11} bare />
             ) : fds.length === 0 ? (
-              <div className="px-5 py-12 text-center space-y-2">
-                <Landmark className="w-10 h-10 text-gray-200 mx-auto" />
-                <p className="text-sm text-ps-label">No fixed deposits recorded yet</p>
-                <button
-                  onClick={() => setShowAddFD(true)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-600 text-xs font-medium rounded-lg hover:bg-blue-100 transition-colors"
-                >
-                  <Plus className="w-3.5 h-3.5" /> Add first FD
-                </button>
-              </div>
+              <EmptyState
+                className="py-12"
+                icon={<Landmark size={40} />}
+                title="No fixed deposits recorded yet"
+                description="Press Add FD at the top of the page to record a client's deposit. An Executive, Manager or Partner can add one; a Reviewer reads them."
+              />
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -862,15 +866,14 @@ export default function LoansAndFDPage() {
       {/* MODAL: Add Loan                                                       */}
       {/* ================================================================== */}
       {showAddLoan && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-ps-border">
-              <h3 className="text-base font-semibold text-ps-ink">Add Loan</h3>
-              <button onClick={() => { setShowAddLoan(false); resetLoanForm(); }} className="text-ps-hint hover:text-ps-label">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="px-6 py-5 space-y-4">
+        <Modal title="Add Loan" maxWidthClass="max-w-lg" onClose={() => { if (!actionInFlight) { setShowAddLoan(false); resetLoanForm(); } }}
+          footer={<>
+            <button disabled={actionInFlight} onClick={() => { setShowAddLoan(false); resetLoanForm(); }} className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-white/[0.08]">Cancel</button>
+            <Button variant="plain" size="none" onClick={handleAddLoan} disabled={actionInFlight} className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-50">
+              {loanSaving ? "Saving…" : "Add Loan"}
+            </Button>
+          </>}>
+            <div className="space-y-4">
               <Field label="Client" required>
                 <div className="w-full">
                   <ClientLookup
@@ -922,29 +925,21 @@ export default function LoansAndFDPage() {
               </Field>
               {loanError && <Callout tone="problem">{loanError}</Callout>}
             </div>
-            <div className="px-6 py-4 border-t border-ps-border flex gap-3 justify-end">
-              <button onClick={() => { setShowAddLoan(false); resetLoanForm(); }} className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-white/[0.08]">Cancel</button>
-              <Button variant="plain" size="none" onClick={handleAddLoan} disabled={actionInFlight} className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-50">
-                {loanSaving ? "Saving…" : "Add Loan"}
-              </Button>
-            </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ================================================================== */}
       {/* MODAL: Add FD                                                         */}
       {/* ================================================================== */}
       {showAddFD && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-ps-border">
-              <h3 className="text-base font-semibold text-ps-ink">Add Fixed Deposit</h3>
-              <button onClick={() => { setShowAddFD(false); resetFDForm(); }} className="text-ps-hint hover:text-ps-label">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="px-6 py-5 space-y-4">
+        <Modal title="Add Fixed Deposit" maxWidthClass="max-w-lg" onClose={() => { if (!actionInFlight) { setShowAddFD(false); resetFDForm(); } }}
+          footer={<>
+            <button disabled={actionInFlight} onClick={() => { setShowAddFD(false); resetFDForm(); }} className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-white/[0.08]">Cancel</button>
+            <Button variant="plain" size="none" onClick={handleAddFD} disabled={actionInFlight} className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-50">
+              {fdSaving ? "Saving…" : "Add FD"}
+            </Button>
+          </>}>
+            <div className="space-y-4">
               <Field label="Client" required>
                 <div className="w-full">
                   <ClientLookup
@@ -1035,14 +1030,7 @@ export default function LoansAndFDPage() {
               </Field>
               {fdError && <Callout tone="problem">{fdError}</Callout>}
             </div>
-            <div className="px-6 py-4 border-t border-ps-border flex gap-3 justify-end">
-              <button onClick={() => { setShowAddFD(false); resetFDForm(); }} className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-white/[0.08]">Cancel</button>
-              <Button variant="plain" size="none" onClick={handleAddFD} disabled={actionInFlight} className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-50">
-                {fdSaving ? "Saving…" : "Add FD"}
-              </Button>
-            </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

@@ -4,6 +4,7 @@ import { Check, ChevronsUpDown, Loader2, Plus, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCombobox } from "@/lib/combobox/useCombobox";
 import type { ComboboxCore } from "@/lib/combobox/types";
+import { listPosition, type ListPlace } from "@/lib/ui/rowMenuPosition";
 
 /**
  * Shared searchable combobox — a drop-in, accessible replacement for a long
@@ -132,6 +133,10 @@ const SIZE = {
 // Matches the popup's former min-w-[16rem]/[26rem] Tailwind classes, now
 // applied in JS alongside the trigger's own width (see updateCoords below).
 const DENSITY_MIN_WIDTH_PX = { compact: 256, spacious: 416 } as const;
+/** The list's tallest height in each density: `max-h-64` and `max-h-[28rem]` on the results below, in pixels. */
+const DENSITY_LIST_MAX_PX = { compact: 256, spacious: 448 } as const;
+/** The search box a plain picker draws inside its panel, above the results. */
+const PLAIN_SEARCH_PX = 40;
 
 function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<ComboboxHandle>) {
   const {
@@ -295,14 +300,20 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
   // clipping entirely (its containing block is the viewport, not the
   // scrolling ancestor) as long as no ancestor sets transform/filter/
   // perspective, which none here do.
-  const [coords, setCoords] = React.useState<{ top: number; left: number; width: number } | null>(null);
+  //
+  // Where: under the box, or ABOVE it when the box is near the foot of the window, by the rule the row menus use
+  // (`lib/ui/rowMenuPosition.listPosition`, POST-A-471). Drawn always under the box, a picker near the foot of a 720-pixel window ran its
+  // list off the window and its rows could not be reached. The list's height is capped at the room on the side it opens, so it scrolls
+  // inside itself rather than past the window's edge. The room asked for is the list's own tallest height (its `max-h` below, plus the
+  // search box a plain picker carries in the panel).
+  const [coords, setCoords] = React.useState<(ListPlace & { width: number }) | null>(null);
   const updateCoords = React.useCallback(() => {
     const r = wrapRef.current?.getBoundingClientRect();
     if (!r) return;
     const width = Math.max(r.width, DENSITY_MIN_WIDTH_PX[panelDensity]);
-    const left = Math.min(r.left, Math.max(8, window.innerWidth - width - 8));
-    setCoords({ top: r.bottom + 4, left, width });
-  }, [panelDensity]);
+    const room = DENSITY_LIST_MAX_PX[panelDensity] + (plain ? PLAIN_SEARCH_PX : 0);
+    setCoords({ ...listPosition(r, width, { width: window.innerWidth, height: window.innerHeight }, room), width });
+  }, [panelDensity, plain]);
   React.useLayoutEffect(() => {
     if (!open) { setCoords(null); return; }
     updateCoords();
@@ -507,8 +518,9 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
 
       {open && coords && (
         <div
-          style={{ position: "fixed", top: coords.top, left: coords.left, width: coords.width }}
-          className="z-40 overflow-hidden rounded-lg border border-ps-border bg-white shadow-lg"
+          style={{ position: "fixed", top: coords.top, bottom: coords.bottom, left: coords.left, width: coords.width, maxHeight: coords.maxHeight }}
+          data-opens={coords.bottom !== undefined ? "up" : "down"}
+          className="z-40 flex flex-col overflow-hidden rounded-lg border border-ps-border bg-white shadow-lg"
         >
           {/* Search box — only for chrome="plain", whose trigger stays a
               static button/chip even while open (see above), so its search
@@ -541,7 +553,7 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
             id={listboxId}
             role="listbox"
             aria-label={ariaLabel}
-            className={cn("overflow-y-auto py-1", panelDensity === "spacious" ? "max-h-[28rem]" : "max-h-64")}
+            className={cn("min-h-0 flex-1 overflow-y-auto py-1", panelDensity === "spacious" ? "max-h-[28rem]" : "max-h-64")}
           >
             {/* Pinned "+ Create" row (QuickBooks-style): always the first
                 row, above everything else — unaffected by loading/error/

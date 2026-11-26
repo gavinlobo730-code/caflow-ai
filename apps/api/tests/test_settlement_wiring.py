@@ -164,7 +164,7 @@ def test_an_employee_with_no_settlement_is_unchanged():
 def _no_db(monkeypatch):
     monkeypatch.setattr(pr, "_db", lambda: None)
     monkeypatch.setattr(pr, "assert_client_access", lambda *a, **k: None)
-    monkeypatch.setattr(pr, "assert_not_internal_for_payroll", lambda *a, **k: None)
+    monkeypatch.setattr(pr, "assert_practice_payroll_is_the_partners", lambda *a, **k: None)
 
 
 def test_record_settlement_is_callable():

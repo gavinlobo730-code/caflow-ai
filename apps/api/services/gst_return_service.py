@@ -95,30 +95,13 @@ def _gl_gst_movements(db, firm_id: str, client_id: str, start: str, end: str) ->
            .or_(f"client_id.eq.{client_id},client_id.is.null"))
     key_by_id = {c["id"]: c.get("system_account_key") for c in coa}
     name_by_id = {c["id"]: (c.get("account_name") or "") for c in coa}
-    out_ids = {c["id"] for c in coa if c.get("system_account_key") in ("gst_cgst", "gst_sgst", "gst_igst")}
-    in_ids = {c["id"] for c in coa if c.get("system_account_key") == "gst_input"}
-
-    # AND THE KEY IS NOT ALWAYS THERE. system_account_key is stamped by
-    # migrations 092/098 on the accounts THEY seeded; a chart built by
-    # coa_seed_service carries the same accounts with the key left NULL. Same
-    # live firm: `1301 GST Input Tax Credit` and `2002 GST Output Tax Payable`,
-    # both NULL-keyed, 1,045 and 6,220 lines posted respectively — invisible to
-    # a key-only lookup.
-    #
-    # Fall back to the name, and ONLY for the side the key found nothing on, so
-    # a firm whose keys are stamped is completely unaffected. account_type is
-    # what keeps the two sides apart: an input credit is an Asset and output tax
-    # is a Liability, which is the same separation migration 098 enforces by
-    # keying output heads on Liability accounts only. Without it a chart naming
-    # both "%GST%" could book input credit as output tax owed.
-    if not out_ids:
-        out_ids = {c["id"] for c in coa
-                   if c.get("account_type") == "Liability"
-                   and "gst output" in (c.get("account_name") or "").lower()}
-    if not in_ids:
-        in_ids = {c["id"] for c in coa
-                  if c.get("account_type") == "Asset"
-                  and "gst input" in (c.get("account_name") or "").lower()}
+    # WHICH ACCOUNTS hold output tax and input credit is one rule, moved to
+    # `domain/gst/tax_control_accounts` (POST-A-090) so the nightly books check
+    # asks the same question the return does: by `system_account_key` first,
+    # and by the name (kept apart by account_type) only for a side the key
+    # found nothing on, because a chart built by coa_seed_service leaves the
+    # key NULL (observed live: `2002 GST Output Tax Payable`, 6,220 lines).
+    out_ids, in_ids = _tax_control_accounts.output_and_input_ids(coa)
 
     def _head_of(acc: str) -> str:
         """Which tax head a control account reports under.
@@ -171,6 +154,7 @@ def _gl_gst_movements(db, firm_id: str, client_id: str, start: str, end: str) ->
 
 
 from domain.accounting import opening_documents as _opening
+from domain.gst import tax_control_accounts as _tax_control_accounts
 from core import db_provider
 from core.db_paging import fetch_all
 
@@ -376,13 +360,13 @@ def _document_lines(db, table: str, fk: str, doc_ids: list[str]) -> dict[str, li
         threshold table used to say "4 above ₹1.5 crore", which was a hybrid of
         two notifications and is GST-17.)
 
-    CESS IS READ FROM THE LINE WHERE THE LINE HAS IT, AND IS 0 WHERE IT DOES
-    NOT. Migration 374 gave `client_sales_invoice_lines` a `cess_paise`; the
-    two s.34 NOTE line tables this same function reads (`credit_note_lines`,
-    `sales_debit_note_lines`) still have none, so a note against a
-    cess-bearing invoice contributes nothing to table 12's `csamt`.
-    `_note_cess_not_carried` in `gstr1_from_books` names that on the return
-    rather than leaving the reader to infer it from a nil."""
+    CESS IS READ FROM THE LINE. Migration 374 gave `client_sales_invoice_lines`
+    a `cess_paise` and migration 615 gave the two s.34 NOTE line tables this
+    same function reads (`credit_note_lines`, `sales_debit_note_lines`) one
+    too, so a note's cess reaches table 12's `csamt`. A note recorded before
+    615 holds 0; `_note_cess_not_carried` in `gstr1_from_books` names a note
+    with no cess against a cess-bearing invoice rather than leaving the reader
+    to infer it from a nil."""
     if not doc_ids:
         return {}
     from domain.gst.gstr1_builder import InvoiceLine
@@ -450,12 +434,12 @@ def _classification_by_parent_invoice(db, firm_id: str, note_rows: list[dict]) -
     if not parent_ids:
         return {}
     # `cess_paise` is here for a different reason from the three classification
-    # fields: it is not inherited, it is REPORTED. Migration 374 gave the
-    # invoice a compensation cess and deliberately did NOT give the four s.34
-    # note tables one, so a note against a cess-bearing invoice adjusts the
-    # value and the GST and leaves the cess untouched. `_note_cess_not_carried`
-    # names that on the return rather than letting a CA read a nil `csamt` on
-    # table 9B as an assertion that nothing was owed.
+    # fields: it is not inherited, it is REPORTED. A note carries its own cess
+    # since migration 615, so one that carries NONE against a cess-bearing
+    # invoice (every note recorded before 615, or one whose lines were given no
+    # cess) may have adjusted the value and the GST and left the cess.
+    # `_note_cess_not_carried` names it on the return rather than letting a CA
+    # read a nil `csamt` on table 9B as an assertion that nothing was owed.
     rows = fetch_all(lambda: db.table("client_sales_invoices")
                          .select("id, supply_type, invoice_type, is_reverse_charge, "
                                  "cess_paise")
@@ -464,25 +448,29 @@ def _classification_by_parent_invoice(db, firm_id: str, note_rows: list[dict]) -
 
 
 def _note_cess_not_carried(note_rows: list[dict], parents: dict[str, dict]) -> list[str]:
-    """One sentence per s.34 note whose parent invoice carried compensation cess.
+    """One sentence per s.34 note that carries NO compensation cess and adjusts
+    an invoice that carried some.
 
-    The note tables have no cess column (migration 374 covers the invoice and
-    the purchase bill only), so such a note reverses or adds the taxable value
-    and the three GST heads and NOT the cess. That is a real short declaration
-    and the CA has to make it on the portal, so the return says which documents
-    are affected instead of showing a nil that reads as "none due".
+    A note has carried its own cess since migration 615 (POST-A-058), so a
+    note that declares cess is answered by its own `csamt` and is not named.
+    One that declares none against a cess-bearing invoice is named, because it
+    may be right (a note correcting only a price on a per-unit cess, which the
+    quantity limb does not follow) or short (a note recorded before 615, or one
+    whose lines were given no cess), and only the CA can say which. Either way
+    the return says which documents to look at instead of showing a nil that
+    reads as "none due".
     """
     out: list[str] = []
     for r in note_rows:
         parent = parents.get(r.get("sales_invoice_id") or "") or {}
-        if int(parent.get("cess_paise") or 0) <= 0:
+        if int(parent.get("cess_paise") or 0) <= 0 or int(r.get("cess_paise") or 0) > 0:
             continue
         ref = (r.get("credit_note_no") or r.get("debit_note_no") or r.get("id") or "")
         out.append(
-            f"Note {ref} adjusts an invoice that carried "
-            f"{rupee_text(int(parent['cess_paise']))} of compensation cess. The s.34 "
-            "note tables hold no cess column, so this note declares none — "
-            "adjust the cess on the portal.")
+            f"Note {ref} carries no compensation cess and adjusts an invoice that "
+            f"carried {rupee_text(int(parent['cess_paise']))} of it. If the note "
+            "changes the value or the quantity the cess was charged on, the cess "
+            "it adjusts is not in this return: adjust the cess on the portal.")
     return out
 
 
@@ -721,6 +709,8 @@ def _as_instant(value) -> Optional[datetime]:
     try:
         got = datetime.fromisoformat(text.replace("Z", "+00:00"))
     except ValueError:
+        # Not a timestamp. A timestamptz column always reads back as ISO text, so a stored instant never lands here: this is an absent value or a
+        # hand-built one, and None says there is no instant.
         return None
     return got if got.tzinfo else got.replace(tzinfo=timezone.utc)
 
@@ -996,6 +986,26 @@ def gstr3b_detail(db, firm_id: str, client_id: str, period: str, line: str,
                 "tax_paise": blocked_i + blocked_c + blocked_s,
                 "status": b.get("status") or "",
             })
+        # And the blocked part of a purchase note's tax (POST-A-459, migration 685), with the note's sign: a return to the supplier
+        # takes blocked credit out, the supplier's increase adds it.
+        for kind, notes, number, day, sign in (
+                ("Blocked ITC (s.17(5)), debit note", _issued_debit_notes(db, firm_id, client_id, start, end),
+                 "debit_note_no", "debit_note_date", -1),
+                ("Blocked ITC (s.17(5)), credit note", _issued_purchase_credit_notes(db, firm_id, client_id, start, end),
+                 "credit_note_no", "credit_note_date", 1)):
+            for n in notes:
+                blocked_i = sign * int(n.get("ineligible_itc_igst_paise") or 0)
+                blocked_c = sign * int(n.get("ineligible_itc_cgst_paise") or 0)
+                blocked_s = sign * int(n.get("ineligible_itc_sgst_paise") or 0)
+                if blocked_i == blocked_c == blocked_s == 0:
+                    continue
+                vend = _vendor_names(db, firm_id, [n])
+                rows.append({
+                    "id": n.get("id"), "kind": kind, "document_no": n.get(number) or "",
+                    "document_date": str(n.get(day) or "")[:10], "party": vend.get(n.get("vendor_id"), ""),
+                    "taxable_paise": 0, "igst_paise": blocked_i, "cgst_paise": blocked_c, "sgst_paise": blocked_s,
+                    "tax_paise": blocked_i + blocked_c + blocked_s, "status": n.get("status") or "",
+                })
 
     elif line == "4B2":
         from services import itc_register_service
@@ -1089,6 +1099,7 @@ def _late_fee_turnover(db, firm_id: str, client_id: str,
     try:
         period_start = date(int(period[2:]), int(period[:2]), 1)
     except (ValueError, IndexError):
+        # FAILS TO None, NEVER TO ZERO (docstring): no readable period, no turnover, and the engine assumes the lowest cap and says so.
         return None
     try:
         return client_gst_turnover_service.turnover_governing_period(
@@ -1552,6 +1563,10 @@ def gstr8_statement(db, firm_id: str, client_id: str, period: str,
                                         registration.gstin, window.key)
     unregistered_rows = eco_svc.list_unregistered_supplies(
         db, firm_id, client_id, registration.gstin, window.key)
+    # Table 4 / 4.1: the rows THIS month's statement declares against earlier months (POST-A-056, migration 617).
+    amendment_rows = eco_svc.list_amendments(db, firm_id, client_id, registration.gstin, window.key)
+    unregistered_amendment_rows = eco_svc.list_unregistered_amendments(
+        db, firm_id, client_id, registration.gstin, window.key)
 
     stmt = gstr8.compute_gstr8(
         period=window.key,
@@ -1571,6 +1586,10 @@ def gstr8_statement(db, firm_id: str, client_id: str, period: str,
             gross_value_paise=int(r.get("gross_value_paise") or 0),
             returns_paise=int(r.get("returns_paise") or 0),
         ) for r in unregistered_rows],
+        amendment_rows=[gstr8.AmendmentRow.from_record(r) for r in amendment_rows],
+        unregistered_amendment_rows=[gstr8.UnregisteredAmendmentRow.from_record(r) for r in unregistered_amendment_rows],
+        # The registration's own GSTIN: the utility's "Home sheet" collector GSTIN its supplier checks compare against (POST-A-458).
+        collector_gstin=registration.gstin,
     )
 
     return {
@@ -1591,6 +1610,13 @@ def gstr8_statement(db, firm_id: str, client_id: str, period: str,
         "findings": [_gstr8_finding_dict(f) for f in stmt.findings],
         "supplies": supply_rows,
         "unregistered_supplies": unregistered_rows,
+        # Table 4 / 4.1 — counts, findings and the sentence saying they are not netted against the rows they amend; never a total.
+        "amendment_count": stmt.amendment_count,
+        "unregistered_amendment_count": stmt.unregistered_amendment_count,
+        "amendment_findings": [_gstr8_finding_dict(f) for f in stmt.amendment_findings],
+        "amendment_note": stmt.amendment_note,
+        "amendments": amendment_rows,
+        "unregistered_amendments": unregistered_amendment_rows,
         "gstr8_rates_verified": gstr8.VERIFIED,
     }
 
@@ -1783,6 +1809,12 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
             igst_paise=-int(dn.get("igst_paise") or 0),
             cess_paise=-int(dn.get("cess_paise") or 0),
             is_reverse_charge=bool(dn.get("is_reverse_charge", False)),
+            # CGST Act s.17(5) (POST-A-459, migration 685): the blocked part of the note's tax comes out of 4(B)(1) as its gross comes
+            # out of 4(A), so 4(C) moves by the creditable tax only, as the bill's did.
+            ineligible_igst_paise=-int(dn.get("ineligible_itc_igst_paise") or 0),
+            ineligible_cgst_paise=-int(dn.get("ineligible_itc_cgst_paise") or 0),
+            ineligible_sgst_paise=-int(dn.get("ineligible_itc_sgst_paise") or 0),
+            ineligible_cess_paise=-int(dn.get("ineligible_itc_cess_paise") or 0),
             is_import_of_services=dn.get("vendor_id") in imps_vendors,
         ))
     # Purchase credit notes (purchase_credit_notes table) — in this codebase's
@@ -1803,6 +1835,11 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
             igst_paise=int(pcn.get("igst_paise") or 0),
             cess_paise=int(pcn.get("cess_paise") or 0),
             is_reverse_charge=bool(pcn.get("is_reverse_charge", False)),
+            # CGST Act s.17(5) (POST-A-459): the blocked part goes to 4(B)(1), as a bill's does.
+            ineligible_igst_paise=int(pcn.get("ineligible_itc_igst_paise") or 0),
+            ineligible_cgst_paise=int(pcn.get("ineligible_itc_cgst_paise") or 0),
+            ineligible_sgst_paise=int(pcn.get("ineligible_itc_sgst_paise") or 0),
+            ineligible_cess_paise=int(pcn.get("ineligible_itc_cess_paise") or 0),
             is_import_of_services=pcn.get("vendor_id") in imps_vendors,
         ))
     # A bank charge the CA marked as carrying GST (BANK-24). CGST Act §16 gives
@@ -2876,9 +2913,10 @@ def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
             gstr1_builder.table_13_coverage(
                 table_13_coverage_service.issued_challans_by_reason(db, firm_id, client_id, start, end))
             if with_table_13_coverage else None),
-        # Compensation cess a s.34 note in this period could not carry, because
-        # the note tables have no cess column. Empty on every return whose
-        # notes adjust cess-free invoices, which is almost all of them.
+        # A s.34 note in this period that carries no compensation cess and
+        # adjusts an invoice that did (POST-A-058, migration 615). Empty on
+        # every return whose notes adjust cess-free invoices, which is almost
+        # all of them, and on every note that carries its own cess.
         "cess_gaps": _note_cess_not_carried(cns_raw + sdns_raw, note_parents),
         "reconciliation": reconciliation,
         "ca_review_required": True,   # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT

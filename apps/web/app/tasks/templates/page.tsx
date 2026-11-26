@@ -1,11 +1,13 @@
 "use client";
 
+import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { useState, useEffect, useCallback } from "react";
 import {
   Plus, Trash2, Edit2, CheckSquare, Tag, Clock, User,
-  X, Loader2, Copy,
+  Loader2, Copy,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +27,7 @@ import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { SectionPlaceholder } from "@/components/ui/page-frame";
 
 const PRIORITY_COLORS: Record<string, string> = {
   low: "bg-sev-low-surface text-sev-low",
@@ -165,7 +168,7 @@ export default function TaskTemplatesPage() {
       return;
     }
     if (instDates.first) {
-      setInstError(instDates.first);
+      instDates.refuseWith(setInstError);
       return;
     }
     setInstantiating(true);
@@ -203,9 +206,7 @@ export default function TaskTemplatesPage() {
       {error && <Callout tone="problem">{error}</Callout>}
 
       {loading ? (
-        <div className="flex items-center justify-center py-20 text-ps-hint">
-          <Loader2 className="animate-spin mr-2" size={18} /> Loading templates…
-        </div>
+        <SectionPlaceholder label="Loading templates" shape="cards" rows={6} />
       ) : templates.length === 0 ? (
         <Card>
           <EmptyState
@@ -298,14 +299,7 @@ export default function TaskTemplatesPage() {
 
       {/* Create / Edit dialog */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="font-semibold text-ps-ink">{editingId ? "Edit Template" : "New Template"}</h2>
-              <button onClick={() => setShowForm(false)} className="text-ps-hint hover:text-ps-label">
-                <X size={18} />
-              </button>
-            </div>
+        <Modal title={editingId ? "Edit Template" : "New Template"} maxWidthClass="max-w-md" onClose={() => { if (!saving) setShowForm(false); }}>
 
             <div className="space-y-3">
               <div>
@@ -375,26 +369,18 @@ export default function TaskTemplatesPage() {
             </div>
 
             <div className="flex gap-2 justify-end pt-2">
-              <Button variant="outline" size="sm" onClick={() => setShowForm(false)}>Cancel</Button>
+              <Button disabled={saving} variant="outline" size="sm" onClick={() => setShowForm(false)}>Cancel</Button>
               <Button size="sm" onClick={handleSave} disabled={saving || !form.name.trim()}>
                 {saving ? <Loader2 className="animate-spin mr-1" size={13} /> : null}
                 {editingId ? "Save Changes" : "Create Template"}
               </Button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* Instantiate dialog */}
       {instantiateId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="font-semibold text-ps-ink">Create Task from Template</h2>
-              <button onClick={() => setInstantiateId(null)} className="text-ps-hint hover:text-ps-label">
-                <X size={18} />
-              </button>
-            </div>
+        <Modal title="Create Task from Template" onClose={() => { if (!instantiating) setInstantiateId(null); }}>
             {instSuccess ? (
               <div className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-center">
                 {instSuccess}
@@ -403,14 +389,11 @@ export default function TaskTemplatesPage() {
               <div className="space-y-3">
                 <div>
                   <label className="block text-xs font-medium text-ps-body mb-1">Client *</label>
-                  <select aria-label="Client"
+                  <ClientLookup ariaLabel="Client"
+                    clients={clients}
                     value={instClientId}
-                    onChange={e => setInstClientId(e.target.value)}
-                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
-                  >
-                    <option value="">Select client…</option>
-                    {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
-                  </select>
+                    onChange={setInstClientId}
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-ps-body mb-1">Due Date</label>
@@ -434,8 +417,7 @@ export default function TaskTemplatesPage() {
                 </div>
               </div>
             )}
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

@@ -36,11 +36,13 @@ import CsvImportModal from "@/components/LazyCsvImportModal";
 import type { ImportRow } from "@/components/CsvImportModal";
 import { downloadCsv } from "@/components/ui/data-table";
 import { toCsv } from "@/lib/table/process";
+import { ATTENDANCE_EXPORT_NOTE, attendanceExportRows, type AttendanceExportRow } from "@/lib/payroll/attendanceExport";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { formatPaise } from "@/lib/services/formatting";
 import type { Column } from "@/lib/table/types";
 import { PageHeader } from "@/components/ui/page-header";
 import { istToday } from "@/lib/dateMath";
+import { SectionPlaceholder, PagePlaceholder } from "@/components/ui/page-frame";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -134,24 +136,13 @@ const ATTENDANCE_IMPORT_COLUMNS = [
   { key: "earned_leaves",  label: "Earned Leaves",   required: false, hint: "e.g. 1" },
 ];
 
-type AttendanceExportRow = {
-  name: string;
-  designation: string;
-  working_days: number;
-  days_present: number;
-  casual_leaves: number;
-  sick_leaves: number;
-  earned_leaves: number;
-  lop: number;
-  net_pay_days: number;
-};
-
 /** The five attendance boxes' names, from the same columns the import reads, so a box and its column heading cannot be worded two ways. */
 const ATTENDANCE_FIELD_LABEL: Record<string, string> = Object.fromEntries(ATTENDANCE_IMPORT_COLUMNS.map(c => [c.key, c.label]));
 
 const ATTENDANCE_EXPORT_COLUMNS: Column<AttendanceExportRow>[] = [
   { key: "name",           header: "Employee",       accessor: (r) => r.name },
   { key: "designation",    header: "Designation",    accessor: (r) => r.designation },
+  { key: "status",         header: "Status",         accessor: (r) => r.status },
   { key: "working_days",   header: "Working Days",   accessor: (r) => r.working_days },
   { key: "days_present",   header: "Days Present",   accessor: (r) => r.days_present },
   { key: "casual_leaves",  header: "CL",             accessor: (r) => r.casual_leaves },
@@ -219,6 +210,10 @@ export default function AttendancePage() {
    *  client's payroll tab has to land on that client's roster and not on the
    *  whole firm's. */
   const [attClient, setAttClient] = useState<string>("");
+  // The client the screen was OPENED for (the link from a client's Payroll page), read once. The firm-wide sheet leaves the
+  // firm's own practice out; handing this to the server is how a Partner sees the practice's own roster here (POST-A-532).
+  const [openedFor] = useState<string>(() =>
+    typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("client") ?? "");
   const [editingLeave, setEditingLeave] = useState<string | null>(null);
   const [editLeaveForm, setEditLeaveForm] = useState<Partial<LeaveBalance>>({});
 
@@ -285,7 +280,7 @@ export default function AttendancePage() {
       // clients the caller is assigned to. An unreadable answer is a failed load, never an empty roster.
       const monthKey = `${attYear}-${String(attMonth).padStart(2, "0")}`;
       const [boardRes, cliRes] = await Promise.all([
-        api.payroll.attendanceBoard(monthKey),
+        api.payroll.attendanceBoard(monthKey, openedFor || undefined),
         // Names for the clients this firm actually runs payroll for. Firm-scoped like every other read on this page.
         selectAll(() => sb.from("clients").select("id, client_name").eq("firm_id", fid).eq("is_internal", false).order("id")),
       ]);
@@ -294,9 +289,13 @@ export default function AttendancePage() {
       if (!board) throw new Error("The attendance sheet came back in a shape this screen cannot read.");
       const emps: Employee[] = board.employees;
       setEmployees(emps);
-      setClientNames(Object.fromEntries(
-        (cliRes.data ?? []).map((c: { id: string; client_name: string }) =>
-          [c.id, c.client_name])));
+      setClientNames({
+        ...Object.fromEntries(
+          (cliRes.data ?? []).map((c: { id: string; client_name: string }) =>
+            [c.id, c.client_name])),
+        // The practice is in no client list (it is not one of the firm's clients), so its roster is named here.
+        ...(board.practice_client_id ? { [board.practice_client_id]: "My practice" } : {}),
+      });
       const attRes = { data: board.attendance };
 
       const attMap: Record<string, AttendanceRow> = {};
@@ -335,7 +334,7 @@ export default function AttendancePage() {
     } finally {
       setLoading(false);
     }
-  }, [attMonth, attYear]);
+  }, [attMonth, attYear, openedFor]);
 
   const loadLeaveBalances = useCallback(async () => {
     setLeaveLoadFailed(false);
@@ -346,7 +345,7 @@ export default function AttendancePage() {
     // A failed read must NOT fall through to a table of default allocations as if they were real records, and an
     // entitlement nobody recorded arrives as null: nothing in this product accrues leave, so there is no figure to derive.
     try {
-      const res = await api.payroll.leaveLedger(leaveYear);
+      const res = await api.payroll.leaveLedger(leaveYear, openedFor || undefined);
       const ledger = res?.success ? objectWithLists<PayrollLeaveLedger>(res.data, "rows") : null;
       if (!ledger) { setLeaveLoadFailed(true); setLeaveBalances([]); return; }
       setLeaveBalances(ledger.rows.map((r) => ({
@@ -364,7 +363,7 @@ export default function AttendancePage() {
       setLeaveLoadFailed(true);
       setLeaveBalances([]);
     }
-  }, [leaveYear]);
+  }, [leaveYear, openedFor]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { if (employees.length > 0) loadLeaveBalances(); }, [loadLeaveBalances, employees]);
@@ -467,8 +466,9 @@ export default function AttendancePage() {
         client_id: earnClient, enabled: next,
       }) as { success?: boolean; error?: string | null; detail?: string };
       if (res?.success === false) {
+        // A refusal that came without words is reported as what happened, in the direction that was asked (this switch goes both ways).
         setEarnMsg(res.error || res.detail
-          || "Only a Partner can switch payroll on for a client.");
+          || `Payroll could not be switched ${next ? "on" : "off"} for this client.`);
       } else {
         setPayrollOn(prev => ({ ...prev, [earnClient]: next }));
         setEarnMsg(next
@@ -709,7 +709,7 @@ export default function AttendancePage() {
   ];
 
   if (loading) {
-    return <div className="min-h-screen bg-ps-bg flex items-center justify-center"><p className="text-ps-label">Loading...</p></div>;
+    return <PagePlaceholder label="Loading attendance" shape="table" />;
   }
 
   if (loadFailed) {
@@ -792,24 +792,9 @@ export default function AttendancePage() {
                       size="sm"
                       disabled={rosterOnScreen.length === 0}
                       onClick={() => {
-                        const exportRows: AttendanceExportRow[] = rosterOnScreen.map(emp => {
-                          const row = attendance[emp.id] ?? {
-                            employee_id: emp.id,
-                            working_days: 26, days_present: 26,
-                            casual_leaves: 0, sick_leaves: 0, earned_leaves: 0,
-                          };
-                          return {
-                            name: emp.name,
-                            designation: emp.designation,
-                            working_days: row.working_days,
-                            days_present: row.days_present,
-                            casual_leaves: row.casual_leaves,
-                            sick_leaves: row.sick_leaves,
-                            earned_leaves: row.earned_leaves,
-                            lop: calcLOP(row),
-                            net_pay_days: calcNetPayDays(row),
-                          };
-                        });
+                        // POST-A-468: a row nobody entered goes out blank and says so, never as the editor's seeded 26 of 26.
+                        const exportRows = attendanceExportRows(rosterOnScreen, attendance, entered, touched,
+                          (row) => ({ lop: calcLOP(row), net_pay_days: calcNetPayDays(row) }));
                         downloadCsv(
                           `attendance-${attClient ? `${(clientNames[attClient] ?? attClient).replace(/[^A-Za-z0-9]+/g, "-")}-` : ""}`
                           + `${attYear}-${String(attMonth).padStart(2, "0")}.csv`,
@@ -828,6 +813,7 @@ export default function AttendancePage() {
                     </Button>
                   </div>
                 </div>
+                <p className="mt-2 text-xs text-ps-label">{ATTENDANCE_EXPORT_NOTE}</p>
                 {saveMsg && (
                   <p className={`mt-3 text-sm font-medium ${saveMsg.startsWith("Error") ? "text-red-600" : "text-green-600"}`}>
                     {saveMsg}
@@ -1137,8 +1123,8 @@ export default function AttendancePage() {
                 <p className="text-xs text-ps-label mt-1">
                   Incentive, bonus, ex-gratia, arrears. These are <strong>not</strong> prorated by
                   loss of pay — a decided amount is not a monthly rate. Each row states whether it
-                  is PF wages (EPF Act s.2(b)), ESI wages (ESI Act s.2(22)) and salary
-                  (IT Act s.17(1)); the answers differ between payments with the same name.
+                  is PF wages, ESI wages and salary (IT Act s.17(1)); the answers differ between
+                  payments with the same name.
                 </p>
               </CardHeader>
               <CardContent>
@@ -1196,7 +1182,7 @@ export default function AttendancePage() {
                       ) : (
                         <>Payroll is <strong>not switched on</strong> for{" "}
                           {clientNames[earnClient] ?? earnClient}. Nothing payroll can
-                          be created for them until a Partner turns it on; anything
+                          be created for them until it is switched on; anything
                           already recorded stays readable.</>
                       )}
                     </span>
@@ -1226,7 +1212,7 @@ export default function AttendancePage() {
                 {!earnClient ? (
                   <p className="text-sm text-ps-label">Select a client to record earnings.</p>
                 ) : earnLoading ? (
-                  <p className="text-sm text-ps-label">Loading…</p>
+                  <SectionPlaceholder label="Loading the month's earnings" shape="table" rows={4} />
                 ) : earnLoadError !== null ? (
                   // Before the empty state, whose sentence ("that is a real
                   // answer") would otherwise be said about a month nobody read.

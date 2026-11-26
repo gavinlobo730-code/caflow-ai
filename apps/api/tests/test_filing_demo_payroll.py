@@ -4,10 +4,19 @@ Both flows derive from the payroll RUN (there is no separate return record):
 services/filing_demo/pf_ecr.py and services/filing_demo/esi.py, ref
 {"run_id": ...}. What is specific to this pair and pinned here:
 
-  - NO signature ceremony: the monthly EPFO ECR and ESIC contribution flows
-    are password logins with net-banking/online payment — no DSC, no OTP, no
-    statutory declaration text. A declaration, signature or otp stage in
-    either flow would teach a CA a ceremony that does not exist.
+  - NO signature ceremony STAGE: nothing in EPFO's manual walk of the return or
+    the payment, and nothing in ESIC's, asks for a declaration, a signature or
+    an OTP in the product, and a stage that took one would teach a ceremony
+    that is not ours to hold. What the PF flow does NOT claim (POST-A-518) is
+    that the portal asks for none: the manual's home page carries notices that
+    the OTP-based second step on the employer login "has been temporarily
+    relaxed" and that "the existing digital signature process has been
+    changed", and the manual does not say whether either touches the return.
+  - The PF flow walks EPFO's User Manual (v3.0) in ITS order: the upload page,
+    the checks, the Return File ID and return statement, the employer's
+    approval (irreversible), the Due Deposit Balance Summary, the challan and
+    only then the TRRN (15 digits), then the payment. The return and the
+    payment are two acts, and the Scheme says so (paras 24(2)(ix) and 28(3)).
   - The stored run totals are employee + employer COMBINED, so the split
     tables carry indicative rate TEXT and the combined paise figure once —
     never a fabricated per-head split.
@@ -114,20 +123,30 @@ def test_esi_envelope_is_honest():
 # ── The sequence is the real portal's: no DSC, no OTP, no declaration ───────
 
 def test_pf_follows_the_portal_sequence():
-    """summary → the ECR file and its checks → the sequential-filing warning
-    → account-head table → missing-UAN warning (E2 has none) → transmit →
-    result. The monthly ECR has no signature ceremony at all.
+    """summary → the upload page → the ECR file and its checks → the
+    sequential-filing warning → the approval warning → the Due Deposit Balance
+    Summary → account-head table → missing-UAN warning (E2 has none) →
+    transmit → result.
 
-    The file comes before the challan because that is the order of the real
-    upload: EPFO parses a text file, and everything the portal checks it
-    against is decided before a challan exists."""
+    The order is EPFO's own User Manual (v3.0, POST-A-518): the file and its
+    checks come first, then the Return File ID and the employer's approval,
+    then the summary of what is due, and the challan (with its TRRN) only
+    after that — so the account-head table, which describes the challan, comes
+    after the summary and not before the upload. There is no signature
+    ceremony stage."""
     out = pf_ecr.build(_db(), FIRM, CLIENT, REF)
     kinds = [s["kind"] for s in out["stages"]]
-    assert kinds == ["summary", "table", "warning", "table", "warning",
-                     "transmit", "result"]
+    assert kinds == ["summary", "table", "table", "warning", "warning",
+                     "table", "table", "warning", "transmit", "result"]
+    titles = [s.get("title") for s in out["stages"] if s["kind"] == "table"]
+    assert titles == ["The upload page",
+                      "The ECR file, and what the portal checks",
+                      "The Due Deposit Balance Summary",
+                      "Challan account heads"]
     assert not any(k in kinds for k in ("declaration", "signature", "otp")), (
-        "the monthly ECR flow is a password login — a signature or OTP stage "
-        "teaches a ceremony that does not exist"
+        "no stage takes a declaration, a signature or an OTP: whether the "
+        "portal asks for one is not settled by the manual, and an OTP is "
+        "typed on the portal, never here"
     )
 
 
@@ -146,13 +165,14 @@ def test_pf_warning_absent_when_every_member_has_a_uan():
     db = _db(employee_overrides={"E2": {"uan": "100555666777"}})
     out = pf_ecr.build(db, FIRM, CLIENT, REF)
     kinds = [s["kind"] for s in out["stages"]]
-    assert kinds == ["summary", "table", "warning", "table", "transmit",
-                     "result"], (
+    assert kinds == ["summary", "table", "table", "warning", "warning",
+                     "table", "table", "transmit", "result"], (
         "with no missing UANs there is nothing to warn about — an empty "
-        "warning stage is noise. The sequential-filing warning stays: it is "
-        "unconditional, because the order applies to every month"
+        "warning stage is noise. The sequential-filing warning and the "
+        "approval warning stay: both are unconditional, because the order and "
+        "the irreversibility apply to every month"
     )
-    assert "wage-month ORDER" in out["stages"][2]["text"]
+    assert "wage-month ORDER" in out["stages"][3]["text"]
 
 
 def test_esi_warning_absent_when_every_covered_ip_has_a_number():
@@ -239,9 +259,16 @@ def test_pf_challan_teaches_the_epfo_account_heads():
     text = str(table)
     for head in ("A/c 1", "A/c 2", "A/c 10", "A/c 21", "A/c 22"):
         assert head in text, f"challan account head {head} missing"
-    # EPS-95 para 3: 8.33% diverted from the employer's 12%, wages capped
-    # at ₹15,000/month.
-    assert "8.33%" in text and "₹15,000" in text
+    # Employees' Pension Scheme, 2026 para 4(1): 8.33% diverted from the
+    # employer's 12%, on wages up to the wage ceiling the Government
+    # notifies. The ceiling is ₹15,000 for a wage month before 17-09-2026
+    # and ₹25,000 from it (S.O. 5109(E)), so a challan table that printed
+    # either figure as the limit would be wrong for the other months: it
+    # names the notified ceiling and leaves the amount to the run (POST-A-516).
+    assert "8.33%" in text and "notified wage ceiling" in text
+    assert "₹15,000" not in text and "₹25,000" not in text, (
+        "the challan table must not hard-code a wage ceiling that moved on "
+        "17-09-2026")
     assert "3.67%" in text  # employer balance after the EPS diversion
     assert "Nil at present" in text  # A/c 22 EDLI admin — waived
 
@@ -270,7 +297,7 @@ def test_the_ecr_stage_carries_the_four_checks_that_reject_the_file():
     assert checks == [
         "EPF wages ≤ gross wages",
         "EPS wages ≤ EPF wages",
-        "EDLI wages = EPF wages, capped at ₹15,000",
+        "EDLI wages = EPF wages, capped at the notified wage ceiling",
         "Every member line carries a UAN",
     ]
     assert "#~#" in stage["note"] and "eleven fields" in stage["note"]
@@ -279,22 +306,92 @@ def test_the_ecr_stage_carries_the_four_checks_that_reject_the_file():
         "per-member split the run does not store")
 
 
-def test_the_pf_sequence_warning_is_unconditional_and_names_the_nil_return():
+def test_the_pf_sequence_warning_is_unconditional_and_names_the_no_active_members_route():
     """Sequential filing is what actually stops a bureau: since the
     re-engineered ECR (wage month September 2025) a later month cannot be
     uploaded while an earlier one is pending, so one skipped month blocks
-    every month after it — and a month with no contributory members needs a
-    NIL return purely to keep the sequence unbroken. It is not conditional on
-    anything in the run, so it renders every time."""
+    every month after it. A month with no active members is NOT a NIL return
+    (POST-A-518): the portal's FAQ, question 21, has its administrative and
+    inspection charges paid through Direct Challan Entry, which is enabled only
+    when there are no active members. It is not conditional on anything in the
+    run, so it renders every time."""
     out = pf_ecr.build(_db(employee_overrides={"E2": {"uan": "100555666777"}}),
                        FIRM, CLIENT, REF)
     warning = next(s for s in out["stages"]
                    if s["kind"] == "warning" and "ORDER" in s["text"])
     assert "September 2025" in warning["text"]
-    assert "NIL return" in warning["text"]
+    assert "Direct Challan Entry" in warning["text"]
+    assert "NIL return" not in warning["text"], (
+        "the FAQ does not say a month with no active members needs a NIL "
+        "return; it says the charges are paid through Direct Challan Entry"
+    )
     assert "two separate acts" in warning["text"], (
-        "filing the return and paying the challan were split by the revamp; "
-        "a TRRN is not a payment")
+        "filing the return and paying the challan are two acts; approving the "
+        "return is not a payment and the TRRN is not the return's reference"
+    )
+
+
+def test_the_pf_approval_warning_says_an_approval_cannot_be_undone_and_names_the_route():
+    out = pf_ecr.build(_db(), FIRM, CLIENT, REF)
+    warning = next(s for s in out["stages"]
+                   if s["kind"] == "warning" and "approves or rejects" in s["text"])
+    assert "cannot be modified" in warning["text"]
+    assert "Revised return" in warning["text"], (
+        "an irreversible step names the lawful correction route rather than "
+        "reading as a dead end"
+    )
+
+
+def _every_string(node):
+    if isinstance(node, str):
+        yield node
+    elif isinstance(node, dict):
+        for v in node.values():
+            yield from _every_string(v)
+    elif isinstance(node, (list, tuple)):
+        for v in node:
+            yield from _every_string(v)
+
+
+def test_the_pf_walk_through_never_says_no_otp_and_never_says_nil_return():
+    """POST-A-518, points 3 and 4. EPFO's manual carries two notices about the
+    OTP-based second step and the digital signature process and does not say
+    whether either touches the return, so a sentence saying there is none
+    cannot stand; and the FAQ has no 'NIL return' for a month with no active
+    members."""
+    out = pf_ecr.build(_db(), FIRM, CLIENT, REF)
+    text = " ".join(_every_string(out))
+    for banned in ("no DSC and no OTP", "No DSC and no OTP", "no OTP", "NIL return",
+                   "nil-ECR", "NIL ECR"):
+        assert banned not in text, banned
+    assert "does not say whether" in out["real_channel"]["how"]
+
+
+def test_the_trrn_is_issued_at_the_challan_and_not_at_the_upload():
+    """POST-A-518, point 1: the walk-through put the TRRN at the upload and
+    generated the challan when the file was verified. In EPFO's manual the file
+    gives a Return File ID, the employer approves, the summary follows, and the
+    TRRN is issued only when the challan is finalised."""
+    out = pf_ecr.build(_db(), FIRM, CLIENT, REF)
+    transmit = next(s for s in out["stages"] if s["kind"] == "transmit")
+    keys = [step["key"] for step in transmit["steps"]]
+    assert keys == ["prepare", "upload", "validate", "approve", "summary",
+                    "challan", "payment"]
+    with_trrn = [step["key"] for step in transmit["steps"] if "TRRN" in step["label"]]
+    assert with_trrn == ["challan"]
+    validate = next(step for step in transmit["steps"] if step["key"] == "validate")
+    assert "Return File ID" in validate["label"]
+
+
+def test_the_upload_page_table_names_the_file_the_way_the_download_does():
+    """The name EPFO's notice asks for (letters and digits only, a small-case
+    extension) is the name the product gives the download, from one function."""
+    from domain.payroll.ecr import ecr_file_name
+    out = pf_ecr.build(_db(), FIRM, CLIENT, REF)
+    table = next(s for s in out["stages"] if s.get("title") == "The upload page")
+    text = " ".join(_every_string(table))
+    assert ecr_file_name("2026-09") in text
+    assert "12% or 10%" in text
 
 
 def test_the_esi_coverage_stage_teaches_the_contribution_period():
@@ -417,11 +514,15 @@ def test_both_due_dates_are_the_15th_of_the_following_month():
 
 # ── Realism is labelled ─────────────────────────────────────────────────────
 
-def test_pf_specimen_is_a_ten_digit_trrn_with_its_note():
+def test_pf_specimen_is_a_fifteen_digit_trrn_with_its_note():
+    """15 digits, in the shape of the manual's own example (250113000000438);
+    it was 10 until POST-A-518."""
     out = pf_ecr.build(_db(), FIRM, CLIENT, REF)
     result = next(s for s in out["stages"] if s["kind"] == "result")
-    assert len(result["specimen"]) == 10 and result["specimen"].isdigit()
-    assert result["reference_label"] == "Temporary Return Reference Number (TRRN)"
+    assert len(result["specimen"]) == 15 and result["specimen"].isdigit()
+    assert result["reference_label"] == "Challan reference (TRRN)"
+    assert "Return File ID" in result["filed_line"], (
+        "the return has its own reference; the result says the TRRN is not it")
     assert "SPECIMEN" in result["specimen_note"]
     assert "EPFO" in result["specimen_note"]
     assert any("Nothing was uploaded and nothing was paid" in t

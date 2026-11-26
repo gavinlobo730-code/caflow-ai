@@ -44,15 +44,18 @@
  */
 
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
+import { editedChoice, removedIdentifierProblem } from "@/lib/forms/editedValue";
 import { useState, useEffect, useCallback } from "react";
-import { Plus, X, Users, IndianRupee } from "lucide-react";
+import { Plus, Users, IndianRupee } from "lucide-react";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { Combobox } from "@/components/ui/combobox";
 import { getClients } from "@/lib/data/clients";
 import { api, type Vendor, type VendorWrite } from "@/lib/api";
+import { forgetVendorLists } from "@/lib/data/partyLists";
 import { listTdsSections, computeTdsAmount, type TDSSection, type TDSAmountResult } from "@/lib/data/tds";
 import { arrayOrEmpty } from "@/lib/api/shape";
 import { InterestThresholdClassSelect } from "@/components/tds/InterestThresholdClassSelect";
@@ -252,7 +255,8 @@ export default function SuppliersPage() {
       interest_threshold_class:
         v.interest_threshold_class && v.interest_threshold_class !== "ordinary"
           ? v.interest_threshold_class : "",
-      credit_limit_rs: v.credit_limit_paise ? String(v.credit_limit_paise / 100) : "",
+      // A limit of 0 is "cash only" and is shown as 0: a blank here would be read on Save as "no limit", and the route now clears it (POST-A-399).
+      credit_limit_rs: v.credit_limit_paise != null ? String(v.credit_limit_paise / 100) : "",
       credit_days: v.credit_days !== null && v.credit_days !== undefined ? String(v.credit_days) : "",
       gst_registration_status: v.gst_registration_status ?? "",
       is_active: v.is_active,
@@ -316,12 +320,22 @@ export default function SuppliersPage() {
       creditDays = n;
     }
 
+    // POST-A-399. A tax identifier on file is corrected and not removed (the server refuses the same edit in the same words), and the payment terms,
+    // the credit limit and the registration status emptied over a value on file are cleared; the form opens with what is on file, so a blank is one
+    // the person emptied.
+    const was = editingId ? vendors.find(x => x.id === editingId) : undefined;
+    if (was) {
+      const removed = removedIdentifierProblem("GSTIN", was.gstin, form.gstin)
+        ?? removedIdentifierProblem("PAN", was.pan, form.pan);
+      if (removed) { setError(removed); return; }
+    }
+
     setSaving(true);
     setError(null);
     const body: VendorWrite = {
       name: form.name.trim(),
-      gstin: form.gstin.trim() || null,
-      pan: form.pan.trim() || null,
+      gstin: form.gstin.trim() || undefined,
+      pan: form.pan.trim() || undefined,
       // Section and applicability only. THE RATE IS THE ENGINE'S: it comes
       // from the FY-versioned registry for this section, so the two move
       // together when a Finance Act moves one — see this file's header.
@@ -339,16 +353,16 @@ export default function SuppliersPage() {
               ? "ordinary" : undefined),
       credit_limit_paise: creditLimit,
       credit_days: creditDays,
-      // Omitted rather than sent as null when unrecorded: the server drops
-      // nulls on a PATCH, so sending one would be inert and sending "" would
-      // fail the CHECK. Leaving it out leaves the column as it is.
-      gst_registration_status: form.gst_registration_status || undefined,
+      // Never "", which would fail the CHECK. On an edit, a status on file that the person set back to "not recorded" is sent as null and the
+      // route clears it (POST-A-399); an empty choice over nothing is left out.
+      gst_registration_status: editedChoice(form.gst_registration_status, was?.gst_registration_status),
       is_active: form.is_active,
     };
     try {
       const res = editingId
         ? await api.vendors.update(editingId, body)
         : await api.vendors.create({ ...body, client_id: selectedClientId });
+      forgetVendorLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
       if (!res.success) throw new Error(res.error ?? "Couldn't save the supplier.");
       const dup = res.data as { duplicate?: boolean; duplicate_reason?: string } | null;
       if (!editingId && dup?.duplicate) {
@@ -378,6 +392,7 @@ export default function SuppliersPage() {
     setError(null);
     try {
       const res = await api.vendors.update(v.id, { is_active: !v.is_active });
+      forgetVendorLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
       if (!res.success) throw new Error(res.error ?? "Couldn't change the supplier's status.");
       await loadVendors();
     } catch (e) {
@@ -476,13 +491,13 @@ export default function SuppliersPage() {
                     </td>
                     <td className="px-4 py-3 flex gap-2 justify-end">
                       <button onClick={() => openEdit(v)} className="text-xs text-blue-600 hover:underline">Edit</button>
-                      <button
+                      <Button variant="plain" size="none" spinner={false}
                         onClick={() => toggleActive(v)}
                         disabled={busyId === v.id}
                         className="text-xs text-ps-hint hover:underline disabled:opacity-50"
                       >
                         {busyId === v.id ? "Saving…" : v.is_active ? "Deactivate" : "Activate"}
-                      </button>
+                      </Button>
                     </td>
                   </tr>
                 ))}
@@ -511,13 +526,13 @@ export default function SuppliersPage() {
 
       {/* Add/Edit Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-5 py-4 border-b">
-              <h2 className="text-sm font-semibold text-ps-ink">{editingId ? "Edit Supplier" : "Add Supplier"}</h2>
-              <button onClick={() => setShowModal(false)}><X className="w-4 h-4 text-ps-hint" /></button>
-            </div>
-            <div className="px-5 py-4 space-y-4">
+        // The shared dialog (POST-A-130). Its close is held while the supplier is being saved.
+        <Modal title={editingId ? "Edit Supplier" : "Add Supplier"} maxWidthClass="max-w-lg" onClose={() => { if (!saving) setShowModal(false); }}
+          footer={<>
+            <Button disabled={saving} variant="outline" size="sm" onClick={() => setShowModal(false)}>Cancel</Button>
+            <Button size="sm" onClick={handleSave} disabled={saving}>{saving ? "Saving…" : "Save Supplier"}</Button>
+          </>}>
+            <div className="space-y-4">
               {error && <Callout tone="problem">{error}</Callout>}
 
               <div>
@@ -656,12 +671,7 @@ export default function SuppliersPage() {
               )}
             </div>
 
-            <div className="flex justify-end gap-3 px-5 py-4 border-t">
-              <Button variant="outline" size="sm" onClick={() => setShowModal(false)}>Cancel</Button>
-              <Button size="sm" onClick={handleSave} disabled={saving}>{saving ? "Saving…" : "Save Supplier"}</Button>
-            </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

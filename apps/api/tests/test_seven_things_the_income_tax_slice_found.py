@@ -262,7 +262,7 @@ class _RunsDB:
         self.slips_asked_for: list = []
 
     def table(self, name):
-        assert name in ("payroll_runs", "payroll_slips")
+        assert name in ("payroll_runs", "payroll_slips", "payroll_opening_positions")
         self._name = name
         return self
 
@@ -278,6 +278,10 @@ class _RunsDB:
         return self
 
     def execute(self):
+        if self._name == "payroll_opening_positions":
+            # POST-A-082: the coverage read also asks for opening positions; none here.
+            self._filters, self._in = {}, {}
+            return type("R", (), {"data": []})()
         if self._name == "payroll_slips":
             self.slips_asked_for.extend(self._in.get("run_id", []))
             self._filters, self._in = {}, {}

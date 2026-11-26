@@ -1,5 +1,7 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -36,7 +38,8 @@ import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { errorMessage } from "@/lib/api/index";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
-import { doingOf, failureSentence, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, failureSentence, fetchBounded, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -44,7 +47,9 @@ async function apiFetch(path: string, opts?: RequestInit) {
   const { data: { session } } = await getSupabaseClient().auth.getSession();
   const token = session?.access_token ?? "";
   const doing = doingOf(opts?.method);
-  const res = await fetchPlain(`${API}${path}`, {
+  // Bounded the way `lib/api`'s request() is (45 seconds, never retried) unless the caller brings its own signal: the dialogs below hold
+  // Close and Cancel while a request is out, so an answer that never comes would otherwise keep them held until the browser gave up (POST-A-395).
+  const res = await fetchBounded(`${API}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
@@ -253,18 +258,6 @@ function CreateEngagementModal({ open, onClose, templates, onCreated, initialLea
     }
   }, [open, initialName, initialFeePaise, initialEmail, clearRefusal]);
 
-  // Escape closes the dialog, matching the shared Modal (components/ui/modal.tsx)
-  // — guarded on `open` and on `saving` so a create in flight can't be
-  // abandoned mid-request.
-  useEffect(() => {
-    if (!open) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape" && !saving) onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, saving, onClose]);
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
@@ -305,15 +298,10 @@ function CreateEngagementModal({ open, onClose, templates, onCreated, initialLea
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand/60 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-ps-border">
-          <h2 className="text-base font-semibold text-ps-ink">New Engagement Letter</h2>
-          <button onClick={onClose} disabled={saving} aria-label="Close" className="text-ps-hint hover:text-ps-label disabled:opacity-50">
-            <X size={18} />
-          </button>
-        </div>
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+    // The shared dialog (POST-A-130): named, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it, its ×) is held
+    // while the letter is being created, so a create in flight cannot be abandoned mid-request.
+    <Modal title="New Engagement Letter" maxWidthClass="max-w-lg" onClose={() => { if (!saving) onClose(); }}>
+        <form onSubmit={handleSubmit} className="space-y-4">
           {sentence && <div ref={sentenceRef}><Callout tone="problem">{sentence}</Callout></div>}
 
           <div>
@@ -421,8 +409,7 @@ function CreateEngagementModal({ open, onClose, templates, onCreated, initialLea
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -452,18 +439,6 @@ function TemplateModal({ open, onClose, initial, onSaved }: TemplateModalProps) 
       }
     }
   }, [open, initial]);
-
-  // Escape closes the dialog, matching the shared Modal (components/ui/modal.tsx)
-  // — guarded on `open` and on `saving` so a save in flight can't be
-  // abandoned mid-request.
-  useEffect(() => {
-    if (!open) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape" && !saving) onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, saving, onClose]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -496,17 +471,9 @@ function TemplateModal({ open, onClose, initial, onSaved }: TemplateModalProps) 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand/60 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-ps-border">
-          <h2 className="text-base font-semibold text-ps-ink">
-            {initial ? "Edit Template" : "New Template"}
-          </h2>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-label">
-            <X size={18} />
-          </button>
-        </div>
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+    // The shared dialog (POST-A-130). Its close is held while the template is being saved.
+    <Modal title={initial ? "Edit Template" : "New Template"} maxWidthClass="max-w-2xl" onClose={() => { if (!saving) onClose(); }}>
+        <form onSubmit={handleSubmit} className="space-y-4">
           {err && <Callout tone="problem">{err}</Callout>}
 
           <div>
@@ -558,7 +525,8 @@ function TemplateModal({ open, onClose, initial, onSaved }: TemplateModalProps) 
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg transition-colors"
+              disabled={saving}
+              className="flex-1 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg disabled:opacity-50 transition-colors"
             >
               Cancel
             </button>
@@ -572,8 +540,7 @@ function TemplateModal({ open, onClose, initial, onSaved }: TemplateModalProps) 
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -617,18 +584,6 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
       setShowRegenConfirm(false);
     }
   }, [letter]);
-
-  // Escape closes the dialog, matching the shared Modal (components/ui/modal.tsx)
-  // — guarded on `letter` (this modal's own "open") and on `actionLoading` so
-  // an action in flight can't be abandoned mid-request.
-  useEffect(() => {
-    if (!letter) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape" && !actionLoading) onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [letter, actionLoading, onClose]);
 
   async function doAction(path: string, body?: Record<string, unknown>) {
     setActionLoading(true);
@@ -801,7 +756,8 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
     try {
       const { data: { session } } = await getSupabaseClient().auth.getSession();
       const token = session?.access_token ?? "";
-      const res = await fetchPlain(`${API}/api/engagement-letters/${letter.id}/pdf`, {
+      const res = await fetchBounded(`${API}/api/engagement-letters/${letter.id}/pdf`, {
+        // Close is held while this is out, so it keeps the JSON helper's 45-second bound (a one-letter PDF, not an export).
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       }, "read");
       if (!res.ok) throw new Error(`Couldn't download the PDF (HTTP ${res.status})`);
@@ -824,22 +780,14 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
   if (!letter) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand/60 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-ps-border">
-          <div>
-            <p className="text-3xs font-mono text-ps-hint">{letter.engagement_number}</p>
-            <h2 className="text-base font-semibold text-ps-ink">{letter.title}</h2>
-          </div>
-          <div className="flex items-center gap-3">
-            <StatusBadge status={shownStatus(letter)} />
-            <button onClick={onClose} className="text-ps-hint hover:text-ps-label">
-              <X size={18} />
-            </button>
-          </div>
-        </div>
-
-        <div className="p-5 space-y-4">
+    // The shared dialog (POST-A-130), named for the letter, with its number and status under the name. Its close is held while one of its
+    // steps (send, sign, reject, regenerate, delete) is out, so an action in flight cannot be abandoned mid-request.
+    <Modal title={letter.title} maxWidthClass="max-w-2xl" onClose={() => { if (!actionLoading) onClose(); }}
+      note={<span className="flex items-center gap-3">
+        <span className="font-mono text-ps-hint">{letter.engagement_number}</span>
+        <StatusBadge status={shownStatus(letter)} />
+      </span>}>
+        <div className="space-y-4">
           {/* Meta row */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 text-sm">
             <div>
@@ -938,14 +886,14 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
           {/* Actions */}
           <div className="flex flex-wrap gap-2 pt-1">
             {letter.status === "Draft" && (
-              <button
+              <Button variant="plain" size="none" spinner={false}
                 disabled={actionLoading}
                 onClick={() => doAction(`/api/engagement-letters/${letter.id}/generate`)}
                 className="flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-50 transition-colors"
               >
                 {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}
                 Mark as Generated
-              </button>
+              </Button>
             )}
 
             {letter.status === "Generated" && (
@@ -972,15 +920,15 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                     The letter will be emailed to this address with a PDF copy attached, then marked as Sent.
                   </p>
                   <div className="flex gap-2">
-                    <button
+                    <Button variant="plain" size="none" spinner={false}
                       disabled={actionLoading || !sendEmail.trim()}
                       onClick={() => doAction(`/api/engagement-letters/${letter.id}/send`, { to_email: sendEmail.trim() })}
                       className="flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-50 transition-colors"
                     >
                       {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
                       Send Now
-                    </button>
-                    <button onClick={() => setShowSendInput(false)} className="rounded-lg border border-ps-border px-3 py-2 text-sm text-ps-label hover:bg-ps-bg">
+                    </Button>
+                    <button onClick={() => setShowSendInput(false)} disabled={actionLoading} className="disabled:opacity-50 rounded-lg border border-ps-border px-3 py-2 text-sm text-ps-label hover:bg-ps-bg">
                       Cancel
                     </button>
                   </div>
@@ -992,14 +940,14 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
               <>
                 {!showSignInput && !showRejectInput && !showRecipientInput && !showRegenConfirm && (
                   <>
-                    <button
+                    <Button variant="plain" size="none" spinner={false}
                       disabled={actionLoading}
                       onClick={() => doResend()}
                       className="flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-50 transition-colors"
                     >
                       {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
                       Send Again
-                    </button>
+                    </Button>
                     <button
                       disabled={actionLoading}
                       onClick={doCopyLink}
@@ -1063,23 +1011,23 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                       Updates the recipient on this same engagement — the signing link and token stay the same.
                     </p>
                     <div className="flex flex-wrap gap-2">
-                      <button
+                      <Button variant="plain" size="none" spinner={false}
                         disabled={actionLoading || !recipientEmail.trim()}
                         onClick={() => doChangeRecipient(false)}
                         className="flex items-center gap-1.5 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg disabled:opacity-50 transition-colors"
                       >
                         {actionLoading && <Loader2 size={13} className="animate-spin" />}
                         Save
-                      </button>
-                      <button
+                      </Button>
+                      <Button variant="plain" size="none" spinner={false}
                         disabled={actionLoading || !recipientEmail.trim()}
                         onClick={() => doChangeRecipient(true)}
                         className="flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-50 transition-colors"
                       >
                         {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
                         Save &amp; Resend
-                      </button>
-                      <button onClick={() => setShowRecipientInput(false)} className="rounded-lg border border-ps-border px-3 py-2 text-sm text-ps-label hover:bg-ps-bg">
+                      </Button>
+                      <button onClick={() => setShowRecipientInput(false)} disabled={actionLoading} className="disabled:opacity-50 rounded-lg border border-ps-border px-3 py-2 text-sm text-ps-label hover:bg-ps-bg">
                         Cancel
                       </button>
                     </div>
@@ -1094,23 +1042,23 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                       Anyone opening an old link will see &ldquo;invalid or expired&rdquo;. A fresh link is created.
                     </p>
                     <div className="flex flex-wrap gap-2 pt-1">
-                      <button
+                      <Button variant="plain" size="none" spinner={false}
                         disabled={actionLoading}
                         onClick={() => doRegenerate(false)}
                         className="flex items-center gap-1.5 rounded-lg border border-state-attention-border bg-white px-4 py-2 text-sm font-medium text-state-attention hover:bg-state-attention-hover disabled:opacity-50 transition-colors"
                       >
                         {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
                         Generate Only
-                      </button>
-                      <button
+                      </Button>
+                      <Button variant="plain" size="none" spinner={false}
                         disabled={actionLoading}
                         onClick={() => doRegenerate(true)}
                         className="flex items-center gap-1.5 rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50 transition-colors"
                       >
                         {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
                         Generate &amp; Email
-                      </button>
-                      <button onClick={() => setShowRegenConfirm(false)} className="rounded-lg border border-ps-border bg-white px-3 py-2 text-sm text-ps-label hover:bg-ps-bg">
+                      </Button>
+                      <button onClick={() => setShowRegenConfirm(false)} disabled={actionLoading} className="disabled:opacity-50 rounded-lg border border-ps-border bg-white px-3 py-2 text-sm text-ps-label hover:bg-ps-bg">
                         Cancel
                       </button>
                     </div>
@@ -1127,15 +1075,15 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                       className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-green-500 focus:ring-2 focus:ring-green-100"
                     />
                     <div className="flex gap-2">
-                      <button
+                      <Button variant="plain" size="none" spinner={false}
                         disabled={actionLoading}
                         onClick={() => doAction(`/api/engagement-letters/${letter.id}/sign`, { signed_pdf_url: signedPdfUrl || undefined })}
                         className="flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50 transition-colors"
                       >
                         {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle size={13} />}
                         Confirm Signed
-                      </button>
-                      <button onClick={() => setShowSignInput(false)} className="rounded-lg border border-ps-border px-3 py-2 text-sm text-ps-label hover:bg-ps-bg">
+                      </Button>
+                      <button onClick={() => setShowSignInput(false)} disabled={actionLoading} className="disabled:opacity-50 rounded-lg border border-ps-border px-3 py-2 text-sm text-ps-label hover:bg-ps-bg">
                         Cancel
                       </button>
                     </div>
@@ -1152,15 +1100,15 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                       className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100"
                     />
                     <div className="flex gap-2">
-                      <button
+                      <Button variant="plain" size="none" spinner={false}
                         disabled={actionLoading}
                         onClick={() => doAction(`/api/engagement-letters/${letter.id}/reject`, { rejection_notes: rejectionNotes || undefined })}
                         className="flex items-center gap-1.5 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
                       >
                         {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <XCircle size={13} />}
                         Confirm Reject
-                      </button>
-                      <button onClick={() => setShowRejectInput(false)} className="rounded-lg border border-ps-border px-3 py-2 text-sm text-ps-label hover:bg-ps-bg">
+                      </Button>
+                      <button onClick={() => setShowRejectInput(false)} disabled={actionLoading} className="disabled:opacity-50 rounded-lg border border-ps-border px-3 py-2 text-sm text-ps-label hover:bg-ps-bg">
                         Cancel
                       </button>
                     </div>
@@ -1174,22 +1122,21 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
               Returns the linked lead to the pipeline so it can be re-engaged. */}
           {letter.status !== "Signed" && (
             <div className="border-t border-ps-border pt-3">
-              <button
+              <Button variant="plain" size="none" spinner={false}
                 disabled={actionLoading}
                 onClick={doDelete}
                 className="flex items-center gap-1.5 text-xs font-medium text-red-600 hover:text-state-problem disabled:opacity-50"
               >
                 <Trash2 size={13} />
                 Delete engagement
-              </button>
+              </Button>
               <p className="mt-1 text-xs text-ps-hint">
                 Discards this letter and returns the linked lead to the pipeline so you can draft a new one.
               </p>
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -1595,10 +1542,12 @@ function EngagementsPageInner() {
 
       {/* Loading (templates tab only — the letters DataTable manages its own loading state) */}
       {loading && activeTab === "templates" && (
-        <div className="flex items-center justify-center py-12 text-sm text-ps-hint gap-2">
-          <Loader2 size={16} className="animate-spin" />
-          Loading…
-        </div>
+        <LoadingRegion label="Loading templates" noticeClassName="justify-center text-center">
+          <div className="flex items-center justify-center py-12 text-sm text-ps-hint gap-2">
+            <Loader2 size={16} className="animate-spin" />
+            Loading…
+          </div>
+        </LoadingRegion>
       )}
 
       {/* Templates tab */}

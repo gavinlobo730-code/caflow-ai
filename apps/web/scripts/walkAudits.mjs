@@ -89,6 +89,16 @@ export async function auditNamedScreens({
  * word for word and ONCE on the page; no Retry is offered yet; a Retry appears (about twenty seconds in);
  * pressing it asks the server again and quiets the notice; and when the first answer lands the notice is gone
  * from the page altogether. Returns the problems found, empty when every step held.
+ *
+ * "ASKS THE SERVER AGAIN" IS COUNTED IN THE PAGE, NOT AT THE STUB (22-11-2026). It used to be read off the stub's own list
+ * of requests received, and the nightly walk of 22 November failed on it with a Retry that works: by then the Tasks screen
+ * and the shell held SIX answers open at once (the permissions, the sign-in policy, the device ping, the status moves, the
+ * clients and the tasks), which is Chromium's limit of connections to one host over HTTP/1.1, and the stub is one host for
+ * the API and the database alike. The screen's second read was asked for at once and waited in the browser's queue until
+ * an answer came back, four seconds later, so nothing reached the stub in the 300 ms this allowed. That is a fact about
+ * this harness (the product's API and database are two hosts, both over HTTP/2, which has no such limit), so what is
+ * measured is what the rule is about: that the screen CALLED `fetch` again. `window.fetch` is counted from before the
+ * page's first script, and the count must rise on the press.
  */
 export async function slowServerScenario({ context, port, stub, sealOff, escaped }) {
   const problems = [];
@@ -102,6 +112,12 @@ export async function slowServerScenario({ context, port, stub, sealOff, escaped
   stub.requests.length = 0;
   try {
     await sealOff(page, escaped);
+    // Every read the page asks for, counted where it is asked (see the note above: a request can wait in the browser's queue).
+    await page.addInitScript(() => {
+      const real = window.fetch;
+      window.__readsAsked = 0;
+      window.fetch = function countedFetch(...args) { window.__readsAsked += 1; return real.apply(this, args); };
+    });
     await page.goto(`http://127.0.0.1:${port}/tasks/`, { waitUntil: "domcontentloaded", timeout: 30_000 });
     // The region is mounted, and silent.
     await anyNotice.first().waitFor({ state: "attached", timeout: 15_000 });
@@ -118,10 +134,16 @@ export async function slowServerScenario({ context, port, stub, sealOff, escaped
     // About twenty seconds in: a Retry, and it asks the server again.
     const retry = page.locator('[data-slow-server-notice="stalled"] button', { hasText: "Retry" });
     await retry.waitFor({ state: "visible", timeout: 25_000 });
-    const before = stub.requests.length;
+    const asked = () => page.evaluate(() => window.__readsAsked);
+    const settled = await asked();
+    if (typeof settled !== "number" || settled === 0) note("the page's reads were not counted, so this cannot say whether Retry asked again");
+    // The control: a waiting page asks for nothing by itself in the same 300 ms, so a rise after the press is the press's.
+    await page.waitForTimeout(300);
+    const before = await asked();
+    if (before !== settled) note(`the waiting page asked for ${before - settled} read(s) by itself in 300 ms, so a read after Retry cannot be put down to Retry`);
     await retry.click();
     await page.waitForTimeout(300);
-    if (stub.requests.length <= before) note("pressing Retry sent no request");
+    if (!((await asked()) > before)) note("pressing Retry sent no request");
     if (await page.locator('[data-slow-server-notice="stalled"]').count()) note("the notice was still offering Retry after it was pressed");
 
     // The first answer lands: nothing about waiting stays on the page.
@@ -135,4 +157,173 @@ export async function slowServerScenario({ context, port, stub, sealOff, escaped
   }
   for (const e of new Set(errors)) note(e);
   return problems;
+}
+
+// ── How a screen sits on the page, and what it draws while it waits (POST-A-530) ─────────────────────────────────────────────
+//
+// The owner, walking the live site on 20-11-2026: inside a client's workspace a screen is laid out and waits with placeholders
+// shaped like itself; outside it a screen may hug the left edge with the right half of the window empty, and wait as one line of
+// plain text. Both are facts about what a BROWSER draws, so they are measured there and not read off class names: a page that
+// delegates to a component, or caps an inner card and not its own wrapper, reads one way in the source and draws another.
+//
+// TWO MEASUREMENTS, ONE PAGE PER ROUTE.
+//   waiting  The stubbed API is held for a few seconds and the screen is read while its data is still out: placeholder blocks
+//            (the shared `Skeleton`, which is what pulses), words only (a status region or a bare "Loading…" with no shape), or
+//            nothing at all. A screen that asked the API for nothing has nothing to wait for and is `static`.
+//   layout   Once the data has landed, at a WIDE window (1920: at 1440 the shell's rails leave less than any cap on a data screen,
+//            so every screen looks full-width and the measurement says nothing): the screen's own container, which is the first
+//            element under `<main>` with more than one visible child, and the gap on each side of it. A container with far more
+//            room on its right than its left is capped and not centred, which is "hugs the left".
+//
+// It reports and judges nothing by itself: the walk writes the rows to its report, and what is a defect is decided there.
+export const FRAME_VIEWPORT = { width: 1920, height: 1000 };
+export const FRAME_HOLD_MS = 2_500;
+/** A container this much closer to the left edge than the right is not centred (pixels at the wide window). */
+export const HUGS_LEFT_BY = 48;
+
+export function waitingVerdict(w) {
+  if (!w) return "unread";
+  if (w.pulses > 0) return w.bare.length ? "placeholders, and bare words" : "placeholders";
+  if (w.bare.length) return "bare words";
+  if (w.status > 0 || w.spinners > 0) return "words or a spinner, no shape";
+  if (w.text) return "the screen itself";
+  return w.asked > 0 ? "nothing" : "static";
+}
+
+export function layoutVerdict(l) {
+  if (!l) return "outside the shell";
+  if (l.right - l.left > HUGS_LEFT_BY) return "hugs the left";
+  if (l.left <= 1 && l.right <= 1) return "full width";
+  return "centred";
+}
+
+export async function measureFrame({ context, url, stub, sealOff, escaped, shotBase = null }) {
+  const page = await context.newPage();
+  const out = { waiting: null, layout: null, error: null };
+  const before = stub.requests.length;
+  stub.apiDelayMs = FRAME_HOLD_MS;
+  try {
+    await page.setViewportSize(FRAME_VIEWPORT);
+    await sealOff(page, escaped);
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
+    await page.waitForTimeout(1_100);
+    const readWaiting = () => page.evaluate(() => {
+      const main = document.querySelector("main") || document.body;
+      const vis = (el) => {
+        const r = el.getBoundingClientRect(); const s = getComputedStyle(el);
+        return r.width > 0 && r.height > 0 && s.visibility !== "hidden" && s.display !== "none";
+      };
+      const count = (sel) => [...main.querySelectorAll(sel)].filter(vis).length;
+      const bare = []; const inStatus = [];
+      const walker = document.createTreeWalker(main, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        const t = (n.textContent || "").trim();
+        if (!/^(loading\b|please wait|fetching\b)/i.test(t) || t.length > 80) continue;
+        const el = n.parentElement;
+        if (!el || !vis(el)) continue;
+        (el.closest('[role="status"]') ? inStatus : bare).push(t);
+      }
+      const statusSeen = [...main.querySelectorAll('[role="status"]')].filter(vis).map((el) => (el.getAttribute("aria-label") || "(no label)") + ": " + (el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 60));
+      return { pulses: count(".animate-pulse"), status: count('[role="status"]'), spinners: count(".animate-spin"), bare, inStatus, statusSeen,
+               text: (main.innerText || "").replace(/\s+/g, " ").trim().slice(0, 140) };
+    });
+    // A screen behind a gate (the session, the person's permissions) draws nothing until the gate's own read lands, and that
+    // read is held too. So a blank first look is the GATE waiting, not the screen: look again once the gate's answer is in and
+    // the screen's own reads are the ones being held.
+    let waiting = await readWaiting();
+    waiting.look = 1;
+    if (!waiting.text && !waiting.pulses && !waiting.status && !waiting.spinners) {
+      await page.waitForTimeout(FRAME_HOLD_MS);
+      waiting = await readWaiting();
+      waiting.look = 2;
+    }
+    waiting.asked = stub.requests.length - before;
+    if (shotBase) await page.screenshot({ path: `${shotBase}-waiting.jpg`, type: "jpeg", quality: 80 });
+    out.waiting = waiting;
+    stub.apiDelayMs = 0;
+    await page.waitForLoadState("networkidle", { timeout: 30_000 });
+    // The network going quiet is not the screen having settled: a screen that reads one thing and then another is quiet in
+    // between, and its placeholder was measured as its layout. Wait for the placeholders to leave, and say so when they do not.
+    const settled = await page.waitForFunction(
+      () => !document.querySelector('main .animate-pulse, main [role="status"][aria-label^="Loading"]'), null, { timeout: 8_000 },
+    ).then(() => true, () => false);
+    await page.waitForTimeout(300);
+    out.settled = settled;
+    out.landed = new URL(page.url()).pathname;
+    if (shotBase) await page.screenshot({ path: `${shotBase}-settled.jpg`, type: "jpeg", quality: 80 });
+    out.layout = await page.evaluate(() => {
+      const main = document.querySelector("main");
+      if (!main) return null;
+      const kids = (el) => [...el.children].filter((c) => {
+        const r = c.getBoundingClientRect(); const s = getComputedStyle(c);
+        return r.width > 0 && r.height > 0 && s.display !== "none" && s.position !== "fixed" && s.position !== "absolute";
+      });
+      let el = main; let depth = 0;
+      for (; depth < 14; depth++) { const k = kids(el); if (k.length !== 1) break; el = k[0]; }
+      const m = main.getBoundingClientRect(); const r = el.getBoundingClientRect(); const cs = getComputedStyle(el);
+      return {
+        main: Math.round(m.width), width: Math.round(r.width),
+        left: Math.round(r.left - m.left), right: Math.round(m.right - r.right),
+        cap: cs.maxWidth, depth, cls: String(el.className || "").slice(0, 90),
+      };
+    });
+  } catch (e) {
+    out.error = String(e?.message ?? e).split("\n")[0];
+  } finally {
+    stub.apiDelayMs = 0;
+    await page.close();
+  }
+  return out;
+}
+
+// ── The list of screens not yet right, which only shrinks ───────────────────────────────────────────────────────────────────
+/** A waiting verdict that is a defect: the screen was asked to wait and drew words, or nothing, where a shape belongs. */
+export const WAITS_WITHOUT_A_SHAPE = new Set([
+  "words or a spinner, no shape", "bare words", "placeholders, and bare words", "nothing",
+]);
+
+/**
+ * What a run found against the committed list (`scripts/frame-baseline.json`). `fresh` is a screen that is wrong and not on
+ * the list: a new screen, or one that was right. `stale` is a screen on the list that the run measured and found right: its
+ * line is deleted, which is how the list shrinks and can never grow. A route the run did not measure (`--only`) is left alone.
+ */
+/**
+ * @typedef {{ route: string, key?: string, layout: string, waiting: string }} FrameRow
+ * @typedef {{ hugs_left?: string[], no_placeholder?: string[] }} FrameList
+ * @param {FrameRow[]} rows
+ * @param {FrameList | null} baseline
+ * @returns {{ fresh: Array<{ list: string, route: string, saw: string }>, stale: Array<{ list: string, route: string }> }}
+ */
+export function judgeFrame(rows, baseline) {
+  const measured = new Map(rows.map((r) => [r.key ?? r.route, r]));
+  /** @type {{ fresh: Array<{ list: string, route: string, saw: string }>, stale: Array<{ list: string, route: string }> }} */
+  const out = { fresh: [], stale: [] };
+  const lists = [
+    ["hugs_left", (r) => r.layout === "hugs the left"],
+    ["no_placeholder", (r) => WAITS_WITHOUT_A_SHAPE.has(r.waiting)],
+  ];
+  for (const [name, wrong] of lists) {
+    const listed = new Set(baseline?.[name] ?? []);
+    for (const [key, row] of measured) {
+      if (wrong(row) && !listed.has(key)) out.fresh.push({ list: name, route: key, saw: name === "hugs_left" ? row.layout : row.waiting });
+      if (!wrong(row) && listed.has(key)) out.stale.push({ list: name, route: key });
+    }
+  }
+  return out;
+}
+
+/** The list a run would write: every measured offender, sorted, and the unmeasured lines of the old list kept as they were. */
+/**
+ * @param {FrameRow[]} rows
+ * @param {FrameList | null} [old]
+ * @returns {{ hugs_left: string[], no_placeholder: string[] }}
+ */
+export function frameBaselineFrom(rows, old = null) {
+  const measured = new Set(rows.map((r) => r.key ?? r.route));
+  /** @param {"hugs_left" | "no_placeholder"} name */
+  const keep = (name) => (old?.[name] ?? []).filter((k) => !measured.has(k));
+  return {
+    hugs_left: [...new Set([...keep("hugs_left"), ...rows.filter((r) => r.layout === "hugs the left").map((r) => r.key ?? r.route)])].sort(),
+    no_placeholder: [...new Set([...keep("no_placeholder"), ...rows.filter((r) => WAITS_WITHOUT_A_SHAPE.has(r.waiting)).map((r) => r.key ?? r.route)])].sort(),
+  };
 }

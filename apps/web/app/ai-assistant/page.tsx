@@ -1,5 +1,6 @@
 "use client";
 
+import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { useState, useRef, useEffect } from "react";
 import { Send, Bot, User, Sparkles, Plus } from "lucide-react";
 import { api } from "@/lib/api";
@@ -189,23 +190,23 @@ export default function AIAssistantPage() {
           page's sibling in the AI section, has never had one either. */}
       <PageHeader
         icon={<Sparkles size={15} className="text-blue-500" />}
-        title="AI Assistant"
+        title="PracticeSync AI Assistant"
         subtitle="Ask about GST, Income Tax, TDS, and practice management"
         actions={
           <>
             {clients.length > 0 && (
               <label className="flex items-center gap-1.5 text-xs text-ps-hint shrink-0">
                 <span className="hidden sm:inline">About</span>
-                <select
+                <ClientLookup
+                  ariaLabel="Client for the question"
+                  className="max-w-[14rem]"
+                  size="sm"
+                  clients={clients}
                   value={clientId}
-                  onChange={(e) => setClientId(e.target.value)}
-                  className="text-xs border border-ps-border rounded-lg px-2 py-1 bg-white text-ps-body outline-none focus:border-brand max-w-[14rem]"
-                >
-                  <option value={NO_CLIENT}>No client — general question</option>
-                  {clients.map((c) => (
-                    <option key={c.id} value={c.id}>{c.client_name ?? c.id}</option>
-                  ))}
-                </select>
+                  onChange={setClientId}
+                  placeholder="No client — general question"
+                  clearable
+                />
               </label>
             )}
             {messages.length > 0 && (

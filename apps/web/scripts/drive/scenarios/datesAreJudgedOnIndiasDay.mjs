@@ -203,12 +203,12 @@ export const scenarios = [
       const audit = page.locator("#tax-audit-date");
       const status = page.locator("#tax-audit-status");
       const save = page.getByRole("button", { name: "Add Audit", exact: true }).last();
-      // The pinned clock is 8 October 2026 in India; a day typed after it reads "<label>: 20 Nov 2026 is after 08 Oct 2026."
-      const said = (label, day) => page.getByText(`${label}: ${day} is after 08 Oct 2026.`);
+      // The pinned clock is 8 October 2026 in India; a day typed after it reads "<label>: 20 Nov 2026 is after today's date in India, 08 Oct 2026."
+      const said = (label, day) => page.getByText(`${label}: ${day} is after today's date in India, 08 Oct 2026.`);
       const refusedBySave = async (label, day, what) => {
         stub.forgetWrites();
         await save.click();
-        await said(label, day).first().waitFor({ timeout: 4000 }).catch(() => { throw new Error(`${what}: Save did not say "${label}: ${day} is after 08 Oct 2026."`); });
+        await said(label, day).first().waitFor({ timeout: 4000 }).catch(() => { throw new Error(`${what}: Save did not say "${label}: ${day} is after today's date in India, 08 Oct 2026."`); });
         await page.waitForTimeout(300);
         assert.equal(stub.writesTo(/rest\/v1\/tax_audits/).length, 0, `${what}: the audit was SENT`);
       };
@@ -220,7 +220,7 @@ export const scenarios = [
 
       // The status is changed AFTER the day was typed: the box is judged again (a bound that follows another field is not re-read by a box that already holds a day), and says so under itself.
       await status.selectOption("filed");
-      await page.getByText("20 Nov 2026 is after 08 Oct 2026.", { exact: true }).first().waitFor({ timeout: 4000 })
+      await page.getByText("20 Nov 2026 is after today's date in India, 08 Oct 2026.", { exact: true }).first().waitFor({ timeout: 4000 })
         .catch(() => { throw new Error("the status changed to filed over a filing date in the future, and the box did not say so under itself"); });
       await refusedBySave("Filing date", "20 Nov 2026", "an audit changed to filed AFTER its filing date was typed");
       // ...and the sentence goes with its cause: the status is switched back to one that may carry a planned day, and the banner Save raised is not left saying the day is wrong.

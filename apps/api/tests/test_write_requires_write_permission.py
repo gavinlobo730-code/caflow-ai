@@ -192,11 +192,23 @@ def test_no_mutating_route_is_guarded_by_a_read_level_action():
         # ledger, journal and audit rows either side of three previews, so this claim is enforced, not asserted. It sits
         # at accounting:read deliberately, like the FX revaluation preview: whoever may see the stock may see the working.
         "/api/inventory/items/{service_catalogue_id}/writedown-preview",
+        # The cross-item NRV review's sheet (POST-A-111): the same question as the single preview for every typed line, from
+        # `nrv_writedown_answer` over the rows `stock_latest_rows` returns, and it writes nothing (the review's own test counts
+        # the ledger and journal rows either side of three previews). Read-level for the single preview's reason.
+        "/api/inventory/nrv-review/preview",
         "/api/gst/validate/gstr1",
         "/api/gst/validate/gstr3b",
         # Stateless Groq passthrough over a static prompt; loads nothing, writes
         # nothing. Verified when its dead client_id field was removed.
         "/api/assistant",
+        # "Where is…?" (POST-A-538): the body carries a question and the ids of screens, and the answer is ids of
+        # screens. It writes nothing but the usage row every model call writes, and it is ai:read on purpose: a Reviewer
+        # on their first day is who most needs to ask where a thing is.
+        "/api/guide/where",
+        # Hourly billing's PREVIEW (POST-B-194): POST because it carries the list of chosen time entries. It prices them by
+        # the one rule and answers the lines a draft would carry; `time_billing_service.preview` writes nothing (the test
+        # of that module asserts no invoice is made and no entry is marked). Creating the draft is billing:write.
+        "/api/billing/time-invoices/preview",
         # Copilot: deliberately open to every role. The protection here is that
         # the prompt carries no client-identifying data at all (see
         # test_copilot_no_client_data.py), which holds regardless of role.

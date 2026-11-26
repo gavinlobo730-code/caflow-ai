@@ -298,8 +298,8 @@ def _post_the_document(api: Api, path: str, transition: str, doc_id: str,
     return True
 
 
-def _banks(api: Api, c, client_id: str, fy_start: str, written: dict) -> list[str]:
-    """The client's bank accounts, primary first.
+def _banks(api: Api, c, client_id: str, fy_start: str, written: dict) -> tuple[list[str], list[Optional[str]]]:
+    """The client's bank accounts, primary first, and the ledger each was given.
 
     No `coa_account_id` is sent: `POST /accounts` creates a ledger for an
     unlinked account rather than leaving it unlinked, which is the behaviour
@@ -308,9 +308,9 @@ def _banks(api: Api, c, client_id: str, fy_start: str, written: dict) -> list[st
     without it (BANK-27) — a balance with no as-at date makes every
     pre-opening line count twice.
     """
-    ids = []
+    ids, ledgers = [], []
     for b in c.banks:
-        ids.append(_id(api.post("/api/banking/accounts", {
+        created = api.post("/api/banking/accounts", {
             "client_id": client_id,
             "bank_name": b.bank_name,
             "account_no": b.account_no,
@@ -322,9 +322,52 @@ def _banks(api: Api, c, client_id: str, fy_start: str, written: dict) -> list[st
             # statement states it, which is what the model requires.
             "opening_balance_paise": b.opening_balance_paise,
             "opening_balance_date": fy_start if b.opening_balance_paise else None,
-        })))
+        })
+        ids.append(_id(created))
+        # The ledger the account was given (`_ensure_bank_ledger`), which a journal into this bank has to name.
+        ledgers.append(((created.get("data") or {}) if isinstance(created, dict) else {}).get("coa_account_id"))
         written["bank_accounts"] += 1
-    return ids
+    return ids, ledgers
+
+
+def _capital(api: Api, c, client_id: str, bank_ledger_id: Optional[str], fy: str, written: dict) -> None:
+    """The owners' money that paid for what the client bought before its year, and for its projects (POST-A-269).
+
+    An asset held before the books open is registered through the `paid` door below, which credits the bank on the
+    purchase date, before the bank's opening balance: without this the bank's ledger stood below nothing from that
+    day (a real seed read Anand Textiles at minus Rs 6.5 crore on 31 March). Each introduction is a manual journal,
+    Dr the client's bank / Cr Capital Account, for the figures `fixture.capital_introductions` derives, so the
+    journal and the purchase it pays for cannot disagree. Posted before every document and return of the year, so
+    no filed return's lock stands in front of it.
+
+    It REFUSES rather than skipping when it cannot name both ledgers: a seed that left the bank below nothing in
+    silence is the defect this stage exists to end."""
+    introductions = fixture.capital_introductions(c, fy)
+    if not introductions:
+        return
+    chart = api.get(f"/api/accounting/accounts?client_id={client_id}").get("data") or []
+    capital_id = next((a.get("id") for a in chart if a.get("account_name") == "Capital Account" and a.get("id")), None)
+    if not (bank_ledger_id and capital_id):
+        raise SystemExit(
+            f"{c.name}: cannot record the capital that paid for its earlier assets -- "
+            + ("the bank account came back with no ledger" if not bank_ledger_id
+               else "the chart of accounts has no 'Capital Account'"))
+    for n, ci in enumerate(introductions, start=1):
+        api.post("/api/accounting/journal", {
+            "client_id": client_id,
+            "entry_date": ci.on,
+            "reference_no": f"SEED-CAPITAL-{n:02d}",
+            "narration": ci.narration,
+            "entry_type": "Journal",
+            "status": "posted",
+            "lines": [
+                {"account_id": bank_ledger_id, "debit_paise": ci.amount_paise, "credit_paise": 0,
+                 "narration": ci.narration},
+                {"account_id": capital_id, "debit_paise": 0, "credit_paise": ci.amount_paise,
+                 "narration": ci.narration},
+            ],
+        })
+        written["capital_introductions"] += 1
 
 
 def _fixed_assets(api: Api, c, client_id: str, bank_id: Optional[str],
@@ -457,6 +500,12 @@ def _payroll(api: Api, c, client_id: str, bank_id: Optional[str],
         "client_id": client_id, "enabled": True,
         "note": "Demo practice fixture — payroll is run in-house for this client.",
     })
+    # THE EMPLOYER'S EPF AND ESIC CODES, which only a client with payroll switched on may record (the door says why). Each is
+    # marked as a seed's (`fixture.payroll_registrations`); without them the ECR and ESIC panels named both as missing.
+    registrations = fixture.payroll_registrations(c)
+    if registrations:
+        api.put("/api/payroll/statutory-identity", {"client_id": client_id, **registrations})
+        written["payroll_registrations"] += 1
 
     employee_ids = []
     for e in c.employees:
@@ -477,6 +526,11 @@ def _payroll(api: Api, c, client_id: str, bank_id: Optional[str],
             "bank_account_no": e.bank_account_no,
             "bank_ifsc": e.bank_ifsc,
             "bank_name": e.bank_name,
+            # WHETHER THE EMPLOYEE IS INSURED, and the IP number of one who is (`DemoEmployee.esi_applicable`). Left out, the door
+            # flags everybody as insured, and the ESIC return listed eleven people above the ceiling and named all twelve as
+            # having no number. None (a year the payroll registry does not hold) sends neither and the door's default stands.
+            **({"esi_applicable": e.esi_applicable, "esi_number": e.esi_number}
+               if e.esi_applicable is not None else {}),
         })))
         written["employees"] += 1
 
@@ -509,6 +563,81 @@ def _payroll(api: Api, c, client_id: str, bank_id: Optional[str],
                 "payment_reference": f"SAL/{m.month}",
             })
             written["payroll_disbursed"] += 1
+
+
+#: The ledgers a partnership's remuneration is posted to, created on the client's own chart: the expense, and a current account
+#: for each partner. Codes outside the standard chart's (`services/coa_seed_service`), which the create door requires.
+_REMUNERATION_LEDGER = ("Remuneration to Partners", "5801")
+
+
+def _partner_remuneration(api: Api, c, client_id: str, financial_year: str, written: dict) -> None:
+    """The remuneration a firm credits its partners each quarter, and the tax it withholds from it (PRE-A-004, 17-11-2026).
+
+    THE TAX IS THE ENGINE'S. Each credit is recorded first as a deduction on the TDS screen's own door under section 194T, which
+    asks the engine for the tax (the door takes no rate and no amount of tax); the journal then credits the partner's current
+    account with the remuneration less that tax, and TDS Payable with the tax, Dr Remuneration to Partners for the whole. The
+    TDS stage below deposits it with the other sections (the deposit worksheet reads the same register) and the quarter's 26Q
+    carries it as a typed deduction, which the statement reports beside the bills' tie-out and not inside it.
+
+    Written after the documents and before the GST returns, because a manual journal is refused in a period whose return is
+    filed (`journal_period_lock_reason`). A deduction answered with no tax figure, or a chart with no TDS Payable, is a finding
+    and nothing further is posted for that credit."""
+    credits = fixture.partner_remuneration_credits(c, financial_year)
+    if not credits:
+        return
+    with _a_finding_is_reported(written, c, "partner remuneration", financial_year):
+        chart = api.get(f"/api/accounting/accounts?client_id={client_id}").get("data") or []
+        tds_payable = next((a.get("id") for a in chart if a.get("account_name") == "TDS Payable" and a.get("id")), None)
+        if not tds_payable:
+            raise _NotFiled("the chart of accounts has no 'TDS Payable', so the tax withheld has nowhere to go")
+        name, code = _REMUNERATION_LEDGER
+        expense = _id(api.post(f"/api/accounting/accounts?client_id={client_id}", {
+            "name": name, "code": code, "account_type": "Expense",
+            "description": "Remuneration credited to the partners under the partnership deed"}))
+        current: dict[str, str] = {}
+        for n, p in enumerate(c.partners, start=1):
+            current[p.pan] = _id(api.post(f"/api/accounting/accounts?client_id={client_id}", {
+                "name": f"Current Account - {p.name}", "code": f"31{n:02d}", "account_type": "Equity",
+                "account_subtype": "Capital", "description": f"{p.name}'s current account with the firm"}))
+        for n, cr in enumerate(credits, start=1):
+            got = (api.post("/api/tds-workspace/deductions", {
+                "client_id": client_id, "deductee_name": cr.partner.name, "deductee_pan": cr.partner.pan,
+                "section": "194T", "payment_amount_paise": cr.amount_paise, "transaction_date": cr.on,
+                "nature_of_payment": "Remuneration to a partner of the firm",
+                "notes": "Credited to the partner's current account under the deed"}).get("data") or {})
+            tax = got.get("tds_paise")
+            if not isinstance(tax, int) or not 0 <= tax <= cr.amount_paise:
+                raise _NotFiled(f"the TDS door answered the remuneration of {cr.partner.name} on {cr.on} with no tax figure "
+                                f"({tax!r}), so it is not posted")
+            narration = f"Remuneration to {cr.partner.name} for the quarter ended {cr.on}"
+            lines = [{"account_id": expense, "debit_paise": cr.amount_paise, "credit_paise": 0, "narration": narration},
+                     {"account_id": current[cr.partner.pan], "debit_paise": 0, "credit_paise": cr.amount_paise - tax,
+                      "narration": narration}]
+            if tax:
+                lines.append({"account_id": tds_payable, "debit_paise": 0, "credit_paise": tax,
+                              "narration": f"TDS u/s 194T on the remuneration to {cr.partner.name} for the quarter ended {cr.on}"})
+            api.post("/api/accounting/journal", {
+                "client_id": client_id, "entry_date": cr.on, "reference_no": f"SEED-PARTNER-REM-{n:02d}",
+                "narration": narration, "entry_type": "Journal", "status": "posted", "lines": lines})
+            written["partner_remuneration_credits"] += 1
+
+
+def _self_invoices(api: Api, c, client_id: str, book, written: dict) -> None:
+    """The section 31(3)(f) self-invoice for each received reverse-charge bill from a supplier recorded as unregistered (PRE-A-004).
+
+    Issued through the reverse-charge documents screen's own door, which works out whether the document is due, its number in
+    the client's series and its date, and refuses one that is not due or already issued; the seeder states none of them. Written
+    straight after the documents and before any GST return is filed, because the door asks whether the period is still open: the
+    self-invoice is what the input credit on the bill rests on. A refusal is a finding, reported, and the next bill is tried."""
+    for n in sorted(book.received_bills):
+        d = c.purchases[n - 1]
+        vendor = c.vendors[d.party % len(c.vendors)]
+        if not (d.is_reverse_charge and vendor.gstin is None and vendor.registration_recorded == "unregistered"):
+            continue
+        with _a_finding_is_reported(written, c, "self-invoice", book.received_bills[n]["bill_no"]):
+            api.post("/api/rcm-documents", {"client_id": client_id, "kind": "self_invoice",
+                                            "purchase_bill_id": book.received_bills[n]["id"]})
+            written["self_invoices"] += 1
 
 
 def _engagements(api: Api, c, client_id: str, fy: str, fy_start: str,
@@ -545,6 +674,49 @@ def _engagements(api: Api, c, client_id: str, fy: str, fy_start: str,
             f"?financial_year={fy}", {}).get("data") or {}
         written["obligations"] += int(out.get("generated") or 0)
     return ids
+
+
+def _engagement_letter(api: Api, c, client_id: str, fy: str, written: dict) -> None:
+    """The client's engagement letter for the year, written and rendered and NOT sent (PRE-A-004): a send is an email to a client, and
+    a seed mails nobody. It is left `Generated`, where a practice leaves a letter until it has been read through. The fee is the
+    fixture's: the year's engagements, so the letter and the fee billing agree."""
+    letter = fixture.letter_for(c, fy)
+    made = api.post("/api/engagement-letters", {
+        "title": letter.title, "client_id": client_id, "fee_amount_paise": letter.fee_paise,
+        "start_date": letter.start_date, "expiry_date": letter.expiry_date,
+        "recipient_name": letter.recipient_name, "recipient_email": letter.recipient_email,
+    })
+    api.post(f"/api/engagement-letters/{_id(made)}/generate", {})
+    written["engagement_letters"] += 1
+
+
+def _promoters(api: Api, client_ids: dict[str, str], written: dict) -> None:
+    """The people who stand behind more than one client: an entity each, a role at each company, a spouse relationship, and the
+    cross-client scan the Relationships hub offers (which finds the same person at two clients by PAN). Written once for the firm,
+    after the clients, because a role names a client."""
+    entity_ids: dict[str, str] = {}
+    for person in fixture.promoters():
+        entity = api.post("/api/relationships/entities", {
+            "full_name": person.full_name, "entity_type": "Individual", "pan": person.pan, "email": person.email,
+        })
+        entity_ids[person.full_name] = _id(entity)
+        written["entities"] += 1
+        for role in person.roles:
+            api.post(f"/api/relationships/entities/{entity_ids[person.full_name]}/roles", {
+                "client_id": client_ids[role.client_name], "role_type": role.role_type,
+                "ownership_percent": role.ownership_percent,
+            })
+            written["entity_roles"] += 1
+    for person in fixture.promoters():
+        # one edge per couple: written from the alphabetically first, so the pair is not stored twice
+        if person.spouse_of and person.full_name < person.spouse_of:
+            api.post("/api/relationships/relationships", {
+                "from_entity_id": entity_ids[person.full_name], "to_entity_id": entity_ids[person.spouse_of],
+                "relationship_type": "Spouse",
+            })
+            written["relationships"] += 1
+    found = api.post("/api/relationships/cross-client-matches/detect", {}).get("data") or {}
+    written["cross_client_matches"] += int(found.get("new_matches_detected") or 0) if isinstance(found, dict) else 0
 
 
 #: The moves a task makes from `todo` to reach each status, through the machine in `services/task_service` (a task is
@@ -941,6 +1113,7 @@ def _prepare_return(api: Api, c, client_id: str, financial_year: str, it, writte
         # return, and a fixture that gives one client both is a finding.
         raise _NotFiled("a brought-forward loss is recorded but is not set off in a computation prepared here; give the "
                         "losses to a client without a return")
+    _salary_worksheet(api, client_id, financial_year, it, written)
     business, presumptive = _the_business_income(api, c, client_id, financial_year, it)
     gain = _a_sale_of_shares(api, client_id, it, written)
     for section, sub_head, amount in it.deductions:
@@ -965,6 +1138,33 @@ def _prepare_return(api: Api, c, client_id: str, financial_year: str, it, writte
     snapshot_id = _save_snapshot(api, client_id, financial_year, ay, it, final, facts, paid)
     api.post(f"/api/itr/snapshots/{snapshot_id}/review", {})
     _walk_the_filing(api, c, client_id, financial_year, ay, it, snapshot_id, written)
+
+
+def _salary_worksheet(api: Api, client_id: str, financial_year: str, it, written: dict) -> None:
+    """The salary worksheet (Schedule S) behind the computation's salary box, the way the Salary worksheet screen keeps it: one
+    employer, the Form 16's section 17(1) salary, worked out on the regime the return is computed on.
+
+    The worksheet's answer is the SERVER's (`domain/income_tax/schedule_s`): the figure it says goes in the engine's salary box must
+    be the salary the computation below is given, or the return would rest on a figure its own working paper does not support, and
+    that is a finding rather than a return. Nothing the worksheet works out is typed here."""
+    if not it.salary_paise:
+        return
+    if not (it.employer_name and it.employer_tan):
+        raise _NotFiled("a salary is stated with no employer, so there is no Form 16 to keep a salary worksheet from")
+    out = api.put("/api/income-tax/worksheets/salary", {
+        "client_id": client_id, "financial_year": financial_year, "use_new_regime": True,
+        "payload": {"employers": [{"key": "employer-1", "name": it.employer_name, "tan": it.employer_tan,
+                                   "salary_17_1_paise": it.salary_paise}]}})
+    from domain.money_sentence import rupee_text
+    box = ((((out.get("data") or {}).get("result") or {}).get("engine_inputs") or {}).get("gross_salary_paise"))
+    # A figure the answer does not carry is not a figure: it is never read as nil or as anything else.
+    if not isinstance(box, int) or isinstance(box, bool):
+        raise _NotFiled(f"the worksheet's answer carries no salary-box figure, and the computation is given "
+                        f"{rupee_text(it.salary_paise)}")
+    if box != it.salary_paise:
+        raise _NotFiled(f"the salary worksheet puts {rupee_text(box)} in the salary box, and the computation is given "
+                        f"{rupee_text(it.salary_paise)}")
+    written["salary_worksheets"] += 1
 
 
 def _the_business_income(api: Api, c, client_id: str, financial_year: str, it) -> tuple[int, Optional[int]]:
@@ -1589,13 +1789,13 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
 
     written = {"hsn_library": 0, "clients": 0, "catalogue": 0,
                "customers": 0, "vendors": 0, "msmed_classifications": 0,
-               "bank_accounts": 0,
+               "bank_accounts": 0, "capital_introductions": 0,
                "sales_invoices": 0, "invoices_issued": 0, "receipts": 0,
                "purchase_bills": 0, "bills_received": 0, "payments": 0,
                "fixed_assets": 0, "depreciation_months": 0,
                "employees": 0, "payroll_runs": 0, "payroll_finalized": 0,
                "payroll_disbursed": 0,
-               "bank_lines": 0, "bank_drafts": 0, "tans": 0,
+               "bank_lines": 0, "bank_drafts": 0, "tans": 0, "payroll_registrations": 0, "partner_remuneration_credits": 0, "self_invoices": 0,
                "engagements": 0, "obligations": 0,
                "tasks": 0, "tasks_moved": 0, "time_entries": 0, "cost_rates": 0, "fee_invoices": 0, "fee_invoices_issued": 0,
                "fee_receipts": 0, "fee_invoices_not_yet_due": 0, "fee_receipts_not_yet_due": 0, "leads": 0,
@@ -1603,11 +1803,12 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
                "cwip_projects": 0, "cwip_tranches": 0, "cwip_tranches_skipped": 0,
                "gstr1_filed": 0, "gstr3b_filed": 0, "returns_not_yet_due": 0,
                "obligations_closed": 0, "obligations_left_open": [],
-               "bf_losses": 0, "disallowances_detected": 0, "deduction_claims": 0,
+               "bf_losses": 0, "salary_worksheets": 0, "disallowances_detected": 0, "deduction_claims": 0,
                "capital_gains": 0, "advance_tax_instalments": 0, "advance_tax_not_yet_due": 0,
                "itr_filings": 0, "itr_waiting": 0, "itr_filed": 0, "itr_not_yet_filable": 0,
                "tds_challans": 0, "tds_deposits_not_yet_due": 0, "tds_statements_not_yet_due": 0,
                "tds_statements_filed": 0, "tds_statements_prepared": 0, "tds_quarters_without_deductions": 0,
+               "engagement_letters": 0, "entities": 0, "entity_roles": 0, "relationships": 0, "cross_client_matches": 0,
                "health_scored": 0, "health_not_scored": [],
                "returns_refused": []}
 
@@ -1645,6 +1846,7 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
     last_month = fixture.draft_month(firm.financial_year)
 
     fee_plan: list = []          # the fee invoices to raise once every client is done (see `_fee_billing`)
+    client_ids: dict[str, str] = {}   # client name -> id, for what is written once the clients are (`_promoters`)
     for c in firm.clients:
         print(f"  {c.name} — {c.demonstrates}")
         client_id = _id(api.post("/api/clients", {
@@ -1725,8 +1927,10 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
         # fallback. Creating it here is what makes that possible; creating it
         # later would mean a year of postings that all carry the fallback
         # disclosure.
-        bank_ids = _banks(api, c, client_id, fy_start, written)
+        client_ids[c.name] = client_id
+        bank_ids, bank_ledgers = _banks(api, c, client_id, fy_start, written)
         bank_id = bank_ids[0] if bank_ids else None
+        _capital(api, c, client_id, bank_ledgers[0] if bank_ledgers else None, firm.financial_year, written)
 
         customer_ids = []
         for p in c.customers:
@@ -1759,7 +1963,7 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
                 # *unrecorded* and names it as a gap rather than guessing, so a
                 # demo where every vendor is classified cannot show that
                 # branch. An unregistered party (no GSTIN) is left unrecorded.
-                "gst_registration_status": "registered" if p.gstin else None,
+                "gst_registration_status": "registered" if p.gstin else p.registration_recorded,
             })))
             written["vendors"] += 1
             # ⚠️ `msme_status` IS NOT A FIELD OF `VendorIn`, and sending it
@@ -1797,10 +2001,13 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
                 book.purchase(step.n, step.doc)
         open_credits = book.open_credits
 
+        _self_invoices(api, c, client_id, book, written)
         _fixed_assets(api, c, client_id, bank_id, firm.financial_year, written)
         _cwip(api, c, client_id, book, written)
         _payroll(api, c, client_id, bank_id, written)
+        _partner_remuneration(api, c, client_id, firm.financial_year, written)
         engagement_ids = _engagements(api, c, client_id, firm.financial_year, fy_start, written)
+        _engagement_letter(api, c, client_id, firm.financial_year, written)
         _practice(api, c, client_id, firm.financial_year, engagement_ids, written, fee_plan)
         # LAST, because the credits above are known only once every invoice
         # has been written and the engine has told us what each one came to.
@@ -1826,6 +2033,7 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
     # not a client's: both are written once, after the clients.
     _fee_billing(api, fee_plan, written)
     _leads(api, written)
+    _promoters(api, client_ids, written)
     return written
 
 

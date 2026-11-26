@@ -16,6 +16,7 @@ import { Modal as ModalShell } from "@/components/ui/modal";
 import { apiCall, apiGet, getAuthToken, fmt, type InvoiceDetail } from "@/lib/invoices/shared";
 import { todayIstISO } from "@/lib/dates/format";
 import { Button } from "@/components/ui/button";
+import { usePermissions } from "@/lib/auth/AuthContext";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import {
@@ -41,6 +42,11 @@ export function CompliancePanel({
   onToast: (msg: string, type: "success" | "error") => void;
 }) {
   const [modal, setModal] = useState<null | "prepIrn" | "recordIrn" | "prepEway" | "recordEway" | "cancelIrn" | "cancelEway">(null);
+  // Recording and cancelling an IRN or an e-way bill ask `gst` `approve` (a Manager or a Partner), and preparing one asks
+  // `gst` `compute`; each was drawn to every member and came back refused (POST-A-455).
+  const { can: canDo, resolved: permissionsRead } = usePermissions();
+  const mayRecord = canDo("gst", "approve");
+  const mayPrepare = canDo("gst", "compute");
   const [busy, setBusy] = useState(false);
 
   const irn = irnStatus(invoice.id, einvoiceRecords);
@@ -214,7 +220,9 @@ export function CompliancePanel({
                 <p className="text-3xs font-mono text-ps-label break-all max-h-16 overflow-y-auto">{irn.qrData}</p>
               </div>
             )}
-            <button onClick={() => setModal("cancelIrn")} className="text-2xs text-red-600 hover:underline inline-flex items-center gap-1"><XCircle size={11} /> Cancel IRN</button>
+            {mayRecord && (
+              <button onClick={() => setModal("cancelIrn")} className="text-2xs text-red-600 hover:underline inline-flex items-center gap-1"><XCircle size={11} /> Cancel IRN</button>
+            )}
           </div>
         ) : irn.state === "cancelled" ? (
           <p className="text-2xs text-ps-hint">IRN cancelled{irn.record?.cancellation_reason ? ` — ${irn.record.cancellation_reason}` : ""}.</p>
@@ -235,10 +243,14 @@ export function CompliancePanel({
                 built from — correct one of them before keying the IRP.
               </p>
             )}
-            <PrimaryBtn onClick={() => setModal("recordIrn")}>Record IRN</PrimaryBtn>
+            {mayRecord ? (
+              <PrimaryBtn onClick={() => setModal("recordIrn")}>Record IRN</PrimaryBtn>
+            ) : permissionsRead ? (
+              <p className="text-2xs text-ps-label">Recording the IRN once it is generated needs permission to approve GST returns, so the button is not shown to you.</p>
+            ) : null}
           </div>
         ) : (
-          <EligibilityBlock elig={irnElig} actionLabel="Prepare IRN" onAction={() => setModal("prepIrn")} />
+          <EligibilityBlock elig={irnElig} actionLabel="Prepare IRN" onAction={() => setModal("prepIrn")} canAct={mayPrepare} permissionsRead={permissionsRead} />
         )}
         <IrpFindings
           findings={invoice.irn_assessment?.irp_findings ?? []}
@@ -256,17 +268,23 @@ export function CompliancePanel({
           <div className="space-y-2">
             <Row label="EWB no." value={eway.ewbNumber ?? "—"} mono />
             {eway.validUpto && <Row label="Valid upto" value={eway.validUpto} />}
-            <button onClick={() => setModal("cancelEway")} className="text-2xs text-red-600 hover:underline inline-flex items-center gap-1"><XCircle size={11} /> Cancel E-Way Bill</button>
+            {mayRecord && (
+              <button onClick={() => setModal("cancelEway")} className="text-2xs text-red-600 hover:underline inline-flex items-center gap-1"><XCircle size={11} /> Cancel E-Way Bill</button>
+            )}
           </div>
         ) : eway.state === "cancelled" ? (
           <p className="text-2xs text-ps-hint">E-Way Bill cancelled{eway.record?.cancellation_reason ? ` — ${eway.record.cancellation_reason}` : ""}.</p>
         ) : eway.state === "draft" ? (
           <div className="space-y-2">
             <p className="text-2xs text-ps-label">Record prepared. Generate the E-Way Bill on the NIC portal, then record it.</p>
-            <PrimaryBtn onClick={() => setModal("recordEway")}>Record E-Way Bill</PrimaryBtn>
+            {mayRecord ? (
+              <PrimaryBtn onClick={() => setModal("recordEway")}>Record E-Way Bill</PrimaryBtn>
+            ) : permissionsRead ? (
+              <p className="text-2xs text-ps-label">Recording the e-way bill once it is generated needs permission to approve GST returns, so the button is not shown to you.</p>
+            ) : null}
           </div>
         ) : (
-          <EligibilityBlock elig={ewayElig} actionLabel="Prepare E-Way Bill" onAction={() => setModal("prepEway")} />
+          <EligibilityBlock elig={ewayElig} actionLabel="Prepare E-Way Bill" onAction={() => setModal("prepEway")} canAct={mayPrepare} permissionsRead={permissionsRead} />
         )}
       </ComplianceCard>
 
@@ -325,7 +343,12 @@ function ComplianceCard({ icon, title, state, children }: { icon: React.ReactNod
   );
 }
 
-function EligibilityBlock({ elig, actionLabel, onAction }: { elig: { eligible: boolean; blockers: string[]; warnings: string[] }; actionLabel: string; onAction: () => unknown }) {
+/** The blockers and warnings are information and are shown to everyone who can open the card; only the button is for someone who
+ *  may prepare the record (`gst` `compute`), and a member who may not is told so in a sentence (POST-A-455). */
+function EligibilityBlock({ elig, actionLabel, onAction, canAct, permissionsRead }: {
+  elig: { eligible: boolean; blockers: string[]; warnings: string[] }; actionLabel: string; onAction: () => unknown;
+  canAct: boolean; permissionsRead: boolean;
+}) {
   return (
     <div className="space-y-2">
       {elig.blockers.map((b, i) => (
@@ -334,7 +357,12 @@ function EligibilityBlock({ elig, actionLabel, onAction }: { elig: { eligible: b
       {elig.warnings.map((w, i) => (
         <p key={`w${i}`} className="text-2xs text-amber-600 flex items-start gap-1"><AlertTriangle size={11} className="mt-0.5 flex-shrink-0" /> {w}</p>
       ))}
-      <PrimaryBtn disabled={!elig.eligible} onClick={onAction}>{actionLabel}</PrimaryBtn>
+      {canAct && (
+        <PrimaryBtn disabled={!elig.eligible} onClick={onAction}>{actionLabel}</PrimaryBtn>
+      )}
+      {!canAct && permissionsRead && (
+        <p className="text-2xs text-ps-label">Preparing this record needs permission to compute GST returns, so the button is not shown to you.</p>
+      )}
     </div>
   );
 }

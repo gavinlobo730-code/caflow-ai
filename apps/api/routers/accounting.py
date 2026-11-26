@@ -16,6 +16,7 @@ from domain.reporting.cash_book import (
     explain_negative, first_negative_day, is_cash_account,
 )
 from services.journal_posting_service import journal_posting_service
+from services import journal_approval_rule
 from core.exceptions import (NotFoundError, ValidationError, postgres_message,
                              document_failure_detail)
 from core.observability import capture_posting_failure, capture_soft_failure
@@ -111,6 +112,31 @@ def list_accounts(
     return api_response(True, q.order("account_code").execute().data or [])
 
 
+@router.get("/accounts/recent")
+def recent_accounts(
+    client_id: str = Query(..., description="CA client ID — required"),
+    used_on: Literal["journal", "bill"] = Query(..., description="journal: a journal line's picker; bill: a bill line's"),
+    limit: int = Query(8, ge=1, le=20),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """The accounts this client used most recently on a manual journal or a bill line, newest first, for the top of
+    the account picker (POST-A-155).
+
+    Read off the client's own newest documents (`domain/account_recent`): ids only, each once. The picker reorders
+    its list with them and pre-selects nothing.
+    """
+    assert_client_access(current_user, client_id)
+    db = _prod_db()
+    if db is None:
+        return api_response(True, {"ids": [], "documents_read": 0, "window": 0})
+    from domain.account_recent import read_recent_accounts
+    try:
+        return api_response(True, read_recent_accounts(db, used_on, current_user["firm_id"], client_id, limit))
+    except Exception as e:  # noqa: BLE001 — a failed read is said, never answered as "nothing used recently"
+        _logger.error("recent_accounts: %s", e)
+        return api_response(False, None, "The recently used accounts could not be read.")
+
+
 @router.post("/accounts")
 def create_account(
     data: AccountIn,
@@ -125,18 +151,29 @@ def create_account(
     """
     if client_id:
         assert_client_access(current_user, client_id)
-    db = _prod_db()
-    if db is None:
-        try:
-            return api_response(True, accounting_service.create_account(data.model_dump()))
-        except ValidationError as e:
-            raise HTTPException(status_code=422, detail=str(e))
+    # Asked before either store is written, so mock mode refuses what production refuses.
     if not (data.code or "").strip():
         raise HTTPException(
             status_code=422,
             detail="An account code is required — it is what the chart is ordered "
                    "and matched by, and UNIQUE (firm_id, client_id, account_code) "
                    "enforces it.")
+    db = _prod_db()
+    if db is None:
+        # The mock store keys an account by the TABLE's column names and is handed the same fields the insert below writes; it was
+        # handed the model's own (`code`, `name`) and answered every create with a KeyError, a 500 (found seeding the demo firm, PRE-A-004).
+        try:
+            return api_response(True, accounting_service.create_account({
+                "account_code": data.code.strip(), "account_name": data.name,
+                "account_type": data.account_type.value if hasattr(data.account_type, "value") else str(data.account_type),
+                "account_subtype": (data.account_subtype or "").strip() or None, "parent_id": data.parent_id,
+                "parent_group": (data.parent_group or "").strip() or None,
+                "sub_group": (data.sub_group or "").strip() or None,
+                "schedule_iii_mapping": (data.schedule_iii_mapping or "").strip() or None,
+                "is_active": data.is_active,
+                "client_id": client_id, "firm_id": current_user.get("firm_id")}))
+        except ValidationError as e:
+            raise HTTPException(status_code=422, detail=str(e))
     try:
         # Payload written INLINE with literal keys — see
         # services/ageing_schedule_service._write for why.
@@ -195,6 +232,32 @@ def _assert_account_scope(current_user: dict, account_id: str) -> dict:
     if not can_access_client(current_user, account.get("client_id")):
         raise HTTPException(status_code=404, detail="Account not found.")
     return account
+
+
+@router.get("/emi")
+def loan_emi(
+    principal_paise: Annotated[int, Query(gt=0, le=10**15)],
+    annual_rate_bps: Annotated[int, Query(ge=0, le=100_000)],
+    months: Annotated[int, Query(gt=0, le=1200)],
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """The loans screen's EMI calculator, worked here and not in the browser (POST-A-266).
+
+    A guide, not a figure anything is built from: nothing stores it, and the screen says the loan agreement's
+    instalment is the one to record. `domain/loans/emi.py` holds the arithmetic and says what it does not know.
+    """
+    from domain.loans.emi import emi_paise
+    try:
+        emi = emi_paise(principal_paise, annual_rate_bps, months)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return api_response(True, {
+        "emi_paise": emi,
+        "principal_paise": principal_paise,
+        "annual_rate_bps": annual_rate_bps,
+        "months": months,
+        "basis": "Reducing balance, interest monthly at the annual rate over 12, rounded to the paisa once.",
+    })
 
 
 @router.get("/schedule-iii/captions")
@@ -358,6 +421,10 @@ def create_journal_entry(data: JournalEntryIn, current_user: dict = Depends(rbac
     in-memory engine so existing tests are unaffected.
     """
     assert_client_access(current_user, data.client_id)
+    # One rule at both doors that put a manual journal on the books (POST-A-456): a new entry sent as posted asks what posting a saved
+    # draft asks. A draft is saved by anyone who may write.
+    if str(data.status or "").lower() == "posted":
+        journal_approval_rule.assert_may_post(current_user)
     try:
         payload = data.model_dump()
         payload["firm_id"] = current_user["firm_id"]
@@ -594,6 +661,11 @@ def import_vouchers_endpoint(
     decides nothing, and it posts nothing a person could not have typed.
     """
     assert_client_access(current_user, data.client_id)
+    # An import sent as posted puts manual journals on the books, so it is the same door as a new entry sent as posted and asks the
+    # same rule (POST-A-456). Asked on a dry run too, so a preview never promises a post the real call would refuse; drafts are
+    # saved by any writer, as at the editor.
+    if data.status == "posted":
+        journal_approval_rule.assert_may_post(current_user)
     from domain.accounting import voucher_import as vi
     legs = [vi.Leg(**l.model_dump()) for l in data.legs]
     db = _prod_db()
@@ -691,6 +763,10 @@ def update_journal_entry(
     from services.manual_journal_service import manual_journal_service
 
     before = manual_journal_service.get(db, current_user["firm_id"], entry_id)
+    # Correcting an entry ON THE BOOKS is held to the posting rule (POST-A-456): where the firm has a Partner approve every manual journal,
+    # a member who may not approve cannot change the figures of one that was approved. A draft is corrected by anyone who may write.
+    if before.get("is_posted"):
+        journal_approval_rule.assert_may_change_posted(current_user)
     entry = manual_journal_service.update(
         db, current_user["firm_id"], entry_id,
         data.model_dump(exclude_none=True), actor_id=current_user.get("id"),
@@ -757,6 +833,8 @@ def discard_journal_entry(
 
     deleted: list[str] = [entry_id]
     if row.get("is_posted"):
+        # Deleting an entry on the books is held to the posting rule, as a correction is (POST-A-456).
+        journal_approval_rule.assert_may_change_posted(current_user)
         # Every check lives in the SQL function: it holds FOR UPDATE on the row
         # AND on its counterpart, consults the period gate for each date, writes
         # the deletion record, and rebuilds the passbook in one transaction.
@@ -901,25 +979,60 @@ def _assert_journal_scope_db(db, current_user: dict, entry_id: str) -> None:
 
 
 def _assert_draft_scope(db, current_user: dict, journal_id: str) -> None:
-    """Row-addressed by journal_id. `approve` is Partner-only by RBAC (the sole
-    firm-wide role — core.authz._FIRMWIDE_ROLES), so M2 cannot be bypassed by
-    construction; this closes the firm-BOUNDARY half only, the same convention
-    billing.py's record_fee_receipt used despite billing also being Partner-only.
-    Same fixed text journal_posting_service.post_draft already uses for its own
-    missing-row branch, so a hidden vs. missing journal reads identically."""
+    """Row-addressed by journal_id, so the firm AND the assignment scope are checked here.
+
+    This used to close the firm boundary only, on the argument that `approve` is Partner-only and a Partner is firm-wide. Since
+    POST-A-456 the route admits `accounting` `write`, which a Manager holds on the clients they are assigned, so the assignment is
+    asked, and a MISSING row is refused here too rather than left to the service's own read: a guard that passes when its read found
+    nothing protects the route only while another read happens to find nothing as well. Same fixed text as
+    journal_posting_service.post_draft's missing-row branch, so a hidden journal and a missing one read identically."""
     row = (db.table("journal_entries").select("client_id")
            .eq("id", journal_id).eq("firm_id", current_user["firm_id"])
            .limit(1).execute().data or [None])[0]
-    if row and not can_access_client(current_user, row.get("client_id")):
+    if not row or not can_access_client(current_user, row.get("client_id")):
         raise HTTPException(status_code=404, detail="Journal entry not found.")
 
 
+class JournalApprovalIn(BaseModel):
+    approval_required: bool
+
+
+@router.get("/journal-approval")
+def get_journal_approval(current_user: dict = Depends(rbac("accounting", "read"))):
+    """Whether this firm has a Partner approve every manual journal, and what THE CALLER may do under it (POST-A-456).
+
+    The journal editor and the Approvals queue offer Post only where `may_post` is true, so a screen never offers a button the
+    posting doors refuse; the answer is `services/journal_approval_rule.describe`, the function those doors ask."""
+    return api_response(True, journal_approval_rule.describe(current_user))
+
+
+@router.put("/journal-approval")
+def set_journal_approval(body: JournalApprovalIn, current_user: dict = Depends(rbac("settings", "write"))):
+    """A Partner turns the firm's manual-journal approval on or off (POST-A-456). `settings` `write`, a Partner's, because it changes who
+    may post for every client of the firm. Scoped to the caller's own firm: the request names none. Audited with what it was before."""
+    firm_id = current_user["firm_id"]
+    before = journal_approval_rule.approval_required(firm_id)
+    stored = journal_approval_rule.set_required(firm_id, body.approval_required)
+    try:
+        log_event(firm_id, "firm", firm_id, "manual_journal_approval_change",
+                  actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+                  old_data={"manual_journals_need_approval": before},
+                  new_data={"manual_journals_need_approval": stored})
+    except Exception as exc:  # noqa: BLE001 — the setting is stored; a failed audit write is reported, never turned into a failed change
+        capture_soft_failure(exc, operation="journal_approval.audit", firm_id=firm_id)
+    return api_response(True, journal_approval_rule.describe(current_user))
+
+
 @router.post("/journals/{journal_id}/post")
-def post_draft_journal(journal_id: str, current_user: dict = Depends(rbac("accounting", "approve"))):
-    """Approve & post a DRAFT journal to the ledger (Phase 3.5) — approve permission
-    (Partner) only, FY-lock enforced, audited. Fires deferred downstream actions
+def post_draft_journal(journal_id: str, current_user: dict = Depends(rbac("accounting", "write"))):
+    """Approve & post a DRAFT journal to the ledger (Phase 3.5), FY-lock enforced, audited. Fires deferred downstream actions
     (e.g. bank settlement) only after the journal is on the books.
+
+    WHO: the rule the create door asks (POST-A-456, `services/journal_approval_rule`). The route admits `accounting` `write`; then, where
+    the firm has a Partner approve every manual journal, only someone who may approve passes. It asked `approve` alone while the create
+    door asked `write`, so a Manager posted the same entry by typing it again as new.
     CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT"""
+    journal_approval_rule.assert_may_post(current_user)
     db = _prod_db()
     if not db:
         return api_response(True, {"id": journal_id, "is_posted": True})

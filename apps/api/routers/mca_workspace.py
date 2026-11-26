@@ -28,7 +28,7 @@ import uuid
 import logging
 from datetime import datetime, date
 from core.ist_clock import ist_today
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
@@ -136,7 +136,13 @@ class UpdateDirectorRequest(BaseModel):
 class CreateFilingRequest(BaseModel):
     client_id: str
     company_id: Optional[str] = None
-    form_type: str = Field(..., description="AOC-4, MGT-7, ADT-1, DIR-12, INC-22, SH-7, CHG-1, CHG-4")
+    form_type: str = Field(..., description="AOC-4, MGT-7, MGT-7A, ADT-1, DIR-12, INC-22, SH-7, CHG-1, CHG-4")
+    #: The CIN as the CA typed it, read only where no company of the client's is named or the one named holds no CIN of its own
+    #: (POST-A-442: the firm-level form types one when the Company Master holds none). A named company's own CIN always wins.
+    cin: Optional[str] = Field(None, max_length=40)
+    #: A filing is CREATED not started, or overdue where the CA says so (the firm-level form offers both). Never filed: recording a
+    #: filing as filed is the status route's, which asks `mca:approve` and the CA's confirmation (POST-A-225).
+    status: Literal["not_started", "overdue"] = "not_started"
     financial_year: OptionalFYLabel = None  # e.g. 2025-26
     period: Optional[str] = None
     # REQUIRED: `mca_filings.due_date` is `DATE NOT NULL` (migration 012, unchanged since), so a filing without one can never be stored. It was an
@@ -161,8 +167,10 @@ class UpdateFilingStatusRequest(BaseModel):
     acknowledgement_url: Optional[str] = None
 
 
-# Annual filing forms
-_ANNUAL_FORMS = {"AOC-4", "MGT-7", "ADT-1"}
+# Annual filing forms. MGT-7A is the annual return the firm-level form has always offered and `mca_filing_closes_obligation`
+# already calls an annual form matched to NO obligation (`UNMATCHED_FORMS`, POST-C-209), so it is listed with them: it is created
+# and shown on the Annual tab, needs no year and closes nothing, which the status route already says (POST-A-442).
+_ANNUAL_FORMS = {"AOC-4", "MGT-7", "MGT-7A", "ADT-1"}
 # Event filing forms
 _EVENT_FORMS = {"DIR-12", "INC-22", "SH-7", "CHG-1", "CHG-4"}
 
@@ -186,6 +194,22 @@ _COMPANY_TYPE_MAP = {"PVT": "Private Limited", "PUB": "Public Limited"}
 #   * ROW id → `_load_or_none`, because a missing row here is a 200 carrying
 #     {"success": false, "error": "... not found"}; a 404 refusal would make the
 #     status code an oracle for which ids are real.
+
+def _could_not(exc: Exception, action: str):
+    """The answer for a handler whose body raised something nobody anticipated (POST-A-392).
+
+    Every handler here ended in a broad handler that answered "Unable to complete MCA operation. Please try again.":
+    one sentence for every failure, naming neither what was being done nor, for a database refusal a
+    CA can act on (a value the schema forbids), what to correct, and most of them logged nothing. This is the TDS
+    workspace's rule (`routers/tds_workspace._could_not`): log with the traceback, and answer with the sentence
+    `core.exceptions.unhandled_failure` has for it (the speaker `main.py` applies to every uncaught exception) or, where it
+    has none, one that names the action. There is deliberately no second wording table here."""
+    _logger.error("caflow.mca_workspace: could not %s", action, exc_info=exc)
+    from core.exceptions import unhandled_failure
+    spoken = unhandled_failure(exc)
+    return api_response(False, None, spoken[1] if spoken else (
+        f"Could not {action}. The cause has been logged; please try again, and report it if it keeps failing."))
+
 
 def _visible_or_none(current_user: dict, rec: Optional[dict]) -> Optional[dict]:
     """`rec` if the caller may see its client, otherwise None."""
@@ -234,7 +258,7 @@ def list_companies(
             rows = get_supabase().table("mca_companies").select("*").eq("firm_id", firm_id).eq("client_id", client_id).execute().data or []
         return api_response(True, rows)
     except Exception as e:
-        return api_response(False, None, "Unable to complete MCA operation. Please try again.")
+        return _could_not(e, "read the client's companies")
 
 
 @router.post("/companies")
@@ -282,7 +306,7 @@ def create_company(
         # it into "Please try again" would hide exactly what needs to change.
         raise
     except Exception as e:
-        return api_response(False, None, "Unable to complete MCA operation. Please try again.")
+        return _could_not(e, "save the company")
 
 
 @router.get("/companies/{company_id}")
@@ -305,7 +329,7 @@ def get_company(company_id: str, current_user: dict = Depends(rbac("mca", "read"
 
         return api_response(True, {**company, "directors": directors})
     except Exception as e:
-        return api_response(False, None, "Unable to complete MCA operation. Please try again.")
+        return _could_not(e, "read the company")
 
 
 @router.get("/directors")
@@ -324,7 +348,7 @@ def list_directors(
             rows = get_supabase().table("mca_directors").select("*").eq("firm_id", firm_id).eq("client_id", client_id).execute().data or []
         return api_response(True, rows)
     except Exception as e:
-        return api_response(False, None, "Unable to complete MCA operation. Please try again.")
+        return _could_not(e, "read the directors")
 
 
 @router.post("/directors")
@@ -385,22 +409,17 @@ def create_director(
         # to change.
         raise
     except Exception as e:
-        _logger.exception("Failed to add director")
         # mca_directors is UNIQUE (client_id, din) (migration 038) — the one
         # refusal a CA meets in the ordinary course, adding a director twice.
         # It is the only unique key besides the primary key, so a 23505 here
         # always means this DIN.
-        from core.exceptions import _sqlstate, unhandled_failure
+        from core.exceptions import _sqlstate
         if _sqlstate(e) == "23505":
             return api_response(False, None,
                                 "This DIN is already recorded for this client.")
-        # Anything else the database refused with a SQLSTATE it names (a
-        # CHECK on kyc_status, say) is said as that sentence rather than as
-        # "please try again", which cannot fix a value the database refuses.
-        spoken = unhandled_failure(e)
-        if spoken:
-            return api_response(False, None, spoken[1])
-        return api_response(False, None, "Unable to complete MCA operation. Please try again.")
+        # Anything else is logged, and said as the database's own sentence where it names one (a CHECK on kyc_status, say),
+        # rather than as "please try again", which cannot fix a value the database refuses.
+        return _could_not(e, "save the director")
 
 
 @router.patch("/directors/{director_id}")
@@ -434,7 +453,7 @@ def update_director(
                   actor_id=current_user.get("auth_user_id"), new_data=updates)
         return api_response(True, rec)
     except Exception as e:
-        return api_response(False, None, "Unable to complete MCA operation. Please try again.")
+        return _could_not(e, "update the director")
 
 
 @router.get("/filings")
@@ -474,7 +493,17 @@ def list_filings(
 
         return api_response(True, rows)
     except Exception as e:
-        return api_response(False, None, "Unable to complete MCA operation. Please try again.")
+        return _could_not(e, "read the MCA filings")
+
+
+def _client_name(firm_id: str, client_id: str) -> Optional[str]:
+    """The client's name as the firm-level list shows it, read under the firm; None in mock mode or when the row is not found."""
+    if _USE_MOCK:
+        return None
+    from core.supabase_client import get_supabase
+    rows = (get_supabase().table("clients").select("client_name").eq("id", client_id).eq("firm_id", firm_id).limit(1)
+            .execute().data) or []
+    return (rows[0].get("client_name") if rows else None) or None
 
 
 def _client_companies(firm_id: str, client_id: str) -> list[dict]:
@@ -551,7 +580,7 @@ def create_filing(
 ):
     """
     Create an MCA filing record.
-    Annual: AOC-4 (§137), MGT-7 (§92), ADT-1 (§139).
+    Annual: AOC-4 (§137), MGT-7 (§92), MGT-7A, ADT-1 (§139).
     Event: DIR-12 (§165), INC-22, SH-7, CHG-1, CHG-4.
     """
     try:
@@ -590,6 +619,15 @@ def create_filing(
             return api_response(False, None, f"{body.form_type}: say the financial year this filing is for. Without a year it "
                                              f"can never close its obligation on the compliance calendar.")
         cin = (str(company.get("cin") or "").strip().upper() or None) if company else None
+        if cin is None and (body.cin or "").strip():
+            # A CIN typed where the company named holds none, or no company is named (POST-A-442). Its shape is judged here, the
+            # Company Master's rule (`validate_cin`); which company it is, is matched when the filing is marked filed (`company_of`).
+            typed = body.cin.strip().upper()
+            problem = validate_cin(typed)
+            if problem:
+                return api_response(False, None, problem)
+            cin = typed
+        client_name = _client_name(firm_id, body.client_id)
 
         category = "annual" if body.form_type in _ANNUAL_FORMS else "event"
 
@@ -597,6 +635,8 @@ def create_filing(
             "id": str(uuid.uuid4()),
             "firm_id": firm_id,
             "client_id": body.client_id,
+            # The firm-level list shows the name this row carries (the browser's own insert wrote it, the API did not until POST-A-442).
+            "client_name": client_name,
             # The company's own id as its row holds it (the request may spell a uuid in another case).
             "company_id": company.get("id") if company else None,
             # The firm-level list shows `company_cin`, and the browser's own insert writes both columns.
@@ -611,7 +651,7 @@ def create_filing(
             # free-text "notes" column instead of adding a duplicate one
             # (task #219 schema-drift fix).
             "notes": body.description,
-            "status": "not_started",
+            "status": body.status,
             "srn": None,
             # Real column is filed_date (migration 012); request/response
             # keep "filing_date" as the API field name, mapped below.
@@ -623,8 +663,11 @@ def create_filing(
         if _USE_MOCK:
             _MOCK_FILINGS[record["id"]] = record
         else:
+            # The privileged client (POST-A-442): the signed-in role's write on `mca_filings` is taken away by the migration that
+            # follows, and every check its policies made is this route's, made above: `mca:write`, the client and the company.
             from core.supabase_client import get_supabase
-            get_supabase().table("mca_filings").insert(record).execute()
+            from core.db_provider import privileged_for
+            privileged_for(get_supabase()).table("mca_filings").insert(record).execute()
 
         log_event(firm_id, "mca_filing", record["id"], "create",
                   actor_id=current_user.get("auth_user_id"), new_data=record)
@@ -632,7 +675,7 @@ def create_filing(
     except HTTPException:
         raise
     except Exception as e:
-        return api_response(False, None, "Unable to complete MCA operation. Please try again.")
+        return _could_not(e, "save the filing")
 
 
 def _company_facts(firm_id: str, filing: dict) -> tuple[list[dict], set[str]]:
@@ -726,9 +769,9 @@ def _judged_filing_date(filing: dict, raw: Optional[str]) -> tuple[Optional[str]
     if not raw:
         return None, None
     try:
-        day = clean_filed_date(raw)
+        day = clean_filed_date(raw, "The filing date")
     except ValueError as refusal:
-        return None, f"{str(refusal).replace('filed_date', 'filing_date')}. Nothing was changed."
+        return None, f"{refusal} Nothing was changed."
     too_early = _filed_before_the_year_it_declares_ended(filing, day)
     return (None, too_early) if too_early else (day, None)
 
@@ -794,8 +837,18 @@ def update_filing_status(
             _MOCK_FILINGS[filing_id].update(updates)
             rec = _MOCK_FILINGS[filing_id]
         else:
+            # The privileged client (POST-A-442), naming the firm and the client: the route asked `mca:write`, `mca:approve` for a
+            # filed filing and the client (`_load_or_none`), which is what migration 493's policies asked of a signed-in write. A legacy
+            # row can carry no client (the base column is nullable), and `.eq("client_id", None)` is not a null test to PostgREST.
             from core.supabase_client import get_supabase
-            rows = get_supabase().table("mca_filings").update(updates).eq("id", filing_id).eq("firm_id", firm_id).execute().data
+            from core.db_provider import privileged_for
+            db = privileged_for(get_supabase())
+            if existing.get("client_id"):
+                rows = (db.table("mca_filings").update(updates).eq("id", filing_id).eq("firm_id", firm_id)
+                        .eq("client_id", existing["client_id"]).execute().data)
+            else:
+                rows = (db.table("mca_filings").update(updates).eq("id", filing_id).eq("firm_id", firm_id)
+                        .is_("client_id", "null").execute().data)
             if not rows:
                 # A refused UPDATE affects zero rows without an error; reading that as success would tell the CA a
                 # filing was recorded when the database declined to move it.
@@ -816,7 +869,7 @@ def update_filing_status(
     except HTTPException:
         raise
     except Exception as e:
-        return api_response(False, None, "Unable to complete MCA operation. Please try again.")
+        return _could_not(e, "record the filing's status")
 
 
 @router.get("/filings/{filing_id}")
@@ -829,7 +882,7 @@ def get_filing(filing_id: str, current_user: dict = Depends(rbac("mca", "read"))
             return api_response(False, None, "Filing not found")
         return api_response(True, rec)
     except Exception as e:
-        return api_response(False, None, "Unable to complete MCA operation. Please try again.")
+        return _could_not(e, "read the filing")
 
 
 @router.put("/filings/{filing_id}/complete")
@@ -1054,4 +1107,4 @@ def filing_history(
             rows = get_supabase().table("mca_filings").select("*").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "filed").range(offset, offset + limit - 1).execute().data or []
         return api_response(True, rows)
     except Exception as e:
-        return api_response(False, None, "Unable to complete MCA operation. Please try again.")
+        return _could_not(e, "read the filing history")

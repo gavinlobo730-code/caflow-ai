@@ -22,6 +22,7 @@ from services.ledger_door import ledger_rpc
 from core.observability import capture_posting_failure
 from domain.currency.policy import BASE_CURRENCY, CurrencyPolicy
 from domain.accounting import journal_figures, journal_source as JS
+from domain.gst import note_blocked_credit
 from domain.sales import issue_readiness
 from domain.currency.rate_types import DEFAULT_RATE_TYPE, is_valid_rate_type
 from core.db_provider import privileged_for
@@ -124,7 +125,8 @@ class Phase2JournalService:
                 issues_invoice=({"invoice_id": invoice["id"], "issued_at": issue_at} if issue_at else None),
                 **_ccy,
             )
-        except (journal_figures.InvoiceNoLongerADraft, journal_figures.AtomicIssueNotInstalled):
+        except (journal_figures.InvoiceNoLongerADraft, journal_figures.AtomicIssueNotInstalled,
+                journal_figures.InvoiceBillsMoreThanItsOrder):
             raise
         except ValueError:
             # Re-raise account resolution and balance errors so the router returns 422
@@ -266,6 +268,7 @@ class Phase2JournalService:
         except journal_figures.EntryCannotBeReused as refusal:
             return None if refusal.unreadable else str(refusal)
         except ValueError:
+            # An account the posting needs is not in the chart: the chart-of-accounts blocker says that (docstring), and this pre-flight adds nothing.
             return None
         except Exception as e:
             capture_posting_failure(e, operation="entry_left_behind_problem", firm_id=firm_id, client_id=client_id)
@@ -408,6 +411,7 @@ class Phase2JournalService:
         """
         Dr Sales Returns (Sales Revenue account) = taxable_amount_paise
         Dr GST Output Tax Payable (CGST/SGST/IGST) — per-head accounts
+        Dr Compensation Cess Payable = cess_paise (its own ledger, migration 615)
         Cr Trade Receivables = total_paise
         CGST Act §34: Credit notes for reduction in taxable value.
         CGST Act §8: Intra-state → CGST+SGST; Inter-state → IGST.
@@ -468,6 +472,20 @@ class Phase2JournalService:
                     "narration": "IGST output tax reversed",
                 })
 
+            # Compensation cess reversed to its OWN liability, the ledger the invoice
+            # credited (Compensation Act s.11(2) proviso: this cess is never set off
+            # against GST). `total_paise` includes it (migration 615), so a note that
+            # carries cess and no leg for it would not balance.
+            if int(cn.get("cess_paise") or 0) > 0:
+                lines.append({
+                    "account_id": self._find_account(
+                        db, firm_id, client_id, "%Compensation Cess Payable%",
+                        system_key="gst_cess_output"),
+                    "debit_paise": int(cn["cess_paise"]),
+                    "credit_paise": 0,
+                    "narration": "Compensation cess reversed — Compensation Act s.8",
+                })
+
             lines.append({
                 "account_id": receivables_id,
                 "debit_paise": 0,
@@ -505,6 +523,7 @@ class Phase2JournalService:
         Dr Trade Payables      = total_paise         (we owe the vendor less)
         Cr Purchases/Expense   = taxable_amount_paise (reverse the expense)
         Cr GST Input Tax Credit (CGST/SGST/IGST)     (reverse the ITC claimed)
+        Cr Compensation Cess Input Credit = cess_paise (its own ledger, migration 615)
         CGST Act §34: debit notes for reduction in value/tax.
         """
         if _USE_MOCK:
@@ -526,6 +545,9 @@ class Phase2JournalService:
                 db, firm_id, client_id, "%GST Input%", system_key="gst_input"
             )
 
+            # CGST Act s.17(5) (POST-A-459, migration 685): the tax on a line marked blocked was never credit, so the bill put it on
+            # the cost; the note takes it back off the cost, and the credit ledgers move by the creditable tax only, as the bill's did.
+            blocked = note_blocked_credit.blocked_of(dn)
             lines = [{
                 "account_id": payables_id,
                 "debit_paise": dn["total_paise"],
@@ -534,16 +556,29 @@ class Phase2JournalService:
             }, {
                 "account_id": purchases_id,
                 "debit_paise": 0,
-                "credit_paise": dn["taxable_amount_paise"],
+                "credit_paise": int(dn["taxable_amount_paise"]) + sum(blocked.values()),
                 "narration": "Purchase returns — debit note",
             }]
-            gst_reversed = int(dn.get("cgst_paise", 0)) + int(dn.get("sgst_paise", 0)) + int(dn.get("igst_paise", 0))
+            gst_reversed = (int(dn.get("cgst_paise", 0)) + int(dn.get("sgst_paise", 0)) + int(dn.get("igst_paise", 0))
+                            - blocked["cgst"] - blocked["sgst"] - blocked["igst"])
             if gst_reversed > 0:
                 lines.append({
                     "account_id": gst_input_id,
                     "debit_paise": 0,
                     "credit_paise": gst_reversed,
                     "narration": "GST input tax credit reversed",
+                })
+            # The cess credit the bill took goes back to its OWN asset (Compensation
+            # Act s.11(2) proviso), the ledger the bill debited; a blocked line's cess was cost.
+            cess_reversed = int(dn.get("cess_paise") or 0) - blocked["cess"]
+            if cess_reversed > 0:
+                lines.append({
+                    "account_id": self._find_account(
+                        db, firm_id, client_id, "%Compensation Cess Input%",
+                        system_key="gst_cess_input"),
+                    "debit_paise": 0,
+                    "credit_paise": cess_reversed,
+                    "narration": "Compensation cess input credit reversed — Compensation Act s.8",
                 })
 
             return self._create_journal(
@@ -575,6 +610,7 @@ class Phase2JournalService:
         Dr Trade Receivables    = total_paise         (customer owes us MORE)
         Cr Sales Revenue        = taxable_amount_paise (additional revenue)
         Cr GST Output Tax Payable (CGST/SGST/IGST) — per-head accounts
+        Cr Compensation Cess Payable = cess_paise (its own ledger, migration 615)
         CGST Act §34(3): debit notes for an increase in taxable value or tax charged.
         CGST Act §8: Intra-state → CGST+SGST; Inter-state → IGST.
         """
@@ -635,6 +671,17 @@ class Phase2JournalService:
                     "credit_paise": dn["igst_paise"],
                     "narration": "IGST output tax — additional",
                 })
+            # Additional compensation cess, to its OWN liability (Compensation Act
+            # s.11(2) proviso), as the invoice's own cess was.
+            if int(dn.get("cess_paise") or 0) > 0:
+                lines.append({
+                    "account_id": self._find_account(
+                        db, firm_id, client_id, "%Compensation Cess Payable%",
+                        system_key="gst_cess_output"),
+                    "debit_paise": 0,
+                    "credit_paise": int(dn["cess_paise"]),
+                    "narration": "Compensation cess payable — additional, Compensation Act s.8",
+                })
 
             return self._create_journal(
                 created_by=created_by,
@@ -665,6 +712,7 @@ class Phase2JournalService:
         (a vendor undercharged us; we owe them more):
         Dr Purchases/Expense   = taxable_amount_paise (additional expense)
         Dr GST Input Tax Credit (CGST/SGST/IGST)      (additional ITC claimed)
+        Dr Compensation Cess Input Credit = cess_paise (its own ledger, migration 615)
         Cr Trade Payables      = total_paise           (we owe the vendor more)
         CGST Act §34(3): debit notes for an increase in value/tax — issued by the
         vendor; this is our own AP-side record of it, mirroring how the existing
@@ -689,19 +737,35 @@ class Phase2JournalService:
                 db, firm_id, client_id, "%GST Input%", system_key="gst_input"
             )
 
+            # CGST Act s.17(5) (POST-A-459, migration 685): the tax on a line marked blocked is cost, as on the bill, and only the
+            # creditable tax reaches the credit ledgers.
+            blocked = note_blocked_credit.blocked_of(cn)
             lines = [{
                 "account_id": purchases_id,
-                "debit_paise": cn["taxable_amount_paise"],
+                "debit_paise": int(cn["taxable_amount_paise"]) + sum(blocked.values()),
                 "credit_paise": 0,
                 "narration": "Additional purchases — credit note",
             }]
-            gst_claimed = int(cn.get("cgst_paise", 0)) + int(cn.get("sgst_paise", 0)) + int(cn.get("igst_paise", 0))
+            gst_claimed = (int(cn.get("cgst_paise", 0)) + int(cn.get("sgst_paise", 0)) + int(cn.get("igst_paise", 0))
+                           - blocked["cgst"] - blocked["sgst"] - blocked["igst"])
             if gst_claimed > 0:
                 lines.append({
                     "account_id": gst_input_id,
                     "debit_paise": gst_claimed,
                     "credit_paise": 0,
                     "narration": "GST input tax credit — additional",
+                })
+            # Additional cess credit, to its OWN asset (Compensation Act s.11(2)
+            # proviso), as the bill's own cess credit was; a blocked line's cess is cost.
+            cess_claimed = int(cn.get("cess_paise") or 0) - blocked["cess"]
+            if cess_claimed > 0:
+                lines.append({
+                    "account_id": self._find_account(
+                        db, firm_id, client_id, "%Compensation Cess Input%",
+                        system_key="gst_cess_input"),
+                    "debit_paise": cess_claimed,
+                    "credit_paise": 0,
+                    "narration": "Compensation cess input credit — additional, Compensation Act s.8",
                 })
             lines.append({
                 "account_id": payables_id,
@@ -1145,7 +1209,7 @@ class Phase2JournalService:
         produces.
 
         WHAT THE SECOND DEBIT HOLDS, AND ONE THING IT ARGUABLY SHOULD NOT.
-        Employer PF (12%), EDLI (0.5%, EDLI 1976) and employer ESI (3.25%) are
+        Employer PF (12%), EDLI (0.5%) and employer ESI (3.25%) are
         contributions. The EPF ADMINISTRATIVE CHARGE is strictly a fee to the
         EPFO rather than a contribution to a fund — it is grouped here because
         it is remitted on the same monthly challan, is universally presented
@@ -1188,7 +1252,7 @@ class Phase2JournalService:
         # paying cash — so it is a credit leg like any other deduction, and the
         # debit still equals the sum of the credits.
         loans = int(run.get("total_loan_recovery_paise") or 0)
-        # Migration 329. EDLI (0.5%, EDLI 1976) and the EPF administrative
+        # Migration 329. EDLI (0.5%) and the EPF administrative
         # charge (0.5%, floored at ₹500 per ESTABLISHMENT) are EMPLOYER costs
         # outside the 12%, deducted from nobody and remitted on the same monthly
         # challan as the rest. They were computed, stored on every slip and
@@ -1218,9 +1282,9 @@ class Phase2JournalService:
                             "PF payable — employee + employer 12%"
                             + (", EDLI 0.5%" if edli else "")
                             + (", admin charge" if pf_admin else "")
-                            + " — EPF Act, EDLI 1976"))
+                            + " — Code on Social Security, 2020"))
         if esi > 0:
-            credits.append((account_ids["esi"], esi, "ESI payable (employee + employer) — ESI Act"))
+            credits.append((account_ids["esi"], esi, "ESI payable (employee + employer) — Code on Social Security, 2020"))
         if pt > 0:
             credits.append((account_ids["pt"], pt, "Professional Tax payable — IT Act §16(iii)"))
         if tds > 0:
@@ -1271,7 +1335,7 @@ class Phase2JournalService:
                 "debit_paise": contribution,
                 "credit_paise": 0,
                 "narration": (f"Employer PF, EDLI, administrative charge and ESI "
-                              f"for {month} — EPF Act, EDLI 1976, ESI Act"),
+                              f"for {month} — Code on Social Security, 2020"),
             })
         for account_id, amount, narration in credits:
             lines.append({"account_id": account_id, "debit_paise": 0, "credit_paise": amount,
@@ -1305,8 +1369,8 @@ class Phase2JournalService:
         """
         Create payroll accrual journal on finalization.
         IT Act §192: TDS on salary — credited to TDS Payable (24Q).
-        EPF Act: PF Payable (employer + employee combined).
-        ESI Act: ESI Payable. PT: state-wise Professional Tax Payable.
+        Code on Social Security, 2020 (which replaced the EPF Act and the ESI Act on 21-11-2025): PF Payable (employer +
+        employee combined); ESI Payable. PT: state-wise Professional Tax Payable.
 
         Dr  Salaries Expense        (gross wages — IT Act s.17(1))
         Dr  Contribution to PF and Other Funds  (employer PF + EDLI + admin + ESI)
@@ -1331,9 +1395,16 @@ class Phase2JournalService:
             from core.supabase_client import get_supabase
             db = get_supabase()
 
-            # Payroll accounts use name matching only — no system_account_key for these
-            salary_exp_id  = self._find_account(db, firm_id, client_id, "%Salaries Expense%")
-            net_sal_id     = self._find_account(db, firm_id, client_id, "%Net Salary Payable%")
+            # Every payroll account through the one payroll resolver (POST-A-083): key first, so a renamed account is still
+            # found, and the same answer the 24Q tie-out and the challan and remittance registers read the account back by.
+            from domain.payroll import ledger_accounts as PL
+            from services.payroll_ledger_accounts import resolve_id as payroll_ledger
+
+            def acct(ledger):
+                return payroll_ledger(db, firm_id=firm_id, client_id=client_id, ledger=ledger)
+
+            salary_exp_id  = acct(PL.SALARIES_EXPENSE)
+            net_sal_id     = acct(PL.NET_SALARY_PAYABLE)
             # THE EMPLOYER SHARE COMES OFF THE SLIPS, not the run header.
             # `payroll_runs` stores `total_pf_paise` and `total_esi_paise`
             # COMBINED (employee + employer), and there is no column for either
@@ -1350,19 +1421,18 @@ class Phase2JournalService:
             # backfills the account rather than this failing closed.
             employer_contribution_id = None
             if employer_contribution > 0:
-                employer_contribution_id = self._find_account(
-                    db, firm_id, client_id, "%Contribution to Provident%")
+                employer_contribution_id = acct(PL.EMPLOYER_CONTRIBUTION)
             # Looked up only when there IS a recovery. _find_account raises when
             # an account is missing, and a run that recovers nothing must not
             # require a receivable account it never touches — every firm whose
             # chart predates migration 301 would otherwise fail to finalise.
             loans_id = None
             if int(run.get("total_loan_recovery_paise") or 0) > 0:
-                loans_id = self._find_account(db, firm_id, client_id, "%Employee Loans%")
-            pf_id          = self._find_account(db, firm_id, client_id, "%PF Payable%")
-            esi_id         = self._find_account(db, firm_id, client_id, "%ESI Payable%")
-            pt_id          = self._find_account(db, firm_id, client_id, "%PT Payable%")
-            tds_sal_id     = self._find_account(db, firm_id, client_id, "%TDS Payable - Salary%")
+                loans_id = acct(PL.EMPLOYEE_LOANS)
+            pf_id          = acct(PL.PF_PAYABLE)
+            esi_id         = acct(PL.ESI_PAYABLE)
+            pt_id          = acct(PL.PT_PAYABLE)
+            tds_sal_id     = acct(PL.TDS_PAYABLE_SALARY)
 
             lines = self._build_payroll_lines(
                 {
@@ -1489,14 +1559,23 @@ class Phase2JournalService:
         try:
             from core.supabase_client import get_supabase
             db = get_supabase()
+            # The accrual's own accounts, through the same resolver (POST-A-083). The salaries debit was "%Salaries%" here
+            # and "%Salaries Expense%" on the accrual, so a chart holding both a "Salaries Payable" and a "Salaries Expense"
+            # could settle a leaver against a liability; one vocabulary makes it the account the accrual debits.
+            from domain.payroll import ledger_accounts as PL
+            from services.payroll_ledger_accounts import resolve_id as payroll_ledger
+
+            def acct(ledger):
+                return payroll_ledger(db, firm_id=firm_id, client_id=client_id, ledger=ledger)
+
             ids = {
-                "salary_exp": self._find_account(db, firm_id, client_id, "%Salaries%"),
-                "net": self._find_account(db, firm_id, client_id, "%Net Salary Payable%"),
-                "tds": self._find_account(db, firm_id, client_id, "%TDS Payable - Salary%"),
+                "salary_exp": acct(PL.SALARIES_EXPENSE),
+                "net": acct(PL.NET_SALARY_PAYABLE),
+                "tds": acct(PL.TDS_PAYABLE_SALARY),
                 # Looked up only when there IS a recovery — a firm whose chart
                 # predates migration 301 has no such account and must still be
                 # able to settle a leaver who owes nothing.
-                "loans": (self._find_account(db, firm_id, client_id, "%Employee Loans%")
+                "loans": (acct(PL.EMPLOYEE_LOANS)
                           if int(settlement.get("loan_recovery_paise") or 0) > 0 else None),
             }
             lines = self._build_settlement_lines(ids, settlement)
@@ -1536,7 +1615,9 @@ class Phase2JournalService:
         try:
             from core.supabase_client import get_supabase
             db = get_supabase()
-            net_sal_id = self._find_account(db, firm_id, client_id, "%Net Salary Payable%")
+            from domain.payroll import ledger_accounts as PL
+            from services.payroll_ledger_accounts import resolve_id as payroll_ledger
+            net_sal_id = payroll_ledger(db, firm_id=firm_id, client_id=client_id, ledger=PL.NET_SALARY_PAYABLE)
             lines = self._build_payroll_disbursement_lines(
                 net_sal_id, bank_gl_account_id, int(run.get("total_net_paise") or 0))
             return self._create_journal(
@@ -2762,6 +2843,9 @@ class Phase2JournalService:
                 if (_sqlstate_of(rpc_err) == "55000" or "and not a draft" in issue_msg or "has changed since" in issue_msg
                         or "is not an invoice of this client" in issue_msg):
                     raise journal_figures.InvoiceNoLongerADraft(str(rpc_err)) from rpc_err
+                if _sqlstate_of(rpc_err) == "23514" and ("order_line_over_billed" in issue_msg or "has unbilled" in issue_msg):
+                    # Migration 650: another invoice billing the same order line was issued a moment ago (POST-A-440).
+                    raise journal_figures.InvoiceBillsMoreThanItsOrder(str(rpc_err)) from rpc_err
                 if "pgrst202" in issue_msg or ("issue_sales_invoice_atomic" in issue_msg and (
                         "does not exist" in issue_msg or "could not find the function" in issue_msg)):
                     raise journal_figures.AtomicIssueNotInstalled(

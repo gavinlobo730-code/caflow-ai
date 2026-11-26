@@ -13,9 +13,10 @@
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
-import { Plus, X, CheckCircle, Clock, AlertTriangle, Pencil } from "lucide-react";
+import { Plus, CheckCircle, Clock, AlertTriangle, Pencil } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
@@ -31,6 +32,7 @@ import { formatDate, todayIstISO } from "@/lib/dates/format";
 import { YearPicker } from "@/components/ui/year-picker";
 import { Callout } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
+import { failureSentence } from "@/lib/api/failureSentence";
 import { auditDateRefusalMessage, duplicateAuditErrorMessage } from "@/lib/income-tax/taxAuditErrors";
 import { PageHeader } from "@/components/ui/page-header";
 import { usePermissions } from "@/lib/auth/AuthContext";
@@ -400,20 +402,24 @@ function AuditModal({ clients, editAudit, presetClientId, onClose, onSaved }: {
         : duplicateAuditErrorMessage(e as { code?: string } | null)
           // Migration 584's own sentence: the screen asks the same question first, so this is reached only by a browser whose clock is ahead of the server's (the bound is the browser's reading of India's day).
           ?? auditDateRefusalMessage(e as { code?: string; hint?: string; message?: string } | null)
-          ?? (e instanceof Error ? e.message : "Save failed"));
+          // The browser client hands back a plain object for a request that got no answer, which `instanceof Error` read as "Save failed"
+          // although the audit may have been saved (POST-A-414): the helper says it as not known.
+          ?? failureSentence(e, "Save failed", "write"));
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white flex items-center justify-between px-6 py-4 border-b border-ps-border">
-          <h3 className="text-sm font-semibold text-ps-ink">{target ? "Edit Tax Audit" : "Add Tax Audit"}</h3>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
-        </div>
-        <div className="px-6 py-4 space-y-3">
+    // The shared dialog (POST-A-130). Its close (Escape, a click beside it, its ×) is held while the audit is being saved.
+    <Modal title={target ? "Edit Tax Audit" : "Add Tax Audit"} maxWidthClass="max-w-lg" onClose={() => { if (!saving) onClose(); }}
+      footer={<>
+        <button disabled={saving} onClick={onClose} className="px-4 py-2 text-sm text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg disabled:opacity-50">Cancel</button>
+        <Button variant="plain" size="none" onClick={handleSave} disabled={saving || lockedForYou} className="px-4 py-2 text-sm text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-60">
+          {saving ? "Saving…" : target ? "Update" : "Add Audit"}
+        </Button>
+      </>}>
+        <div className="space-y-3">
           {(error || dateRefusal.shown) && <Callout tone="problem">{error ?? dateRefusal.shown}</Callout>}
           {/* existingMatch, not editAudit — this fired on its own the moment
               the client+FY the CA is typing turned out to already have a
@@ -588,14 +594,7 @@ function AuditModal({ clients, editAudit, presetClientId, onClose, onSaved }: {
             </div>
           </div>
         </div>
-        <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-ps-border flex gap-2 justify-end">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-ps-body bg-ps-muted rounded-lg hover:bg-white/[0.08]">Cancel</button>
-          <Button variant="plain" size="none" onClick={handleSave} disabled={saving || lockedForYou} className="px-4 py-2 text-sm text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-60">
-            {saving ? "Saving…" : target ? "Update" : "Add Audit"}
-          </Button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

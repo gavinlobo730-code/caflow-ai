@@ -26,16 +26,8 @@ def _compute_duration(started_at: str, ended_at: str) -> int:
 
 
 def _worth(entry: dict) -> dict:
-    """The rate an entry bills at and what its time is worth. `billable_rate_paise`
-    first, the legacy `hourly_rate_paise` as the fallback it always was; None for
-    both is "no rate", never 0. A non-billable or still-running entry has no value."""
-    billable, hourly = entry.get("billable_rate_paise"), entry.get("hourly_rate_paise")
-    rate = billable if billable is not None else hourly
-    if not entry.get("is_billable"):
-        return {"rate_paise": None, "value_paise": None}
-    return {"rate_paise": time_rate.clean_rate(rate),
-            "value_paise": time_rate.value_paise(entry.get("duration_minutes"), rate)
-            if entry.get("ended_at") else None}
+    """The rate an entry bills at and what its time is worth: `time_rate.entry_worth`, the one rule the export reads too."""
+    return time_rate.entry_worth(entry)
 
 
 def _rate_answer(resolved: dict) -> dict:
@@ -214,7 +206,7 @@ def start_timer(body: StartTimerBody, current_user: dict = Depends(rbac("time_en
     running = time_tracking_repo.find_running(firm_id=firm_id, user_id=user_id)
     if running:
         duration = _compute_duration(running["started_at"], _now())
-        time_tracking_repo.update(running["id"], {"ended_at": _now(), "duration_minutes": duration})
+        time_tracking_repo.update(running["id"], {"ended_at": _now(), "duration_minutes": duration}, firm_id=firm_id)
 
     # The engagement and the rate are resolved NOW, so the row a running timer
     # lives in already says which engagement it is for and what an hour of it
@@ -256,8 +248,7 @@ def stop_timer(entry_id: str, current_user: dict = Depends(rbac("time_entry", "w
     # was started at, and re-pricing logged work behind somebody's back is the
     # thing storing the rate on the row exists to prevent.
     answer = {"source": None, "notes": []}
-    if (entry.get("is_billable") and entry.get("billable_rate_paise") is None
-            and entry.get("hourly_rate_paise") is None):
+    if entry.get("is_billable") and time_rate.entry_rate(entry) is None:
         resolved = time_rates_service.resolve_for_entry(
             firm_id, entry.get("user_id") or current_user.get("id"),
             entry.get("client_id"), entry.get("engagement_id"), is_billable=True)
@@ -336,6 +327,11 @@ def delete_entry(entry_id: str, current_user: dict = Depends(rbac("time_entry", 
     firm_id = current_user.get("firm_id")
     entry = time_tracking_repo.find_by_id(entry_id, firm_id=firm_id)
     _assert_entry_scope(current_user, entry)
+    if (entry or {}).get("billed_invoice_id"):
+        # The invoice that bills this time adds up to its entries (POST-B-194). Deleting one would leave an invoice that
+        # bills time nobody recorded, the same reason its rate cannot be changed once billed.
+        raise HTTPException(status_code=409, detail="This time is on an invoice and cannot be deleted. Delete the draft "
+                                                    "invoice, or cancel the issued one, to release it first.")
     time_tracking_repo.delete(entry_id, firm_id=firm_id)
     return api_response(True, {"deleted": True})
 

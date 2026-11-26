@@ -53,6 +53,7 @@ def _ledger_lines(db: Any, firm_id: str, client_id: str, categories: list[str]) 
         try:
             account_id = phase2_journal_service._find_account(db, firm_id, client_id, ledger_pattern(category))
         except ValueError:
+            # No ledger for this category in the chart: None (docstring), and the category's split is withheld, never placed.
             out[category] = None
             continue
         found = (db.table("chart_of_accounts").select("account_type,account_subtype,schedule_iii_mapping")

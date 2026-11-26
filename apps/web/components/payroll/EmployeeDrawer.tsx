@@ -27,6 +27,7 @@
  * employee's §17(1) for the year. It is not a side effect of looking.
  */
 
+import { EmptyState } from "@/components/ui/states";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import type {
@@ -41,11 +42,14 @@ import { formatPaise } from "@/lib/money/format";
 import { formatDate } from "@/lib/services/formatting";
 import { objectOrNull, objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
+import { Drawer } from "@/components/ui/drawer";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { useDirtyFields, useReportDirty } from "@/lib/forms/useDirtyFields";
+import { removedEmployeeIdentifiers, type EmployeeIdentifier, type IdentifierValues } from "@/lib/payroll/employeeIdentifiers";
 import { useUnsavedChanges } from "@/lib/invoices/dirtyState";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 export type DrawerEmployee = {
   id: string;
@@ -70,6 +74,10 @@ export type DrawerEmployee = {
   bank_ifsc?: string | null;
   hra_percent?: number | null;
   da_percent?: number | null;
+  // Fixed-term employment (POST-A-526, migration 770): returned by the API with the rest of the row and read here only to decide whether
+  // the settlement asks if the term has expired.
+  fixed_term_employment?: boolean | null;
+  fixed_term_end_date?: string | null;
 };
 
 type Section = "profile" | "settlement" | "revisions" | "loans" | "perquisites" | "relief";
@@ -179,49 +187,21 @@ export default function EmployeeDrawer({ employee, clientId, canFinalize, onClos
   }, [confirmLeave]);
   const requestClose = useCallback(() => { void guarded(onClose); }, [guarded, onClose]);
 
-  // Escape closes the drawer, matching the shared Drawer/Modal/ClientFormModal
-  // pattern (a document/window keydown listener) — this component was the one
-  // full-screen overlay with no way out but the explicit Close button.
+  // THE SHARED SIDE SHEET (POST-A-130) hears Escape, a click beside it and its × and asks `requestClose` for each, so every way out
+  // still asks about unsaved typing first. It also keeps Tab inside, locks the page and gives focus back to the employee's row, which the
+  // hand-built panel did not.
   //
   // A date box commits on blur, not per keystroke, so Escape pressed while one is still focused would be asked about before the typed
-  // date had reached the section that reports unsaved typing: the question would be skipped and the date lost. The focused box is left
-  // first, and the question is asked on the next tick, by the closure that has seen the commit (frontend_ux-19).
-  const requestCloseRef = useRef(requestClose);
-  requestCloseRef.current = requestClose;
-  useEffect(() => {
-    const closeOnEscape = () => {
-      const focused = document.activeElement;
-      if (focused instanceof HTMLInputElement) {
-        focused.blur();
-        setTimeout(() => requestCloseRef.current(), 0);
-        return;
-      }
-      requestClose();
-    };
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") closeOnEscape();
-    }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [requestClose]);
+  // date had reached the section that reports unsaved typing: the question would be skipped and the date lost. The shared sheet leaves
+  // the focused date box first and closes on the next tick, through the latest `onClose`, which has seen the commit (frontend_ux-19).
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/20" onClick={requestClose}>
-      <div className="w-full max-w-[720px] h-full bg-white shadow-xl overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}>
-        <div className="sticky top-0 bg-white border-b border-ps-border px-5 py-3 flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-ps-ink truncate">{employee.name}</p>
-            <p className="text-2xs text-ps-hint">
-              {[employee.designation, employee.department].filter(Boolean).join(" · ") || "—"}
-              {employee.status && employee.status !== "active" ? ` · ${employee.status}` : ""}
-            </p>
-          </div>
-          <button onClick={requestClose}
-            className="text-xs text-ps-label border border-ps-border rounded-lg px-2.5 py-1 hover:bg-ps-bg shrink-0">
-            Close
-          </button>
-        </div>
+    <Drawer open widthClass="sm:max-w-[720px]" ariaLabel={employee.name} onClose={requestClose}
+      title={<span className="font-sans truncate">{employee.name}</span>}>
+        <p className="px-5 pt-3 text-2xs text-ps-hint">
+          {[employee.designation, employee.department].filter(Boolean).join(" · ") || "—"}
+          {employee.status && employee.status !== "active" ? ` · ${employee.status}` : ""}
+        </p>
 
         <div className="px-5 pt-3 flex gap-1.5 flex-wrap border-b border-ps-border pb-3">
           {SECTIONS.map((s) => (
@@ -262,8 +242,7 @@ export default function EmployeeDrawer({ employee, clientId, canFinalize, onClos
             <ReliefSection employee={employee} clientId={clientId} onDirtyChange={setDirty} />
           )}
         </div>
-      </div>
-    </div>
+    </Drawer>
   );
 }
 
@@ -287,6 +266,15 @@ function ProfileSection({ employee, onSaved, onDirtyChange }: {
   const [esiNumber, setEsiNumber] = useState(employee.esi_number ?? "");
   const [bankAccountNo, setBankAccountNo] = useState(employee.bank_account_no ?? "");
   const [bankIfsc, setBankIfsc] = useState(employee.bank_ifsc ?? "");
+  // What is on file: as the drawer opened, then as last saved. A box emptied over one of these is refused at the box, in the server's words,
+  // before anything is sent (POST-A-465); the server refuses the same edit whatever is sent.
+  const [onFile, setOnFile] = useState<IdentifierValues>({
+    pan: employee.pan, uan: employee.uan, esi_number: employee.esi_number,
+    bank_account_no: employee.bank_account_no, bank_ifsc: employee.bank_ifsc,
+  });
+  const identifiersNow: IdentifierValues = { pan, uan, esi_number: esiNumber, bank_account_no: bankAccountNo, bank_ifsc: bankIfsc };
+  const removed = removedEmployeeIdentifiers(onFile, identifiersNow);
+  const removedAt = (field: EmployeeIdentifier) => removed.find((r) => r.field === field)?.sentence ?? null;
   const [joiningDate, setJoiningDate] = useState(employee.joining_date ?? "");
   const [basic, setBasic] = useState(
     employee.basic_paise != null ? String(employee.basic_paise / 100) : "");
@@ -306,7 +294,8 @@ function ProfileSection({ employee, onSaved, onDirtyChange }: {
   useReportDirty(onDirtyChange, dirty);
 
   async function save() {
-    if (dates.first) { setErr(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setErr); return; }
+    if (removed.length) { setErr(removed[0].sentence); setDone(false); return; }
     setBusy(true); setErr(null); setDone(false);
     try {
       // A typed value not a number REFUSES here rather than being silently
@@ -341,6 +330,10 @@ function ProfileSection({ employee, onSaved, onDirtyChange }: {
       });
       setDone(true);
       markSaved();
+      setOnFile({
+        pan: pan.trim().toUpperCase(), uan: uan.trim(), esi_number: esiNumber.trim(),
+        bank_account_no: bankAccountNo.trim(), bank_ifsc: bankIfsc.trim().toUpperCase(),
+      });
       onSaved();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "That did not save.");
@@ -354,18 +347,24 @@ function ProfileSection({ employee, onSaved, onDirtyChange }: {
       <div className="grid grid-cols-2 gap-3">
         <label className={LABEL}>PAN
           <input value={pan} onChange={(e) => setPan(e.target.value.toUpperCase())}
-            maxLength={10} className={`${FIELD} mt-1 uppercase`} />
+            maxLength={10} aria-invalid={removedAt("pan") ? true : undefined}
+            className={`${FIELD} mt-1${removedAt("pan") ? " border-state-problem" : ""} uppercase`} />
+          {removedAt("pan") && <span role="alert" className="text-3xs text-state-problem">{removedAt("pan")}</span>}
         </label>
         <label className={LABEL}>UAN
           <input value={uan} onChange={(e) => setUan(e.target.value.replace(/[^0-9]/g, ""))}
-            inputMode="numeric" maxLength={12} className={`${FIELD} mt-1`} />
+            inputMode="numeric" maxLength={12} aria-invalid={removedAt("uan") ? true : undefined}
+            className={`${FIELD} mt-1${removedAt("uan") ? " border-state-problem" : ""}`} />
+          {removedAt("uan") && <span role="alert" className="text-3xs text-state-problem">{removedAt("uan")}</span>}
           <span className="text-3xs text-ps-hint">
             Twelve digits — the EPFO&apos;s own format. The ECR refuses anything else.
           </span>
         </label>
         <label className={LABEL}>ESI number
           <input value={esiNumber} onChange={(e) => setEsiNumber(e.target.value)}
-            className={`${FIELD} mt-1`} />
+            aria-invalid={removedAt("esi_number") ? true : undefined}
+            className={`${FIELD} mt-1${removedAt("esi_number") ? " border-state-problem" : ""}`} />
+          {removedAt("esi_number") && <span role="alert" className="text-3xs text-state-problem">{removedAt("esi_number")}</span>}
         </label>
         <label className={LABEL}>Joining date
           <DateInput id="drawer-joining-date" value={joiningDate} onChange={setJoiningDate} onStateChange={dates.watch("joining", "Joining date")}
@@ -377,11 +376,15 @@ function ProfileSection({ employee, onSaved, onDirtyChange }: {
         </label>
         <label className={LABEL}>Bank account number
           <input value={bankAccountNo} onChange={(e) => setBankAccountNo(e.target.value)}
-            className={`${FIELD} mt-1`} />
+            aria-invalid={removedAt("bank_account_no") ? true : undefined}
+            className={`${FIELD} mt-1${removedAt("bank_account_no") ? " border-state-problem" : ""}`} />
+          {removedAt("bank_account_no") && <span role="alert" className="text-3xs text-state-problem">{removedAt("bank_account_no")}</span>}
         </label>
         <label className={LABEL}>Bank IFSC
           <input value={bankIfsc} onChange={(e) => setBankIfsc(e.target.value.toUpperCase())}
-            maxLength={11} className={`${FIELD} mt-1 uppercase`} />
+            maxLength={11} aria-invalid={removedAt("bank_ifsc") ? true : undefined}
+            className={`${FIELD} mt-1${removedAt("bank_ifsc") ? " border-state-problem" : ""} uppercase`} />
+          {removedAt("bank_ifsc") && <span role="alert" className="text-3xs text-state-problem">{removedAt("bank_ifsc")}</span>}
         </label>
         <Money label="Basic" value={basic} onChange={setBasic} />
         <label className={LABEL}>HRA %
@@ -416,6 +419,7 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded, onDirt
   const [leavingDate, setLeavingDate] = useState("");
   const [onRetirement, setOnRetirement] = useState(false);
   const [onDeath, setOnDeath] = useState(false);
+  const [fixedTermExpired, setFixedTermExpired] = useState(false);
   const [isGovernment, setIsGovernment] = useState(false);
   const [salaryToLastDay, setSalaryToLastDay] = useState("");
   const [leaveDays, setLeaveDays] = useState("");
@@ -439,7 +443,7 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded, onDirt
   // blank in both, so a preview or a record over one is refused in the date's own sentence (frontend_ux-19).
   const dates = useDateProblems();
   const { dirty, markSaved } = useDirtyFields({
-    leavingDate, onRetirement, onDeath, isGovernment, salaryToLastDay, leaveDays, leaveAmount,
+    leavingDate, onRetirement, onDeath, fixedTermExpired, isGovernment, salaryToLastDay, leaveDays, leaveAmount,
     noticePay, loansOutstanding, otherRecoveries, averageTenMonths, gratuityUsed, leaveUsed,
     newStatus, paymentDate,
   });
@@ -451,6 +455,8 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded, onDirt
       leaving_date: leavingDate,
       on_retirement: onRetirement,
       on_death_or_disablement: onDeath,
+      // Named only for an employee recorded as on fixed-term employment: for anybody else the answer means nothing (POST-A-526).
+      ...(employee.fixed_term_employment === true ? { fixed_term_contract_expired: fixedTermExpired } : {}),
       is_government_employee: isGovernment,
       salary_to_last_day_paise: paiseFromRupeeInput(salaryToLastDay) ?? 0,
       leave_days_encashed: Number(leaveDays || 0),
@@ -467,7 +473,7 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded, onDirt
   }
 
   async function preview() {
-    if (dates.first) { setErr(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setErr); return; }
     setBusy("preview"); setErr(null); setDone(null); setConfirming(false);
     try {
       const res = await api.payroll.previewSettlement(employee.id, body());
@@ -480,7 +486,7 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded, onDirt
   }
 
   async function record() {
-    if (dates.first) { setErr(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setErr); return; }
     setBusy("record"); setErr(null);
     try {
       const res = await api.payroll.recordSettlement(employee.id, {
@@ -540,6 +546,21 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded, onDirt
             onChange={(e) => setOnDeath(e.target.checked)} />
           On death or disablement
         </label>
+        {employee.fixed_term_employment === true && (
+          <label className="text-2xs text-ps-label flex items-start gap-1.5">
+            <input type="checkbox" className="mt-0.5" checked={fixedTermExpired}
+              onChange={(e) => setFixedTermExpired(e.target.checked)} />
+            <span>
+              The fixed term has expired
+              <span className="block text-3xs text-ps-hint">
+                Section 53(1) waives the five years of service only where the employment ends by the expiry of the fixed
+                term, so gratuity on one year of service needs this (a recorded contract end date that has been reached
+                counts without it). An employee who leaves before the term ends is not shown as eligible on one year:
+                the text read does not settle it.
+              </span>
+            </span>
+          </label>
+        )}
         <label className="text-2xs text-ps-label flex items-center gap-1.5">
           <input type="checkbox" checked={isGovernment}
             onChange={(e) => setIsGovernment(e.target.checked)} />
@@ -643,7 +664,7 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded, onDirt
               </p>
               <div className="mt-2 flex items-end gap-3">
                 <label className={LABEL}>Payment date
-                  <DateInput id="settlement-payment-date" anchor={leavingDate || null} value={paymentDate} onChange={setPaymentDate} onStateChange={dates.watch("payment", "Payment date")}
+                  <DateInput id="settlement-payment-date" anchor={leavingDate || null} near={leavingDate || null} value={paymentDate} onChange={setPaymentDate} onStateChange={dates.watch("payment", "Payment date")}
                     className={`${FIELD} mt-1`} />
                 </label>
                 {confirming ? (
@@ -715,7 +736,7 @@ function RevisionsSection({ employee, clientId, onSaved, onDirtyChange }: {
   useEffect(() => { load(); }, [load]);
 
   async function save() {
-    if (dates.first) { setErr(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setErr); return; }
     setBusy(true); setErr(null);
     try {
       const res = await api.payroll.addSalaryRevision(employee.id, {
@@ -786,9 +807,9 @@ function RevisionsSection({ employee, clientId, onSaved, onDirtyChange }: {
         </div>
       </div>
 
-      {loading ? <p className="text-xs text-ps-hint">Loading…</p>
+      {loading ? <LoadingRegion label="Loading the salary revisions" className="text-xs text-ps-hint">Loading…</LoadingRegion>
         : rows.length === 0
-          ? <p className="text-xs text-ps-hint">No revisions recorded. The employee master&apos;s own figures apply.</p>
+          ? <EmptyState className="py-4" title="No revisions recorded" description="The employee master's own figures apply. Record a revision with the form above when the pay changes from a date." />
           : (
             <table className="w-full text-2xs">
               <thead>
@@ -848,7 +869,7 @@ function LoansSection({ employee, clientId, onDirtyChange }: {
   useEffect(() => { load(); }, [load]);
 
   async function save() {
-    if (dates.first) { setErr(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setErr); return; }
     setBusy(true); setErr(null); setNotes([]);
     try {
       const res = await api.payroll.addEmployeeLoan(employee.id, {
@@ -911,9 +932,9 @@ function LoansSection({ employee, clientId, onDirtyChange }: {
         </div>
       </div>
 
-      {loading ? <p className="text-xs text-ps-hint">Loading…</p>
+      {loading ? <LoadingRegion label="Loading the loans and advances" className="text-xs text-ps-hint">Loading…</LoadingRegion>
         : rows.length === 0
-          ? <p className="text-xs text-ps-hint">No loans or advances recorded.</p>
+          ? <EmptyState className="py-4" title="No loans or advances recorded" description="Record a loan or salary advance with the form above; its recovery is then deducted from the payslips." />
           : (
             <table className="w-full text-2xs">
               <thead>

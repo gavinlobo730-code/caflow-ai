@@ -30,6 +30,7 @@ from services.audit_service import log_event
 # one place the client-assignment logic can live rather than two copies
 # that could drift apart.
 from routers.year_end import _assert_engagement_scope
+from core.observability import capture_soft_failure
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
@@ -42,6 +43,7 @@ def _role_gte(role: str, minimum: str) -> bool:
     try:
         return _ROLE_HIERARCHY.index(role) >= _ROLE_HIERARCHY.index(minimum)
     except ValueError:
+        # A role outside the hierarchy is below every minimum: the answer is no.
         return False
 
 
@@ -79,8 +81,8 @@ def _record_review_event(db, engagement_id: str, firm_id: str, event_type: str,
             # `reviewed_by` deliberately omitted — see the docstring above.
             "created_at":    datetime.now(timezone.utc).isoformat(),
         }).execute()
-    except Exception:
-        pass  # Non-critical audit trail — do not fail the main operation
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="year_end_review.event_log", firm_id=firm_id, engagement_id=engagement_id)
 
 
 # ── Request models ────────────────────────────────────────────────────────────

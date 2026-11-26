@@ -10,7 +10,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
 import { windowDescription } from "@/lib/lists/window";
 import { useEntityRegister } from "@/lib/relationships/useEntityRegister";
-import { doingOf, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, fetchBounded, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { SectionPlaceholder } from "@/components/ui/page-frame";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -18,7 +19,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
   const { data: { session } } = await getSupabaseClient().auth.getSession();
   const token = session?.access_token ?? "";
   const doing = doingOf(opts?.method);
-  const res = await fetchPlain(`${API}${path}`, {
+  const res = await fetchBounded(`${API}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
@@ -124,9 +125,7 @@ export default function OwnershipMapPage() {
           </div>
 
           {loading && (
-            <div className="flex items-center justify-center py-12">
-              <div className="w-5 h-5 border-2 border-brand border-t-transparent rounded-full animate-spin" />
-            </div>
+            <SectionPlaceholder label="Loading the map" shape="list" rows={5} />
           )}
 
           {error && (
@@ -206,9 +205,7 @@ export default function OwnershipMapPage() {
                 </div>
 
                 {detailLoading && (
-                  <div className="flex items-center justify-center py-8">
-                    <div className="w-5 h-5 border-2 border-brand border-t-transparent rounded-full animate-spin" />
-                  </div>
+                  <SectionPlaceholder label="Loading the entity" shape="list" rows={3} />
                 )}
 
                 {!detailLoading && detailError && (

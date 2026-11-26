@@ -48,8 +48,9 @@ def _header(kind: str, **over) -> dict:
     """A header that adds up: ₹1,000 taxable, 18% GST split CGST/SGST."""
     h = {"taxable_amount_paise": 100_000, "cgst_paise": 9_000, "sgst_paise": 9_000, "igst_paise": 0,
          "total_gst_paise": 18_000, "total_paise": 118_000}
+    h.update(cess_paise=0)          # every kind carries a cess column (the four notes since migration 615)
     if kind in (rule.SALES_INVOICE, rule.PURCHASE_BILL):
-        h.update(cess_paise=0, txn_currency="INR")
+        h.update(txn_currency="INR")
     if kind == rule.SALES_INVOICE:
         h.update(round_off_paise=0, discount_paise=0)
     if kind == rule.PURCHASE_BILL:
@@ -118,8 +119,8 @@ def test_a_header_figure_that_is_not_its_lines_is_refused_in_each_column(kind, c
     assert len(found) == 1
 
 
-@pytest.mark.parametrize("kind", [rule.SALES_INVOICE, rule.PURCHASE_BILL])
-def test_a_cess_that_is_not_the_lines_is_refused_on_the_two_kinds_that_carry_cess(kind):
+@pytest.mark.parametrize("kind", rule.KINDS)
+def test_a_cess_that_is_not_the_lines_is_refused_on_every_kind(kind):
     h = _header(kind, cess_paise=500, total_paise=118_500)
     if kind == rule.PURCHASE_BILL:
         h["net_payable_paise"] = 118_500
@@ -129,10 +130,11 @@ def test_a_cess_that_is_not_the_lines_is_refused_on_the_two_kinds_that_carry_ces
 
 
 @pytest.mark.parametrize("kind", [rule.CREDIT_NOTE, rule.DEBIT_NOTE, rule.PURCHASE_CREDIT_NOTE, rule.SALES_DEBIT_NOTE])
-def test_a_note_carries_no_cess_or_round_off_so_neither_enters_its_total(kind):
-    """The four notes' create paths add taxable and the three heads and nothing else, so a stray cess or round-off key on a note's
-    header is not added into what the total must be."""
-    assert rule.problems(kind, _header(kind, cess_paise=999, round_off_paise=7), _lines(kind, cess_paise=0)) == []
+def test_a_notes_cess_enters_its_total_and_a_round_off_does_not(kind):
+    """The four notes' create paths add taxable, the three heads and the cess (migration 615) and no round-off, so a stray round-off
+    key on a note's header is not added into what the total must be, while its cess is."""
+    assert rule.problems(kind, _header(kind, cess_paise=999, total_paise=118_999, round_off_paise=7), _lines(kind, cess_paise=999)) == []
+    assert rule.problems(kind, _header(kind, cess_paise=999, round_off_paise=7), _lines(kind, cess_paise=999))
 
 
 def test_a_bill_has_no_round_off_and_no_discount_so_neither_enters_its_figures():
@@ -389,7 +391,7 @@ def test_the_refusal_reads_as_a_sentence_whatever_the_document_carries():
 
     assert "the taxable value plus the tax, cess and round-off come to ₹1,180.00" in said(rule.SALES_INVOICE)
     assert "the taxable value plus the tax and cess come to ₹1,180.00" in said(rule.PURCHASE_BILL, net_payable_paise=118_001)
-    assert "the taxable value plus the tax come to ₹1,180.00" in said(rule.CREDIT_NOTE)
+    assert "the taxable value plus the tax and cess come to ₹1,180.00" in said(rule.CREDIT_NOTE)
 
 
 @pytest.mark.parametrize("kind", rule.KINDS)

@@ -41,7 +41,6 @@ DEPTH = 3
 # (router file, handler): why the write is tied to the client although the scan does not see how. A handler that is fixed leaves this
 # list (the second test fails on a stale entry), and a new one that fires must be fixed or added here with its reason.
 REVIEWED: dict[tuple[str, str], str] = {
-    ("ais.py", "add_manual_record"): "the upload id was compared with the client (`upload['client_id'] != client_id`) before totals are restated",
     ("banking.py", "create_bank_account"): "rolls back the account this request created a moment ago",
     ("banking.py", "upload_statement"): "the mapping row is keyed by the bank account the upload was already tied to (`.eq('bank_account_id', ...)`)",
     ("bills_of_entry.py", "create_bill_of_entry"): "updates the landed-cost row that a read filtered on the bill's client just returned",
@@ -220,7 +219,9 @@ def test_the_scan_is_not_vacuous(world):
                     isinstance(n, ast.Call) and (_call_name(n) or "").startswith("assert_client_access") for n in ast.walk(fn)):
                 handlers += 1
     assert handlers >= 400, f"only {handlers} handlers assert a client: the population moved"
-    assert len(REVIEWED) >= 19      # 20 until the lot door's stamp moved into a database function (POST-A-419) and `record_challan_return` no longer fired
+    # 20 until the lot door's stamp moved into a database function (POST-A-419) and `record_challan_return` no longer fired; 19 until the
+    # AIS manual line's totals restatement named the client (POST-A-008, the income-tax tranche) and `add_manual_record` no longer fired.
+    assert len(REVIEWED) >= 18
 
 
 # ── negative controls: the rule fires on the old shape and on nothing it should leave alone ───────────────────────────────────

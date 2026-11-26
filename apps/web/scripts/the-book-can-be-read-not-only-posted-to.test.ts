@@ -77,7 +77,7 @@ test("the day book is read-only, because nothing on this screen may act on an au
     "approve, reverse and delete are all manual-entry actions and the server "
     + "refuses each of them for anything else — offering them over a mostly "
     + "document-sourced list offers a refusal in bulk");
-  assert.match(page, /!dayBook && \(\s*<button/,
+  assert.match(page, /!dayBook && mayWriteBooks && \(\s*<button/,
     "New Journal Entry belongs on the Journal tab; the day book is a report");
 });
 

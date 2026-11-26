@@ -22,6 +22,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Plus, AlertCircle, Info, HardHat, CheckCircle2, PauseCircle, PlayCircle } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { request } from "@/lib/api";
+import { usePermissions } from "@/lib/auth/AuthContext";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { formatPaise } from "@/lib/services/formatting";
 
@@ -103,6 +104,8 @@ export function CwipTab({ clientId, asOf, openDoc }:
        *  tranche and a capitalisation both stamp the PROJECT, because that is
        *  the row a CA opens. */
       openDoc?: string | null }) {
+  // Starting a project, adding a cost, suspending, resuming and capitalising each ask `accounting` `write` (POST-A-455).
+  const mayWriteBooks = usePermissions().can("accounting", "write");
   const [register, setRegister] = useState<Register | null>(null);
   const [schedules, setSchedules] = useState<Schedules | null>(null);
   const [loading, setLoading] = useState(true);
@@ -171,12 +174,14 @@ export function CwipTab({ clientId, asOf, openDoc }:
           <h3 className="text-sm font-semibold text-ps-ink flex items-center gap-2">
             <HardHat size={15} className="text-amber-600" /> Projects under construction
           </h3>
-          <button onClick={() => setAdding(true)}
-            className="text-xs px-3 py-1.5 rounded-lg bg-brand text-white flex items-center gap-1">
-            <Plus size={12} /> New project
-          </button>
+          {mayWriteBooks && (
+            <button onClick={() => setAdding(true)}
+              className="text-xs px-3 py-1.5 rounded-lg bg-brand text-white flex items-center gap-1">
+              <Plus size={12} /> New project
+            </button>
+          )}
         </div>
-        {register && register.projects.length === 0 ? (
+        {register && (register.projects ?? []).length === 0 ? (
           <p className="px-5 py-6 text-xs text-ps-hint">No projects under construction.</p>
         ) : (
           <div className="overflow-x-auto">
@@ -223,7 +228,7 @@ export function CwipTab({ clientId, asOf, openDoc }:
                       </span>
                     </td>
                     <td className="px-5 py-2 text-right whitespace-nowrap">
-                      {(p.status === "in_progress" || p.status === "suspended") && (
+                      {(p.status === "in_progress" || p.status === "suspended") && mayWriteBooks && (
                         <>
                           <button onClick={() => setCostFor(p)}
                             className="text-2xs px-2 py-1 rounded border border-ps-border text-ps-label hover:bg-ps-bg mr-1">
@@ -392,7 +397,7 @@ function ProjectModal({ clientId, onClose, onSaved }: {
   const dates = useDateProblems();
 
   async function save() {
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError, undefined, ""); return; }
     // A cleared box reports "empty", and the server's date column is NOT NULL.
     if (!started) { setError("Started on: enter the date the project started."); return; }
     setSaving(true); setError("");
@@ -460,7 +465,7 @@ function CostModal({ clientId, project, onClose, onSaved }: {
   const dates = useDateProblems();
 
   async function save() {
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError, undefined, ""); return; }
     const paise = paiseFromRupeeInput(amount);
     if (!description.trim() || paise === null || paise <= 0) {
       setError("Say what the cost is and what it came to.");
@@ -515,7 +520,7 @@ function CapitaliseModal({ clientId, project, onClose, onSaved }: {
   const dates = useDateProblems();
 
   async function save() {
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError, undefined, ""); return; }
     setSaving(true); setError("");
     try {
       await request(`/api/cwip/${project.id}/capitalise`, {

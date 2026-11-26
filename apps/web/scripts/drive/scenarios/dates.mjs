@@ -16,7 +16,8 @@
  *   3. `31/02/2026` is refused, in words, at the field (`aria-invalid` and a `role=alert` sentence);
  *   4. pressing Save over unreadable text sends NOTHING and says so in the form's own sentence, naming the
  *      field (`Payment date: Feb 2026 has only 28 days.`), which is a different sentence from the field's own;
- *   5. a date typed in full reaches the request body as the ISO date typed, whatever the locale or zone.
+ *   5. a date typed in full reaches the request body as the ISO date typed, whatever the locale or zone;
+ *   (4a) the form's own sentence is withdrawn the moment the date is put right, before any Save (POST-A-381).
  *
  * The second slice (4-11-2026) added Mark as Filed (the one prompt Deadlines, a client's Compliance tab and Practice Compliance
  * share), the fee engagement and fee receipt forms, a customer receipt, the retainer, the payroll disbursement prompt, an asset's
@@ -32,14 +33,20 @@ import assert from "node:assert/strict";
 import { TZ_MATRIX, pick, sameTickDouble, expectWrites, until } from "../kit.mjs";
 import { openBillDrawer, openInvoiceDrawer, openTdsChallanForm, openTdsDeductionForm } from "../flows.mjs";
 import { ok, refuse } from "../stub.mjs";
-import { CLIENT_ID, CLIENT_ROW, CUSTOMER, ITEM, PAYROLL_RUN, VENDOR, billRow, invoiceDetail } from "../fixtures.mjs";
+import { CLIENT_ID, CLIENT_ROW, CUSTOMER, ITEM, PAYROLL_RUN, VENDOR, billRow, invoiceDetail, invoiceRow } from "../fixtures.mjs";
+import { atTheEntry } from "./bankDialogs.mjs";
+import fs from "node:fs";
+
+/** The GST routes' whole answers, written from the builders by apps/api/scripts/write_drive_gst_answers.py and held to them by
+ *  apps/api/tests/test_the_drives_gst_answers_have_the_routes_shape.py (POST-A-396): an opener overrides the period and the GSTIN and nothing else. */
+const GST_ANSWERS = JSON.parse(fs.readFileSync(new URL("../gst-answers.json", import.meta.url), "utf8"));
 
 export const group = "dates";
 
 const FEB_SENTENCE = "Feb 2026 has only 28 days.";
 
 /** Type into a date box the way a person does, and leave it: the value is committed on blur. */
-async function typeAndLeave(box, text) {
+export async function typeAndLeave(box, text) {
   await box.fill("");
   await box.pressSequentially(text);
   await box.press("Tab");
@@ -200,7 +207,7 @@ async function openReceivedBillWithDueDate(env) {
 }
 
 /** The advance-tax register with an estimate typed, so the four instalments (and their paid-on dates) are drawn. */
-async function openAdvanceTaxRegister(env) {
+export async function openAdvanceTaxRegister(env) {
   const { page, stub } = env;
   stub.route({ method: "POST", re: /api\/income-tax\/advance-tax(\?|$)/, reply: () => ok({ installments: [], compliance_obligations: [] }) });
   await page.goto(`${env.base}/income-tax/advance-tax/?client_id=${CLIENT_ID}`, { waitUntil: "networkidle" });
@@ -376,7 +383,7 @@ async function openOpeningDocument(env) {
 }
 
 /** The Bills of Entry tab with "Record a Bill of Entry" open, the number and the assessable value typed, so only the date is left. */
-async function openBillOfEntry(env) {
+export async function openBillOfEntry(env) {
   const { page, stub } = env;
   stub.route({ method: "POST", re: /api\/bills-of-entry$/, reply: () => ok({ id: "be-1" }) });
   await page.goto(env.at("/purchases/?tab=bills-of-entry"), { waitUntil: "networkidle" });
@@ -539,7 +546,7 @@ async function openEmployeeForm(env) {
 }
 
 /** An employee's drawer (Profile, Full & final, Salary revisions, Loans & advances) on the client's payroll screen, open at one tab, for a person who may finalise. */
-function openEmployeeDrawer(tab) {
+export function openEmployeeDrawer(tab) {
   return async (env) => {
     const { page, stub } = env;
     stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { payroll: ["read", "write", "approve", "finalize"] } }) });
@@ -586,7 +593,7 @@ function openStatutoryHandoff(scheme, { twoMonths = false } = {}) {
 }
 
 /** The Tax Computation screen with the house-property worksheet open on one SELF-OCCUPIED property, whose loan and completion dates are the two boxes. */
-async function openHousePropertyWorksheet(env) {
+export async function openHousePropertyWorksheet(env) {
   const { page, stub } = env;
   stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { income_tax: ["read", "compute", "write"] } }) });
   stub.route({ method: "GET", re: /income-tax\/financial-years$/,
@@ -664,7 +671,7 @@ const openGoodsBackTwo = (env) => openGoodsBack(env, { second: true });
 const goodsBackRow = (page, no) => page.getByLabel(`Date the goods came back, challan ${no}`).locator("xpath=ancestor::div[contains(@class,'flex-wrap')][1]");
 
 /** The ITR tracker (Income Tax) with one pending return listed: `how` is "single" (its own Mark Filed prompt), "batch" (the bulk prompt, one row ticked) or "add" (the Add ITR Deadline prompt on a chosen client). */
-function openItrTracker(how) {
+export function openItrTracker(how) {
   return async (env) => {
     const { page, stub } = env;
     stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { compliance_record: ["read", "write", "approve"], income_tax: ["read", "write"] } }) });
@@ -675,15 +682,17 @@ function openItrTracker(how) {
     stub.route({ method: "PATCH", re: /compliance\/calendar\/itr-1\/filed$/, reply: () => ok({
       record: { id: "itr-1", filing_status: "filed" }, filing_recorded: true, filing_not_recorded_reason: null,
       period_locked_from: null, period_locked_to: null, workspace_return: null }) });
-    stub.setTable("compliance_calendar", [{
+    // The tracker reads its rows through the API (POST-A-208), each with its client under `clients`, and adds one through POST /api/compliance/calendar.
+    stub.route({ method: "GET", re: /compliance\/calendar\/tracker\?family=itr$/, reply: () => ok([{
       id: "itr-1", firm_id: "00000000-0000-4000-8000-0000000000f1", client_id: CLIENT_ID, compliance_type: "ITR", period_start: "2025-04-01", period_end: "2026-03-31",
       due_date: "2026-07-31", filing_status: "pending", filed_date: null, arn_number: null, notes: "ITR-3",
       clients: { client_name: "Acme Traders Pvt Ltd", pan: "AAACA1234A", entity_type: "Company" },
-    }]);
+    }]) });
+    stub.route({ method: "POST", re: /\/api\/compliance\/calendar$/, reply: (_req, body) => ok({ ...JSON.parse(body), id: "itr-new", filing_status: "pending" }) });
     await page.goto(`${env.base}/income-tax/`, { waitUntil: "networkidle" });
     if (how === "add") {
       await page.getByRole("button", { name: /Add ITR Deadline/ }).first().click();
-      await page.locator("select[aria-label='Client']").selectOption({ index: 1 });
+      await pick(page, page.locator('button[aria-label="Client"]'), "Acme Traders");
       await page.locator("#itr-add-due-date").waitFor();
       await page.getByText("Stubbed: IT Act s.139(1).").waitFor();
       // The listed return is for FY 2025-26, the form's default, and a second ITR row for the same client and period is refused by the table's
@@ -705,7 +714,7 @@ function openItrTracker(how) {
 }
 
 /** The GST filing tracker with one pending GSTR-3B listed: `how` is "single" (its own Mark Filed prompt), "batch" (the bulk prompt, one row ticked), "add" (the Add GST Filing prompt, with the engine's due date in the box) or "add-filed" (the same prompt with Status set to Filed, which asks the day it was filed). */
-function openGstTracker(how) {
+export function openGstTracker(how) {
   return async (env) => {
     const { page, stub } = env;
     stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { compliance_record: ["read", "write", "approve"], gst: ["read", "write"] } }) });
@@ -716,17 +725,20 @@ function openGstTracker(how) {
       door: "422", dateKey: "filed_date", endOf: () => "2026-09-30", sentence: (e) => GSTR_BEFORE_PERIOD_SENTENCE(e.filed, e.end),
       okBody: ok({ record: { id: "gst-1", filing_status: "filed" }, filing_recorded: true, filing_not_recorded_reason: null,
         period_locked_from: "2026-09-01", period_locked_to: "2026-09-30", workspace_return: null }) }) });
-    stub.setTable("compliance_calendar", [{
+    // The tracker reads its rows through the API (POST-A-208), each with its client under `clients`.
+    stub.route({ method: "GET", re: /compliance\/calendar\/tracker\?family=gst$/, reply: () => ok([{
       id: "gst-1", firm_id: "00000000-0000-4000-8000-0000000000f1", client_id: CLIENT_ID, compliance_type: "GSTR3B", period_start: "2026-09-01", period_end: "2026-09-30",
       due_date: "2026-10-20", filing_status: "pending", filed_date: null, created_at: "2026-10-01T00:00:00Z",
       clients: { client_name: "Acme Traders Pvt Ltd", gstin: "27AAACA1234A1ZK" },
-    }]);
+    }]) });
     await page.goto(`${env.base}/gst/`, { waitUntil: "networkidle" });
     if (how === "add" || how === "add-filed") {
-      // The new row is answered as PostgREST answers an insert that asks for it back, so the page can record the filing against its id.
-      // The door reads the period the NEW row declares, as the real one does (the default period is the month of the pinned today, which cannot have ended).
+      // The new row is added through POST /api/compliance/calendar (POST-A-208), which answers with the row it made, pending, so the page can record
+      // the filing against its id. The door reads the period the NEW row declares, as the real one does (the default period is the month of the
+      // pinned today, which cannot have ended).
       let inserted = null;
-      stub.answerInserts("compliance_calendar", (row) => (inserted = { ...row, id: "gst-new", created_at: "2026-10-08T00:00:00Z" }));
+      stub.route({ method: "POST", re: /\/api\/compliance\/calendar$/, reply: (_req, body) => ok(inserted = {
+        ...JSON.parse(body), id: "gst-new", firm_id: "00000000-0000-4000-8000-0000000000f1", filing_status: "pending", filed_date: null, created_at: "2026-10-08T00:00:00Z" }) });
       stub.route({ method: "PATCH", re: /compliance\/calendar\/gst-new\/filed$/, ...answersAnEarlyFilingDate({
         door: "422", dateKey: "filed_date", endOf: () => inserted?.period_end ?? null, sentence: (e) => GSTR_BEFORE_PERIOD_SENTENCE(e.filed, e.end),
         okBody: ok({ record: { id: "gst-new", filing_status: "filed" }, filing_recorded: true, filing_not_recorded_reason: null,
@@ -756,7 +768,7 @@ function openGstTracker(how) {
 }
 
 /** The MCA tracker's Filings tab with one pending AOC-4 listed: `how` is "single" (its own Mark Filed prompt, an SRN typed), "batch" (the bulk prompt, one row ticked, an SRN typed), "add" (the Add Filing form with a client and the CIN typed: only the due date is left) or "add-filed" (the same form with a due date, Status Filed and an SRN: only the day it was filed is left). */
-function openMcaTracker(how) {
+export function openMcaTracker(how) {
   return async (env) => {
     const { page, stub } = env;
     stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { mca: ["read", "write", "approve"], compliance_record: ["read", "write", "approve"] } }) });
@@ -767,7 +779,9 @@ function openMcaTracker(how) {
       door: "200", dateKey: "filing_date", endOf: () => "2026-03-31", sentence: () => MCA_BEFORE_YEAR_SENTENCE, okBody: ok({ id: "m-1", status: "filed" }) }) });
     stub.route({ method: "PATCH", re: /mca-workspace\/filings\/m-new\/status$/, ...answersAnEarlyFilingDate({
       door: "200", dateKey: "filing_date", endOf: () => yearEndOfFy(inserted?.period), sentence: () => MCA_BEFORE_YEAR_SENTENCE, okBody: ok({ id: "m-new", status: "filed" }) }) });
-    stub.answerInserts("mca_filings", (row) => (inserted = { ...row, id: "m-new" }));
+    // The Add Filing form creates the row through POST /api/mca-workspace/filings (POST-A-442), which answers with the filing it made.
+    stub.route({ method: "POST", re: /\/api\/mca-workspace\/filings$/, reply: (_req, body) => ok(inserted = {
+      ...JSON.parse(body), id: "m-new", firm_id: "00000000-0000-4000-8000-0000000000f1", client_name: "Acme Traders Pvt Ltd", status: "not_started", filed_date: null, srn: null }) });
     stub.setTable("mca_filings", [{
       id: "m-1", firm_id: "00000000-0000-4000-8000-0000000000f1", client_id: CLIENT_ID, client_name: "Acme Traders Pvt Ltd", company_cin: "U12345MH2020PTC123456",
       form_type: "AOC-4", period: "FY 2025-26", due_date: "2026-10-30", filed_date: null, srn: null, status: "not_started", notes: null,
@@ -816,7 +830,7 @@ async function openClientMcaConfirm(env, { two = false } = {}) {
 
 /** A client's MCA compliance page, ready for a tab to be clicked. The lists it reads answer with what the forms below have made so far (`env.made`), so a record that
  *  was saved can be looked for in its list. The four forms are the page's own (not the tracker's). */
-async function atClientMca(env) {
+export async function atClientMca(env) {
   const { page, stub } = env;
   const made = { filings: [], directors: [] };
   env.made = made;
@@ -903,7 +917,7 @@ async function openClientTdsChallan(env) {
 
 /** Settings > Statutory values, "Record a notification" open on a state, a reference and one band's tax: only the two dates are left. The write is answered with the state, the day and the
  *  number of bands, as the real route answers it; the list the page reads again afterwards is a stub that always says no set is recorded (the real list would show the set stored). */
-async function openStatutoryValues(env) {
+export async function openStatutoryValues(env) {
   const { page, stub } = env;
   stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { payroll: ["read", "write"], settings: ["read", "write"] } }) });
   stub.route({ method: "GET", re: /api\/payroll\/statutory-values$/, reply: () => ok({
@@ -920,7 +934,7 @@ async function openStatutoryValues(env) {
 const engagementDialog = (page) => page.locator("div.fixed").filter({ has: page.getByRole("heading", { name: "New Engagement Letter" }) });
 
 /** Engagements with "New Engagement" open on a title: only the two dates (both optional) are left. */
-async function openNewEngagementLetter(env) {
+export async function openNewEngagementLetter(env) {
   const { page, stub } = env;
   const made = [];
   stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { engagements: ["read", "write"], billing: ["read", "write"] } }) });
@@ -953,7 +967,7 @@ const transferDateBox = (page) => transferPanel(page).locator("label").filter({ 
 /** The inventory page's stock-locations block with two godowns and one item held in the first. `how` is "transfer" (the Move stock panel, with the item and a quantity typed)
  *  or "lot" (the New lot dialog, with the item and a lot number typed). The stub is LIGHTER than the real routes (routers/inventory.py): the reads leave out default_godown_id, kind,
  *  as_of, total_value_paise, same_registration and gaps, the transfer and lot writes answer {id} and not the real body, and the routes' own refusals (for example "Only X is held…") are not driven. */
-function openStockLocations(how) {
+export function openStockLocations(how) {
   return async (env) => {
     const { page, stub } = env;
     stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { inventory: ["read", "write"], accounting: ["read", "write"] } }) });
@@ -986,7 +1000,7 @@ function openStockLocations(how) {
 }
 
 /** A client's GST > Registrations tab with the primary registration and one other listed: `how` is "add" (the Add a registration prompt, with a GSTIN typed) or "close" (the Cancelled… date box on the other registration). */
-function openGstRegistrations(how) {
+export function openGstRegistrations(how) {
   return async (env) => {
     const { page, stub } = env;
     stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { gst: ["read", "write", "approve"], client: ["read", "write"] } }) });
@@ -1088,7 +1102,7 @@ async function openRecordItrAcknowledgement(env) {
 }
 
 /** Income Tax > Tax Audit with "Add Audit" open on a client, so only the audit and filing dates are left. */
-async function openAddTaxAudit(env) {
+export async function openAddTaxAudit(env) {
   const { page, stub } = env;
   stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { income_tax: ["read", "write", "approve"] } }) });
   stub.setTable("tax_audits", []);
@@ -1124,7 +1138,7 @@ async function openNewRevisedReturn(env) {
 }
 
 /** Income Tax > Notices with "Add Notice" open on a client, so only the date received and the response due date are left. */
-async function openAddIncomeTaxNotice(env) {
+export async function openAddIncomeTaxNotice(env) {
   const { page, stub } = env;
   stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { income_tax: ["read", "write", "approve"] } }) });
   stub.setTable("it_notices", []);
@@ -1194,7 +1208,8 @@ const GSTR_BEFORE_PERIOD_SENTENCE = (filed, end) => `A return cannot have been f
 /** The MCA door's answer to a filing date before the financial year it declares has ended (routers/mca_workspace.py); an HTTP 200 with success:false. */
 const MCA_BEFORE_YEAR_SENTENCE = "An AOC-4 for FY 2025-26 cannot have been filed before the year ended on 2026-03-31. Check the filing date. Nothing was changed.";
 /** What the MCA door says when its insert fails (routers/mca_workspace.py, create_company and create_filing): an HTTP 200 with success:false. */
-const MCA_COULD_NOT_SENTENCE = "Unable to complete MCA operation. Please try again.";
+/** What an MCA door says when its write fails in a way nobody anticipated: `_could_not` in routers/mca_workspace.py, naming the door's own action (POST-A-392). */
+const MCA_COULD_NOT_SENTENCE = (action) => `Could not ${action}. The cause has been logged; please try again, and report it if it keeps failing.`;
 /** What `assert_client_access` raises (HTTP 404, core/authz.py) for a client the caller is not assigned to; the create doors of the client MCA and TDS tabs re-raise it. */
 const CLIENT_NOT_FOUND_SENTENCE = "Not found";
 /** What the statutory-values door says for a slab set with a hole in it (routers/payroll.py `put_pt_slabs`): an HTTP 422 whose detail is this sentence. */
@@ -1207,7 +1222,7 @@ const MCA_DUPLICATE_DIN_SENTENCE = "This DIN is already recorded for this client
 /** What the TDS door says for a failure nobody anticipated, here the challan (routers/tds_workspace.py `_could_not`): an HTTP 200 with success:false. */
 const TDS_COULD_NOT_CHALLAN_SENTENCE = "Could not record the TDS challan. The cause has been logged; please try again, and report it if it keeps failing.";
 /** What a box that refuses a date after today says about 15 October 2026 at the pinned clock (8 October 2026). */
-const AFTER_TODAY_SENTENCE = "15 Oct 2026 is after 08 Oct 2026.";
+const AFTER_TODAY_SENTENCE = "15 Oct 2026 is after today's date in India, 08 Oct 2026.";
 /** The instant at which the browser's day is AHEAD of India's on Kiritimati (UTC+14): 17:30 on 8 October in India and 02:00 on 9 October there. At the instant every scenario is pinned to (08:00 UTC)
  *  the day is 8 October in Los Angeles, Kolkata and Kiritimati, so only a scenario that re-pins to this one can tell India's day from the browser's. */
 const AHEAD_OF_INDIA = "2026-10-08T12:00:00Z";
@@ -1261,28 +1276,34 @@ function gstStatusReply(form, periodEnd = "2026-09-30") {
     if (b.status === "submitted") {
       if (!String(b.filed_date ?? "").trim()) return refusal(GSTR_FILED_SENTENCE(form));
       if (b.filed_date < periodEnd) return refusal(GSTR_BEFORE_PERIOD_SENTENCE(b.filed_date, periodEnd));
+      // A return recorded as filed is answered with what became of its compliance obligation, in the server's words (gst-answers.json, POST-A-396).
+      return ok({ status: b.status, filed_date: b.filed_date, arn: b.arn ?? null,
+        compliance_obligation: GST_ANSWERS[form === "GSTR-1" ? "gstr1_submitted_obligation" : "gstr3b_submitted_obligation"][periodEnd === "2026-08-31" ? "082026" : "092026"] });
     }
     return ok({ status: b.status });
   };
 }
 
-/** GST > GSTR-1 built for a client and period, approved, with "Mark as Filed" open on an ARN: only the date is left. The opener's own writes
- *  (the build's save, the approval) are forgotten, so a row counts what the prompt writes. */
-async function openGstr1MarkFiled(env) {
+/** GST > GSTR-1 with the client chosen and its build, approval and filing answered: nothing pressed yet. */
+export async function atGstr1(env) {
   const { page, stub } = env;
   stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { gst: ["read", "approve", "compute"] } }) });
   stub.setTable("clients", [{ ...CLIENT_ROW, name: CLIENT_ROW.client_name, gstin: GSTIN_OF_THE_CLIENT }]);
-  stub.route({ method: "POST", re: /api\/gst\/gstr1\/from-books$/, reply: (_req, raw) => ok({
-    period: JSON.parse(raw).period, gstin: GSTIN_OF_THE_CLIENT, payload: { gstin: GSTIN_OF_THE_CLIENT, fp: JSON.parse(raw).period, b2b: [] },
-    summary: { counts: { b2b: 3, b2cs_rate_groups: 1, b2cl: 0, credit_notes_registered: 0, credit_notes_unregistered: 0 },
-      totals_rupees: { taxable: 10000, cgst: 900, sgst: 900, igst: 0 } },
-    invoice_count: 4, taxable_total_paise: 1000000, tax_total_paise: 180000, reconciliation: {},
-    validation_errors: [], validation_warnings: [], payload_gaps: [] }) });
+  // The route's whole answer, amendments block included, as the builder writes it (gst-answers.json, POST-A-396): only the period and the GSTIN are this request's.
+  stub.route({ method: "POST", re: /api\/gst\/gstr1\/from-books$/, reply: (_req, raw) => ok({ ...GST_ANSWERS.gstr1_from_books,
+    period: JSON.parse(raw).period, gstin: GSTIN_OF_THE_CLIENT, payload: { ...GST_ANSWERS.gstr1_from_books.payload, gstin: GSTIN_OF_THE_CLIENT, fp: JSON.parse(raw).period } }) });
   // The saved row the approval and the filing look up (the build's own save is a PostgREST write the stub answers, and reads answer these rows).
   stub.setTable("gstr1_returns", [{ id: "g1-1", firm_id: "00000000-0000-4000-8000-0000000000f1", client_id: CLIENT_ID, period: "092026", gstin: GSTIN_OF_THE_CLIENT, status: "validated" }]);
   stub.route({ method: "PATCH", re: /gst-workspace\/gstr1\/g1-1\/status$/, reply: gstStatusReply("GSTR-1") });
   await page.goto(`${env.base}/gst/gstr1/`, { waitUntil: "networkidle" });
   await pick(page, page.locator('button[aria-label="Client"]'), "Acme Traders Pvt Ltd");
+}
+
+/** GST > GSTR-1 built for a client and period, approved, with "Mark as Filed" open on an ARN: only the date is left. The opener's own writes
+ *  (the build's save, the approval) are forgotten, so a row counts what the prompt writes. */
+export async function openGstr1MarkFiled(env) {
+  const { page, stub } = env;
+  await atGstr1(env);
   await page.getByRole("button", { name: "Build GSTR-1", exact: true }).click();
   await page.getByRole("button", { name: "CA Approve", exact: true }).click();
   await page.getByRole("button", { name: "Mark as Filed", exact: true }).click();
@@ -1293,27 +1314,13 @@ async function openGstr1MarkFiled(env) {
 }
 
 /** GST > GSTR-3B computed for a client and period, approved, with "Mark as Filed" open on an ARN: only the date is left. */
-async function openGstr3bMarkFiled(env) {
+export async function openGstr3bMarkFiled(env) {
   const { page, stub } = env;
-  const zero = { igst_paise: 0, cgst_paise: 0, sgst_paise: 0 };
   stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { gst: ["read", "approve", "compute"] } }) });
   stub.setTable("clients", [{ ...CLIENT_ROW, name: CLIENT_ROW.client_name, gstin: GSTIN_OF_THE_CLIENT }]);
-  stub.route({ method: "POST", re: /api\/gst\/gstr3b\/from-books$/, reply: (_req, raw) => ok({
-    period: JSON.parse(raw).period, gstin: GSTIN_OF_THE_CLIENT, payload: { gstin: GSTIN_OF_THE_CLIENT, ret_period: JSON.parse(raw).period },
-    working: {
-      outward: { taxable_value_paise: 1800000, taxable_igst_paise: 0, taxable_cgst_paise: 900000, taxable_sgst_paise: 900000, zero_rated_paise: 0, zero_rated_igst_paise: 0, nil_exempt_paise: 0 },
-      rcm_inward: { ...zero },
-      itc: { ...zero, avail_igst_paise: 0, avail_cgst_paise: 100000, avail_sgst_paise: 100000, net_igst_paise: 0, net_cgst_paise: 100000, net_sgst_paise: 100000 },
-      itc_reversal: { permanent_paise: { ...zero, cess_paise: 0 }, reclaimable_paise: { ...zero, cess_paise: 0 }, reasons: [] },
-      net_payable: { ...zero, cgst_paise: 800000, sgst_paise: 800000, total_paise: 1600000, rcm_cash_paise: 0, challan_total_paise: 1600000 },
-      rule_36_4: { gstr2a_record_count: 0, gstr2a_igst_paise: 0, gstr2a_cgst_paise: 0, gstr2a_sgst_paise: 0, cap_applied: false, compared: false,
-        self_assessed_igst_paise: 0, self_assessed_cgst_paise: 0, self_assessed_sgst_paise: 0,
-        per_document: { applied: false, allowed_igst_paise: 0, allowed_cgst_paise: 0, allowed_sgst_paise: 0, allowed_cess_paise: 0,
-          withheld_igst_paise: 0, withheld_cgst_paise: 0, withheld_sgst_paise: 0, withheld_cess_paise: 0, withheld_total_paise: 0, withheld: [], not_assessed: [], notes: [] } },
-      itc_utilisation: { available_paise: 200000, consumed_paise: 200000, carried_forward_paise: 0 },
-    },
-    validation_warnings: [], late_filing: { available: false, reason: "No filing date was given." }, undeclarable_rows: [], bank_line_caveats: [],
-    registration_caveat: null, gstr1_tie_out: null, reconciliation: { reconciled: true }, months_without_gstr2b: [] }) });
+  // The route's whole answer, the credit ledger and the set-off workings included, as the builder writes it (gst-answers.json, POST-A-396).
+  stub.route({ method: "POST", re: /api\/gst\/gstr3b\/from-books$/, reply: (_req, raw) => ok({ ...GST_ANSWERS.gstr3b_from_books,
+    period: JSON.parse(raw).period, gstin: GSTIN_OF_THE_CLIENT, payload: { ...GST_ANSWERS.gstr3b_from_books.payload, gstin: GSTIN_OF_THE_CLIENT, ret_period: JSON.parse(raw).period } }) });
   // The three side reports (Rule 37, 37A and 43) are asked for after the build and may fail without failing the return: they are refused here,
   // which the page shows as "not checked" beside the figures, so no fixture of their large shapes is carried.
   stub.route({ method: "GET", re: /gst-workspace\/itc\/rule/, ...refuse("The ITC working is not worked in this drive.") });
@@ -1358,10 +1365,8 @@ async function openClientGstr3bCompute(env) {
   const { page, stub } = env;
   stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { gst: ["read", "approve", "compute"] } }) });
   stub.route({ method: "GET", re: /api\/gst-workspace\/returns\?/, reply: () => ok({ gstr1: [], gstr3b: [] }) });
-  stub.route({ method: "POST", re: /api\/gst\/gstr3b\/from-books$/, reply: (_req, raw) => ok({
-    period: JSON.parse(raw).period, gstin: GSTIN_OF_THE_CLIENT, payload: {}, working: {}, tax_liability_paise: 180000, itc_claimed_paise: 100000,
-    net_tax_paise: 80000, cash_payable_paise: 80000, itc_carried_forward_paise: 0,
-    reconciliation: { reconciled: true, output_gst: { ledger_paise: 180000, computed_paise: 180000 }, itc: { ledger_paise: 100000, computed_paise: 100000 } } }) });
+  stub.route({ method: "POST", re: /api\/gst\/gstr3b\/from-books$/, reply: (_req, raw) => ok({ ...GST_ANSWERS.gstr3b_from_books,
+    period: JSON.parse(raw).period, gstin: GSTIN_OF_THE_CLIENT, payload: { ...GST_ANSWERS.gstr3b_from_books.payload, gstin: GSTIN_OF_THE_CLIENT, ret_period: JSON.parse(raw).period } }) });
   await page.goto(env.at("/compliance/gst/"), { waitUntil: "networkidle" });
   await page.getByRole("button", { name: "GSTR-3B", exact: true }).click();
   await page.getByRole("button", { name: "Compute from Books", exact: true }).first().click();   // the header's; the empty list offers one too
@@ -1370,8 +1375,8 @@ async function openClientGstr3bCompute(env) {
 
 const TDS_BEFORE_QUARTER_SENTENCE = "A statement for Q2 FY 2026-27 cannot have been filed before the quarter ended on 2026-09-30. Check the date on the receipt.";
 
-/** TDS > Returns computed for a client and quarter, approved, with "Mark as Filed" open on a PRN: only the date is left. */
-async function openTdsReturnMarkFiled(env) {
+/** TDS > Returns with the client chosen on Q2 and its compute, save, approval and filing answered: nothing pressed yet. */
+export async function atTdsReturns(env) {
   const { page, stub } = env;
   stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { tds: ["read", "write", "approve", "compute"] } }) });
   stub.route({ method: "POST", re: /api\/tds\/26q\/from-books$/, reply: (_req, raw) => ok({
@@ -1389,6 +1394,12 @@ async function openTdsReturnMarkFiled(env) {
   await pick(page, page.locator('button[aria-label="Client"]'), "Acme Traders Pvt Ltd");
   // Q2 of FY 2026-27 has ended at the pinned 8 October 2026; the page's default quarter (Q3) has not, and the route refuses to approve it.
   await page.getByLabel("Quarter", { exact: true }).selectOption("Q2");
+}
+
+/** TDS > Returns computed for a client and quarter, approved, with "Mark as Filed" open on a PRN: only the date is left. */
+export async function openTdsReturnMarkFiled(env) {
+  const { page, stub } = env;
+  await atTdsReturns(env);
   await page.getByRole("button", { name: "Compute 26Q", exact: true }).click();
   await page.getByRole("button", { name: "CA Approve", exact: true }).click();
   await page.getByRole("button", { name: "Mark as Filed", exact: true }).click();
@@ -1645,41 +1656,6 @@ const onAShortScreen = (open) => async (env) => {
   await open(env);
 };
 
-/** The Billing screen for a person who may write on it, with one fee invoice that is owed (so a receipt can be recorded against it). */
-async function atBilling(env) {
-  const { page, stub } = env;
-  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { billing: ["read", "write"] } }) });
-  stub.route({ method: "GET", re: /api\/engagements(\?|$)/, reply: () => ok({ engagements: [], total: 0 }) });
-  stub.setTable("fee_invoices", [{
-    id: "fi-1", firm_id: "f1", client_id: CLIENT_ID, invoice_no: "FEE-0001", invoice_date: "2026-09-01",
-    amount_paise: 1000000, gst_paise: 180000, total_paise: 1180000, status: "Issued",
-  }]);
-  stub.setTable("fee_receipts", []);
-  await page.goto(`${env.base}/billing/`, { waitUntil: "networkidle" });
-}
-
-/** "Add Fee Engagement" with the client chosen by default, the fee typed and everything else as it opens. */
-async function openFeeEngagement(env) {
-  const { page, stub } = env;
-  stub.route({ method: "POST", re: /api\/engagements$/, reply: () => ok({ engagement: { id: "en-1", client_id: CLIENT_ID, service_type: "GST Filing", fee_paise: 500000, billing_cycle: "Monthly", start_date: "2026-07-15", status: "Active" } }) });
-  await atBilling(env);
-  await page.getByRole("button", { name: "Engagements", exact: true }).first().click();
-  await page.getByRole("button", { name: "Add Engagement" }).first().click();
-  await page.getByRole("heading", { name: "Add Fee Engagement" }).waitFor();
-  await page.getByLabel("Fee (₹)").fill("5000");
-}
-
-/** "Record Receipt" against the owed fee invoice, with the amount typed. */
-async function openFeeReceipt(env) {
-  const { page, stub } = env;
-  stub.route({ method: "POST", re: /billing\/fee-invoices\/fi-1\/receipts$/, reply: () => ok({ id: "fr-1", invoice_id: "fi-1", receipt_date: "2026-07-15", amount_paise: 100000, payment_mode: "NEFT", reference_no: "" }) });
-  await atBilling(env);
-  await page.getByRole("button", { name: "Receipts", exact: true }).first().click();
-  await page.getByRole("button", { name: "Record Receipt" }).first().click();
-  await page.getByRole("heading", { name: "Record Receipt" }).waitFor();
-  await page.getByLabel("Amount (₹)").fill("1000");
-}
-
 /**
  * The Deadlines screen with one obligation that is ready to file and the "Mark as Filed" prompt open on it. The prompt is the
  * one shared by Deadlines (single and bulk), a client's Compliance tab and Practice → Compliance, so this one row drives all of them.
@@ -1701,6 +1677,24 @@ async function openMarkFiled(env) {
   await page.goto(`${env.base}/deadlines/`, { waitUntil: "networkidle" });
   await page.getByRole("button", { name: "Mark Filed", exact: true }).first().click();
   await modalOf(page).getByRole("button", { name: "Confirm Filed", exact: true }).waitFor();
+}
+
+/** The expiring e-way bills panel on Deadlines: the one date box that records a fact the CA took on the NIC portal (an extension). */
+async function openEwayExtension(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { gst: ["read", "compute", "approve"], compliance: ["read", "write", "approve"] } }) });
+  stub.route({
+    method: "GET", re: /eway-bill\/expiring/,
+    reply: () => ok({
+      as_of: "2026-10-08", horizon_days: 2, expired: 0, expires_today: 0, expiring: 1, undeterminable: 0, caveats: [],
+      bills: [{ record_id: "ew-9", client_id: CLIENT_ID, invoice_number: "INV-0007", ewb_number: "141000000009",
+        valid_upto: "2026-10-09", source: "recorded", days_left: 1, state: "expiring", gap: null }],
+    }),
+  });
+  stub.route({ method: "POST", re: /eway-bill\/records\/ew-9\/extend$/, reply: () => ok({ id: "ew-9" }) });
+  await page.goto(`${env.base}/deadlines/`, { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Record extension", exact: true }).click();
+  await page.getByPlaceholder("Reason recorded on the portal").fill("Vehicle breakdown on the road");
 }
 
 async function openInvoicePayment(env) {
@@ -1770,7 +1764,7 @@ const CG_RESULT = {
 };
 
 /** The capital-gains screen on its Register tab with a client chosen (the screen opens on the calculator, and the register is a client's). */
-async function openCapitalGainsRegisterTab(env) {
+export async function openCapitalGainsRegisterTab(env) {
   const { page, stub } = env;
   stub.route({ method: "GET", re: /api\/clients$/, reply: () => ok({ clients: [CLIENT_ROW], total: 1 }) });
   await page.goto(`${env.base}/income-tax/capital-gains/`, { waitUntil: "networkidle" });
@@ -1780,7 +1774,7 @@ async function openCapitalGainsRegisterTab(env) {
 }
 
 /** The capital-gains screen's Register tab with the Add Transaction dialog open and everything but the two dates filled. */
-async function openCapitalGainsRegister(env) {
+export async function openCapitalGainsRegister(env) {
   const { page, stub } = env;
   stub.route({ method: "GET", re: /api\/income-tax\/capital-gains\?/, reply: () => ok([]) });
   stub.route({ method: "POST", re: /api\/income-tax\/capital-gains\/compute$/, reply: () => ok(CG_RESULT) });
@@ -1793,7 +1787,7 @@ async function openCapitalGainsRegister(env) {
 }
 
 /** The reinvestment-claim panel of one register row, with what was bought filled. */
-async function openReinvestmentClaim(env) {
+export async function openReinvestmentClaim(env) {
   const { page, stub } = env;
   const record = {
     id: "cg-1", client_id: CLIENT_ID, asset_description: "Flat 402", asset_type: "property", purchase_date: "2019-04-01", sale_date: "2026-05-10",
@@ -1809,6 +1803,154 @@ async function openReinvestmentClaim(env) {
   await page.getByRole("button", { name: "Exemption", exact: true }).first().click();
   await page.getByLabel("What was bought").waitFor();
   await page.getByLabel("What was bought").fill("Flat 90, Kalyani Heights");
+}
+
+
+// ── POST-A-386: the date boxes of the practice's own records, which report their state to their screen and refuse in their own sentence ──
+
+const dscOverlay = (page, heading) => page.locator("div.fixed").filter({ has: page.getByText(heading, { exact: true }) }).last();
+const DSC_RECORD = {
+  id: "dsc-1", firm_id: "f1", holder_name: "Asha Rao", pan: "ABCPR1234K", dsc_type: "Class 3", purpose: "All", issued_by: "eMudhra",
+  issued_date: "2026-05-01", expiry_date: "2027-04-30", notes: null, created_at: "2026-05-01T05:00:00Z",
+};
+async function atDscTracker(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /api\/dsc$/, reply: () => ok({ dsc_records: [DSC_RECORD], total: 1 }) });
+  stub.route({ method: "POST", re: /api\/dsc(\/dsc-1\/renew)?$/, reply: () => ok({ dsc_record: DSC_RECORD }) });
+  stub.route({ method: "PATCH", re: /api\/dsc\/dsc-1$/, reply: () => ok({ dsc_record: DSC_RECORD }) });
+  await page.goto(`${env.base}/settings/dsc-tracker/`, { waitUntil: "networkidle" });
+  await page.getByText("Asha Rao").first().waitFor();
+}
+export async function openDscRenew(env) {
+  await atDscTracker(env);
+  await env.page.getByRole("button", { name: "Renew", exact: true }).first().click();
+  await dscOverlay(env.page, "Renew this DSC").waitFor();
+}
+export async function openDscCorrect(env) {
+  await atDscTracker(env);
+  await env.page.getByRole("button", { name: "Correct", exact: true }).first().click();
+  await dscOverlay(env.page, "Correct this record").waitFor();
+}
+export async function openDscAdd(env) {
+  await atDscTracker(env);
+  await env.page.getByRole("button", { name: "Add DSC", exact: true }).first().click();
+  const add = dscOverlay(env.page, "Add DSC Record");
+  await add.getByLabel("Full Name", { exact: true }).fill("Ravi Menon");
+}
+
+export async function openAddLead(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /api\/lifecycle\/leads\?/, reply: () => ok({ leads: [], returned: 0, has_more: false, limit: 500, max_limit: 500 }) });
+  stub.route({ method: "POST", re: /api\/lifecycle\/leads$/, reply: (req, body) => ok({ id: "lead-1", stage: "Lead", ...JSON.parse(body) }) });
+  await page.goto(`${env.base}/pipeline/`, { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Add Lead", exact: true }).first().click();
+  await page.getByLabel("Contact Name", { exact: true }).fill("Meera Iyer");
+  await page.getByLabel("Phone", { exact: true }).fill("9820012345");
+  await page.getByLabel("Business Name", { exact: true }).fill("Iyer Textiles");
+}
+const leadDates = (b) => { try { return JSON.parse(b.notes); } catch { return {}; } };
+
+const TASK_ROW = {
+  id: "t-1", firm_id: "f1", client_id: CLIENT_ID, title: "File GSTR-3B for September", description: null, status: "todo", priority: "medium",
+  due_date: "2026-10-20", assignee_id: null, assigned_to: null, created_at: "2026-10-01T05:00:00Z", updated_at: "2026-10-01T05:00:00Z", deleted_at: null,
+  clients: { client_name: CLIENT_ROW.client_name },
+};
+export async function openEditTask(env) {
+  const { page, stub } = env;
+  stub.setTable("tasks", [TASK_ROW]);
+  stub.route({ method: "PATCH", re: /api\/tasks\/t-1$/, reply: () => ok({ task: TASK_ROW }) });
+  await page.goto(`${env.base}/tasks/`, { waitUntil: "networkidle" });
+  await page.getByText("File GSTR-3B for September").first().click();
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+}
+async function openNewTask(env) {
+  const { page, stub } = env;
+  stub.setTable("tasks", []);
+  stub.route({ method: "POST", re: /api\/tasks$/, reply: () => ok({ task: TASK_ROW }) });
+  await page.goto(`${env.base}/tasks/`, { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "New Task", exact: true }).first().click();
+  await pick(page, page.locator('form button[aria-label="Client"]').first(), CLIENT_ROW.client_name);
+  await pick(page, page.locator('form button[aria-label="Task type"]').first(), "Collect Documents");
+}
+async function openTaskFromTemplate(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /api\/task-templates$/, reply: () => ok({ templates: [{ id: "tt-1", name: "Monthly GST return", description: "GSTR-1 and GSTR-3B", default_priority: "medium", checklist: [] }], total: 1 }) });
+  stub.route({ method: "POST", re: /api\/task-templates\/tt-1\/instantiate$/, reply: () => ok({ task: TASK_ROW }) });
+  await page.goto(`${env.base}/tasks/templates/`, { waitUntil: "networkidle" });
+  await page.getByTitle("Create task from template").first().click();
+  await pick(page, page.locator('button[aria-label="Client"]').last(), CLIENT_ROW.client_name);
+}
+
+export async function openUploadDocument(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /api\/client-documents\?/, reply: () => ok({ documents: [], returned: 0, has_more: false }) });
+  stub.route({ method: "POST", re: /api\/client-documents\/upload$/, reply: () => ok({ document: { id: "d-1" } }) });
+  await page.goto(`${env.base}/clients/documents/`, { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Upload Document" }).first().click();
+  await page.getByLabel("Document Name", { exact: true }).fill("PAN card");
+  await page.locator('div.fixed input[type="file"]').setInputFiles({ name: "pan.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n%%EOF\n") });
+}
+/** The value of one field of a multipart body, as the browser wrote it. */
+const multipartField = (name) => (w) => {
+  const m = new RegExp(`name="${name}"\\r\\n\\r\\n([^\\r]*)\\r\\n`).exec(w.body);
+  return { [name]: m ? m[1] : undefined };
+};
+
+const HEALTH_SCORE = {
+  client_id: CLIENT_ID, overall_score: 72, grade: "B", health_grade: "B", dimensions: {}, last_calculated_at: "2026-10-08T00:30:00Z",
+  is_critical: false, is_at_risk: false, hard_override: null, hard_override_reason: null,
+};
+export async function openHealthOverride(env, path) {
+  const { page, stub } = env;
+  stub.setTable("health_scores", [HEALTH_SCORE]);
+  stub.route({ method: "POST", re: new RegExp(`api\\/health\\/scores\\/${CLIENT_ID}\\/override$`), reply: () => ok({ id: "ov-1" }) });
+  await page.goto(path, { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: /Add Override/ }).first().click();
+  await page.getByLabel("Override Score (0–100)", { exact: true }).fill("70");
+  await page.getByLabel("Reason", { exact: true }).fill("The notice was answered in person");
+}
+
+export async function openAddRenewal(env) {
+  const { page, stub } = env;
+  stub.route({ method: "POST", re: /api\/lifecycle\/renewals$/, reply: () => ok({ id: "rn-1" }) });
+  await page.goto(env.at("/lifecycle/"), { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: /Add Renewal/ }).first().click();
+  await page.getByLabel("Service Type", { exact: true }).fill("GST Filing");
+  await page.getByLabel("Financial Year", { exact: true }).fill("2026-27");
+}
+
+export async function openPortalRequest(env) {
+  const { page, stub } = env;
+  stub.route({ method: "POST", re: /api\/portal\/document-requests$/, reply: () => ok({ id: "dr-1" }) });
+  await page.goto(`${env.base}/client-portal/?client=${CLIENT_ID}`, { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: /New Request/ }).first().click();
+  await page.getByLabel("Title", { exact: true }).fill("Upload the September bank statement");
+}
+
+
+/** The NRV review sheet on a client's Inventory tab, worked out for one item at ₹200 a unit, so Post is offered and only the date is left. */
+async function openNrvReview(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /api\/inventory\/items\?/, reply: () => ok([STOCK_ITEM]) });
+  stub.route({ method: "POST", re: /api\/inventory\/nrv-review\/preview$/, reply: (req, body) => {
+    const asked = (JSON.parse(body).lines ?? [])[0];
+    const nrv = asked ? asked.nrv_per_unit_paise : null;
+    return ok({
+      items: [{ service_catalogue_id: "sc1", name: "Copier paper", unit: "NOS", quantity_units: "40.000", carrying_value_paise: 1000000, average_cost_paise: 25000,
+        nrv_per_unit_paise: nrv, write_down_paise: nrv === null ? null : 1000000 - nrv * 40, new_value_paise: nrv === null ? null : nrv * 40,
+        status: nrv === null ? "not_entered" : "write_down" }],
+      item_count: 1, entered_count: nrv === null ? 0 : 1, write_down_count: nrv === null ? 0 : 1, carrying_value_paise: 1000000,
+      write_down_paise: nrv === null ? 0 : 1000000 - nrv * 40, measured_now: "Measured on the stock held now.", no_nrv_of_our_own: "The value is the one you enter.",
+    });
+  } });
+  stub.route({ method: "POST", re: /api\/inventory\/nrv-review\/post$/, reply: () => ok({
+    reference_no: "NRV-1", writedown_date: "2026-10-08", posted: [], not_needed: [], failed: [], posted_count: 0, not_needed_count: 0, failed_count: 0, write_down_paise: 0, message: "Posted.",
+  }) });
+  await page.goto(env.at("/inventory/"), { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "NRV review", exact: true }).first().click();
+  await page.getByLabel("Net realisable value per unit for Copier paper").fill("200");
+  await page.getByRole("button", { name: "Work out the write-downs", exact: true }).click();
+  await until(async () => !(await page.getByRole("button", { name: "Post write-downs", exact: true }).isDisabled()), "Post write-downs to be offered once the sheet is worked out");
 }
 
 const EDITORS = [
@@ -1889,20 +2031,19 @@ const EDITORS = [
     save: (p) => p.getByRole("button", { name: "Record challan" }), write: /api\/income-tax\/self-assessment$/,
   },
   {
+    id: "eway-extension", title: "expiring e-way bills: the new valid upto an extension recorded on the portal", open: openEwayExtension,
+    fields: [{ box: (p) => p.getByLabel("New valid upto"), label: "New valid upto", key: "new_valid_upto", full: "15/10/2026", iso: "2026-10-15" }],
+    save: (p) => p.getByRole("button", { name: "Save", exact: true }), write: /eway-bill\/records\/ew-9\/extend$/,
+  },
+  {
     id: "mark-as-filed", shortForm: "15/01/2026", title: "Mark as Filed prompt (Deadlines)", open: openMarkFiled, heldWhileUnreadable: true,
     fields: [{ box: (p) => modalOf(p).locator("#mark-filed-date"), label: "Filed on", key: "filed_date", full: "05/10/2026", iso: "2026-10-05" }],
     save: (p) => modalOf(p).getByRole("button", { name: "Confirm Filed", exact: true }), write: /compliance\/obligations\/ob-1\/mark-filed$/,
   },
-  {
-    id: "fee-engagement", title: "fee engagement form (Billing)", open: openFeeEngagement,
-    fields: [{ box: (p) => p.locator("#engagement-start"), label: "Start date", key: "start_date", full: "15/07/2026", iso: "2026-07-15" }],
-    save: (p) => p.getByRole("button", { name: "Save Engagement", exact: true }), write: /api\/engagements$/,
-  },
-  {
-    id: "fee-receipt", title: "fee receipt form (Billing)", open: openFeeReceipt,
-    fields: [{ box: (p) => p.locator("#fee-receipt-date"), label: "Receipt date", key: "receipt_date", full: "15/07/2026", iso: "2026-07-15" }],
-    save: (p) => p.getByRole("button", { name: "Record Receipt", exact: true }).last(), write: /billing\/fee-invoices\/fi-1\/receipts$/,
-  },
+  // THE TWO FEE FORMS ARE NOT DRIVEN SINCE 21-11-2026. The fee engagement and fee receipt forms were on the earlier Fee Billing
+  // screen, which became a record that day (POST-B-193: the firm bills from My practice, and every control that writes on the
+  // earlier screen is withheld from everybody). Nobody can open either form, so the two rows that opened them failed in every
+  // zone. Their date boxes are named as not driven, with this reason, in `the-money-editors-are-driven-in-a-browser.test.ts`.
   {
     id: "add-asset", title: "Add Asset drawer (purchase date)", open: openAddAsset,
     fields: [{ box: (p) => p.getByLabel("Purchase date"), label: "Purchase date", key: "purchase_date", full: "15/07/2026", iso: "2026-07-15" }],
@@ -1992,7 +2133,9 @@ const EDITORS = [
   {
     id: "customer-receipt", title: "customer receipt form (Receipts tab)", open: openCustomerReceipt,
     fields: [{ box: (p) => p.locator("#receipt-date"), label: "Receipt date", key: "receipt_date", full: "15/07/2026", iso: "2026-07-15" }],
-    save: (p) => p.getByRole("button", { name: "Record Receipt", exact: true }).last(), write: /api\/receipts\/$/,
+    // The form's own button: the empty receipts list below the form offers a "Record Receipt" of its own to a member who may write the books,
+    // so the last one on the page is the empty state's, not the form's.
+    save: (p) => p.locator("div.rounded-xl", { has: p.locator("#receipt-date") }).last().getByRole("button", { name: "Record Receipt", exact: true }), write: /api\/receipts\/$/,
   },
   ...[
     { id: "sales-credit-note-editor", title: "sales credit note editor", path: "/sales/credit-notes/new/edit/", party: { label: "Customer", name: "Beta Stores" },
@@ -2035,10 +2178,17 @@ const EDITORS = [
     save: (p) => p.getByRole("button", { name: "Save Write-down", exact: true }), write: /api\/inventory\/items\/sc1\/writedown$/,
   },
   {
-    id: "employee-form", title: "employee form (payroll Inputs)", open: onAShortScreen(openEmployeeForm), saveInView: true,
+    id: "employee-form", title: "employee form (payroll Inputs)", saveInView: true,
+    // The box for a fixed-term contract's end (POST-A-526) is shown only for an employee ticked as fixed-term, so the row ticks it: a row of its
+    // own would add a run to every night's drive, which has no room for one (scripts/the-nightly-drive-fits-its-allowance-...).
+    open: onAShortScreen(async (env) => {
+      await openEmployeeForm(env);
+      await env.page.locator("#fixed-term").check();
+    }),
     fields: [
       { box: (p) => p.locator("#employee-joining-date"), label: "Joining date", key: "joining_date", full: "15/07/2025", iso: "2025-07-15" },
       { box: (p) => p.locator("#date-of-birth"), label: "Date of Birth", key: "date_of_birth", full: "20/03/1990", iso: "1990-03-20" },
+      { box: (p) => p.locator("#fixed-term-end"), label: "Contract end date", key: "fixed_term_end_date", full: "15/07/2027", iso: "2027-07-15" },
     ],
     save: (p) => modalOf(p).getByRole("button", { name: "Add Employee", exact: true }), write: /api\/payroll\/employees$/,
   },
@@ -2110,12 +2260,13 @@ const EDITORS = [
     save: (p) => p.getByRole("button", { name: "Record loan", exact: true }), write: /employees\/emp-1\/loans$/,
   },
   {
-    id: "employee-drawer-settlement-payment-date", title: "employee drawer, Full & final: the date the settlement is paid (the confirming click)", open: async (env) => {
+    id: "employee-drawer-settlement-payment-date", shortForm: "15/01/2026", title: "employee drawer, Full & final: the date the settlement is paid (the confirming click)", open: async (env) => {
       const { page, stub } = env;
       await openEmployeeDrawer("Full & final")(env);
       stub.route({ method: "POST", re: /employees\/emp-1\/settlement\/record$/, reply: () => ok({
         employee_id: "emp-1", components: [], deductions: [], totals: { gross_paise: 0, taxable_paise: 0, net_payable_paise: 0 }, gaps: [], problems: [], settlement_id: "s-1" }) });
-      // The payment date is read after the last working day (its anchor), so the last working day is in FY 2026-27 here as the short-form claim expects.
+      // The payment date may fall either side of the last working day, so it says `near` it (POST-A-126): a day and month typed with no year are
+      // read in the year nearest 30/06/2026, and 15/1 is 15/01/2026 (166 days before it) and not 15/01/2027 (199 after): the row's `shortForm`.
       await typeAndLeave(page.locator("#drawer-last-working-day"), "30/06/2026");
       await page.getByRole("button", { name: "Compute", exact: true }).click();
       await page.locator("#settlement-payment-date").waitFor();
@@ -2186,7 +2337,7 @@ const EDITORS = [
   {
     id: "itr-add-deadline", title: "Income Tax > ITR tracker: the due date of a new ITR deadline", open: openItrTracker("add"), cleared: "No due date yet — pick a client so the due date can be computed.",
     fields: [{ box: (p) => p.locator("#itr-add-due-date"), label: "Due date", key: "due_date", full: "05/08/2026", iso: "2026-08-05" }],
-    save: (p) => p.getByRole("button", { name: "Add Deadline", exact: true }), write: /rest\/v1\/compliance_calendar/,
+    save: (p) => p.getByRole("button", { name: "Add Deadline", exact: true }), write: /\/api\/compliance\/calendar$/,
   },
   {
     id: "gst-mark-filed", shortForm: "15/01/2026", title: "GST > filing tracker: the date a return was filed (Mark as Filed)", open: openGstTracker("single"), cleared: "Filing date is required",
@@ -2201,7 +2352,7 @@ const EDITORS = [
   {
     id: "gst-add-filing", title: "GST > filing tracker: the due date of a new filing", open: openGstTracker("add"), cleared: "Due date: enter the date this return is due.",
     fields: [{ box: (p) => p.locator("#gst-add-filing-due-date"), label: "Due date", key: "due_date", full: "05/11/2026", iso: "2026-11-05" }],
-    save: (p) => p.getByRole("button", { name: "Save Filing", exact: true }), write: /rest\/v1\/compliance_calendar/,
+    save: (p) => p.getByRole("button", { name: "Save Filing", exact: true }), write: /\/api\/compliance\/calendar$/,
   },
   {
     // A filing added as Filed used to be recorded as filed TODAY, with no date box and no question (the period lock quotes the date).
@@ -2229,7 +2380,7 @@ const EDITORS = [
   {
     id: "mca-add-filing-due-date", title: "MCA > Filings > Add Filing: the date a form is due", open: openMcaTracker("add"), cleared: "Client, CIN and Due Date are required.",
     fields: [{ box: (p) => p.locator("#mca-due-date"), label: "Due date", key: "due_date", full: "30/10/2026", iso: "2026-10-30" }],
-    save: (p) => p.getByRole("button", { name: "Add Filing", exact: true }).last(), write: /rest\/v1\/mca_filings/,
+    save: (p) => p.getByRole("button", { name: "Add Filing", exact: true }).last(), write: /\/api\/mca-workspace\/filings$/,
   },
   {
     id: "mca-confirm-filing-date", shortForm: "15/01/2026", title: "A client's MCA filings > Mark Filed (CA): the day the form was filed on MCA21", open: openClientMcaConfirm, cleared: "Filing date is required",
@@ -2479,6 +2630,86 @@ const EDITORS = [
     fields: [{ box: (p) => p.locator("#apply-structure-effective-from"), label: "Effective from", key: "effective_from", full: "01/10/2026", iso: "2026-10-01" }],
     save: (p) => p.getByRole("button", { name: "Preview", exact: true }), write: /salary-structures\/st-1\/apply$/,
   },
+  {
+    id: "nrv-review-date", title: "a client's Inventory > NRV review: the date the write-downs are posted on", open: openNrvReview,
+    fields: [{ box: (p) => p.locator("#nrv-review-date"), label: "Date", key: "writedown_date", full: "31/03/2027", iso: "2027-03-31" }],
+    save: (p) => p.getByRole("button", { name: "Post write-downs", exact: true }).first(), write: /api\/inventory\/nrv-review\/post$/,
+    afterSave: async (p) => { await p.getByRole("alertdialog").getByRole("button", { name: "Post write-downs", exact: true }).click(); },
+  },
+  // POST-A-386: the practice's own records.
+  {
+    id: "dsc-renew", title: "DSC tracker: Renew (the new expiry and the new issue date)", open: openDscRenew, eachField: true,
+    fields: [
+      { box: (p) => dscOverlay(p, "Renew this DSC").getByLabel("New expiry date", { exact: true }), label: "New expiry date", key: "new_expiry_date", full: "30/04/2028", iso: "2028-04-30" },
+      { box: (p) => dscOverlay(p, "Renew this DSC").getByLabel("New issue date", { exact: true }), label: "New issue date", key: "new_issued_date", full: "01/05/2026", iso: "2026-05-01" },
+    ],
+    save: (p) => p.getByRole("button", { name: "Record the renewal", exact: true }), write: /api\/dsc\/dsc-1\/renew$/,
+  },
+  {
+    id: "dsc-correct", title: "DSC tracker: Correct (the issue and expiry dates)", open: openDscCorrect, eachField: true,
+    fields: [
+      { box: (p) => dscOverlay(p, "Correct this record").getByLabel("Issue date", { exact: true }), label: "Issue date", key: "issued_date", full: "02/05/2026", iso: "2026-05-02" },
+      { box: (p) => dscOverlay(p, "Correct this record").getByLabel("Expiry date", { exact: true }), label: "Expiry date", key: "expiry_date", full: "01/05/2028", iso: "2028-05-01" },
+    ],
+    save: (p) => p.getByRole("button", { name: "Save the correction", exact: true }), write: /api\/dsc\/dsc-1$/,
+  },
+  {
+    id: "dsc-add", title: "DSC tracker: Add DSC (the issue and expiry dates)", open: openDscAdd, eachField: true,
+    fields: [
+      { box: (p) => dscOverlay(p, "Add DSC Record").getByLabel("Issue date", { exact: true }), label: "Issue date", key: "issued_date", full: "01/06/2026", iso: "2026-06-01" },
+      { box: (p) => dscOverlay(p, "Add DSC Record").getByLabel("Expiry date", { exact: true }), label: "Expiry date", key: "expiry_date", full: "31/05/2028", iso: "2028-05-31" },
+    ],
+    save: (p) => dscOverlay(p, "Add DSC Record").getByRole("button", { name: "Add DSC", exact: true }), write: /api\/dsc$/,
+  },
+  {
+    id: "pipeline-add-lead", title: "prospect pipeline: Add Lead (the last contact and next follow-up dates)", open: openAddLead, eachField: true,
+    fields: [
+      { box: (p) => p.getByLabel("Last contact date", { exact: true }), label: "Last contact date", key: "lastContactDate", read: (b) => leadDates(b).lastContactDate, full: "05/10/2026", iso: "2026-10-05" },
+      { box: (p) => p.getByLabel("Next follow-up date", { exact: true }), label: "Next follow-up date", key: "nextFollowUpDate", read: (b) => leadDates(b).nextFollowUpDate, full: "15/10/2026", iso: "2026-10-15" },
+    ],
+    save: (p) => p.locator("form").getByRole("button", { name: "Add Lead", exact: true }), write: /api\/lifecycle\/leads$/,
+  },
+  {
+    id: "task-edit-due", title: "a task's detail panel: Edit, the due date", open: openEditTask,
+    fields: [{ box: (p) => p.getByLabel("Due date", { exact: true }), label: "Due date", key: "due_date", full: "25/10/2026", iso: "2026-10-25" }],
+    save: (p) => p.getByRole("button", { name: "Save", exact: true }), write: /api\/tasks\/t-1$/,
+  },
+  {
+    id: "task-new-due", title: "New Task: the due date", open: openNewTask,
+    fields: [{ box: (p) => p.getByLabel("Due date", { exact: true }), label: "Due date", key: "due_date", full: "25/10/2026", iso: "2026-10-25" }],
+    save: (p) => p.getByRole("button", { name: "Create Task", exact: true }), write: /api\/tasks$/,
+  },
+  {
+    id: "task-template-due", title: "a task template's Create Task: the due date", open: openTaskFromTemplate,
+    fields: [{ box: (p) => p.getByLabel("Due date", { exact: true }), label: "Due date", key: "due_date", full: "25/10/2026", iso: "2026-10-25" }],
+    save: (p) => p.getByRole("button", { name: "Create Task", exact: true }), write: /api\/task-templates\/tt-1\/instantiate$/,
+  },
+  {
+    id: "document-expiry", title: "a client's documents: Upload Document, the optional expiry date (sent in a multipart form)", open: openUploadDocument,
+    parse: multipartField("expiry_date"),
+    fields: [{ box: (p) => p.getByLabel("Expiry date (optional)", { exact: true }), label: "Expiry date", key: "expiry_date", full: "31/03/2028", iso: "2028-03-31" }],
+    save: (p) => p.locator("div.fixed").getByRole("button", { name: /^Upload/ }).last(), write: /api\/client-documents\/upload$/,
+  },
+  {
+    id: "health-override-expiry", title: "the health detail screen: Add Override, the optional expiry", open: (env) => openHealthOverride(env, `${env.base}/health/${CLIENT_ID}/`),
+    fields: [{ box: (p) => p.getByLabel("Expires at (optional)", { exact: true }), label: "Expires at", key: "expires_at", full: "31/12/2026", iso: "2026-12-31" }],
+    save: (p) => p.getByRole("button", { name: /^(Add Override|Save Override|Save)$/ }).last(), write: new RegExp(`api\\/health\\/scores\\/${CLIENT_ID}\\/override$`),
+  },
+  {
+    id: "client-health-override-expiry", title: "a client's Health tab: Add Override, the optional expiry", open: (env) => openHealthOverride(env, env.at("/health/")),
+    fields: [{ box: (p) => p.getByLabel("Expires at (optional)", { exact: true }), label: "Expires at", key: "expires_at", full: "31/12/2026", iso: "2026-12-31" }],
+    save: (p) => p.getByRole("button", { name: "Add Override", exact: true }).last(), write: new RegExp(`api\\/health\\/scores\\/${CLIENT_ID}\\/override$`),
+  },
+  {
+    id: "renewal-date", title: "a client's Lifecycle tab: Add Renewal, the renewal date", open: openAddRenewal,
+    fields: [{ box: (p) => p.getByLabel("Renewal date", { exact: true }), label: "Renewal date", key: "renewal_date", full: "31/03/2027", iso: "2027-03-31" }],
+    save: (p) => p.getByRole("button", { name: /^(Add Renewal|Save Renewal|Save)$/ }).last(), write: /api\/lifecycle\/renewals$/,
+  },
+  {
+    id: "portal-request-needed-by", title: "Client Portal: New Document Request, the needed-by date", open: openPortalRequest,
+    fields: [{ box: (p) => p.getByLabel("Needed by", { exact: true }), label: "Needed by", key: "due_date", full: "20/10/2026", iso: "2026-10-20" }],
+    save: (p) => p.getByRole("button", { name: "Create Request", exact: true }), write: /api\/portal\/document-requests$/,
+  },
 ];
 
 async function driveEditor(env, spec) {
@@ -2540,6 +2771,14 @@ async function driveEditor(env, spec) {
   }
   await stub.quiet();
   assert.equal(stub.writesTo(spec.write).length, 0, `${spec.title}: Save over an unreadable date SENT A WRITE`);
+
+  // 4a. The form's sentence goes the moment the date is put right, before any Save (POST-A-381): a sentence that stayed said the date was
+  //     wrong about a date that was right, and the person pressed Save again for nothing.
+  if (!spec.heldWhileUnreadable) {
+    await typeAndLeave(primary, "15/03/2026");
+    await until(async () => (await page.getByText(`${first.label}: ${FEB_SENTENCE}`).count()) === 0,
+      `${spec.title}: the form to stop saying "${first.label}: ${FEB_SENTENCE}" once the date was put right`, 4000);
+  }
 
   // 4b. A CLEARED box is not an unreadable one and reports no problem; what it does is the row's `cleared` sentence (or, `cleared: "held"`, a held
   //     button) and sends nothing. A row whose date is optional leaves `cleared` out; the rows of earlier slices have not been given this step.
@@ -2612,7 +2851,8 @@ async function driveEditor(env, spec) {
   await stub.quiet();
   const writes = stub.writesTo(spec.write);
   assert.equal(writes.length, 1, `${spec.title}: expected one write, saw ${writes.length} (${stub.allWrites().map((w) => w.method + " " + w.path).join(", ") || "none"})`);
-  const body = JSON.parse(writes[0].body);
+  // A multipart write (a document's upload) is read by the row's own `parse`.
+  const body = spec.parse ? spec.parse(writes[0]) : JSON.parse(writes[0].body);
   for (const field of spec.fields) {
     const got = field.read ? field.read(body) : body[field.key];
     assert.equal(got, field.iso, `${spec.title}: ${field.key} should reach the server as ${field.iso}, was ${JSON.stringify(got)}`);
@@ -2630,35 +2870,428 @@ async function shownInTheDialog(page, sentence, what) {
 }
 
 /** The four forms on a client's compliance tabs (fourteenth slice): three used to take a date as plain text and ignore the answer, and the fourth (a director) had been
- *  fixed for that but kept its typed values through Cancel. `refusal` is the sentence the door gives when its insert fails (`Unable to complete MCA operation…` in
- *  routers/mca_workspace.py, `_could_not` in routers/tds_workspace.py), `httpRefusal` the 404 `assert_client_access` raises for a client the caller is not assigned to;
+ *  fixed for that but kept its typed values through Cancel. `refusal` is the sentence the door gives when its insert fails (`_could_not` in
+ *  routers/mca_workspace.py, naming the door's action, `_could_not` in routers/tds_workspace.py), `httpRefusal` the 404 `assert_client_access` raises for a client the caller is not assigned to;
  *  tests/test_the_drives_filing_sentences_are_the_servers.py holds all three to the routers. `listShows` is text the saved record puts in its list; `optionalDate` is
  *  whether a blank date is allowed (and then sent as null), which the database decides: `mca_companies.incorp_date` and `mca_directors.date_of_appointment` are
  *  nullable, `mca_filings.due_date` and `tds_challans.payment_date` are NOT NULL. */
 const CLIENT_COMPLIANCE_FORMS = [
   { id: "client-mca-company", name: "A client's MCA > Company Master > Add Company", open: openClientMcaCompany, add: "+ Add Company", write: /mca-workspace\/companies$/,
     dateBox: "#mca-company-incorporated", dateKey: "incorporation_date", typedDate: "12/06/2019", typedLabel: "Company Name", typedValue: "Acme Traders Pvt Ltd", listShows: "Acme Traders Pvt Ltd", optionalDate: true,
-    refusal: MCA_COULD_NOT_SENTENCE, httpRefusal: CLIENT_NOT_FOUND_SENTENCE },
+    refusal: MCA_COULD_NOT_SENTENCE("save the company"), httpRefusal: CLIENT_NOT_FOUND_SENTENCE },
   { id: "client-mca-director", name: "A client's MCA > Directors > Add Director", open: openClientMcaDirector, add: "+ Add Director", write: /mca-workspace\/directors$/,
     dateBox: "#mca-director-appointment", dateKey: "date_of_appointment", typedDate: "01/04/2025", typedLabel: "Full Name", typedValue: "Asha Rao", listShows: "Asha Rao", optionalDate: true,
     refusal: MCA_DUPLICATE_DIN_SENTENCE, httpRefusal: CLIENT_NOT_FOUND_SENTENCE },
   { id: "client-mca-new-filing", name: "A client's MCA > Annual Filings > New Filing", open: openClientMcaNewFiling, add: "+ New Filing", write: /mca-workspace\/filings$/,
-    dateBox: "#mca-new-filing-due-date", dateKey: "due_date", typedDate: "30/10/2026", typedLabel: "Financial year (for example 2025-26)", typedValue: "2025-26", listShows: "2026-10-30", optionalDate: false,
+    dateBox: "#mca-new-filing-due-date", dateKey: "due_date", typedDate: "30/10/2026", typedLabel: "Financial year (for example 2025-26)", typedValue: "2025-26", listShows: "30 Oct 2026", optionalDate: false,
     askedFor: "Due date: enter the date this form is due.",
-    refusal: MCA_COULD_NOT_SENTENCE, httpRefusal: CLIENT_NOT_FOUND_SENTENCE },
+    refusal: MCA_COULD_NOT_SENTENCE("save the filing"), httpRefusal: CLIENT_NOT_FOUND_SENTENCE },
   { id: "client-tds-challan", name: "A client's TDS > Challans > New Challan", open: openClientTdsChallan, add: "+ New Challan", write: /api\/tds-workspace\/challans$/,
     dateBox: "#tds-client-challan-date", dateKey: "challan_date", typedDate: "07/10/2026", typedLabel: "Challan No.", typedValue: "00123", listShows: "00123", optionalDate: false,
     askedFor: "Challan date: enter the date on the challan.",
     refusal: TDS_COULD_NOT_CHALLAN_SENTENCE, httpRefusal: CLIENT_NOT_FOUND_SENTENCE },
 ];
 
+
+/**
+ * A WINDOW OR A FILTER is a date box that chooses what a screen READS and writes nothing (POST-A-386). Its claims are the ones of a form, with
+ * the read standing where Save does: no native date input; 31/02/2026 is refused in the field's own sentence; a date typed in full reaches the
+ * server as the ISO date typed, in any locale and zone; and text that is not a date is NEVER sent as one (it reads as no bound, and the box says so).
+ * `reads` is the list of query-string reads the screen made, recorded by the route's own reply.
+ */
+async function driveWindow(env, spec) {
+  const { page } = env;
+  const reads = [];
+  await spec.open(env, reads);
+  assert.equal(await page.locator('input[type="date"]').count(), 0, `${spec.title}: a native <input type="date"> is on the screen`);
+  // A window's own read, where the screen asks for it on a button (`spec.read`) rather than when a box commits.
+  const enter = async (box, text) => { await typeAndLeave(box, text); if (spec.read) await spec.read(page); };
+  // The short form is read inside the financial year the box is in (FY 2026-27 at the pinned clock), on the first box: the others are
+  // anchored on it. A box that cannot be later than today reads it as the last such day (`shortForm`).
+  const primary = spec.fields[0].box(page);
+  await primary.waitFor();
+  await typeAndLeave(primary, "15/1");
+  const short = spec.shortForm ?? "15/01/2027";
+  assert.equal(await primary.inputValue(), short, `${spec.title}: 15/1 is ${short}`);
+  await typeAndLeave(primary, "150326");
+  assert.equal(await primary.inputValue(), "15/03/2026", `${spec.title}: 150326 is 15/03/2026`);
+  await typeAndLeave(primary, "");
+  for (const field of spec.fields) {
+    const box = field.box(page);
+    await box.waitFor();
+    await enter(box, "31/02/2026");
+    assert.equal(await box.getAttribute("aria-invalid"), "true", `${spec.title} / ${field.label}: 31/02/2026 is not marked invalid`);
+    const alerts = (await page.locator("[role=alert]").allInnerTexts()).join(" | ");
+    assert.ok(alerts.includes(FEB_SENTENCE), `${spec.title} / ${field.label}: the field's own sentence is missing (alerts: ${alerts.slice(0, 200)})`);
+    await env.stub.quiet();
+    if (spec.shows) {
+      // A filter over rows already read (the shared table's date range): unreadable text is no bound, so every row is shown.
+      await until(async () => JSON.stringify(await spec.shows(page)) === JSON.stringify(field.unbounded), `${spec.title} / ${field.label}: an unreadable bound to read as none, leaving ${JSON.stringify(field.unbounded)} (rows: ${JSON.stringify(await spec.shows(page))})`);
+    }
+    for (const r of reads) {
+      assert.notEqual(r[field.param], "31/02/2026", `${spec.title} / ${field.label}: unreadable text was sent as a date`);
+      assert.ok(!r[field.param] || /^\d{4}-\d{2}-\d{2}$/.test(r[field.param]), `${spec.title} / ${field.label}: ${r[field.param]} is not an ISO date`);
+    }
+    await enter(box, field.full);
+    assert.equal(await box.inputValue(), field.full, `${spec.title} / ${field.label}: ${field.full} did not stay as typed`);
+    if (spec.shows) {
+      await until(async () => JSON.stringify(await spec.shows(page)) === JSON.stringify(field.leaves), `${spec.title} / ${field.label}: ${field.full} to leave ${JSON.stringify(field.leaves)} (rows: ${JSON.stringify(await spec.shows(page))})`);
+    } else {
+      await until(() => reads.some((r) => r[field.param] === field.iso), `${spec.title} / ${field.label}: a read asked for ${field.iso} (reads: ${JSON.stringify(reads)})`);
+    }
+    assert.ok(!reads.some((r) => r[field.param] && !/^\d{4}-\d{2}-\d{2}$/.test(r[field.param])), `${spec.title}: a read carried a date that is not ISO`);
+  }
+}
+
+/** The query strings of the API reads whose path matches `re`, recorded into `reads` by the route's own reply. */
+function recordApiReads(env, re, reads, answer) {
+  env.stub.route({ method: "GET", re, reply: (req, body, url) => { reads.push(Object.fromEntries(url.searchParams)); return answer; } });
+}
+
+/** A screen that reads a table over PostgREST in the browser: each read of `table`, its filters as `column.op` -> value (`invoice_date.gte`). */
+function recordPostgrestReads(page, table, reads) {
+  page.on("request", (req) => {
+    if (req.method() !== "GET") return;
+    const u = new URL(req.url());
+    if (!u.pathname.endsWith(`/rest/v1/${table}`)) return;
+    const r = {};
+    for (const [k, v] of u.searchParams) {
+      const m = /^(gte|lte|gt|lt|eq)\.(.*)$/.exec(v);
+      if (m) r[`${k}.${m[1]}`] = m[2];
+    }
+    reads.push(r);
+  });
+}
+
+/** What a window's read is answered with where the screen's rendering of an answer is not the claim: the house refusal, which every one of
+ *  these screens shows in words, so the request (the claim) is made and nothing is drawn from a made-up payload. */
+const NOT_READ_HERE = { success: false, data: null, error: "Not read in this drive." };
+
+const BANK_ACCOUNT = { id: "ba-1", bank_name: "HDFC Bank", account_no: "50100012345678", account_number: "50100012345678", account_number_masked: "XXXX5678", is_active: true, currency: "INR" };
+
+/** The match finder over an entry on the bank screen (the entry is bank-dialogs' fixture). */
+async function openFindMatch(env, reads) {
+  const { page, stub } = env;
+  const { entry } = await atTheEntry(env);
+  recordApiReads(env, /api\/banking\/transactions\/e-1\/candidate-search/, reads, ok({ results: [], total: 0, allowed_types: [], truncated: false }));
+  await entry.getByRole("button", { name: /Find the invoice/ }).first().click();
+  await page.getByRole("dialog", { name: "Find other matches" }).waitFor();
+  void stub;
+}
+
+/** Two invoices on a client's Sales list, one either side of 1 July, for the shared table's date filter. */
+const SALES_TWO = [
+  { ...invoiceRow("issued", "inv-6"), invoice_no: "INV-0006", invoice_date: "2026-06-10", due_date: "2026-07-10" },
+  { ...invoiceRow("issued", "inv-7"), invoice_no: "INV-0007", invoice_date: "2026-07-20", due_date: "2026-08-19" },
+];
+const salesNumbersShown = async (page) => (await page.locator("tr[data-row-clickable]").allInnerTexts()).map((t) => /INV-\d+/.exec(t)?.[0]).filter(Boolean).sort();
+
+const WINDOWS = [
+  {
+    id: "audit-log-window", title: "audit log: the From and To dates",
+    open: async (env, reads) => {
+      env.stub.route({ method: "GET", re: /api\/audit(\?|$)/, reply: (req, body, url) => { reads.push(Object.fromEntries(url.searchParams)); return ok({ entries: [], next_cursor: null }); } });
+      await env.page.goto(`${env.base}/settings/audit-log/`, { waitUntil: "networkidle" });
+    },
+    fields: [
+      { box: (p) => p.getByLabel("Audit log from date"), label: "From date", param: "date_from", full: "01/07/2026", iso: "2026-07-01" },
+      { box: (p) => p.getByLabel("Audit log to date"), label: "To date", param: "date_to", full: "31/07/2026", iso: "2026-07-31" },
+    ],
+  },
+  {
+    id: "ledger-window", title: "an account's ledger: the From and To dates",
+    open: async (env, reads) => {
+      env.stub.setTable("chart_of_accounts", [{ id: "acc-cash", account_code: "1001", account_name: "Cash in hand", account_type: "Asset", account_subtype: "Cash", is_active: true, client_id: CLIENT_ID }]);
+      recordApiReads(env, /api\/accounting\/ledger\?/, reads, ok({ account_id: "acc-cash", account_name: "Cash in hand", opening_balance_paise: 0, opening_is_debit: true, closing_balance_paise: 0, closing_is_debit: true, lines: [], total: 0 }));
+      await env.page.goto(env.at("/accounting/?tab=coa"), { waitUntil: "networkidle" });
+      await env.page.locator("tr[data-row-clickable]").filter({ hasText: "Cash in hand" }).first().click();
+    },
+    fields: [
+      { box: (p) => p.getByLabel("Ledger from"), label: "From", param: "start_date", full: "01/07/2026", iso: "2026-07-01" },
+      { box: (p) => p.getByLabel("Ledger to"), label: "To", param: "end_date", full: "31/07/2026", iso: "2026-07-31" },
+    ],
+  },
+  {
+    id: "worth-a-look-window", title: "the bank's Worth a look list: the From and To dates",
+    open: async (env, reads) => {
+      recordApiReads(env, /api\/banking\/worth-a-look\?/, reads, NOT_READ_HERE);
+      await env.page.goto(env.at("/bank/?tab=worth-a-look"), { waitUntil: "networkidle" });
+    },
+    fields: [
+      { box: (p) => p.locator("#wal-from"), label: "From", param: "from_date", full: "01/07/2026", iso: "2026-07-01" },
+      { box: (p) => p.locator("#wal-to"), label: "To", param: "to_date", full: "31/07/2026", iso: "2026-07-31" },
+    ],
+  },
+  {
+    id: "vendor-statement-window", title: "a vendor's statement: the From and To dates, read on Generate",
+    open: async (env, reads) => {
+      env.stub.setTable("vendors", [{ id: VENDOR.id, name: VENDOR.name }]);
+      recordApiReads(env, /api\/vendors\/[^/]+\/statement\?/, reads, NOT_READ_HERE);
+      await env.page.goto(env.at("/purchases/?tab=statements"), { waitUntil: "networkidle" });
+      await env.page.locator("#vs-vendor").selectOption(VENDOR.id);
+    },
+    read: async (page) => { await page.getByRole("button", { name: /Generate/ }).first().click(); await page.waitForTimeout(200); },
+    fields: [
+      { box: (p) => p.locator("#vs-start"), label: "From", param: "start_date", full: "01/07/2026", iso: "2026-07-01" },
+      { box: (p) => p.locator("#vs-end"), label: "To", param: "end_date", full: "31/07/2026", iso: "2026-07-31" },
+    ],
+  },
+  {
+    id: "bank-book-window", title: "the Bank Book report: the From and To dates",
+    open: async (env, reads) => {
+      env.stub.route({ method: "GET", re: /api\/banking\/accounts\?/, reply: () => ok([BANK_ACCOUNT]) });
+      recordApiReads(env, /api\/banking\/register\?/, reads, NOT_READ_HERE);
+      await env.page.goto(env.at("/reports/bank-book/"), { waitUntil: "networkidle" });
+    },
+    fields: [
+      { box: (p) => p.getByLabel("Bank book from"), label: "From", param: "date_from", full: "01/07/2026", iso: "2026-07-01" },
+      { box: (p) => p.getByLabel("Bank book to"), label: "To", param: "date_to", full: "31/07/2026", iso: "2026-07-31" },
+    ],
+  },
+  {
+    id: "find-match-window", title: "the bank's match finder: the Dated from and to filters, read on Search",
+    open: openFindMatch,
+    read: async (page) => { await page.getByRole("dialog", { name: "Find other matches" }).getByRole("button", { name: "Search", exact: true }).click(); await page.waitForTimeout(200); },
+    fields: [
+      { box: (p) => p.getByLabel("Dated from"), label: "Dated from", param: "date_from", full: "01/07/2026", iso: "2026-07-01" },
+      { box: (p) => p.getByLabel("Dated to"), label: "Dated to", param: "date_to", full: "31/07/2026", iso: "2026-07-31" },
+    ],
+  },
+  {
+    id: "period-picker-custom-range", title: "the shared period picker's custom range, on a client's Sales list (read over PostgREST)",
+    open: async (env, reads) => {
+      env.stub.setTable("client_sales_invoices", []);
+      recordPostgrestReads(env.page, "client_sales_invoices", reads);
+      await env.page.goto(env.at("/sales/"), { waitUntil: "networkidle" });
+      await env.page.getByLabel("Date range", { exact: true }).selectOption({ label: "Custom Range" });
+    },
+    fields: [
+      { box: (p) => p.getByLabel("From date", { exact: true }), label: "From date", param: "invoice_date.gte", full: "01/07/2026", iso: "2026-07-01" },
+      { box: (p) => p.getByLabel("To date", { exact: true }), label: "To date", param: "invoice_date.lte", full: "31/07/2026", iso: "2026-07-31" },
+    ],
+  },
+  {
+    // The shared table's date range filters rows ALREADY read, so its "read" is the rows left on the screen: `everyRow` is the list unfiltered.
+    id: "table-date-filter", title: "the shared table's date-range filter, on a client's Sales list (Invoice date from and to)",
+    open: async (env) => {
+      env.stub.setTable("client_sales_invoices", SALES_TWO);
+      await env.page.goto(env.at("/sales/"), { waitUntil: "networkidle" });
+      await env.page.locator("tr[data-row-clickable]").first().waitFor();
+    },
+    shows: salesNumbersShown,
+    fields: [
+      { box: (p) => p.getByLabel("Invoice date from", { exact: true }), label: "Invoice date from", full: "01/07/2026", unbounded: ["INV-0006", "INV-0007"], leaves: ["INV-0007"] },
+      // The From bound typed above stays, so an unreadable To leaves what From alone leaves.
+      { box: (p) => p.getByLabel("Invoice date to", { exact: true }), label: "Invoice date to", full: "15/07/2026", unbounded: ["INV-0007"], leaves: [] },
+    ],
+  },
+  {
+    // Also driven in datesAreJudgedOnIndiasDay.mjs (India's day as the start, a cleared box asks for nothing); here, the window family's claims.
+    id: "ageing-as-at-window", title: "a client's ageing schedules: the As at date",
+    open: async (env, reads) => {
+      recordApiReads(env, /api\/accounting\/schedule-iii\/ageing\?/, reads, NOT_READ_HERE);
+      await env.page.goto(env.at("/reports/ageing/"), { waitUntil: "networkidle" });
+    },
+    fields: [{ box: (p) => p.locator("#ageing-as-at"), label: "As at", param: "as_of", full: "30/09/2026", iso: "2026-09-30" }],
+  },
+  {
+    id: "portal-statement-window", title: "the client portal's Statement: the From and To dates, read on Apply",
+    open: async (env, reads) => {
+      const { page, stub } = env;
+      stub.route({ method: "GET", re: /api\/portal\/memberships$/, reply: () => ok({ memberships: [{ client_id: CLIENT_ID, name: CLIENT_ROW.client_name }] }) });
+      stub.route({ method: "GET", re: /api\/portal\/dashboard$/, reply: () => ok({ client_id: CLIENT_ID, contact: { email: null, name: "Asha" }, sections: [{ key: "statements", label: "Statement" }] }) });
+      stub.route({ method: "GET", re: /api\/portal\/dues$/, reply: () => ok({ dues: [], total_outstanding_paise: 0, overdue_paise: 0, overdue_count: 0, available: true }) });
+      recordApiReads(env, /api\/portal\/self\/statement(\?|$)/, reads, NOT_READ_HERE);
+      await page.goto(`${env.base}/portal/dashboard/`, { waitUntil: "networkidle" });
+      await page.getByRole("button", { name: "Statement" }).first().click();
+    },
+    read: async (page) => { await page.getByRole("button", { name: "Apply", exact: true }).click(); await page.waitForTimeout(200); },
+    fields: [
+      { box: (p) => p.getByLabel("Statement from", { exact: true }), label: "From", param: "start", full: "01/07/2026", iso: "2026-07-01" },
+      { box: (p) => p.getByLabel("Statement to", { exact: true }), label: "To", param: "end", full: "31/07/2026", iso: "2026-07-31" },
+    ],
+  },
+  {
+    id: "time-export-window", title: "Time Tracking's export: the From and To dates, read on CSV",
+    open: async (env, reads) => {
+      const { page, stub } = env;
+      stub.route({ method: "GET", re: /api\/time-entries\/export\?/, file: { body: Buffer.from("date,minutes\n"), type: "text/csv", headers: { "content-disposition": 'attachment; filename="time-entries.csv"' } },
+        reply: (req, body, url) => { reads.push(Object.fromEntries(url.searchParams)); return {}; } });
+      await page.goto(`${env.base}/time/`, { waitUntil: "networkidle" });
+    },
+    read: async (page) => { await page.getByRole("button", { name: /CSV/ }).first().click(); await page.waitForTimeout(300); },
+    fields: [
+      { box: (p) => p.getByLabel("Export from", { exact: true }), label: "From", param: "date_from", full: "01/07/2026", iso: "2026-07-01" },
+      { box: (p) => p.getByLabel("Export to", { exact: true }), label: "To", param: "date_to", full: "31/07/2026", iso: "2026-07-31" },
+    ],
+  },
+];
+
 export const scenarios = [
+  ...WINDOWS.map((spec) => ({
+    id: spec.id,
+    title: `${spec.title}: typed dates are read by the one rule and reach the read as ISO, and unreadable text is never sent`,
+    contexts: TZ_MATRIX,
+    run: (env) => driveWindow(env, spec),
+  })),
   ...EDITORS.map((spec) => ({
     id: spec.id,
     title: `${spec.title}: typed dates are read by the one rule and reach the server as ISO`,
     contexts: TZ_MATRIX,
     run: (env) => driveEditor(env, spec),
   })),
+  // The firm Reports page's P&L (POST-A-386): its window bounds the server's read, and a box that is unreadable or blank is refused on Generate
+  // in its own sentence and nothing is read. It used to read every row and cut them in the browser, so an unreadable To drew a P&L of nil.
+  {
+    id: "reports-pl-window",
+    title: "Reports > P&L Statement: an unreadable From or To is refused on Generate in its own sentence and nothing is read; the dates typed bound the server's read",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page } = env;
+      const reads = [];
+      // The P&L's sums are the server's since POST-A-469 (GET /api/reports/party-totals): the screen reads them in the window typed and adds nothing.
+      recordApiReads(env, /api\/reports\/party-totals(\?|$)/, reads, ok({
+        revenue: [{ party_id: "cu1", party_name: "Beta Stores", total_paise: 1000000, documents: 1 }], expenses: [],
+        revenue_total_paise: 1000000, expense_total_paise: 0, net_paise: 1000000, sales_documents: 1, purchase_documents: 0,
+      }));
+      await page.goto(`${env.base}/reports/`, { waitUntil: "networkidle" });
+      await page.getByRole("button", { name: /P&L Statement/ }).first().click();
+      assert.equal(await page.locator('input[type="date"]').count(), 0, "a native <input type=\"date\"> is on the screen");
+      const from = page.getByLabel("Report from", { exact: true });
+      const to = page.getByLabel("Report to", { exact: true });
+      const generate = page.getByRole("button", { name: "Generate Report", exact: true });
+      await typeAndLeave(from, "15/1");
+      assert.equal(await from.inputValue(), "15/01/2027", "15/1 is 15 January 2027");
+      await typeAndLeave(from, "150326");
+      assert.equal(await from.inputValue(), "15/03/2026", "150326 is 15/03/2026");
+      for (const [box, label] of [[from, "From"], [to, "To"]]) {
+        await typeAndLeave(from, "01/07/2026");
+        await typeAndLeave(to, "31/07/2026");
+        await typeAndLeave(box, "31/02/2026");
+        assert.equal(await box.getAttribute("aria-invalid"), "true", `${label}: 31/02/2026 is not marked invalid`);
+        await generate.click();
+        await page.getByText(`${label}: ${FEB_SENTENCE}`).first().waitFor({ timeout: 4000 }).catch(() => {
+          throw new Error(`Generate over an unreadable ${label} did not say "${label}: ${FEB_SENTENCE}"`);
+        });
+        await env.stub.quiet();
+        assert.equal(reads.length, 0, `Generate over an unreadable ${label} READ the statement: ${JSON.stringify(reads)}`);
+        assert.equal(await page.getByText("Total Revenue").count(), 0, `a P&L was drawn over an unreadable ${label}`);
+      }
+      // A blank box is not "no bound": the statement says the dates it covers, so both are asked for.
+      await typeAndLeave(to, "");
+      await generate.click();
+      await page.getByText("Choose the From and To dates the statement covers.").first().waitFor({ timeout: 4000 });
+      await env.stub.quiet();
+      assert.equal(reads.length, 0, "Generate over a blank To read the transactions");
+      await typeAndLeave(to, "31/07/2026");
+      await generate.click();
+      await until(() => reads.length === 1, "Generate over two dates to read the transactions once");
+      assert.deepEqual([reads[0].date_from, reads[0].date_to], ["2026-07-01", "2026-07-31"], `the window did not reach the read as ISO days: ${JSON.stringify(reads[0])}`);
+      await page.getByText(/01 Jul 2026.*31 Jul 2026/).first().waitFor({ timeout: 4000 });
+      await page.getByText("Beta Stores").first().waitFor({ timeout: 4000 });
+    },
+  },
+  // Time Tracking's "Your hours for: A range of days" (POST-A-386): Show hours is HELD while a box is unreadable (an unreadable box hands up "",
+  // and the button needs both days), the box says why, and the days typed reach the summary as ISO. myTime.mjs drives the figures and refusals.
+  {
+    id: "time-hours-range",
+    title: "Time Tracking > Your hours for a range of days: Show hours is held over an unreadable day, which says why, and the days typed reach the read as ISO",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page } = env;
+      const reads = [];
+      recordApiReads(env, /api\/time-entries\/summary\/me\?/, reads, ok({ period: "week", date_from: "2026-10-05", date_to: "2026-10-11", total_minutes: 0, billable_minutes: 0, non_billable_minutes: 0, entries_count: 0, running: 0 }));
+      await page.goto(`${env.base}/time/`, { waitUntil: "networkidle" });
+      await page.getByLabel("Your hours for").selectOption("range");
+      assert.equal(await page.locator('input[type="date"]').count(), 0, "a native <input type=\"date\"> is on the screen");
+      const from = page.getByLabel("Hours from", { exact: true });
+      const to = page.getByLabel("Hours to", { exact: true });
+      const show = page.getByRole("button", { name: "Show hours", exact: true });
+      await typeAndLeave(from, "15/1");
+      assert.equal(await from.inputValue(), "15/01/2027", "15/1 is 15 January 2027");
+      await typeAndLeave(from, "150326");
+      assert.equal(await from.inputValue(), "15/03/2026", "150326 is 15/03/2026");
+      for (const box of [from, to]) {
+        await typeAndLeave(from, "01/10/2026");
+        await typeAndLeave(to, "07/10/2026");
+        await typeAndLeave(box, "31/02/2026");
+        assert.equal(await box.getAttribute("aria-invalid"), "true", "31/02/2026 is not marked invalid");
+        assert.ok((await page.locator("[role=alert]").allInnerTexts()).join(" | ").includes(FEB_SENTENCE), "the box's own sentence is missing");
+        assert.equal(await show.isDisabled(), true, "Show hours was live over an unreadable day");
+      }
+      const before = reads.filter((r) => r.period === "range").length;
+      assert.equal(before, 0, `a range was read before Show hours: ${JSON.stringify(reads)}`);
+      await typeAndLeave(from, "01/10/2026");
+      await typeAndLeave(to, "07/10/2026");
+      await show.click();
+      await until(() => reads.some((r) => r.period === "range"), "Show hours to read the range");
+      const asked = reads.find((r) => r.period === "range");
+      assert.deepEqual([asked.date_from, asked.date_to], ["2026-10-01", "2026-10-07"], `the days did not reach the read as ISO: ${JSON.stringify(asked)}`);
+    },
+  },
+  // POST-A-126: a date that may fall either side of ANOTHER date says `near`, and a day and month typed with no year are read in the year nearest
+  // to it, within half a year. A notice received on 01/03/2026 (FY 2025-26) was given a response date of 15/06/2025 for `15/6`.
+  // No `contexts`: this scenario sets no clock and reads no "today", so the browser's zone cannot change what it reads and it runs once, not under the
+  // three zones. (Putting it under all three took the whole matrix to 97.2 minutes of the 97 its deadline leaves; the whole-matrix guard failed on it.)
+  {
+    id: "a-short-date-is-read-in-the-year-nearest-the-date-beside-it",
+    title: "a notice's response date is read in the year nearest its received date, and a 29/2 a year from it is refused as before",
+    async run(env) {
+      const { page } = env;
+      await openAddIncomeTaxNotice(env);
+      await typeAndLeave(page.locator("#notice-date-received"), "01/03/2026");
+      const due = page.locator("#notice-response-due");
+      await typeAndLeave(due, "15/6");
+      assert.equal(await due.inputValue(), "15/06/2026", "15/6 beside a notice received on 01/03/2026 is 15/06/2026, not the June before it");
+      await typeAndLeave(due, "20/2");
+      assert.equal(await due.inputValue(), "20/02/2026", "a response date already past when the notice arrived is still read before it");
+      // The nearest 29 February to a notice received on 01/03/2025 is 366 days before it: not near, so the usual refusal stands.
+      await typeAndLeave(page.locator("#notice-date-received"), "01/03/2025");
+      await typeAndLeave(due, "29/2");
+      assert.equal(await due.getAttribute("aria-invalid"), "true", "29/2 beside a notice of 01/03/2025 was read as a date a year away");
+      const alerts = (await page.locator("[role=alert]").allInnerTexts()).join(" | ");
+      assert.match(alerts, /Feb 2025 has only 28 days\..*Type the year in full/, `the 29/2 refusal is not the usual sentence: ${alerts.slice(0, 200)}`);
+    },
+  },
+  // No `contexts`: this scenario sets no clock and reads no "today", so the browser's zone cannot change what it reads and it runs once, not under the
+  // three zones. (Putting it under all three took the whole matrix to 97.2 minutes of the 97 its deadline leaves; the whole-matrix guard failed on it.)
+  {
+    id: "form-15ca-short-date-is-read-near-the-bill-not-the-date-on-file",
+    title: "Form 15CA on file as 15/06/2023 on a bill of 01/06/2026, retyped 15/6, is 15/06/2026 (the year nearest the bill, not near the old date)",
+    async run(env) {
+      const { page, stub } = env;
+      stub.setTable("vendors", [{ ...VENDOR, tds_applicable: true, tds_section: "195", tds_rate_bps: 2000 }]);
+      stub.route({ method: "POST", re: /purchase-bills\/tds-preview/, reply: () => ok(TDS_195_PREVIEW) });
+      const bill = { ...billRow("draft", "b9"), bill_date: "2026-06-01", due_date: "2026-07-01", form_15ca_ack_no: "ACK-0042", form_15ca_filed_on: "2023-06-15", form_15cb_udin: null };
+      stub.route({ method: "GET", re: /purchase-bills\/b9$/, reply: () => ok(bill) });
+      await page.goto(env.at("/purchases/bills/b9/edit/"), { waitUntil: "networkidle" });
+      const box = page.locator("#bill-15ca-date");
+      await box.waitFor({ timeout: 10000 });
+      assert.equal(await box.inputValue(), "15/06/2023", "the date on file is not shown as it was");
+      await typeAndLeave(box, "15/6");
+      assert.equal(await box.inputValue(), "15/06/2026", "15/6 beside a bill of 01/06/2026 is 15/06/2026");
+    },
+  },
+  // An expiry or a needed-by beside TODAY takes no `near` (POST-A-126 review): it is nearly always ahead, and nearest-to-today read `15/3` typed in
+  // June as the March gone, so the document was shown as already expired and a health override as ignored.
+  {
+    id: "an-expiry-typed-in-june-for-march-is-the-march-to-come",
+    title: "a document's expiry typed 15/3 on 17 June and a health override's expiry typed 31/3 on 15 September are read in the March to come",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, context } = env;
+      await context.clock.setFixedTime(new Date("2026-06-17T06:00:00Z"));
+      await openUploadDocument(env);
+      const expiry = page.getByLabel("Expiry date (optional)", { exact: true });
+      await typeAndLeave(expiry, "15/3");
+      assert.equal(await expiry.inputValue(), "15/03/2027", "15/3 typed on 17/06/2026 is 15/03/2027, not three months gone");
+      await context.clock.setFixedTime(new Date("2026-09-15T06:00:00Z"));
+      await openHealthOverride(env, env.at("/health/"));
+      const override = page.getByLabel("Expires at (optional)", { exact: true });
+      await typeAndLeave(override, "31/3");
+      assert.equal(await override.inputValue(), "31/03/2027", "31/3 typed on 15/09/2026 is 31/03/2027, not six months gone");
+    },
+  },
   // The two Record modals hand the write's promise back to the shared Button, which is what holds the second click of a double click.
   ...[
     { id: "record-irn", open: openRecordIrn, name: "Record IRN", write: /einvoice\/records\/ei-1\/irn-generated$/ },
@@ -3152,7 +3785,7 @@ export const scenarios = [
       const save = page.getByRole("button", { name: f.save, exact: true });
       // After today (the clock is pinned at 8 October 2026).
       await typeAndLeave(box, "15/10/2026");
-      const after = "15 Oct 2026 is after 08 Oct 2026.";
+      const after = "15 Oct 2026 is after today's date in India, 08 Oct 2026.";
       if (f.held) {
         assert.equal(await save.isDisabled(), true, `${f.name}: the button was live over a date after today`);
         await page.getByText(after).first().waitFor({ timeout: 4000 }).catch(() => { throw new Error(`${f.name}: the box did not say "${after}"`); });
@@ -3337,9 +3970,9 @@ export const scenarios = [
   // The end box of both templates only HINTS when it is before the start. The bill form refused it in its own words; the journal form let it reach the server.
   ...[
     { id: "recurring-journal", name: "Accounting > Recurring journals > New template", open: openRecurringJournalTemplate, start: "#rj-start", end: "#rj-end",
-      sentence: "End date: it is before the start date.", write: /api\/recurring-journals$/, save: (p) => p.getByRole("button", { name: "Save template", exact: true }) },
+      sentence: "End date: it is before the start date.", goesWhenRight: "31/12/2026", write: /api\/recurring-journals$/, save: (p) => p.getByRole("button", { name: "Save template", exact: true }) },
     { id: "recurring-bill", name: "Purchases > Recurring bills > New Template", open: openRecurringBillTemplate, start: "#rec-bill-start", end: "#rec-bill-end",
-      sentence: "The end date cannot be before the start date.", write: /api\/recurring-purchase-bills$/, save: (p) => p.getByRole("button", { name: "Create template", exact: true }) },
+      sentence: "The end date cannot be before the start date.", goesWhenRight: "31/12/2026", write: /api\/recurring-purchase-bills$/, save: (p) => p.getByRole("button", { name: "Create template", exact: true }) },
     { id: "recurring-invoice", name: "Sales > Recurring > New Template", open: openRecurringInvoiceTemplate, start: "#rec-inv-start", end: "#rec-inv-end",
       sentence: "End date cannot be before start date", goesWhenRight: "31/12/2026", write: /api\/recurring-invoices$/, save: (p) => p.getByRole("button", { name: "Create template", exact: true }) },
   ].map((f) => ({
@@ -3357,8 +3990,8 @@ export const scenarios = [
       });
       await stub.quiet();
       assert.equal(stub.writesTo(f.write).length, 0, `${f.name}: a reversed window SENT A WRITE`);
-      // A sentence about what two boxes hold is derived from them, so it goes when they are put in order (copied into the form's own error it stayed until the next press). Said only by the
-      // editors that derive it: the other two still copy theirs (a ledger item).
+      // A sentence about what two boxes hold goes when they are put in order (copied into the form's own error it stayed until the next press). The invoice
+      // template derives it and latches it; the journal and bill templates take theirs back with `useTakenBackWhenFixed` (POST-A-381).
       if (f.goesWhenRight) {
         await typeAndLeave(page.locator(f.end), f.goesWhenRight);
         await until(async () => (await page.getByText(f.sentence).count()) === 0, `${f.name}: the order sentence stayed on the form after the window was put in order`, 5000);
@@ -3408,7 +4041,7 @@ export const scenarios = [
       server: { sentence: GSTR_BEFORE_PERIOD_SENTENCE("2026-09-15", "2026-09-30") } },
     { id: "gst-add-filed", name: "GST > filing tracker > Add GST Filing recorded as Filed", open: openGstTracker("add-filed"), box: (p) => p.locator("#gst-add-filing-filed-on"), label: "Filed on",
       save: (p) => p.getByRole("button", { name: "Save Filing", exact: true }), empty: "Filed on: enter the date this return was filed on the portal.", after: "sentence",
-      write: /compliance\/calendar\/gst-new\/filed$/, insert: /rest\/v1\/compliance_calendar/ },
+      write: /compliance\/calendar\/gst-new\/filed$/, insert: /\/api\/compliance\/calendar$/ },
     { id: "mca-single", name: "MCA > Filings > Mark Filed", open: openMcaTracker("single"), box: (p) => p.locator("#mca-filed-modal-date"), label: "Date of filing",
       save: (p) => p.getByRole("button", { name: "Confirm Filing", exact: true }), empty: "Filing date is required", after: "sentence", write: /mca-workspace\/filings\/m-1\/status$/,
       server: { sentence: MCA_BEFORE_YEAR_SENTENCE, typed: "15/01/2026" } },
@@ -3417,7 +4050,7 @@ export const scenarios = [
       server: { sentence: MCA_BEFORE_YEAR_SENTENCE, typed: "15/01/2026" } },
     { id: "mca-add-filed", name: "MCA > Filings > Add Filing recorded as Filed", open: openMcaTracker("add-filed"), box: (p) => p.locator("#mca-filed-on"), label: "Filed on MCA21 on",
       save: (p) => p.getByRole("button", { name: "Add Filing", exact: true }).last(), empty: "A filing marked Filed needs its SRN and the date it was filed on MCA21.", after: "sentence",
-      write: /mca-workspace\/filings\/m-new\/status$/, insert: /rest\/v1\/mca_filings/ },
+      write: /mca-workspace\/filings\/m-new\/status$/, insert: /\/api\/mca-workspace\/filings$/ },
     { id: "client-mca-confirm", name: "A client's MCA filings > Mark Filed (CA)", open: openClientMcaConfirm, box: (p) => p.locator("#mca-confirm-filing-date"), label: "Filing date",
       save: (p) => p.getByRole("button", { name: "Confirm Filing", exact: true }), empty: "Filing date is required", after: "sentence", write: /mca-workspace\/filings\/mf-1\/status$/,
       server: { sentence: MCA_BEFORE_YEAR_SENTENCE, typed: "15/01/2026" } },
@@ -3510,7 +4143,7 @@ export const scenarios = [
       await page.getByText(GSTR_BEFORE_PERIOD_SENTENCE("2026-09-15", "2026-09-30")).first().waitFor({ timeout: 4000 });
       await page.locator("#gst-add-filing-filed-on").waitFor({ state: "detached", timeout: 4000 }).catch(() => { throw new Error("the dialog stayed open over a row that now exists"); });
       await stub.quiet();
-      assert.equal(stub.writesTo(/rest\/v1\/compliance_calendar/, "POST").length, 1, "the row should have been inserted once");
+      assert.equal(stub.writesTo(/\/api\/compliance\/calendar$/, "POST").length, 1, "the row should have been inserted once");
     },
   },
   // The MCA Add Filing form inserts a row and then records it as filed. A date the door refuses (HTTP 200 with success false) or a caller the door refuses (HTTP 403,
@@ -3533,7 +4166,7 @@ export const scenarios = [
       await page.getByText(c.sentence).first().waitFor({ timeout: 4000 }).catch(() => { throw new Error(`the reason was not said: "${c.sentence}"`); });
       await page.locator("#mca-filed-on").waitFor({ state: "detached", timeout: 4000 }).catch(() => { throw new Error("the dialog stayed open over a row that now exists"); });
       await stub.quiet();
-      assert.equal(stub.writesTo(/rest\/v1\/mca_filings/, "POST").length, 1, "the row should have been inserted once");
+      assert.equal(stub.writesTo(/\/api\/mca-workspace\/filings$/, "POST").length, 1, "the row should have been inserted once");
     },
   })),
   // ── STATE THAT OUTLIVED ITS SUBJECT, found by an independent read of the thirteenth slice ─────────────────────────────────────────────────────────────────────
@@ -3628,9 +4261,9 @@ export const scenarios = [
   // sentence) came back with no sentence, and Save sent it.
   ...[
     { id: "gst", name: "GST > filing tracker > Add GST Filing", open: openGstTracker("add-filed"), box: "#gst-add-filing-filed-on", select: "select[aria-label='Status']",
-      insert: /rest\/v1\/compliance_calendar/, write: /compliance\/calendar\/gst-new\/filed$/, needs: "Acknowledgement number (ARN): enter the number on the portal's receipt." },
+      insert: /\/api\/compliance\/calendar$/, write: /compliance\/calendar\/gst-new\/filed$/, needs: "Acknowledgement number (ARN): enter the number on the portal's receipt." },
     { id: "mca", name: "MCA > Filings > Add Filing", open: openMcaTracker("add-filed"), box: "#mca-filed-on", select: "select[aria-label='Status']",
-      insert: /rest\/v1\/mca_filings/, write: /mca-workspace\/filings\/m-new\/status$/, needs: "A filing marked Filed needs its SRN and the date it was filed on MCA21." },
+      insert: /\/api\/mca-workspace\/filings$/, write: /mca-workspace\/filings\/m-new\/status$/, needs: "A filing marked Filed needs its SRN and the date it was filed on MCA21." },
   ].map((f) => ({
     id: `${f.id}-add-filed-a-date-does-not-come-back-after-the-status-is-changed`,
     title: `${f.name}: a date typed for Filed (after today) is gone when Status is changed away and back, and nothing is sent`,
@@ -3665,7 +4298,7 @@ export const scenarios = [
       await page.getByRole("button", { name: "Save Filing", exact: true }).click();
       await shownInTheDialog(page, "Acknowledgement number (ARN): enter the number on the portal's receipt.", "a filing recorded as Filed without its ARN was not refused in a sentence");
       await stub.quiet();
-      assert.equal(stub.writesTo(/rest\/v1\/compliance_calendar/, "POST").length, 0, "a filing recorded as Filed with no ARN INSERTED A ROW");
+      assert.equal(stub.writesTo(/\/api\/compliance\/calendar$/, "POST").length, 0, "a filing recorded as Filed with no ARN INSERTED A ROW");
       assert.equal(stub.writesTo(/compliance\/calendar\/gst-new\/filed$/).length, 0, "a filing recorded as Filed with no ARN SENT A WRITE");
     },
   },
@@ -4007,7 +4640,7 @@ export const scenarios = [
       await typeAndLeave(page.locator("#sv-notified-on"), "10/10/2026");
       const record = page.getByRole("button", { name: "Record", exact: true });
       await record.click();
-      await shownInTheDialog(page, "Notification date: 10 Oct 2026 is after 09 Oct 2026.", "a day after India's today was not refused in a sentence");
+      await shownInTheDialog(page, "Notification date: 10 Oct 2026 is after today's date in India, 09 Oct 2026.", "a day after India's today was not refused in a sentence");
       await stub.quiet();
       assert.equal(stub.writesTo(/statutory-values\/pt$/).length, 0, "a notification date after India's today SENT A WRITE");
       await typeAndLeave(page.locator("#sv-notified-on"), "09/10/2026");
@@ -4021,7 +4654,7 @@ export const scenarios = [
   // While a Record is out the dialog cannot be left: Close and Cancel are held, so a late answer cannot act on a dialog the person has already left, and they are live again after a refusal.
   {
     id: "statutory-values-close-and-cancel-are-held-while-a-record-is-out",
-    title: "Settings > Statutory values > Record a notification: while a Record is out Close and Cancel are held, and live again once the answer is a refusal",
+    title: "Settings > Statutory values > Record a notification: while a Record is out Cancel is held and the ×, Escape and a click beside the dialog do not close it; Cancel works again once the answer is a refusal",
     async run(env) {
       const { page, stub } = env;
       await openStatutoryValues(env);
@@ -4030,12 +4663,16 @@ export const scenarios = [
       stub.route({ method: "PUT", re: /api\/payroll\/statutory-values\/pt$/, delay: 1800, ...refuse(PT_UNCOVERED_SENTENCE, 422) });
       const dialog = statutoryDialog(page);
       await dialog.getByRole("button", { name: "Record", exact: true }).click();
-      const close = dialog.getByRole("button", { name: "Close", exact: true });
+      // The shared dialog since POST-A-130's sixteenth step: Cancel is greyed out, and the × is not but goes through the same held close as
+      // Escape and a click beside the dialog, so each is tried while the Record is out.
+      const close = dialog.getByRole("button", { name: "Close dialog", exact: true });
       const cancel = dialog.getByRole("button", { name: "Cancel", exact: true });
-      await until(async () => (await close.isDisabled({ timeout: 500 }).catch(() => false)) && (await cancel.isDisabled({ timeout: 500 }).catch(() => false)),
-        "Close and Cancel to be held while the Record was out");
+      await until(async () => await cancel.isDisabled({ timeout: 500 }).catch(() => false), "Cancel to be held while the Record was out");
+      await close.click();
+      await page.keyboard.press("Escape");
+      await page.mouse.click(5, 5);
+      assert.equal(await dialog.count(), 1, "the ×, Escape or a click beside it closed the dialog while the Record was out");
       await shownInTheDialog(page, PT_UNCOVERED_SENTENCE, "the refusal was not shown once the answer came");
-      assert.equal(await close.isDisabled(), false, "Close stayed held after the answer");
       assert.equal(await cancel.isDisabled(), false, "Cancel stayed held after the answer");
     },
   },
@@ -4118,20 +4755,26 @@ export const scenarios = [
   // While a Create is out the dialog cannot be left: Close and Cancel are held, and live again after a refusal.
   {
     id: "new-engagement-letter-close-and-cancel-are-held-while-a-create-is-out",
-    title: "Engagements > New Engagement: while a Create is out Close and Cancel are held, and live again once the answer is a refusal",
+    title: "Engagements > New Engagement: while a Create is out Cancel is held and the ×, Escape and a click beside the dialog do not close it; both work again once the answer is a refusal",
     async run(env) {
       const { page, stub } = env;
       await openNewEngagementLetter(env);
       const dialog = engagementDialog(page);
       stub.route({ method: "POST", re: /api\/engagement-letters$/, delay: 1800, ...refuse("A stub refusal of the letter.", 422) });
       await dialog.getByRole("button", { name: "Create Engagement", exact: true }).click();
-      const close = dialog.getByRole("button", { name: "Close", exact: true });
+      // The shared dialog since POST-A-130's fourteenth step: Cancel is greyed out, and the × is not but goes through the same held close
+      // as Escape and a click beside the dialog, so each is tried while the Create is out.
+      const close = dialog.getByRole("button", { name: "Close dialog", exact: true });
       const cancel = dialog.getByRole("button", { name: "Cancel", exact: true });
-      await until(async () => (await close.isDisabled({ timeout: 500 }).catch(() => false)) && (await cancel.isDisabled({ timeout: 500 }).catch(() => false)),
-        "Close and Cancel to be held while the Create was out");
+      await until(async () => await cancel.isDisabled({ timeout: 500 }).catch(() => false), "Cancel to be held while the Create was out");
+      await close.click();
+      await page.keyboard.press("Escape");
+      await page.mouse.click(5, 5);
+      assert.equal(await dialog.count(), 1, "the ×, Escape or a click beside it closed the dialog while the Create was out");
       await shownInTheDialog(page, "A stub refusal of the letter.", "the refusal was not shown once the answer came");
-      assert.equal(await close.isDisabled(), false, "Close stayed held after the answer");
       assert.equal(await cancel.isDisabled(), false, "Cancel stayed held after the answer");
+      await close.click();
+      await until(async () => (await dialog.count()) === 0, "the dialog to close by its × once the answer had come");
     },
   },
   // A dialog opened again after a refusal holds nothing of the last one, whether the sentence came from the boxes (the order of the two dates) or from the server.
@@ -4278,7 +4921,7 @@ export const scenarios = [
       const create = lotDialog(page).getByRole("button", { name: "Create", exact: true });
       await typeAndLeave(made, "10/10/2026");
       await create.click();
-      await shownInTheDialog(page, "Manufactured: 10 Oct 2026 is after 09 Oct 2026.", "a day after India's today was not refused in a sentence");
+      await shownInTheDialog(page, "Manufactured: 10 Oct 2026 is after today's date in India, 09 Oct 2026.", "a day after India's today was not refused in a sentence");
       await stub.quiet();
       assert.equal(stub.writesTo(/api\/inventory\/batches$/).length, 0, "a manufacture date after India's today SENT A WRITE");
       await typeAndLeave(made, "09/10/2026");
@@ -4393,7 +5036,7 @@ export const scenarios = [
   //   stays : the form copies a date's sentence into its own error, where it stays until the next Save (the purchase bill editor does this for every one of its dates)
   ...[
     { id: "advance-tax-paid-on", name: "Income Tax > Advance tax: an instalment's paid-on date", open: openAdvanceTaxRegister, box: (p) => p.getByLabel("Instalment 1 paid on"), label: "Instalment 1 paid on",
-      save: (p) => p.getByRole("button", { name: "Save", exact: true }), write: /api\/income-tax\/advance-tax(\?|$)/ },
+      save: (p) => p.getByRole("button", { name: "Save", exact: true }), write: /api\/income-tax\/advance-tax(\?|$)/, saidLive: true },
     { id: "self-assessment-deposit", name: "Income Tax > Advance tax > §140A challan: the day it was deposited", open: openSelfAssessmentChallan, box: (p) => p.locator("#sa-deposit-date"), label: "Deposited on",
       save: (p) => p.getByRole("button", { name: "Record challan" }), write: /api\/income-tax\/self-assessment$/ },
     { id: "cgas-deposit", name: "Income Tax > Capital gains > reinvestment claim: the CGAS deposit date", open: onAShortScreen(openReinvestmentClaim), box: (p) => p.getByLabel("CGAS deposit date"), label: "CGAS deposit date",
@@ -4428,13 +5071,14 @@ export const scenarios = [
       await f.open(env);
       const said = `${f.label}: ${AFTER_TODAY_SENTENCE}`;
       await typeAndLeave(f.box(page), "15/10/2026");
-      // The advance-tax page also draws a date's sentence live (it recomputes the estimate 400 ms after a date is left), so the sentence may already be on the page: Save's own refusal is the
-      // one that ADDS to it.
+      // The advance-tax page also draws a date's sentence live (it recomputes the estimate 400 ms after a date is left), so the sentence may already be on the page. Elsewhere Save's own
+      // refusal is the one that ADDS to it; there (`saidLive`) Save's refusal takes the live line's place, because the page draws one sentence once (POST-A-395), so Save must leave it said.
       await stub.quiet();
       await page.waitForTimeout(700);
       const already = await page.getByText(said).count();
       await f.save(page).click();
-      await until(async () => (await page.getByText(said).count()) >= already + 1, `${f.name}: Save did not say the date's sentence (it was on the page ${already} time(s) before)`, 5000);
+      const needed = f.saidLive ? Math.max(already, 1) : already + 1;
+      await until(async () => (await page.getByText(said).count()) >= needed, `${f.name}: Save did not say the date's sentence (it was on the page ${already} time(s) before)`, 5000);
       await shownInTheDialog(page, said, `${f.name}: a date after today was not refused in a sentence`);
       await stub.quiet();
       assert.equal(stub.writesTo(f.write).length, 0, `${f.name}: a date after today SENT A WRITE`);
@@ -4458,7 +5102,7 @@ export const scenarios = [
       await assertBrowserDay(page, AHEAD_OF_INDIA);
       await typeAndLeave(f.box(page), "09/10/2026");
       await f.save(page).click();
-      await shownInTheDialog(page, `${f.label}: 09 Oct 2026 is after 08 Oct 2026.`, `${f.name}: the day after India's today was not refused (on Kiritimati it is the browser's own today)`);
+      await shownInTheDialog(page, `${f.label}: 09 Oct 2026 is after today's date in India, 08 Oct 2026.`, `${f.name}: the day after India's today was not refused (on Kiritimati it is the browser's own today)`);
       await stub.quiet();
       assert.equal(stub.writesTo(f.write).length, 0, `${f.name}: the day after India's today SENT A WRITE`);
       await typeAndLeave(f.box(page), "08/10/2026");
@@ -4479,7 +5123,7 @@ export const scenarios = [
       await assertBrowserDay(page, INDIA_NEXT_DAY);
       await typeAndLeave(f.box(page), "10/10/2026");
       await f.save(page).click();
-      await shownInTheDialog(page, `${f.label}: 10 Oct 2026 is after 09 Oct 2026.`, `${f.name}: the day after India's new day was not refused`);
+      await shownInTheDialog(page, `${f.label}: 10 Oct 2026 is after today's date in India, 09 Oct 2026.`, `${f.name}: the day after India's new day was not refused`);
       await stub.quiet();
       assert.equal(stub.writesTo(f.write).length, 0, `${f.name}: the day after India's new day SENT A WRITE`);
       await typeAndLeave(f.box(page), "09/10/2026");
@@ -4674,20 +5318,27 @@ export const scenarios = [
   // and the ITC-04 panel's "Record a lot" (the panel's `saving` is for any line, and a form opened for another line meanwhile would be closed by this one's success).
   {
     id: "firm-tds-challan-close-and-cancel-are-held-while-add-is-out",
-    title: "TDS > Add Challan: while Add is out the dialog's Close and Cancel are held, and live again once the answer is a refusal",
+    title: "TDS > Add Challan: while Add is out the dialog cannot be left (Cancel is held, and its Close, Escape and a click outside do nothing), and it can be once the answer is a refusal",
     async run(env) {
+      // The dialog is the shared one since POST-A-130's eighth step: its X is the shared dialog's own ("Close dialog"), which is not greyed
+      // out but goes through the same close as Escape and the backdrop, and that close is held while Add is out. So the promise is driven
+      // as what a person can DO, not as one button's attribute: nothing they press while the request is out leaves the dialog.
       const { page, stub } = env;
       const form = await openTdsChallanForm(env);
       await typeAndLeave(form.locator("#tds-challan-date"), "07/10/2026");
       stub.route({ method: "POST", re: /tds-workspace\/challans$/, delay: 1800, ...refuse("A stub refusal of the challan.", 422) });
       await form.getByRole("button", { name: "Add", exact: true }).click();
-      const close = form.getByRole("button", { name: "Close", exact: true });
+      const close = form.getByRole("button", { name: "Close dialog", exact: true });
       const cancel = form.getByRole("button", { name: "Cancel", exact: true });
-      await until(async () => (await close.isDisabled({ timeout: 500 }).catch(() => false)) && (await cancel.isDisabled({ timeout: 500 }).catch(() => false)),
-        "Close and Cancel to be held while Add was out");
+      await until(async () => cancel.isDisabled({ timeout: 500 }).catch(() => false), "Cancel to be held while Add was out");
+      await close.click();
+      await page.keyboard.press("Escape");
+      await page.mouse.click(12, 500);
+      assert.equal(await form.count(), 1, "the dialog was left while Add was out");
       await shownInTheDialog(page, "A stub refusal of the challan.", "the refusal was not shown once the answer came");
-      assert.equal(await close.isDisabled(), false, "Close stayed held after the answer");
       assert.equal(await cancel.isDisabled(), false, "Cancel stayed held after the answer");
+      await close.click();
+      await form.waitFor({ state: "detached" });
     },
   },
   {

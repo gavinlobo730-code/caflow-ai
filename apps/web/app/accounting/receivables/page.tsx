@@ -30,11 +30,15 @@ import { Callout } from "@/components/ui/callout";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 import { PageHeader } from "@/components/ui/page-header";
 import { formatDate, todayIstISO } from "@/lib/dates/format";
+import { LoadingRegion } from "@/components/ui/skeleton";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Client {
   id: string;
   client_name: string;
+  // Read so the picker can show and search them (POST-A-487).
+  pan?: string | null;
+  gstin?: string | null;
 }
 
 interface FeeInvoice {
@@ -111,10 +115,12 @@ export default function ReceivablesAgingPage() {
       setFirmId(fid);
       // clients has no is_active column; its lifecycle field is `status`
       // (CHECK: active | inactive | archived).
-      const { data } = await selectAll(() => sb.from("clients")
-        .select("id, client_name").eq("firm_id", fid).eq("status", "active")
+      const { data, error: readError } = await selectAll(() => sb.from("clients")
+        .select("id, client_name, pan, gstin").eq("firm_id", fid).eq("status", "active")
         .eq("is_internal", false)
         .order("client_name").order("id"));
+      // The pager hands a failure back as `error` and does not throw: without this the catch below never ran for a refused read.
+      if (readError) throw readError;
       setClients((data ?? []) as Client[]);
     }).catch(() => setError("Failed to load clients"));
   }, []);
@@ -123,6 +129,9 @@ export default function ReceivablesAgingPage() {
     if (!firmId) return;
     setLoading(true);
     setError(null);
+    // The rows of an earlier report (another client, or another day) are not this one: a read that fails leaves nothing to export (POST-A-464).
+    setRows([]);
+    setGenerated(false);
     const sb = getSupabaseClient();
     const today = todayIstISO();
 
@@ -213,14 +222,14 @@ export default function ReceivablesAgingPage() {
     <div className="p-6 max-w-ps-data mx-auto space-y-6">
       {/* Header */}
       <PageHeader
-        back={{ href: "/accounting", label: "Accounting" }}
-        title="Fee Receivables"
+        back={{ href: "/billing", label: "Earlier fee bills" }}
+        title="Earlier fee receivables"
         subtitle={
           <>
-            What your clients owe the practice — your own unpaid fee invoices, by age.
-            For what a client&apos;s own customers owe it, open the{" "}
-            <Link href="/accounting/invoices" className="text-brand underline underline-offset-2">
-              Sales worklist
+            What is still owed on the fee bills raised before billing moved to My practice, by age. What clients owe on
+            bills raised since is on{" "}
+            <Link href="/practice/ar/" className="text-brand underline underline-offset-2">
+              AR Aging
             </Link>
             .
           </>
@@ -228,7 +237,7 @@ export default function ReceivablesAgingPage() {
         actions={
           <>
             {generated && (
-              <Button variant="outline" size="sm" onClick={exportExcel} className="flex items-center gap-1">
+              <Button variant="outline" size="sm" onClick={exportExcel} disabled={!generated || !!error || loading} className="flex items-center gap-1">
                 <Download className="w-4 h-4" /> Export CSV
               </Button>
             )}
@@ -267,6 +276,14 @@ export default function ReceivablesAgingPage() {
           </Button>
         </CardContent>
       </Card>
+
+      {/* A read the button starts (POST-A-449): the button keeps its own spinner, and the place the ageing will be drawn says
+          what is being read, and that the server may be waking up, while the read is out. */}
+      {loading && (
+        <LoadingRegion label="Building the ageing" className="bg-white rounded-xl border border-ps-border p-8 text-center" noticeClassName="justify-center text-center">
+          <p className="text-sm text-ps-hint">Reading the unpaid fee invoices…</p>
+        </LoadingRegion>
+      )}
 
       {/* Summary cards */}
       {generated && (

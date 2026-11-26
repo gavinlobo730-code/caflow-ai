@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import {
   Plus, Pencil, FileText, AlertCircle, CheckCircle2,
-  IndianRupee, Users, ExternalLink, X, Power,
+  IndianRupee, Users, ExternalLink, Power,
 } from "lucide-react";
 import { formatPaise } from "@/lib/services/formatting";
 import { getClients } from "@/lib/data/clients";
@@ -14,12 +14,14 @@ import { paiseFromRupeeInput, rupeeInputFromPaise, bpsFromPercentInput } from "@
 
 import { Callout } from "@/components/ui/callout";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { formatDate, todayIstISO } from "@/lib/dates/format";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { SectionPlaceholder } from "@/components/ui/page-frame";
 
 // ─── What changed here, and why (ACC-06) ────────────────────────────────────
 //
@@ -84,7 +86,7 @@ function SetRetainerModal({
   const dates = useDateProblems();
 
   async function handleSave() {
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError); return; }
     // Through the one parser. parseFloat("1,25,000") is 1, and a retainer is
     // billed unattended every month, so a fee read wrong is wrong twelve times.
     const feePaise = paiseFromRupeeInput(feeRupees);
@@ -132,17 +134,8 @@ function SetRetainerModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-5 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-ps-ink">
-            {existing ? "Edit" : "Set"} Retainer — {client.client_name}
-          </h3>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-label" aria-label="Close">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
+    // POST-A-130: the shared dialog (named, Escape, Tab kept inside, focus given back). It stays open while the retainer is being saved.
+    <Modal title={`${existing ? "Edit" : "Set"} Retainer — ${client.client_name}`} maxWidthClass="max-w-md" onClose={() => { if (!saving) onClose(); }}>
         <div>
           <label htmlFor="retainer-fee" className="text-xs font-medium text-ps-body block mb-1">Fee per period (₹)</label>
           <div className="relative">
@@ -216,7 +209,7 @@ function SetRetainerModal({
         {error && <p className="text-2xs text-red-600">{error}</p>}
 
         <div className="flex gap-2 pt-1">
-          <button onClick={onClose} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg">
+          <button disabled={saving} onClick={onClose} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg">
             Cancel
           </button>
           <Button variant="plain" size="none"
@@ -227,8 +220,7 @@ function SetRetainerModal({
             {saving ? "Saving…" : "Save Retainer"}
           </Button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -244,6 +236,8 @@ export default function RetainerPage() {
   const [modalClient, setModalClient] = useState<Client | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [practiceProvisioned, setPracticeProvisioned] = useState<boolean | null>(null);
+  // The services list that did not come is neither an empty catalogue nor a missing practice client (POST-A-515 (d)): the screen says it.
+  const [serviceOptionsUnread, setServiceOptionsUnread] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -272,11 +266,12 @@ export default function RetainerPage() {
     let cancelled = false;
     api.billing.serviceOptions()
       .then(res => {
-        if (cancelled || !res.success) return;
+        if (cancelled) return;
+        if (!res.success) { setServiceOptionsUnread(true); return; }
         setServices((res.data.services ?? []).map(x => ({ id: x.id, name: x.name })));
         setPracticeProvisioned(res.data.internal_client_id !== null);
       })
-      .catch(() => undefined);
+      .catch(() => { if (!cancelled) setServiceOptionsUnread(true); });
     return () => { cancelled = true; };
   }, []);
 
@@ -347,6 +342,15 @@ export default function RetainerPage() {
         </div>
       )}
 
+      {serviceOptionsUnread && (
+        <div role="status" className="bg-state-attention-surface border border-amber-100 rounded-lg px-4 py-3 flex gap-2 text-sm text-amber-900">
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>
+            The practice&apos;s services could not be read, so the list to pick from is empty. That is not an empty
+            catalogue; reload this page to read it again.
+          </span>
+        </div>
+      )}
       {practiceProvisioned === false && (
         <div className="bg-state-attention-surface border border-amber-100 rounded-lg px-4 py-3 flex gap-2 text-sm text-amber-900">
           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -413,7 +417,7 @@ export default function RetainerPage() {
         </div>
 
         {loading ? (
-          <div className="px-5 py-8 text-center text-sm text-ps-hint">Loading…</div>
+          <SectionPlaceholder label="Loading the retainer clients" shape="table" rows={4} />
         ) : clients.length === 0 ? (
           <EmptyState
             className="py-10"

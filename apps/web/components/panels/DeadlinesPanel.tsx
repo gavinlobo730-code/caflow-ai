@@ -23,14 +23,17 @@ import {
   FileSpreadsheet,
 } from "lucide-react";
 import { cn, isExactPath } from "@/lib/utils";
+import { useScreenAccess } from "@/lib/access/useScreenAccess";
 
+// `desk` is the tax desk a type's deadlines belong to: the filter is offered to whoever may open that desk, so somebody a
+// Partner has not ticked for TDS is not offered "TDS deadlines" either (POST-A-543). The list itself is the server's.
 const DEADLINE_ITEMS = [
-  { href: "/deadlines", label: "All Deadlines", icon: Calendar, typeParam: null },
-  { href: "/deadlines?type=GSTR1",  label: "GSTR-1 deadlines",  icon: Receipt,    typeParam: "GSTR1"  },
-  { href: "/deadlines?type=GSTR3B", label: "GSTR-3B deadlines", icon: Receipt,    typeParam: "GSTR3B" },
-  { href: "/deadlines?type=ITR",    label: "Income Tax",  icon: Calculator, typeParam: "ITR"    },
-  { href: "/deadlines?type=TDS",    label: "TDS",         icon: Landmark,   typeParam: "TDS"    },
-  { href: "/deadlines?type=MCA",    label: "MCA",         icon: Building2,  typeParam: "MCA"    },
+  { href: "/deadlines", label: "All Deadlines", icon: Calendar, typeParam: null, desk: null },
+  { href: "/deadlines?type=GSTR1",  label: "GSTR-1 deadlines",  icon: Receipt,    typeParam: "GSTR1",  desk: "/gst" },
+  { href: "/deadlines?type=GSTR3B", label: "GSTR-3B deadlines", icon: Receipt,    typeParam: "GSTR3B", desk: "/gst" },
+  { href: "/deadlines?type=ITR",    label: "Income Tax",  icon: Calculator, typeParam: "ITR",    desk: "/income-tax" },
+  { href: "/deadlines?type=TDS",    label: "TDS",         icon: Landmark,   typeParam: "TDS",    desk: "/tds" },
+  { href: "/deadlines?type=MCA",    label: "MCA",         icon: Building2,  typeParam: "MCA",    desk: "/mca" },
 ];
 
 // R3.3c — the actual statutory filing tools (GST/Income Tax/TDS/MCA/e-invoice
@@ -71,6 +74,7 @@ const FILING_WORKSPACE_ITEMS: Array<{
     label: "Income Tax",
     icon: Calculator,
     children: [
+      { href: "/income-tax/season", label: "Filing Season", icon: ClipboardCheck },
       { href: "/income-tax/advance-tax", label: "Advance Tax", icon: Wallet },
       { href: "/income-tax/book-to-tax", label: "Book to Tax", icon: ArrowLeftRight },
       { href: "/income-tax/capital-gains", label: "Capital Gains", icon: TrendingUp },
@@ -97,6 +101,11 @@ function DeadlinesPanelInner() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const activeType = searchParams.get("type"); // null when on /deadlines with no param
+  const { offered } = useScreenAccess();
+  const deadlineItems = DEADLINE_ITEMS.filter((i) => offered("/deadlines") && (i.desk === null || offered(i.desk)));
+  const filingItems = FILING_WORKSPACE_ITEMS
+    .filter((i) => offered(i.href))
+    .map((i) => (i.children ? { ...i, children: i.children.filter((c) => offered(c.href)) } : i));
 
   return (
     <div className="flex flex-col h-full">
@@ -126,7 +135,7 @@ function DeadlinesPanelInner() {
           By Type
         </p>
         <div className="space-y-0.5">
-          {DEADLINE_ITEMS.map(({ href, label, icon: Icon, typeParam }) => {
+          {deadlineItems.map(({ href, label, icon: Icon, typeParam }) => {
             const active =
               typeParam === null
                 ? isExactPath(pathname, "/deadlines") && !activeType  // "All Deadlines"
@@ -157,7 +166,7 @@ function DeadlinesPanelInner() {
             Filing Workspaces
           </p>
           <div className="space-y-0.5">
-            {FILING_WORKSPACE_ITEMS.map(({ href, label, icon: Icon, children }) => {
+            {filingItems.map(({ href, label, icon: Icon, children }) => {
               const inside = pathname === href || pathname.startsWith(`${href}/`);
               const active = isExactPath(pathname, href);
               return (

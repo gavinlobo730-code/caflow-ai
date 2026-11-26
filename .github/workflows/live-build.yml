@@ -1,0 +1,93 @@
+# Says which commit the LIVE API and the LIVE product site are each running, on demand.
+#
+# WHY IT EXISTS
+#     Some changes come in two steps that must not overlap: the server's own code moves first, and a migration that
+#     would break the EARLIER code follows only once the new code is running (taking a grant away from the signed-in
+#     role is the usual case: the API runs as the caller, so a server still on the earlier code would be refused with
+#     everybody else). A merge to `main` applies a migration to production at once, while the API host builds and
+#     starts the new code minutes later, and has failed to in the past. So "is the API running commit X yet?" is a
+#     question that has to be answered before the second step is merged, and the answer was visible only to somebody
+#     who could open the host's dashboard or reach the API from where they sat.
+#
+#     The API already says it: `GET /health` names the build it runs (`build`, Render's own commit for the deploy).
+#     The product site says its own in `/version.json` (`version`). This asks both and prints them side by side.
+#
+# WHEN IT RUNS
+#     Only when somebody asks (workflow_dispatch). It is not a check anything waits on, it has no schedule, and it is
+#     deliberately NOT a required check: it asks two third-party hosts that can be mid-deploy or asleep.
+#
+# WHAT A RESULT MEANS
+#     The log and the run summary carry two lines, one per host, each a commit or the words that it could not be read.
+#     The job fails only when the API did not answer 200 at all, because then nothing below it means anything. An API
+#     that answers 200 with a build other than the one hoped for is a PASS with the answer printed: this job reports,
+#     and the person who asked decides.
+#
+# NOTHING IS WRITTEN: two GET requests to public addresses, no secrets, no artefacts.
+name: Live build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-build
+  cancel-in-progress: false
+
+jobs:
+  ask:
+    name: which commit is live
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Ask the API and the product site
+        env:
+          # Not secrets: the public API origin (the same one wake-before-scheduler.yml pings) and the product site.
+          API: https://practicesync-api.onrender.com
+          SITE: https://caflow-ai.pages.dev
+        run: |
+          set -uo pipefail
+          # The API answers in the house envelope ({success, data, error}), so its fields are inside `data`; the product
+          # site's version file is a bare object. Read `data` where there is one and the object itself where there is not.
+          # The first run of this job (22-11-2026) read the top level only and printed "could not be read" over a 200.
+          field() { python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d=d["data"] if isinstance(d.get("data"), dict) else d; v=d.get(sys.argv[2]); print("" if v is None else v)' "$1" "$2" 2>/dev/null || true; }
+
+          # --max-time 90 and three tries: a cold start on the free tier was measured at 56.55s, so the first request is
+          # expected to be slow, and one that times out is asked again before the host is called unreachable.
+          api_code="000"
+          for attempt in 1 2 3; do
+            api_code=$(curl -sS -o /tmp/health.json -w '%{http_code}' --max-time 90 "$API/health") || api_code="000"
+            echo "API /health attempt $attempt -> HTTP $api_code"
+            [ "$api_code" = "200" ] && break
+            sleep 10
+          done
+          api_build=""; api_schema=""
+          if [ "$api_code" = "200" ]; then
+            api_build=$(field /tmp/health.json build)
+            api_schema=$(field /tmp/health.json schema)
+          fi
+
+          site_code=$(curl -sS -o /tmp/version.json -w '%{http_code}' --max-time 30 "$SITE/version.json") || site_code="000"
+          echo "site /version.json -> HTTP $site_code"
+          site_build=""
+          if [ "$site_code" = "200" ]; then
+            site_build=$(field /tmp/version.json version)
+            [ -n "$site_build" ] || site_build="(answered, in a shape this job does not read: $(head -c 200 /tmp/version.json))"
+          fi
+
+          api_line="API is running: ${api_build:-could not be read (HTTP $api_code): $(head -c 200 /tmp/health.json 2>/dev/null)}${api_schema:+ (schema check: $api_schema)}"
+          site_line="Product site is serving: ${site_build:-could not be read (HTTP $site_code)}"
+          echo "$api_line"
+          echo "$site_line"
+          {
+            echo "### What is live"
+            echo ""
+            echo "- $api_line"
+            echo "- $site_line"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$api_code" != "200" ]; then
+            echo "::error::The API did not answer 200 on any of 3 attempts, so which build it runs is not known."
+            exit 1
+          fi

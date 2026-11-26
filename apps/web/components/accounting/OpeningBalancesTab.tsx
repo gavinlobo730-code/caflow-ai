@@ -16,9 +16,11 @@
  * difference between the balance and its documents means, and the sentence that
  * describes it are all `domain/accounting/opening_documents.py`'s answers.
  */
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { EmptyState } from "@/components/ui/states";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
-import { Plus, AlertTriangle, X, Info, Check, Upload } from "lucide-react";
+import { Plus, AlertTriangle, Info, Check, Upload } from "lucide-react";
 import {
   api,
   type DoubleOpening,
@@ -36,9 +38,11 @@ import {
   openingDocumentColumns,
 } from "@/lib/accounting/openingDocumentImport";
 import { Button } from "@/components/ui/button";
+import { Drawer } from "@/components/ui/drawer";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { formatDate } from "@/lib/dates/format";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 type Kind = "receivable" | "payable";
 type Msg = { type: "ok" | "err"; text: string } | null;
@@ -154,7 +158,7 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
   function closeForm() { setMsg(null); setShowForm(false); }
 
   async function handleSave() {
-    if (dates.first) { setMsg({ type: "err", text: dates.first }); return; }
+    if (dates.first) { dates.refuseWith(setMsg, (text) => ({ type: "err" as const, text })); return; }
     const paise = paiseFromRupeeInput(form.amount);
     if (paise === null || paise <= 0) {
       setMsg({ type: "err", text: "Enter the amount still outstanding at the opening date." });
@@ -338,12 +342,19 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
       )}
 
       {loading ? (
-        <p className="text-xs text-ps-hint">Loading…</p>
-      ) : !listing || listing.documents.length === 0 ? (
-        <p className="text-xs text-ps-hint">
-          No opening documents recorded. Until they are, the opening balance
-          appears in the ledger and in no ageing bucket.
-        </p>
+        <LoadingRegion label="Loading the opening documents" className="text-xs text-ps-hint">Loading…</LoadingRegion>
+      ) : !listing || (listing.documents ?? []).length === 0 ? (
+        <EmptyState
+          className="py-8"
+          title="No opening documents recorded"
+          description="Until they are, the opening balance appears in the ledger and in no ageing bucket. Add each invoice or bill still open at the start, or import them from a file."
+          action={
+            <EmptyStateActions>
+              <EmptyStateAction requires={["accounting", "write"]} icon={<Plus size={14} />} label="Add a document" onClick={openForm} disabled={busy} />
+              <EmptyStateAction requires={["accounting", "write"]} icon={<Upload size={14} />} label="Import from CSV / Excel" variant="secondary" onClick={() => setShowImport(true)} disabled={busy} />
+            </EmptyStateActions>
+          }
+        />
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
@@ -396,17 +407,13 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
       )}
 
       {showForm && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-black/20">
-          <div className="w-full max-w-md h-full bg-white shadow-xl flex flex-col">
-            <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between">
-              <p className="text-sm font-semibold text-ps-ink">
-                Add an opening {kind === "receivable" ? "invoice" : "bill"}
-              </p>
-              <button onClick={closeForm} aria-label="Close"
-                className="p-1 rounded hover:bg-ps-muted text-ps-label"><X size={16} /></button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+        // The shared side sheet (POST-A-130): named, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it, its ×)
+        // is held while the document is being recorded.
+        <Drawer open title={<span className="font-sans">Add an opening {kind === "receivable" ? "invoice" : "bill"}</span>}
+          ariaLabel={`Add an opening ${kind === "receivable" ? "invoice" : "bill"}`}
+          onClose={() => { if (!saving) closeForm(); }}>
+          <div className="flex min-h-[calc(100%-3rem)] flex-col">
+            <div className="flex-1 px-5 py-4 space-y-4">
               <label className="text-xs block">
                 <span className="block text-ps-body font-medium mb-1">{partyLabel} *</span>
                 <select value={form.party_id}
@@ -463,14 +470,14 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
             {msg?.type === "err" && (
               <p role="alert" className="mx-5 mb-3 rounded-lg px-3 py-2 text-xs bg-state-problem-surface border border-state-problem-border text-state-problem">{msg.text}</p>
             )}
-            <div className="px-5 py-3 border-t border-ps-border flex items-center justify-between">
+            <div className="sticky bottom-0 bg-white px-5 py-3 border-t border-ps-border flex items-center justify-between">
               <p className="text-3xs text-ps-hint max-w-[14rem] leading-tight">
                 No journal is posted. The tax on this document was declared where
                 it was issued.
               </p>
               <div className="flex gap-2">
-                <button onClick={closeForm}
-                  className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg">
+                <button disabled={saving} onClick={closeForm}
+                  className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50">
                   Cancel
                 </button>
                 <Button variant="plain" size="none" onClick={handleSave} disabled={saving}
@@ -480,7 +487,7 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
               </div>
             </div>
           </div>
-        </div>
+        </Drawer>
       )}
     </div>
   );

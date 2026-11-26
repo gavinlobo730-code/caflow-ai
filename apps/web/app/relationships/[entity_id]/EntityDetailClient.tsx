@@ -3,24 +3,29 @@
 import { useState, useEffect, useCallback, type Dispatch, type SetStateAction } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, CheckCircle, XCircle, X } from "lucide-react";
+import { ChevronLeft, CheckCircle, XCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Modal } from "@/components/ui/modal";
+import { Skeleton, LoadingRegion } from "@/components/ui/skeleton";
 import { Callout } from "@/components/ui/callout";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { errorMessage } from "@/lib/api";
+import { editedText, removedIdentifierProblem } from "@/lib/forms/editedValue";
 import { formatDate } from "@/lib/dates/format";
 import { PageHeader } from "@/components/ui/page-header";
 import { arrayOrEmpty } from "@/lib/api/shape";
-import { doingOf, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, fetchBounded, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 
 // Same shape and field set as the "Add Entity" form on the Entity Registry
 // list (apps/web/app/relationships/page.tsx) — kept as its own copy here
 // rather than imported, because a Next.js `page.tsx` may only export the
 // framework's own reserved names (see the note beside EntityFormModal there).
+/** Why an entity's PAN or GSTIN is corrected and not removed: the server's own words (`routers/relationships.ENTITY_IDENTIFIER_WHY`). */
+const ENTITY_IDENTIFIER_WHY = "The register tells one person or company from another across the firm's clients by it.";
+
 type EntityType =
   | "Individual"
   | "Proprietorship"
@@ -61,7 +66,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
   const { data: { session } } = await getSupabaseClient().auth.getSession();
   const token = session?.access_token ?? "";
   const doing = doingOf(opts?.method);
-  const res = await fetchPlain(`${API}${path}`, {
+  const res = await fetchBounded(`${API}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
@@ -117,101 +122,95 @@ function EntityFormModal({
   const inputClass =
     "w-full mt-1 px-3 py-2 text-sm bg-ps-surface border border-ps-border-strong rounded-md text-ps-ink placeholder:text-ps-hint focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand";
   return (
-    <div className="fixed inset-0 bg-brand/60 flex items-center justify-center z-50 px-4">
-      <div className="bg-ps-surface border border-ps-border rounded-xl shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-sm font-semibold text-brand">{title}</h2>
-          <button onClick={onCancel} className="text-ps-hint hover:text-ps-body">
-            <X size={16} />
-          </button>
+    // The shared dialog (POST-A-130): named, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it, its ×) and its
+    // Cancel are held while its own request is out.
+    <Modal title={title} maxWidthClass="max-w-lg" onClose={() => { if (!saving) onCancel(); }}
+      footer={<>
+        <button disabled={saving}
+          onClick={onCancel}
+          className="flex-1 text-sm text-ps-label border border-ps-border-strong py-2 rounded-md hover:bg-ps-hover disabled:opacity-50"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={onSave}
+          disabled={saving || !!saveDisabled || !form.full_name.trim()}
+          className="flex-1 text-sm bg-brand text-white py-2 rounded-md hover:bg-brand-dark disabled:opacity-50"
+        >
+          {saving ? savingLabel : saveLabel}
+        </button>
+      </>}>
+    <div className="space-y-3">
+      <div>
+        <label className="text-xs text-ps-label font-medium">Full Name *</label>
+        <input aria-label="Full Name"
+          value={form.full_name}
+          onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
+          className={inputClass}
+          placeholder="Individual or entity name"
+        />
+      </div>
+      <div>
+        <label className="text-xs text-ps-label font-medium">Entity Type</label>
+        <select aria-label="Entity Type"
+          value={form.entity_type}
+          onChange={(e) => setForm((f) => ({ ...f, entity_type: e.target.value as EntityType }))}
+          className={inputClass}
+        >
+          {ENTITY_TYPES.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs text-ps-label font-medium">PAN</label>
+          <input aria-label="PAN"
+            value={form.pan}
+            onChange={(e) => setForm((f) => ({ ...f, pan: e.target.value.toUpperCase() }))}
+            className={`${inputClass} font-mono`}
+            placeholder="AAAAA9999A"
+            maxLength={10}
+          />
         </div>
-        <div className="space-y-3">
-          <div>
-            <label className="text-xs text-ps-label font-medium">Full Name *</label>
-            <input aria-label="Full Name"
-              value={form.full_name}
-              onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
-              className={inputClass}
-              placeholder="Individual or entity name"
-            />
-          </div>
-          <div>
-            <label className="text-xs text-ps-label font-medium">Entity Type</label>
-            <select aria-label="Entity Type"
-              value={form.entity_type}
-              onChange={(e) => setForm((f) => ({ ...f, entity_type: e.target.value as EntityType }))}
-              className={inputClass}
-            >
-              {ENTITY_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-ps-label font-medium">PAN</label>
-              <input aria-label="PAN"
-                value={form.pan}
-                onChange={(e) => setForm((f) => ({ ...f, pan: e.target.value.toUpperCase() }))}
-                className={`${inputClass} font-mono`}
-                placeholder="AAAAA9999A"
-                maxLength={10}
-              />
-            </div>
-            <div>
-              <label className="text-xs text-ps-label font-medium">GSTIN</label>
-              <input aria-label="GSTIN"
-                value={form.gstin}
-                onChange={(e) => setForm((f) => ({ ...f, gstin: e.target.value.toUpperCase() }))}
-                className={`${inputClass} font-mono`}
-                placeholder="22AAAAA0000A1ZC"
-                maxLength={15}
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-ps-label font-medium">Email</label>
-              <input aria-label="Email"
-                type="email"
-                value={form.email}
-                onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-                className={inputClass}
-                placeholder="contact@example.com"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-ps-label font-medium">Phone</label>
-              <input aria-label="Phone"
-                type="tel"
-                value={form.phone}
-                onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-                className={inputClass}
-                placeholder="+91 98765 43210"
-              />
-            </div>
-          </div>
+        <div>
+          <label className="text-xs text-ps-label font-medium">GSTIN</label>
+          <input aria-label="GSTIN"
+            value={form.gstin}
+            onChange={(e) => setForm((f) => ({ ...f, gstin: e.target.value.toUpperCase() }))}
+            className={`${inputClass} font-mono`}
+            placeholder="22AAAAA0000A1ZC"
+            maxLength={15}
+          />
         </div>
-        {saveError && <Callout tone="problem">{saveError}</Callout>}
-        <div className="flex gap-2 mt-5">
-          <button
-            onClick={onCancel}
-            className="flex-1 text-sm text-ps-label border border-ps-border-strong py-2 rounded-md hover:bg-ps-hover"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onSave}
-            disabled={saving || !!saveDisabled || !form.full_name.trim()}
-            className="flex-1 text-sm bg-brand text-white py-2 rounded-md hover:bg-brand-dark disabled:opacity-50"
-          >
-            {saving ? savingLabel : saveLabel}
-          </button>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs text-ps-label font-medium">Email</label>
+          <input aria-label="Email"
+            type="email"
+            value={form.email}
+            onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+            className={inputClass}
+            placeholder="contact@example.com"
+          />
+        </div>
+        <div>
+          <label className="text-xs text-ps-label font-medium">Phone</label>
+          <input aria-label="Phone"
+            type="tel"
+            value={form.phone}
+            onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+            className={inputClass}
+            placeholder="+91 98765 43210"
+          />
         </div>
       </div>
     </div>
+    {saveError && <Callout tone="problem">{saveError}</Callout>}
+    </Modal>
   );
 }
 
@@ -406,6 +405,11 @@ export default function EntityDetailPage() {
 
   async function handleSaveEdit() {
     if (!editForm.full_name.trim()) return;
+    // POST-A-399. A PAN or a GSTIN on file is corrected and never removed by an edit (the register tells one person from another across
+    // clients by it): said here before anything is sent, in the sentence the server refuses the same edit with.
+    const removed = removedIdentifierProblem("PAN", entity?.pan, editForm.pan, ENTITY_IDENTIFIER_WHY)
+      ?? removedIdentifierProblem("GSTIN", entity?.gstin, editForm.gstin, ENTITY_IDENTIFIER_WHY);
+    if (removed) { setEditSaveError(removed); return; }
     setEditSaving(true);
     setEditSaveError(null);
     try {
@@ -414,10 +418,12 @@ export default function EntityDetailPage() {
         body: JSON.stringify({
           full_name: editForm.full_name.trim(),
           entity_type: editForm.entity_type,
-          pan: editForm.pan.trim().toUpperCase() || null,
-          gstin: editForm.gstin.trim().toUpperCase() || null,
-          email: editForm.email.trim() || null,
-          phone: editForm.phone.trim() || null,
+          // An identifier is sent when the box holds one; an empty box over nothing has nothing to say.
+          pan: editForm.pan.trim().toUpperCase() || undefined,
+          gstin: editForm.gstin.trim().toUpperCase() || undefined,
+          // An emptied email or phone that was on file is sent as null, which clears it; an untouched empty one is not sent.
+          email: editedText(editForm.email, entity?.email),
+          phone: editedText(editForm.phone, entity?.phone),
         }),
       });
       if (!json.success) throw new Error(json.error ?? "Failed to update entity");
@@ -463,7 +469,7 @@ export default function EntityDetailPage() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-5">
+      <LoadingRegion label="Loading the entity" className="p-6 space-y-5">
         <Skeleton className="h-3 w-32 bg-gray-700" />
         <div className="space-y-2">
           <Skeleton className="h-5 w-56 bg-gray-700" />
@@ -484,7 +490,7 @@ export default function EntityDetailPage() {
             ))}
           </div>
         </div>
-      </div>
+      </LoadingRegion>
     );
   }
 
@@ -682,9 +688,9 @@ export default function EntityDetailPage() {
               <div className="px-5 py-2.5 border-b border-gray-700 text-xs text-red-400">{matchActionError}</div>
             )}
             {matchesLoading ? (
-              <div className="text-center py-12">
+              <LoadingRegion label="Loading cross-client matches" className="text-center py-12" noticeClassName="justify-center text-center">
                 <p className="text-sm text-slate-500">Loading cross-client matches…</p>
-              </div>
+              </LoadingRegion>
             ) : matchesError ? (
               <div className="text-center py-12 space-y-2">
                 <p className="text-sm text-red-400 font-medium">{matchesError}</p>
@@ -751,22 +757,22 @@ export default function EntityDetailPage() {
                       <td className="px-5 py-3 text-right">
                         {match.status === "pending" && (
                           <div className="flex items-center justify-end gap-2">
-                            <button
+                            <Button variant="plain" size="none" spinner={false}
                               onClick={() => handleMatchAction(match.id, "confirm")}
                               disabled={processingMatchId === match.id}
                               className="flex items-center gap-1 text-xs text-green-400 hover:text-green-300 disabled:opacity-50"
                               title="Confirm"
                             >
                               <CheckCircle size={14} />
-                            </button>
-                            <button
+                            </Button>
+                            <Button variant="plain" size="none" spinner={false}
                               onClick={() => handleMatchAction(match.id, "dismiss")}
                               disabled={processingMatchId === match.id}
                               className="flex items-center gap-1 text-xs text-red-400 hover:text-red-300 disabled:opacity-50"
                               title="Dismiss"
                             >
                               <XCircle size={14} />
-                            </button>
+                            </Button>
                           </div>
                         )}
                       </td>

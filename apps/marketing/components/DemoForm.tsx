@@ -2,7 +2,6 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { Check, ArrowRight, Lock } from "./icons";
-import { CONTACT } from "@/lib/site";
 import {
   SLOW_COPY,
   TIMEOUT_COPY,
@@ -35,6 +34,12 @@ import {
  * `lib/demoRequestWait.ts`, which also records why there is NO automatic retry
  * (this endpoint is not idempotent, so a resend can become a second lead).
  *
+ * THE FORM IS SHOWN ONLY WHEN THERE IS AN ADDRESS TO FALL BACK TO (PRE-A-026).
+ * `contactEmail` is a required string, passed by the Demo page only when
+ * `lib/site.ts` holds a real mailbox, because every failure path below hands
+ * the visitor that address. Until one exists the page shows that bookings are
+ * not open instead of this form.
+ *
  * The honeypot is a real input, positioned off-screen rather than
  * `display:none` — some bots skip hidden inputs and fill everything else.
  * `tabIndex={-1}` and `aria-hidden` keep it away from keyboard and screen
@@ -63,7 +68,7 @@ const field =
   "w-full rounded-lg border border-white/15 bg-white/[0.04] px-3.5 py-3 text-[15px] text-white placeholder:text-white/35 outline-none transition-colors focus:border-brand-light/60 focus:bg-white/[0.07]";
 const label = "block text-[12px] font-semibold uppercase tracking-[0.14em] text-white/50";
 
-export function DemoForm() {
+export function DemoForm({ contactEmail }: { contactEmail: string }) {
   const [sizes, setSizes] = useState<string[]>(FALLBACK_SIZES);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -72,7 +77,7 @@ export function DemoForm() {
   // The email link. It starts as the bare address and becomes the prefilled one
   // — what the visitor typed, in the message — the moment they press the button.
   const [mailto, setMailto] = useState(
-    `mailto:${CONTACT.email}?subject=${encodeURIComponent("Demo request")}`,
+    `mailto:${contactEmail}?subject=${encodeURIComponent("Demo request")}`,
   );
 
   useEffect(() => {
@@ -113,7 +118,7 @@ export function DemoForm() {
     };
     // The email link carries what was just typed, so the fallback is "send
     // this" and not "start again".
-    setMailto(buildDemoMailto(CONTACT.email, payload));
+    setMailto(buildDemoMailto(contactEmail, payload));
 
     // Two clocks on the ONE request below. The first reveals the email link
     // beside it (the request keeps running); the second abandons it. There is
@@ -174,10 +179,10 @@ export function DemoForm() {
           We have your request and someone from the team will be in touch to arrange a
           time. If it is urgent, email{" "}
           <a
-            href={`mailto:${CONTACT.email}`}
+            href={`mailto:${contactEmail}`}
             className="font-semibold text-brand-light underline-offset-4 hover:underline"
           >
-            {CONTACT.email}
+            {contactEmail}
           </a>
           .
         </p>
@@ -296,7 +301,7 @@ export function DemoForm() {
             href={mailto}
             className="font-semibold text-white underline underline-offset-4"
           >
-            {CONTACT.email}
+            {contactEmail}
           </a>
           <span className="mt-1.5 block text-red-200/70">
             What you typed is still here — nothing was lost.
@@ -308,7 +313,7 @@ export function DemoForm() {
       <button
         type="submit"
         disabled={status === "sending"}
-        className="btn-shine mt-7 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#5876c7] px-7 py-[15px] text-[15px] font-semibold text-white transition-colors hover:bg-[#4d68af] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+        className="btn-shine mt-7 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#5272c2] px-7 py-[15px] text-[15px] font-semibold text-white transition-colors hover:bg-[#4d68af] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
       >
         {status === "sending" ? "Sending…" : "Request a demo"}
         {status === "sending" ? null : <ArrowRight size={16} />}
@@ -338,7 +343,7 @@ export function DemoForm() {
                   href={mailto}
                   className="font-semibold text-white underline underline-offset-4"
                 >
-                  {CONTACT.email}
+                  {contactEmail}
                 </a>
               </p>
             ) : null}

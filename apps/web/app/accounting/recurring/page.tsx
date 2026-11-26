@@ -23,13 +23,19 @@ import type { Account, Client } from "@/lib/types";
 import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
 import { Callout } from "@/components/ui/callout";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { formatDate, todayIstISO } from "@/lib/dates/format";
 import { DateInput } from "@/components/ui/date-input";
-import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { useDateProblems, useTakenBackWhenFixed } from "@/lib/dates/useDateProblems";
+import { LoadingRegion, TableSkeleton } from "@/components/ui/skeleton";
+import { journalEntryHref } from "@/lib/accounting/sourceDocument";
+
+/** Said by Save over a window that ends before it starts, and taken back once it does not. */
+const END_BEFORE_START = "End date: it is before the start date.";
 
 // ─── What changed here, and why (ACC-06) ────────────────────────────────────
 //
@@ -102,6 +108,8 @@ const EMPTY_FORM: TemplateForm = {
 export default function RecurringPage() {
   const [templates, setTemplates] = useState<RecurringJournalTemplate[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  // A chart of accounts that could not be read is not a firm with no accounts (POST-A-527): the form says so.
+  const [accountsUnread, setAccountsUnread] = useState(false);
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -110,11 +118,16 @@ export default function RecurringPage() {
   const [editing, setEditing] = useState<RecurringJournalTemplate | null>(null);
   const [form, setForm] = useState<TemplateForm>(EMPTY_FORM);
   const [formError, setFormError] = useState<string | null>(null);
+  useTakenBackWhenFixed(setFormError, END_BEFORE_START, !!form.end_date && form.end_date < form.start_date);
   // The end date is OPTIONAL: text that is not a date reads as blank, and a template meant to stop would run on for ever, posting
   // unattended, with nothing said (frontend_ux-19).
   const dates = useDateProblems();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [historyFor, setHistoryFor] = useState<string | null>(null);
+  // A history that could not be READ is said, not drawn as an empty one (POST-A-515): an empty list reads as "nothing has run".
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  /** The client of the template whose history is open: its generated entries open on that client's journal entry screen. */
+  const historyClientId = templates.find(t => t.id === historyFor)?.client_id ?? "";
   /** The next few dates this template will generate on, from
    *  `GET /{id}/preview`. `domain/recurrence` is the one cadence engine and
    *  its month-end clamp is against the ORIGINAL day, so a 31 January
@@ -136,6 +149,8 @@ export default function RecurringPage() {
       if (!res.success) throw new Error(res.error ?? "Failed to load templates");
       setTemplates(res.data ?? []);
     } catch (e) {
+      // A list that could not be read is not the earlier list: nothing is left to export (POST-A-464).
+      setTemplates([]);
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
       setLoading(false);
@@ -154,11 +169,12 @@ export default function RecurringPage() {
         // read feeds is the account DROPDOWNS — and PostgREST's ~1000-row cap
         // would remove accounts from them with no error and no empty state, so
         // a template simply could not be built against an account past the cap.
-        const { data } = await selectAll(() => sb.from("chart_of_accounts").select("*")
+        const { data, error } = await selectAll(() => sb.from("chart_of_accounts").select("*")
           .eq("firm_id", fid).eq("is_active", true)
           .order("account_name").order("id"));
-        if (!cancelled) setAccounts((data ?? []) as Account[]);
-      } catch { /* the dropdowns degrade; the list above still loads */ }
+        // The pager hands a failure back as `error` and does not throw.
+        if (!cancelled) { setAccountsUnread(!!error); setAccounts(error ? [] : (data ?? []) as Account[]); }
+      } catch { if (!cancelled) setAccountsUnread(true); /* the dropdowns are empty and the form says so; the list above still loads */ }
       try {
         const cs = await getClients();
         if (!cancelled) setClients(cs);
@@ -198,7 +214,7 @@ export default function RecurringPage() {
   }
 
   async function handleSave() {
-    if (dates.first) { setFormError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setFormError); return; }
     if (!form.client_id) { setFormError("Client is required"); return; }
     if (!form.name.trim()) { setFormError("Name is required"); return; }
     if (!form.debit_account_id) { setFormError("Debit account is required"); return; }
@@ -218,7 +234,7 @@ export default function RecurringPage() {
     if (!form.start_date) { setFormError("Start date is required"); return; }
     // The end box only hints at the start (a hint is not a refusal), so an end before the start reached the server and was refused in
     // schema words.
-    if (form.end_date && form.end_date < form.start_date) { setFormError("End date: it is before the start date."); return; }
+    if (form.end_date && form.end_date < form.start_date) { setFormError(END_BEFORE_START); return; }
 
     // The screen writes two lines; the model holds N (migration 377), so a
     // rent journal with its GST needs no schema change when the form grows.
@@ -327,6 +343,7 @@ export default function RecurringPage() {
 
   async function openHistory(t: RecurringJournalTemplate) {
     setHistoryFor(t.id);
+    setHistoryError(null);
     setRuns([]);
     setUpcoming([]);
     // Disabled while in flight like every other server call on this screen.
@@ -341,12 +358,14 @@ export default function RecurringPage() {
         api.recurringJournals.preview(t.id, 6),
       ]);
       if (res.success) setRuns(res.data ?? []);
+      else setHistoryError(res.error ?? "Couldn't read this template's history.");
       // `arrayOrEmpty` rather than a cast: state replaced from a payload, and
       // `useState<string[]>([])` satisfies TypeScript however absent the key
       // is at runtime.
       if (prev.success) setUpcoming(arrayOrEmpty<string>(prev.data?.occurrences));
-    } catch {
-      /* the panel shows nothing rather than breaking the page */
+    } catch (e) {
+      // The panel does not break the page, and it does not pretend nothing has run either.
+      setHistoryError(e instanceof Error ? e.message : "Couldn't read this template's history.");
     } finally {
       setBusyId(null);
     }
@@ -441,7 +460,7 @@ export default function RecurringPage() {
             </thead>
             <tbody className="divide-y divide-ps-border">
               {loading ? (
-                <tr><td colSpan={7} className="px-5 py-8 text-center text-sm text-ps-hint">Loading…</td></tr>
+                <tr><td colSpan={7} className="px-5 py-8 text-center text-sm text-ps-hint"><LoadingRegion label="Loading the recurring templates"><TableSkeleton bare rows={4} cols={4} /></LoadingRegion></td></tr>
               ) : templates.length === 0 ? (
                 <tr><td colSpan={7}>
                   <EmptyState
@@ -566,7 +585,11 @@ export default function RecurringPage() {
                 </div>
               )}
             </div>
-            {runs.length === 0 ? (
+            {historyError ? (
+              <div className="px-5 py-4">
+                <Callout tone="problem" title="This template's history could not be read">{historyError}</Callout>
+              </div>
+            ) : runs.length === 0 ? (
               <p className="px-5 py-6 text-sm text-ps-hint">Nothing generated yet.</p>
             ) : (
               <table className="w-full text-sm">
@@ -590,8 +613,9 @@ export default function RecurringPage() {
                             </span>}
                       </td>
                       <td className="px-5 py-2 text-xs">
-                        {r.journal_entry_id
-                          ? <Link href={`/clients/${templates.find(t => t.id === historyFor)?.client_id ?? ""}/accounting?tab=journal`} className="text-blue-600 hover:underline inline-flex items-center gap-1">
+                        {/* The entry the occurrence generated, on the journal entry's own screen (a draft opens for editing), and not the client's whole journal list (POST-A-395). */}
+                        {r.journal_entry_id && historyClientId
+                          ? <Link href={journalEntryHref(historyClientId, r.journal_entry_id)} className="text-blue-600 hover:underline inline-flex items-center gap-1">
                               Open <ExternalLink size={11} />
                             </Link>
                           : <span className="text-ps-disabled">—</span>}
@@ -606,17 +630,8 @@ export default function RecurringPage() {
       )}
 
       {modalOpen && (
-        <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-ps-ink">
-                {editing ? "Edit" : "New"} recurring journal
-              </h3>
-              <button onClick={() => setModalOpen(false)} className="text-ps-hint hover:text-ps-label" aria-label="Close">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
+        // POST-A-130: the shared dialog (named, Escape, Tab kept inside, focus given back). It stays open while the template is being saved.
+        <Modal title={`${editing ? "Edit" : "New"} recurring journal`} maxWidthClass="max-w-lg" onClose={() => { if (busyId !== "save") setModalOpen(false); }}>
             <div>
               <label className="text-xs font-medium text-ps-body block mb-1">Client</label>
               <ClientLookup
@@ -648,6 +663,11 @@ export default function RecurringPage() {
               />
             </div>
 
+            {accountsUnread && (
+              <p role="alert" className="text-xs text-state-problem">
+                The firm&apos;s accounts could not be read, so none can be chosen below. That is not a firm with no accounts: reload this page to read them.
+              </p>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label htmlFor="rj-dr" className="text-xs font-medium text-ps-body block mb-1">Debit account</label>
@@ -757,7 +777,7 @@ export default function RecurringPage() {
             {formError && <p className="text-2xs text-red-600">{formError}</p>}
 
             <div className="flex gap-2 pt-1">
-              <button onClick={() => setModalOpen(false)} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg">
+              <button onClick={() => setModalOpen(false)} disabled={busyId === "save"} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg disabled:opacity-50">
                 Cancel
               </button>
               <Button variant="plain" size="none"
@@ -768,8 +788,7 @@ export default function RecurringPage() {
                 {busyId === "save" ? "Saving…" : "Save template"}
               </Button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

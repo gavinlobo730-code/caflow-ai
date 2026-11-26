@@ -33,7 +33,7 @@ SECTIONS = [
 NEW_FINDINGS = ("new-findings.md", "everything found from 6 November 2026 on, kept apart from the backlog above; worked after the backlog's Claude-alone items (the rule is at its head); NOT counted in the backlog's total")
 PARKED = ("post-demo-parked.md", "after the demo: parked until someone asks or the work is sized down; NOT counted as open")
 OTHERS = [
-    ("decisions-and-strategy.md", "the 15 owner decisions with the items each gates, what is parked until after the demo, the 30 Sep strategy and staged roadmap"),
+    ("decisions-and-strategy.md", "the 15 owner decisions with the items each gates, what was parked until after the demo (now ordinary items), the 30 Sep strategy and staged roadmap"),
     ("checked-closed.md", "what the sweep tested and found already done, answered or moot, with evidence, so nobody reopens it"),
     ("deletion-plan.md", "which audit and plan documents can be deleted, which must stay and why, and what must be done first"),
     ("progress.md", "the day by day numbers: the backlog open and closed, the new findings found and fixed (IST days)"),
@@ -53,12 +53,41 @@ def read_items(path: Path):
 #: (a statutory reading, a document). It is the header token `UNSURE` and `live session` are: the question is written in
 #: owner-list.md and the line stays lettered A, because ids are never renumbered.
 WAITS_ON_OWNER = " · waits on owner"
+#: A line lettered A that Claude cannot finish alone because it needs the owner's hands: a real Firefox, Safari or phone, a step on
+#: the live database, a program this container is refused, a working session with the owner, or rehearsals only the owner can hold. It is the existing `live session`
+#: token; the line stays lettered A because ids are never renumbered.
+NEEDS_HANDS = " · live session"
+#: A line lettered A that the owner has told Claude to leave until later (until the demo is final, or until a firm asks).
+HELD = " · held"
+
+
+#: An item that carries a POST- or new-finding id but is before the demo. Ids are never renumbered, so the 15 items triaged on
+#: 2 October 2026 are the PRE- ids and every item moved before the demo since carries this header token instead.
+BEFORE_DEMO = " · before demo"
+
+
+def is_before_demo(name: str, head: str) -> bool:
+    return name.startswith("pre-") or head.startswith("- **PRE-") or BEFORE_DEMO in head
+
+
+def kind_of_a_line(head: str) -> str:
+    """The one reason a line lettered A is not buildable by Claude alone right now, or "alone". The kinds are disjoint and a
+    document wins over hands, hands over held, so the four counts always add up to the lines lettered A."""
+    if WAITS_ON_OWNER in head:
+        return "documents"
+    if NEEDS_HANDS in head:
+        return "hands"
+    if HELD in head:
+        return "held"
+    return "alone"
 
 
 def render_block(ledger: Path = LEDGER) -> str:
     rows, total, pre, high, unsure = [], 0, 0, 0, 0
+    before_kinds = {"alone": 0, "documents": 0, "hands": 0, "held": 0, "B": 0, "C": 0}
+    before_new = 0
     by_letter = {"A": 0, "B": 0, "C": 0}
-    waiting_a = 0
+    a_kinds = {"alone": 0, "documents": 0, "hands": 0, "held": 0}
     for name, desc in SECTIONS:
         n = 0
         letter = re.search(r"-([ABC])-", name)[1]
@@ -69,44 +98,60 @@ def render_block(ledger: Path = LEDGER) -> str:
             head = line.split(" — **", 1)[0]
             if " · UNSURE" in head:
                 unsure += 1
-            if letter == "A" and WAITS_ON_OWNER in head:
-                waiting_a += 1
+            if letter == "A":
+                a_kinds[kind_of_a_line(head)] += 1
+            if is_before_demo(name, head):
+                pre += 1
+                before_kinds[kind_of_a_line(head) if letter == "A" else letter] += 1
         total += n
         by_letter[letter] += n
-        pre += n if name.startswith("pre-") else 0
         rows.append(f"| [{name}]({name}) | {n} | {desc} |")
-    new_total, new_pre, new_high, new_unsure, new_waiting_a = 0, 0, 0, 0, 0
+    new_total, new_pre, new_high, new_unsure = 0, 0, 0, 0
+    new_a_kinds = {"alone": 0, "documents": 0, "hands": 0, "held": 0}
     new_by_letter = {"A": 0, "B": 0, "C": 0}
     for line, m in read_items(ledger / NEW_FINDINGS[0]):
         new_total += 1
         head = line.split(" — **", 1)[0]
         letter = re.search(r"-([ABC])-", head)[1]
         new_by_letter[letter] += 1
-        new_pre += 1 if head.startswith("- **PRE-") else 0
+        if is_before_demo(NEW_FINDINGS[0], head):
+            new_pre += 1
+            before_new += 1
+            before_kinds[kind_of_a_line(head) if letter == "A" else letter] += 1
         if m and m["prio"] == "high":
             new_high += 1
         if " · UNSURE" in head:
             new_unsure += 1
-        if letter == "A" and WAITS_ON_OWNER in head:
-            new_waiting_a += 1
+        if letter == "A":
+            new_a_kinds[kind_of_a_line(head)] += 1
     rows.append(f"| [{NEW_FINDINGS[0]}]({NEW_FINDINGS[0]}) | {new_total} | {NEW_FINDINGS[1]} |")
     parked = sum(1 for _ in read_items(ledger / PARKED[0]))
-    rows.append(f"| [{PARKED[0]}]({PARKED[0]}) | {parked} | {PARKED[1]} |")
+    parked_text = PARKED[1] if parked else "retired on 18 November 2026: every item that was parked is now an ordinary item in its own letter file"
+    rows.append(f"| [{PARKED[0]}]({PARKED[0]}) | {parked} | {parked_text} |")
     for name, desc in OTHERS:
         rows.append(f"| [{name}]({name}) | — | {desc} |")
     lines = [START, "", "| file | items | what it holds |", "|---|---|---|", *rows, "",
              f"**THE BACKLOG: {total} open items** ({pre} before the demo, {total - pre} after); {high} after-demo items are `high` priority; {unsure} are UNSURE. "
-             f"A further **{parked} items are parked** (not counted above).",
+             + (f"A further **{parked} items are parked** (not counted above)." if parked else "Nothing is parked."),
              "",
-             f"**Who must act (backlog).** {by_letter['A']} items are Claude's alone to build, but {waiting_a} of them are marked `waits on owner` "
-             f"(a statutory reading or a document only the owner can supply, written in [owner-list.md](owner-list.md)), so "
-             f"{by_letter['A'] - waiting_a} can be built now. {by_letter['B']} need the owner to decide first and {by_letter['C']} only the owner "
-             f"or someone outside this container can do. In all **{by_letter['B'] + by_letter['C'] + waiting_a} of the {total} wait on the owner.**",
+             f"**Who must act (backlog).** {by_letter['A']} items are Claude's by their letter. Of those, **{a_kinds['alone']} need no help and can be built now**; "
+             f"{a_kinds['documents']} wait on the owner for a document, a statutory reading or a decision of theirs (written in [owner-list.md](owner-list.md)), "
+             f"{a_kinds['hands']} need the owner's hands (a real browser or phone, a step on the live database, a working session with the owner, or something this container is refused) "
+             f"and {a_kinds['held']} are held by the owner's own rule. "
+             f"{by_letter['B']} need the owner to decide first and {by_letter['C']} only the owner "
+             f"or someone outside this container can do. In all **{by_letter['B'] + by_letter['C'] + a_kinds['documents'] + a_kinds['hands'] + a_kinds['held']} of the {total} need the owner.**",
              "",
              f"**NEW FINDINGS: {new_total} open** ({new_pre} before the demo, {new_total - new_pre} after; {new_high} `high` priority; {new_unsure} UNSURE), counted apart from the backlog. "
-             f"{new_by_letter['A']} are Claude's alone to build ({new_waiting_a} of them `waits on owner`, so {new_by_letter['A'] - new_waiting_a} can be built now), "
+             f"{new_by_letter['A']} are Claude's by their letter (**{new_a_kinds['alone']} need no help and can be built now**, {new_a_kinds['documents']} wait on a document or reading, "
+             f"{new_a_kinds['hands']} need the owner's hands, {new_a_kinds['held']} are held), "
              f"{new_by_letter['B']} need the owner to decide first and {new_by_letter['C']} only the owner or someone outside this container can do. "
              f"The day by day numbers are in [progress.md](progress.md).",
+             "",
+             f"**BEFORE THE DEMO (the list to start from).** {pre + new_pre} open items are before the demo ({pre} of the backlog, {new_pre} of the new findings; "
+             f"the 15 triaged on 2 October 2026 carry a `PRE-` id and every item moved before the demo since carries the header token `before demo`, because ids are never renumbered). "
+             f"Of these, **{before_kinds['alone']} Claude can do alone**, {before_kinds['documents']} are Claude's but wait on the owner for a document or reading, "
+             f"{before_kinds['hands']} need the owner's hands, {before_kinds['held']} are held, {before_kinds['B']} need the owner to decide first and {before_kinds['C']} only the owner or someone outside this container can do. "
+             f"To list them: every line of the three `pre-demo-` files, and `grep -n \"· before demo\" docs/open-items/post-demo-*.md docs/open-items/new-findings.md`.",
              "", END]
     return "\n".join(lines)
 

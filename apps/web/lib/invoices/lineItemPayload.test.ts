@@ -3,7 +3,8 @@
 //   node --experimental-strip-types --test lib/invoices/lineItemPayload.test.ts
 import test from "node:test";
 import assert from "node:assert/strict";
-import { toInvoiceLinePayload } from "./lineItemPayload.ts";
+import { cessPayload, toInvoiceLinePayload } from "./lineItemPayload.ts";
+import { cessInputsFromStored, linesCarryCess } from "./gst.ts";
 
 test("sends gst_rate_percent (the field InvoiceLineIn actually declares), never gst_rate_bps", () => {
   const payload = toInvoiceLinePayload({ description: "Consulting", hsn_sac: "9983", qty: "2", rate: "500", gst_rate: 5 });
@@ -43,4 +44,17 @@ test("serviceCatalogueId round-trips as service_catalogue_id; omitted becomes un
   assert.equal(picked.service_catalogue_id, "svc-1");
   const notPicked = toInvoiceLinePayload({ description: "Item", hsn_sac: "", qty: "1", rate: "10", gst_rate: 18 });
   assert.equal(notPicked.service_catalogue_id, undefined);
+});
+
+test("a stored note line's cess limbs reopen as the two boxes and go back out as they came in (migration 615)", () => {
+  // A draft's save re-sends every line and the server derives the cess from what is sent, so a limb the editor did not rehydrate is a
+  // cess silently taken off the note. PostgREST sends a bigint as a string.
+  const boxes = cessInputsFromStored({ cess_rate_bps: "1250", cess_specific_paise_per_unit: 40 });
+  assert.deepEqual(boxes, { cessPercent: "12.5", cessPerUnit: "0.4" });
+  assert.deepEqual(cessPayload(boxes), { cess_rate_bps: 1250, cess_specific_paise_per_unit: 40 });
+  assert.deepEqual(cessInputsFromStored({ cess_rate_bps: 0, cess_specific_paise_per_unit: null }), { cessPercent: undefined, cessPerUnit: undefined });
+  assert.deepEqual(cessInputsFromStored({}), { cessPercent: undefined, cessPerUnit: undefined }, "a line saved before 615 carries no key");
+  assert.deepEqual(cessPayload({}), {}, "nothing typed is nothing sent");
+  assert.equal(linesCarryCess([{}, boxes]), true);
+  assert.equal(linesCarryCess([{}, { cessPercent: "  " }]), false);
 });

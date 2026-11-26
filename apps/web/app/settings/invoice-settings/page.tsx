@@ -1,12 +1,14 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { useState, useEffect, useCallback } from "react";
 import { Hash, CreditCard, Save } from "lucide-react";
 import { useAuth } from "@/lib/auth/AuthContext";
-import { RoleGuard } from "@/components/RoleGuard";
+import { ChangePart, ReadOnlyNotice } from "@/components/settings/ChangePart";
 import { api, type ApiResp } from "@/lib/api/index";
 import { PageHeader } from "@/components/ui/page-header";
 import { istToday } from "@/lib/dateMath";
+import { SectionPlaceholder } from "@/components/ui/page-frame";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface InvoiceSettings {
@@ -176,7 +178,7 @@ export default function InvoiceSettingsPage() {
   }
 
   return (
-    <RoleGuard allowed={["Partner"]}>
+    <>
       <div className="p-6 max-w-3xl mx-auto space-y-5">
         {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
@@ -185,6 +187,8 @@ export default function InvoiceSettingsPage() {
           title="Invoice Settings"
           subtitle="Configure invoice numbering, payment details, and footer text."
         />
+
+        <ReadOnlyNotice resource="branding" action="write" page="Invoice Settings" />
 
         {loadError && !loading && (
           <div className="flex items-center justify-between gap-3 bg-state-problem-surface border border-red-100 rounded-xl px-4 py-3">
@@ -197,6 +201,7 @@ export default function InvoiceSettingsPage() {
           </div>
         )}
 
+        <ChangePart resource="branding" action="write" className="space-y-5">
         {/* ── Invoice Numbering ────────────────────────────────────────── */}
         <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
           <div className="flex items-center gap-2.5 px-5 py-4 border-b border-ps-border">
@@ -205,7 +210,7 @@ export default function InvoiceSettingsPage() {
           </div>
           <div className="px-5 py-4 space-y-4">
             {loading ? (
-              <div className="py-6 text-center text-sm text-ps-hint">Loading…</div>
+              <SectionPlaceholder label="Loading the invoice settings" shape="table" rows={4} />
             ) : (
               <>
                 <InvoiceNumberPreview settings={form} seq={form.starting_number} />
@@ -264,7 +269,7 @@ export default function InvoiceSettingsPage() {
                     }`}
                   >
                     <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
-                      form.include_financial_year ? "translate-x-4.5" : "translate-x-0.5"
+                      form.include_financial_year ? "translate-x-5" : "translate-x-0.5"
                     }`} />
                   </button>
                 </div>
@@ -284,7 +289,7 @@ export default function InvoiceSettingsPage() {
                     }`}
                   >
                     <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
-                      form.manual_override_allowed ? "translate-x-4.5" : "translate-x-0.5"
+                      form.manual_override_allowed ? "translate-x-5" : "translate-x-0.5"
                     }`} />
                   </button>
                 </div>
@@ -315,7 +320,7 @@ export default function InvoiceSettingsPage() {
                     }`}
                   >
                     <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
-                      form.credit_limit_blocks ? "translate-x-4.5" : "translate-x-0.5"
+                      form.credit_limit_blocks ? "translate-x-5" : "translate-x-0.5"
                     }`} />
                   </button>
                 </div>
@@ -411,16 +416,17 @@ export default function InvoiceSettingsPage() {
         </div>
 
         <div className="flex justify-end">
-          <button
+          <Button variant="plain" size="none" spinner={false}
             onClick={handleSave}
             disabled={saving || loading}
             className="flex items-center gap-2 px-5 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors disabled:opacity-50"
           >
             <Save size={14} />
             {saving ? "Saving…" : "Save Settings"}
-          </button>
+          </Button>
         </div>
+        </ChangePart>
       </div>
-    </RoleGuard>
+    </>
   );
 }

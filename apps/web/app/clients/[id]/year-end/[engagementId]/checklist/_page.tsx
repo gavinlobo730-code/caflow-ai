@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { CheckCircle2, Circle, Clock, Ban, Loader2, ChevronRight } from "lucide-react";
 import { yearEndApi, type ChecklistItem, type ChecklistItemStatus } from "@/lib/api/yearEnd";
 import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
-import { Skeleton, TimelineSkeleton } from "@/components/ui/skeleton";
+import { Skeleton, TimelineSkeleton, LoadingRegion } from "@/components/ui/skeleton";
 import { useEngagementId } from "../_engagementId";
 import { useRefreshEngagement } from "../_engagementRefresh";
 import { formatDate } from "@/lib/dates/format";
@@ -169,7 +169,7 @@ export default function ChecklistPage() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-4 max-w-3xl mx-auto">
+      <LoadingRegion label="Loading the year-end checklist" className="p-6 space-y-4 max-w-3xl mx-auto">
         <div className="bg-white rounded-xl border border-ps-border p-4">
           <div className="flex items-center justify-between mb-2">
             <Skeleton className="h-2.5 w-32" />
@@ -180,7 +180,7 @@ export default function ChecklistPage() {
         <div className="bg-white rounded-xl border border-ps-border p-4">
           <TimelineSkeleton rows={4} />
         </div>
-      </div>
+      </LoadingRegion>
     );
   }
 

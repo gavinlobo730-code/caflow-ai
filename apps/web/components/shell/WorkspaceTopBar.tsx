@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { ChevronDown, LayoutGrid } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useMenuDismiss } from "@/lib/ui/useMenuDismiss";
+import { MenuScrim } from "@/components/ui/menu-scrim";
 import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 import { WORKSPACE_CONFIGS } from "@/lib/workspace/workspaceConfig";
 import { UtilityCluster } from "@/components/shell/UtilityCluster";
@@ -32,20 +34,18 @@ import { WorkspaceMegaMenu } from "@/components/shell/WorkspaceMegaMenu";
  */
 const WORKSPACE_MENU_ID = "workspace-menu";
 
-export function WorkspaceTopBar({ onOpenSearch }: { onOpenSearch: () => void }) {
+export function WorkspaceTopBar({ onOpenSearch, onOpenGuide }: { onOpenSearch: () => void; onOpenGuide: () => void }) {
   const { activeWorkspace } = useWorkspace();
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => { setMenuOpen(false); }, [pathname]);
 
-  useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") setMenuOpen(false);
-    }
-    if (menuOpen) window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [menuOpen]);
+  // Escape closes the menu and gives focus back to its button (it used to leave focus on nothing: the link that held it went with the menu).
+  // Opening it moves focus to its first link, so it is the next thing the keyboard reaches and not the rest of the bar.
+  const menuButtonRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  useMenuDismiss(menuOpen, () => setMenuOpen(false), { opener: menuButtonRef, menu: menuRef }, { focusMenu: true });
 
   const activeConfig = WORKSPACE_CONFIGS.find((ws) => ws.id === activeWorkspace) ?? null;
   const ActiveIcon = activeConfig?.icon ?? LayoutGrid;
@@ -66,6 +66,7 @@ export function WorkspaceTopBar({ onOpenSearch }: { onOpenSearch: () => void }) 
         </div>
 
         <button
+          ref={menuButtonRef}
           onClick={() => setMenuOpen((v) => !v)}
           aria-expanded={menuOpen}
           aria-controls={WORKSPACE_MENU_ID}
@@ -81,22 +82,20 @@ export function WorkspaceTopBar({ onOpenSearch }: { onOpenSearch: () => void }) 
 
         <div className="min-w-0 flex-1" />
 
-        <UtilityCluster orientation="bar-dark" onOpenSearch={onOpenSearch} />
+        <UtilityCluster orientation="bar-dark" onOpenSearch={onOpenSearch} onOpenGuide={onOpenGuide} />
       </header>
 
       {menuOpen && (
         <>
+          <MenuScrim onClose={() => setMenuOpen(false)} />
           <div
-            className="fixed inset-0 top-12 z-30 bg-brand/20 backdrop-blur-[2px]"
-            onClick={() => setMenuOpen(false)}
-          />
-          <div
+            ref={menuRef}
             id={WORKSPACE_MENU_ID}
             role="region"
             aria-label="Workspace menu"
             className="absolute inset-x-0 top-full z-40 max-h-[calc(100vh-3rem)] overflow-hidden border-b border-ps-border bg-white shadow-xl"
           >
-            <WorkspaceMegaMenu onOpenSearch={() => { setMenuOpen(false); onOpenSearch(); }} />
+            <WorkspaceMegaMenu onOpenSearch={() => { setMenuOpen(false); onOpenSearch(); }} onNavigate={() => setMenuOpen(false)} />
           </div>
         </>
       )}

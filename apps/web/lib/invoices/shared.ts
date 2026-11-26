@@ -9,7 +9,7 @@
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { formatPaise } from "@/lib/services/formatting";
 import { errorMessage } from "@/lib/api";
-import { doingOf, fetchPlain, jsonPlain } from "@/lib/api/failureSentence";
+import { doingOf, fetchBounded, fetchPlain, jsonPlain, REQUEST_BOUND_MS } from "@/lib/api/failureSentence";
 
 export * from "./gst";
 
@@ -32,16 +32,23 @@ async function refreshedAuthToken(): Promise<string | null> {
   return data.session?.access_token ?? null;
 }
 
+/** The bound for a write a dialog holds Close and Cancel over: `lib/api`'s 45 seconds (POST-A-395). A held dialog is safe only over a request that
+ *  ends, so its write passes `{ timeoutMs: HELD_DIALOG_MS }`; an answer that does not come in time throws the "it is not known whether it went through"
+ *  sentence, like a dropped connection. There is NO default bound: a bulk import may take longer, and that is each caller's decision. */
+export const HELD_DIALOG_MS = REQUEST_BOUND_MS;
+
 // ── REST client (Supabase-authed calls to the FastAPI backend) ───────────────
 export async function apiCall(
   endpoint: string,
   method: "POST" | "PUT" | "PATCH" | "DELETE",
   body?: unknown,
-  token?: string
+  token?: string,
+  options: { timeoutMs?: number } = {},
 ): Promise<{ success: boolean; data: unknown; error: string | null }> {
   // A connection that drops, or a gateway's page that arrives with a 200, throws the product's sentence (what the request was decides it: POST-A-410, POST-A-406).
   const doing = doingOf(method);
   const doFetch = (t?: string) => fetchPlain(`${API}${endpoint}`, {
+    ...(options.timeoutMs ? { signal: AbortSignal.timeout(options.timeoutMs) } : {}),
     method,
     headers: {
       "Content-Type": "application/json",
@@ -98,7 +105,8 @@ export async function apiGet(
   endpoint: string,
   token?: string
 ): Promise<{ success: boolean; data: unknown; error: string | null }> {
-  const doFetch = (t?: string) => fetchPlain(`${API}${endpoint}`, {
+  // A read: bounded at lib/api's 45 seconds, as every `request()` read is (POST-A-470).
+  const doFetch = (t?: string) => fetchBounded(`${API}${endpoint}`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",

@@ -213,5 +213,5 @@ def test_a_failed_read_is_not_a_decision(db, monkeypatch):
 
 def test_mock_mode_is_not_gated():
     """No database means no settings and no decision to read. The guard is a
-    no-op there, the same way assert_not_internal_for_payroll's lookup is."""
+    no-op there, the same way assert_practice_payroll_is_the_partners's lookup is."""
     payroll_mod.assert_payroll_enabled(None, FIRM, "CLI")

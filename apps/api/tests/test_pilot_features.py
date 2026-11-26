@@ -108,15 +108,6 @@ class TestNotificationsRepo:
         assert result["success"] is True
         assert "marked_read" in result["data"]
 
-    def test_notification_stats_structure(self):
-        from routers.notifications import notification_stats
-        result = notification_stats(current_user=USER_A)
-        assert result["success"] is True
-        stats = result["data"]
-        assert "total" in stats
-        assert "unread" in stats
-        assert "by_type" in stats
-
     def test_create_notification_via_repo(self):
         from repositories.notifications_repository import notifications_repo
         before = len(notifications_repo.find_all())
@@ -170,20 +161,6 @@ class TestAutomationRepo:
         # Restore
         toggle(rule_id=rule_id, enabled=original, current_user=USER_A)
 
-    def test_executions_returns_list(self):
-        from routers.automation import executions
-        result = executions(current_user=USER_A)
-        assert result["success"] is True
-        assert isinstance(result["data"], list)
-
-    def test_automation_stats_structure(self):
-        from routers.automation import stats
-        result = stats(current_user=USER_A)
-        assert result["success"] is True
-        s = result["data"]
-        assert "rules_active" in s
-        assert "executions_today" in s
-
     def test_manual_trigger(self):
         from routers.automation import manual_trigger, TriggerBody
         body = TriggerBody(trigger_type="risk_detected", trigger_data={"severity": "critical", "client_id": "c-001"})
@@ -211,36 +188,28 @@ class TestAutomationRepo:
 # ─── 4. Risk Engine ──────────────────────────────────────────────────────────
 
 class TestRiskEngine:
-    def test_list_risks_returns_list(self):
-        from routers.risks import list_risks
-        result = list_risks(current_user=USER_A)
-        assert result["success"] is True
-        assert isinstance(result["data"], list)
+    # The five routes over the risks recorded against documents were RETIRED on 22-11-2026 (POST-A-548): no screen called
+    # them and nothing records such a risk. What is tried here is what is left of the engine and still has a reader: the
+    # list (the insight feed reads it) and the counts (the copilot's firm context reads them).
+    def test_the_list_is_a_list_and_a_severity_narrows_it(self):
+        from domain.risk_engine import get_all_risks
+        risks = get_all_risks(firm_id=FIRM_A)
+        assert isinstance(risks, list)
+        critical = get_all_risks(firm_id=FIRM_A, severity="critical")
+        assert all(r["severity"] == "critical" for r in critical)
 
-    def test_risk_stats_structure(self):
-        from routers.risks import risk_stats
-        result = risk_stats(current_user=USER_A)
-        assert result["success"] is True
-        stats = result["data"]
+    def test_the_counts_have_their_keys(self):
+        from domain.risk_engine import get_risk_dashboard_stats
+        stats = get_risk_dashboard_stats(firm_id=FIRM_A)
         for key in ("critical", "high", "medium", "low", "total_open"):
             assert key in stats
 
-    def test_firm_score_returns_int(self):
-        from routers.risks import firm_score
-        result = firm_score(current_user=USER_A)
-        assert result["success"] is True
-        score = result["data"]["score"]
-        assert isinstance(score, int)
-        assert 0 <= score <= 100
-
-    def test_client_risks_structure(self):
-        from routers.risks import client_risks
-        result = client_risks(client_id="c-001", current_user=USER_A)
-        assert result["success"] is True
-        summary = result["data"]
-        assert "risk_score" in summary
-        assert "risks_by_severity" in summary
-        assert "top_risks" in summary
+    def test_the_retired_routes_are_gone_and_the_register_is_not(self):
+        import routers.risks as risks
+        paths = sorted((sorted(r.methods)[0], r.path) for r in risks.router.routes)
+        assert paths == [("GET", "/api/risks/register")], paths
+        for gone in ("list_risks", "risk_stats", "firm_score", "client_risks", "update_risk_status"):
+            assert not hasattr(risks, gone), gone
 
     def test_compliance_risks_derived_from_overdue_compliance_records(self):
         """R3.13d: derived from compliance_records (System A) — compliance_tasks
@@ -255,27 +224,6 @@ class TestRiskEngine:
         })
         derived = _derive_compliance_risks(firm_id=None, client_id=record["client_id"])
         assert any(r["source"] == "compliance" for r in derived)
-
-    def test_risk_severity_filter(self):
-        from routers.risks import list_risks
-        result = list_risks(severity="critical", current_user=USER_A)
-        assert result["success"] is True
-        risks = result["data"]
-        assert all(r["severity"] == "critical" for r in risks)
-
-    def test_list_risks_passes_firm_id(self):
-        from routers.risks import list_risks
-        mock_fn = MagicMock(return_value=[])
-        with patch("routers.risks.get_all_risks", mock_fn):
-            list_risks(current_user=USER_A)
-        assert mock_fn.call_args[1].get("firm_id") == FIRM_A
-
-    def test_firm_score_passes_firm_id(self):
-        from routers.risks import firm_score
-        mock_fn = MagicMock(return_value=50)
-        with patch("routers.risks.compute_firm_risk_score", mock_fn):
-            firm_score(current_user=USER_A)
-        assert mock_fn.call_args[1].get("firm_id") == FIRM_A
 
 
 # ─── 5. AI Insights ──────────────────────────────────────────────────────────
@@ -382,13 +330,6 @@ class TestTenantIsolationPilotFeatures:
             list_rules(current_user=USER_A)
         mock_repo.get_rules.assert_called_once_with(firm_id=FIRM_A)
 
-    def test_risk_firm_id_passed(self):
-        from routers.risks import list_risks
-        mock_fn = MagicMock(return_value=[])
-        with patch("routers.risks.get_all_risks", mock_fn):
-            list_risks(current_user=USER_A)
-        assert mock_fn.call_args[1].get("firm_id") == FIRM_A
-
     def test_ai_insights_firm_id_passed(self):
         from routers.ai_insights import list_insights
         mock_fn = MagicMock(return_value=[])
@@ -403,4 +344,5 @@ class TestTenantIsolationPilotFeatures:
         with patch("routers.notifications.notifications_repo", mock_repo):
             result = unread_count(current_user=USER_A)
         assert result["data"]["unread"] == 3
-        mock_repo.count_unread.assert_called_once_with(firm_id=FIRM_A, user_id=None)
+        # client_ids is the reader's reach (POST-A-451); None in mock mode, where every client is in reach.
+        mock_repo.count_unread.assert_called_once_with(firm_id=FIRM_A, user_id=None, client_ids=None)

@@ -7,6 +7,7 @@ import { api, type ApiResp } from "@/lib/api";
 import { formatPaise } from "@/lib/services/formatting";
 import { PartnerGuard } from "@/components/practice/PartnerGuard";
 import { PageHeader } from "@/components/ui/page-header";
+import { PagePlaceholder, pageFrameClass } from "@/components/ui/page-frame";
 
 interface DashboardData {
   total_receivable_paise: number; overdue_paise: number; overdue_count: number;
@@ -31,8 +32,8 @@ function Revenue() {
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  if (loading) return <div className="p-8 text-sm text-gray-500">Loading revenue…</div>;
-  if (error) return <div className="p-8 text-sm text-red-600">{error}</div>;
+  if (loading) return <PagePlaceholder label="Loading revenue" shape="dashboard" action={false} />;
+  if (error) return <div role="alert" className={pageFrameClass("data", "text-sm text-state-problem")}>{error}</div>;
 
   const cards = [
     { label: "Total Receivable", value: formatPaise(dash?.total_receivable_paise ?? 0) },
@@ -48,7 +49,7 @@ function Revenue() {
   ];
 
   return (
-    <div className="p-6 max-w-4xl">
+    <div className={pageFrameClass("data")}>
       <PageHeader
         icon={<IndianRupee size={18} className="text-brand" />}
         title="Revenue Dashboard"

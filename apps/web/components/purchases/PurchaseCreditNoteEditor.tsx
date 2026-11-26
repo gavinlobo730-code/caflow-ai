@@ -13,7 +13,9 @@
  * deliberately no Cancel/reversal path, same as Debit Notes.
  */
 import { parseLineAmounts } from "@/lib/money/lineInput";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
+import { recentFirst, useRecentPartyIds } from "@/lib/lookups/recentParties";
+import { api } from "@/lib/api";
 import { Trash2, Plus, Loader2, AlertCircle, Upload } from "lucide-react";
 import { InvoiceWorkspaceLayout } from "@/components/invoices/InvoiceWorkspaceLayout";
 import { VendorLookup, type VendorLike } from "@/components/lookups/VendorLookup";
@@ -24,9 +26,14 @@ import type { ServiceCatalogueItem } from "@/lib/catalogue/service";
 import { UQC_CODES } from "@/lib/constants/uqc";
 import { hasChanges, useUnsavedChanges } from "@/lib/invoices/dirtyState";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
-import { apiCall, getAuthToken, fmt, gstRateOptions, gstRateToPercent } from "@/lib/invoices/shared";
-import { editedText } from "@/lib/forms/editedValue";
-import { failureSentence, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { apiCall, getAuthToken, cessInputsFromStored, fmt, gstRateOptions, gstRateToPercent, linesCarryCess } from "@/lib/invoices/shared";
+import { cessPayload } from "@/lib/invoices/lineItemPayload";
+import { blockedCreditFromStored, blockedCreditPayload } from "@/lib/purchases/noteBlockedCredit";
+import { NoteLineBlockedCredit } from "@/components/purchases/NoteLineBlockedCredit";
+import { editedChoice, editedText } from "@/lib/forms/editedValue";
+import { failureSentence, jsonPlain, type UntypedJson, LONG_REQUEST_BOUND_MS } from "@/lib/api/failureSentence";
+import { fetchUpload, type UploadProgress as BytesSent } from "@/lib/api/uploadWithProgress";
+import { UploadProgress } from "@/components/ui/upload-progress";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { todayIstISO } from "@/lib/dates/format";
@@ -81,7 +88,13 @@ export interface PurchaseCreditNoteLineDetail {
   unit?: string | null;
   rate_paise: number;
   gst_rate_bps: number;
+  /** Compensation cess limbs (migration 615). A bigint may arrive as a string. */
+  cess_rate_bps?: number | string | null;
+  cess_specific_paise_per_unit?: number | string | null;
   service_catalogue_id?: string | null;
+  /** CGST Act s.17(5) mark (migration 685): false = the line's credit is blocked, with its clause. Absent = eligible. */
+  itc_eligible?: boolean | null;
+  blocked_credit_reason?: string | null;
 }
 
 export interface PurchaseCreditNoteDetail {
@@ -100,6 +113,7 @@ export interface PurchaseCreditNoteDetail {
   cgst_paise?: number;
   sgst_paise?: number;
   igst_paise?: number;
+  cess_paise?: number;
   total_gst_paise?: number;
   total_paise?: number;
   applied_paise?: number;
@@ -115,6 +129,11 @@ function detailLinesToEditorLines(lines: PurchaseCreditNoteDetail["lines"]): Edi
     qty: String(l.quantity ?? 1),
     rate: String((l.rate_paise ?? 0) / 100),
     gst_rate: gstRateToPercent(l.gst_rate_bps),
+    // Compensation cess (migration 615), rehydrated because a draft's save re-sends every line and the server derives the cess
+    // from what is sent: a limb the editor did not carry would be a cess silently taken off a note nobody meant to change.
+    ...cessInputsFromStored(l),
+    // The s.17(5) mark (POST-A-459), rehydrated for the same reason: a draft's save re-sends every line.
+    ...blockedCreditFromStored(l),
     unit: l.unit ?? "NOS",
     service_catalogue_id: l.service_catalogue_id ?? "",
     _k: i,
@@ -137,9 +156,12 @@ export function PurchaseCreditNoteEditor({
 }) {
   const today = todayISO();
   const isEdit = !!existing;
+  // The suppliers this client billed against most recently go to the top of the picker (POST-A-155); nothing is pre-selected.
+  const recentVendorIds = useRecentPartyIds(api.vendors.recent, clientId, !isEdit);
+  const recentVendors = useMemo(() => recentFirst(recentVendorIds, vendors), [recentVendorIds, vendors]);
   const initialLines: EditorLine[] =
-    existing && existing.lines.length > 0 ? detailLinesToEditorLines(existing.lines)
-    : duplicateSeed && duplicateSeed.lines.length > 0 ? detailLinesToEditorLines(duplicateSeed.lines)
+    existing && (existing.lines ?? []).length > 0 ? detailLinesToEditorLines(existing.lines)
+    : duplicateSeed && (duplicateSeed.lines ?? []).length > 0 ? detailLinesToEditorLines(duplicateSeed.lines)
     : [{ ...EMPTY_LINE, _k: 0 }];
 
   const [vendorId, setVendorId] = useState(existing?.vendor_id ?? duplicateSeed?.vendor_id ?? "");
@@ -148,10 +170,15 @@ export function PurchaseCreditNoteEditor({
   const [notes, setNotes] = useState(existing?.notes ?? duplicateSeed?.notes ?? "");
   const [billId, setBillId] = useState(existing?.purchase_bill_id ?? "");
   const [openBills, setOpenBills] = useState<OpenBillOption[]>([]);
+  // A read of the vendor's bills that did not come is not a vendor with none (POST-A-527): the picker says so.
+  const [openBillsUnread, setOpenBillsUnread] = useState(false);
   const [isInterstate, setIsInterstate] = useState(existing?.is_interstate ?? duplicateSeed?.is_interstate ?? false);
   const [isReverseCharge, setIsReverseCharge] = useState(existing?.is_reverse_charge ?? duplicateSeed?.is_reverse_charge ?? false);
   const isLocked = isEdit && existing?.status !== "draft";
   const [lines, setLines] = useState<EditorLine[]>(initialLines);
+  // Compensation cess reaches a handful of trades, so its two columns are revealed rather than always shown, and are on from the
+  // start whenever the note already carries cess (migration 615), so the fields are never hidden from a note that has them.
+  const [showCess, setShowCess] = useState<boolean>(() => linesCarryCess(initialLines));
   const keyRef = useRef(initialLines.length);
   const nextKey = () => keyRef.current++;
   const [saving, setSaving] = useState(false);
@@ -163,12 +190,13 @@ export function PurchaseCreditNoteEditor({
 
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [sent, setSent] = useState<BytesSent | null>(null);
   const [documentUrl, setDocumentUrl] = useState<string | null>(existing?.document_url ?? null);
 
   async function loadOpenBills(vId: string) {
-    if (!vId) { setOpenBills([]); return; }
+    if (!vId) { setOpenBills([]); setOpenBillsUnread(false); return; }
     const supabase = getSupabaseClient();
-    const { data } = await selectAll(() => supabase
+    const { data, error } = await selectAll(() => supabase
       .from("purchase_bills")
       .select("id, our_reference, bill_no, net_payable_paise, paid_paise, debited_paise, credit_note_paise")
       .eq("client_id", clientId)
@@ -176,7 +204,9 @@ export function PurchaseCreditNoteEditor({
       .in("status", ["received", "partially_paid", "paid"])
       .order("bill_date", { ascending: false })
       .order("id"));
-    setOpenBills(data ?? []);
+    // The pager hands a failure back as `error` and does not throw.
+    setOpenBillsUnread(!!error);
+    setOpenBills(error ? [] : data ?? []);
   }
 
   useEffect(() => {
@@ -263,11 +293,8 @@ export function PurchaseCreditNoteEditor({
       formData.append("file", uploadFile);
       formData.append("client_id", clientId);
       const token = await getAuthToken();
-      const res = await fetchPlain(`${API}/api/purchase-credit-notes/upload`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: formData,
-      }, "write");
+      // Sent through the one upload door, so the screen can say how much of the file has left (POST-A-158).
+      const res = await fetchUpload(`${API}/api/purchase-credit-notes/upload`, { headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData, timeoutMs: LONG_REQUEST_BOUND_MS }, "write", setSent);
       const json = await jsonPlain<UntypedJson>(res, "write");
       if (json.success && json.data?.document_url) {
         setDocumentUrl(json.data.document_url as string);
@@ -280,13 +307,14 @@ export function PurchaseCreditNoteEditor({
       // a connection that dropped may have dropped after the file was kept: the sentence says that it is not known (POST-A-410)
       setError(failureSentence(e, "Attachment upload failed.", "write"));
     } finally {
+      setSent(null);
       setUploading(false);
     }
   }
 
   async function save() {
     setAttempted(true);
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError); return; }
     // An issued note's save sends the note and the attached copy only (the lines are frozen), so the create-time check of its lines (a catalogue item on each) is not asked of it, as the sales note editors do not.
     if (!isLocked && !validation.ok) {
       setError(validation.errors.vendor ?? validation.errors.creditNoteDate ?? validation.errors.lines ?? "Fix the highlighted fields.");
@@ -308,6 +336,10 @@ export function PurchaseCreditNoteEditor({
         rate_paise: parseLineAmounts(l.qty, l.rate)!.ratePaise,
         gst_rate_percent: l.gst_rate,
         service_catalogue_id: l.service_catalogue_id || undefined,
+        // The two cess limbs, through the one parser every editor uses (omitted when nothing was typed).
+        ...cessPayload(l),
+        // The s.17(5) mark (POST-A-459): nothing for an eligible line, the mark and its clause for a blocked one.
+        ...blockedCreditPayload(l),
       }));
 
       if (isEdit && existing) {
@@ -316,8 +348,10 @@ export function PurchaseCreditNoteEditor({
           : {
               vendor_id: vendorId,
               credit_note_date: cnDate,
-              purchase_bill_id: billId || undefined,
-              reason: reason.trim() || undefined,
+              // A DRAFT may take these two away (POST-A-399, the sixth slice): an emptied box that had a value on file is sent as null and the server clears it
+              // on a draft. `x || undefined` sent nothing, so a note whose party was changed (which empties this box) went on pointing at the old party's document.
+              purchase_bill_id: editedChoice(billId, existing.purchase_bill_id),
+              reason: editedText(reason, existing.reason),
               is_interstate: isInterstate,
               is_reverse_charge: isReverseCharge,
               notes: editedText(notes, existing.notes),
@@ -384,6 +418,8 @@ export function PurchaseCreditNoteEditor({
           <Row label="SGST" value={fmt(totals.sgst_paise)} />
         </>
       )}
+      {/* Its own row, below the GST heads and never folded into them: Compensation Act s.11(2) proviso. */}
+      {totals.cess_paise > 0 && <Row label="Compensation cess" value={fmt(totals.cess_paise)} />}
       <p className="text-3xs text-ps-hint">
         {isInterstate ? "Interstate — IGST" : "Intra-state — CGST + SGST"} (CGST Act §8)
       </p>
@@ -429,14 +465,15 @@ export function PurchaseCreditNoteEditor({
       <div className="space-y-5">
         <section className="bg-state-attention-surface border border-state-attention-border rounded-lg p-3 space-y-2">
           <p className="text-xs font-medium text-state-attention flex items-center gap-1.5"><Upload size={12} /> Attachment</p>
-          {!isLocked && (
+          {!isLocked && (<>
             <div className="flex items-center gap-2">
               <input aria-label="Attachment to upload" type="file" onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)} className="text-xs text-ps-label" />
               <Button variant="plain" size="none" onClick={handleUpload} disabled={!uploadFile || uploading} className="text-xs px-3 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
                 {uploading ? "Uploading…" : "Upload"}
               </Button>
             </div>
-          )}
+            <UploadProgress progress={sent} what="the attachment" />
+          </>)}
           {documentUrl && (
             <p className="text-3xs text-state-attention">📎 Attachment on file — supporting evidence for this correction.</p>
           )}
@@ -446,7 +483,7 @@ export function PurchaseCreditNoteEditor({
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Vendor *</label>
-              <VendorLookup vendors={vendors} value={vendorId} onChange={onVendorChange} ariaLabel="Vendor" disabled={isEdit} />
+              <VendorLookup vendors={vendors} recent={recentVendors} value={vendorId} onChange={onVendorChange} ariaLabel="Vendor" disabled={isEdit} />
               {isEdit && <p className="mt-1 text-3xs text-ps-hint">Vendor can&apos;t be changed once a credit note exists.</p>}
               {fieldErr(validation.errors.vendor)}
             </div>
@@ -472,6 +509,11 @@ export function PurchaseCreditNoteEditor({
                 placeholder="— Standalone / Select bill —"
                 ariaLabel="Against bill"
               />
+              {openBillsUnread && (
+                <p role="alert" className="mt-1 text-3xs text-state-problem">
+                  The vendor&apos;s bills could not be read, so none can be chosen here. That is not a vendor with none: pick the vendor again to read them before you issue a standalone note.
+                </p>
+              )}
             </div>
             <div className="col-span-2">
               <label className="block text-xs font-medium text-ps-label mb-1">Reason</label>
@@ -497,7 +539,20 @@ export function PurchaseCreditNoteEditor({
         </section>
 
         <section className="bg-white rounded-xl border border-ps-border p-4">
-          <h2 className="text-xs font-semibold text-ps-body mb-2">Line items</h2>
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-xs font-semibold text-ps-body">Line items</h2>
+            {!isLocked && (
+              <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={showCess}
+                  onChange={(e) => setShowCess(e.target.checked)}
+                  className="h-3.5 w-3.5 rounded border-ps-border-strong accent-brand-dark"
+                />
+                <span className="text-2xs text-ps-label">Compensation cess</span>
+              </label>
+            )}
+          </div>
           {isLocked && (
             <p className="mb-2 text-3xs text-ps-hint">
               Frozen once issued — issue a fresh credit note to correct a quantity, rate, or item (CGST Act §34).
@@ -505,7 +560,7 @@ export function PurchaseCreditNoteEditor({
           )}
           <fieldset disabled={isLocked} className="border-0 p-0 m-0 min-w-0">
           <div className="overflow-x-auto">
-            <table className="w-full text-xs min-w-[760px]">
+            <table className={`w-full text-xs ${showCess ? "min-w-[920px]" : "min-w-[760px]"}`}>
               <thead>
                 <tr className="border-b border-ps-border text-ps-hint">
                   <th className="pb-2 text-left font-semibold w-36">Product/Service *</th>
@@ -515,6 +570,14 @@ export function PurchaseCreditNoteEditor({
                   <th className="pb-2 text-left font-semibold w-16">Unit</th>
                   <th className="pb-2 text-right font-semibold w-24">Rate (₹)</th>
                   <th className="pb-2 text-right font-semibold w-20">GST %</th>
+                  {/* GST (Compensation to States) Act 2017 s.8(2) levies "on the basis of value, quantity or on such basis": two
+                      limbs, added. Per unit of THIS LINE'S UQC; nothing converts tonnes to kilograms. */}
+                  {showCess && (
+                    <>
+                      <th className="pb-2 text-right font-semibold w-20" title="Compensation cess, ad valorem">Cess %</th>
+                      <th className="pb-2 text-right font-semibold w-24" title="Compensation cess per unit of this line's UQC">Cess/unit</th>
+                    </>
+                  )}
                   <th className="pb-2 text-right font-semibold w-24">Amount</th>
                   <th className="pb-2 w-6" />
                 </tr>
@@ -531,6 +594,7 @@ export function PurchaseCreditNoteEditor({
                       <td className="py-1.5 pr-2">
                         <input value={line.description} onChange={(e) => setLine(idx, { description: e.target.value })} placeholder="Item description" aria-label={`Line ${idx + 1} description`}
                           className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand text-xs" />
+                        <NoteLineBlockedCredit index={idx} line={line} disabled={isLocked} onChange={(patch) => setLine(idx, patch)} />
                       </td>
                       <td className="py-1.5 px-1">
                         <HsnLookup clientId={clientId} value={line.hsn_sac} onChange={(v) => setLine(idx, { hsn_sac: v })}
@@ -557,6 +621,22 @@ export function PurchaseCreditNoteEditor({
                           {gstRateOptions(line.gst_rate).map((r) => <option key={r} value={r}>{r}%</option>)}
                         </select>
                       </td>
+                      {showCess && (
+                        <>
+                          <td className="py-1.5 px-1">
+                            <input type="number" min="0" step="0.01" value={line.cessPercent ?? ""}
+                              onChange={(e) => setLine(idx, { cessPercent: e.target.value })}
+                              placeholder="0" aria-label={`Line ${idx + 1} compensation cess percent`}
+                              className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand text-right text-xs" />
+                          </td>
+                          <td className="py-1.5 px-1">
+                            <input type="number" min="0" step="0.01" value={line.cessPerUnit ?? ""}
+                              onChange={(e) => setLine(idx, { cessPerUnit: e.target.value })}
+                              placeholder="0.00" aria-label={`Line ${idx + 1} compensation cess per unit`}
+                              className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand text-right text-xs" />
+                          </td>
+                        </>
+                      )}
                       <td className="py-1.5 px-2 text-right font-mono text-ps-body">{g.grand_total_paise > 0 ? fmt(g.grand_total_paise) : "—"}</td>
                       <td className="py-1.5">
                         {lines.length > 1 && (

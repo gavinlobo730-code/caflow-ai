@@ -205,3 +205,12 @@ test("useDateProblems().watch(..., { afterMax: true }) is what marks the listene
   assert.match(inputTag(renderToStaticMarkup(React.createElement(Form, { afterMax: true }))), /aria-invalid="true"/);
   assert.doesNotMatch(inputTag(renderToStaticMarkup(React.createElement(Form, { afterMax: false }))), /aria-invalid/);
 });
+
+test("a value the parent changes is taken into the box before the paint, not after it (POST-A-395)", () => {
+  // A server render runs no effect at all, so this reads the source: the effect that takes in a value the parent changed must be a LAYOUT effect.
+  // As a plain effect it ran after the paint, and a dialog opened again over a value its parent reset drew the last day it held for one frame.
+  const source = fs.readFileSync(path.join(WEB, "components/ui/date-input.tsx"), "utf8");
+  const sync = source.match(/React\.(useLayoutEffect|useEffect)\(\(\) => \{\s*if \(value === handedUp\.current\) return;/);
+  assert.ok(sync, "the effect that takes in the parent's value was not found");
+  assert.equal(sync[1], "useLayoutEffect", "the parent's value is taken in after the paint");
+});

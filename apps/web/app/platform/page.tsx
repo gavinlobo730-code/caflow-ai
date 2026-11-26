@@ -10,7 +10,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { arrayOrEmpty } from "@/lib/api/shape";
 import { useRouter } from "next/navigation";
-import { Building2, Users, ShieldCheck, Ban, RotateCcw, Trash2, X, Loader2, AlertCircle, RefreshCw, AlertTriangle, KeyRound } from "lucide-react";
+import { Building2, Users, ShieldCheck, Ban, RotateCcw, Trash2, Loader2, AlertCircle, RefreshCw, AlertTriangle, KeyRound } from "lucide-react";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { api } from "@/lib/api";
@@ -21,6 +21,9 @@ import { formatDate } from "@/lib/services/formatting";
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
+import { LoadingRegion } from "@/components/ui/skeleton";
+import { isFreshCodeRefusal, sixDigitCode } from "@/lib/auth/freshCode";
 
 interface FirmRow { id: string; name: string; created_at: string; users: number; clients: number; status: string }
 interface Stats { total_firms: number; active_firms: number; suspended_firms: number; total_users: number; total_clients: number }
@@ -118,7 +121,12 @@ export default function PlatformAdminPage() {
   // is decided ONLY by a SUCCESSFUL /me response; any request failure is treated
   // as "couldn't verify" (error state), never as "denied".
   const verify = useCallback(async () => {
-    setGate("checking");
+    // A gate that is already open stays open while it is read again (POST-A-528): the effect below runs `verify` whenever the context's
+    // session object changes, which a verified code and the hourly token refresh both cause, and "checking" draws a spinner in place of
+    // the page, so an administrator who had stepped up or had typed something lost it. Only a first check, or one after a failure or a
+    // refusal, shows "checking". A re-check that says no takes the page away at once (`denied`, below), and one that fails shows the
+    // error state, exactly as before: the gate is never kept open by a read that did not confirm it.
+    setGate((g) => (g === "ok" ? g : "checking"));
     setGateErr("");
     // Authoritative session check. /platform is a PUBLIC, self-gating route, so
     // (unlike AuthGuard-protected pages) its body runs even while the context
@@ -197,6 +205,41 @@ export default function PlatformAdminPage() {
     }
   }
 
+  // A FRESH AUTHENTICATOR CODE (POST-A-484). The API answers a destructive action with FRESH_CODE_SENTENCE when the
+  // last code entered in this session is more than five minutes old (aal2 stays true for the session's whole life, so
+  // a left-open page could otherwise suspend or delete a firm hours later). The page then asks for a code, proves it
+  // to the sign-in service (the session's token now carries the new time), and tries the action once more.
+  async function stepUpWithCode(code: string) {
+    const sb = getSupabaseClient();
+    const { data: factors, error: fErr } = await sb.auth.mfa.listFactors();
+    if (fErr) throw new Error(fErr.message);
+    const totp = factors?.totp?.find((f) => f.status === "verified") ?? factors?.totp?.[0];
+    if (!totp) throw new Error("No authenticator is set up on this account. Enrol one at Settings → Security first.");
+    const { data: ch, error: cErr } = await sb.auth.mfa.challenge({ factorId: totp.id });
+    if (cErr || !ch) throw new Error(cErr?.message ?? "Could not start the MFA challenge.");
+    const { error: vErr } = await sb.auth.mfa.verify({ factorId: totp.id, challengeId: ch.id, code });
+    if (vErr) throw new Error("Invalid authenticator code. Please try again.");
+  }
+  async function withFreshCode<T>(fn: () => Promise<T>): Promise<T> {
+    try {
+      return await fn();
+    } catch (e) {
+      if (!(e instanceof Error) || !isFreshCodeRefusal(e.message)) throw e;
+      const typed = await promptDialog({
+        title: "Enter your authenticator code",
+        message: "This action needs a code entered within the last 5 minutes. Enter the 6-digit code from your authenticator app.",
+        label: "6-digit code",
+        required: true,
+        confirmLabel: "Confirm",
+      });
+      if (typed === null) throw new Error("Cancelled: nothing was changed.");
+      const code = sixDigitCode(typed);
+      if (!code) throw new Error("That is not a 6-digit code. Nothing was changed.");
+      await stepUpWithCode(code);
+      return await fn();
+    }
+  }
+
   async function suspend(f: FirmRow) {
     const reason = await promptDialog({
       title: `Suspend "${f.name}"?`,
@@ -207,12 +250,12 @@ export default function PlatformAdminPage() {
       confirmLabel: "Suspend",
     });
     if (!reason || !reason.trim()) return;
-    await act(() => api.platform.suspend(f.id, reason.trim()), `Suspended ${f.name}`);
+    await act(() => withFreshCode(() => api.platform.suspend(f.id, reason.trim())), `Suspended ${f.name}`);
   }
   async function unsuspend(f: FirmRow) { await act(() => api.platform.unsuspend(f.id), `Reactivated ${f.name}`); }
   async function softDelete(f: FirmRow) {
     if (!(await confirmDialog({ message: `Soft-delete "${f.name}"? Records are preserved but all access is blocked.`, danger: true }))) return;
-    await act(() => api.platform.softDelete(f.id), `Deleted ${f.name}`);
+    await act(() => withFreshCode(() => api.platform.softDelete(f.id)), `Deleted ${f.name}`);
   }
   async function view(f: FirmRow) {
     setRowBusy(true);
@@ -240,16 +283,9 @@ export default function PlatformAdminPage() {
     if (!/^\d{6}$/.test(code)) { setPurgeErr("Enter the 6-digit code from your authenticator app."); return; }
     setPurgeBusy(true); setPurgeErr("");
     try {
-      const sb = getSupabaseClient();
-      const { data: factors, error: fErr } = await sb.auth.mfa.listFactors();
-      if (fErr) throw new Error(fErr.message);
-      const totp = factors?.totp?.find((f) => f.status === "verified") ?? factors?.totp?.[0];
-      if (!totp) throw new Error("No authenticator is set up on this account. Enrol one at Settings → Security first.");
-      const { data: ch, error: cErr } = await sb.auth.mfa.challenge({ factorId: totp.id });
-      if (cErr || !ch) throw new Error(cErr?.message ?? "Could not start the MFA challenge.");
-      const { error: vErr } = await sb.auth.mfa.verify({ factorId: totp.id, challengeId: ch.id, code });
-      if (vErr) throw new Error("Invalid authenticator code. Please try again.");
-      // Session is now aal2 — the purge request carries the elevated token.
+      await stepUpWithCode(code);
+      // The session's token now carries a code entered a moment ago — the purge request carries it, and the API
+      // refuses one older than five minutes.
       await api.platform.purge(purgeTarget.id);
       notify(`Permanently deleted ${purgeTarget.name}`, true);
       setPurgeTarget(null);
@@ -287,7 +323,11 @@ export default function PlatformAdminPage() {
     }
     return (
       <div className="flex h-screen items-center justify-center text-ps-label">
-        {gate === "checking" ? <span className="flex items-center gap-2"><Loader2 className="animate-spin" size={16} /> Verifying access…</span> : "Redirecting…"}
+        {gate === "checking" ? (
+          <LoadingRegion label="Verifying access" noticeClassName="justify-center text-center">
+            <span className="flex items-center gap-2"><Loader2 className="animate-spin" size={16} /> Verifying access…</span>
+          </LoadingRegion>
+        ) : "Redirecting…"}
       </div>
     );
   }
@@ -355,13 +395,9 @@ export default function PlatformAdminPage() {
 
       {/* Firm detail (read-only) */}
       {detail && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={() => setDetail(null)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-6 py-4 border-b border-ps-border">
-              <h2 className="text-base font-semibold text-ps-ink">{detail.firm.name}</h2>
-              <button onClick={() => setDetail(null)} className="text-ps-hint hover:text-ps-label"><X size={18} /></button>
-            </div>
-            <div className="px-6 py-4 space-y-4 overflow-y-auto">
+        // The shared dialog (POST-A-130): named for the firm, modal, Tab kept inside, Escape closes it, focus given back. It only reads.
+        <Modal title={detail.firm.name} maxWidthClass="max-w-lg" onClose={() => setDetail(null)}>
+            <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div><p className="text-xs text-ps-hint">Created</p><p className="text-ps-ink">{detail.firm.created_at ? formatDate(detail.firm.created_at) : "—"}</p></div>
                 <div><p className="text-xs text-ps-hint">Status</p><p className="text-ps-ink">{detail.firm.status}</p></div>
@@ -381,21 +417,28 @@ export default function PlatformAdminPage() {
                 </div>
               </div>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* Permanent delete — MFA step-up + typed confirmation */}
       {purgeTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !purgeBusy && setPurgeTarget(null)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-6 py-4 border-b border-ps-border">
-              <h2 className="text-base font-semibold text-state-problem flex items-center gap-2"><AlertTriangle size={16} /> Permanently delete firm</h2>
-              <button onClick={() => !purgeBusy && setPurgeTarget(null)} className="text-ps-hint hover:text-ps-label"><X size={18} /></button>
-            </div>
-            <div className="px-6 py-4 space-y-4">
-              <p className="text-sm text-ps-label">
+        // The shared dialog (POST-A-130): named, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it, its ×) and
+        // its Cancel are held while the deletion is out.
+        <Modal title="Permanently delete firm" maxWidthClass="max-w-md" onClose={() => { if (!purgeBusy) setPurgeTarget(null); }}
+          footer={<>
+            <button onClick={() => setPurgeTarget(null)} disabled={purgeBusy} className="text-sm text-ps-label px-3 py-2 hover:underline disabled:opacity-50">Cancel</button>
+            <Button variant="plain" size="none" onClick={confirmPurge}
+              disabled={actionInFlight || purgeName.trim() !== purgeTarget.name || purgeCode.replace(/\s/g, "").length !== 6}
+              className="inline-flex items-center gap-2 rounded-lg bg-red-600 text-white text-sm font-medium px-4 py-2 hover:bg-red-700 disabled:opacity-50">
+              {purgeBusy ? <Loader2 className="animate-spin" size={14} /> : <Trash2 size={14} />} Delete permanently
+            </Button>
+          </>}>
+            <div className="space-y-4">
+              <p className="text-sm text-ps-label flex items-start gap-2">
+                <AlertTriangle size={16} className="text-state-problem shrink-0 mt-0.5" aria-hidden="true" />
+                <span>
                 This <span className="font-semibold text-state-problem">irreversibly</span> deletes <span className="font-semibold">{purgeTarget.name}</span> and all of its data — {purgeTarget.users} user(s), {purgeTarget.clients} client(s), and every related record. This cannot be undone.
+                </span>
               </p>
               <p className="text-xs text-ps-hint">Login accounts in authentication are not removed — only the firm and its data.</p>
               <div>
@@ -411,16 +454,7 @@ export default function PlatformAdminPage() {
               </div>
               {purgeErr && <Callout tone="problem">{purgeErr}</Callout>}
             </div>
-            <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-ps-border">
-              <button onClick={() => setPurgeTarget(null)} disabled={purgeBusy} className="text-sm text-ps-label px-3 py-2 hover:underline disabled:opacity-50">Cancel</button>
-              <Button variant="plain" size="none" onClick={confirmPurge}
-                disabled={actionInFlight || purgeName.trim() !== purgeTarget.name || purgeCode.replace(/\s/g, "").length !== 6}
-                className="inline-flex items-center gap-2 rounded-lg bg-red-600 text-white text-sm font-medium px-4 py-2 hover:bg-red-700 disabled:opacity-50">
-                {purgeBusy ? <Loader2 className="animate-spin" size={14} /> : <Trash2 size={14} />} Delete permanently
-              </Button>
-            </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

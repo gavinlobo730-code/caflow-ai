@@ -72,8 +72,13 @@ class _InviteRepo:
         return r if r["id"] == uid and r["firm_id"] == firm_id else None
 
     def find_by_invite_token(self, token):
+        # The row keeps its token in the form an invitation had before POST-A-445 (the secret itself), which
+        # accept-invite still honours for somebody signed in as its address.
         r = self.row
         return r if r.get("invite_token") == token and not r.get("auth_user_id") else None
+
+    def find_linked_member(self, auth_user_id):
+        return None
 
     def update(self, uid, data, *, firm_id):
         if uid != self.row["id"] or firm_id != self.row["firm_id"]:
@@ -191,11 +196,13 @@ def _identity_routes_and_whether_guarded():
     return out
 
 
-def test_accept_invite_is_the_only_identity_route_without_the_mfa_guard():
+def test_accept_invite_and_its_sign_in_are_the_only_identity_routes_without_the_mfa_guard():
+    """The invitee has no `users` row before accepting, so the guard would refuse them. Two routes need that: the
+    accept itself, and the sign-in the join page opens from the invitation's link first (POST-A-445)."""
     rows = _identity_routes_and_whether_guarded()
     assert len(rows) >= 10, f"the sweep found only {sorted(rows)} — bad prefix?"
     unguarded = sorted(k for k, g in rows if not g)
-    assert unguarded == [f"POST {ACCEPT}"], unguarded
+    assert unguarded == [f"POST {ACCEPT}", f"POST {ACCEPT}/session"], unguarded
 
 
 def test_accept_invite_is_mounted_exactly_once():

@@ -115,3 +115,41 @@ def test_a_wellformed_month_is_accepted(monkeypatch):
                                current_user={"id": "u1", "firm_id": "f1", "role": "Manager"})
 
     assert body["success"] is True
+
+
+def test_the_pl_party_totals_route_has_the_feeds_guard_and_scope(monkeypatch):
+    """POST-A-469: the P&L's sums are served with the same permission and the same client scope as the rows they
+    used to be added from in the browser, and the service is handed the privileged client after the scope check."""
+    assert _guard_name(reports.report_party_totals) == "rbac_accounting_read"
+    order = []
+    sentinel = object()
+    monkeypatch.setattr(reports, "assert_client_access", lambda u, c: order.append(("check", c)))
+    monkeypatch.setattr(reports, "get_service_supabase", lambda: sentinel)
+    monkeypatch.setattr(reports.svc, "party_totals",
+                        lambda db, firm, **k: order.append(("sum", db is sentinel, firm, k)) or {"revenue": []})
+    body = reports.report_party_totals(client_id="c1", date_from="2026-04-01", date_to="2026-04-30",
+                                       current_user={"id": "u1", "firm_id": "f1", "role": "Manager"})
+    assert body["success"] is True
+    assert order == [("check", "c1"), ("sum", True, "f1",
+                                       {"client_ids": ["c1"], "date_from": "2026-04-01", "date_to": "2026-04-30"})]
+
+
+def test_the_pl_party_totals_route_narrows_to_the_callers_clients(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(reports, "effective_client_ids", lambda u: {"c2", "c1"})
+    monkeypatch.setattr(reports, "get_service_supabase", lambda: object())
+    monkeypatch.setattr(reports.svc, "party_totals", lambda db, firm, **k: seen.update(k) or {})
+    reports.report_party_totals(client_id=None, date_from=None, date_to=None,
+                                current_user={"id": "u1", "firm_id": "f1", "role": "Executive"})
+    assert seen["client_ids"] == ["c1", "c2"]
+
+
+@pytest.mark.parametrize("bad", ["2026-02-30", "18/11/2026", "x"])
+def test_the_pl_party_totals_route_refuses_a_day_it_cannot_read(bad, monkeypatch):
+    from fastapi import HTTPException
+    monkeypatch.setattr(reports, "assert_client_access", lambda u, c: None)
+    monkeypatch.setattr(reports.svc, "party_totals", lambda *a, **k: pytest.fail("summed an unread window"))
+    with pytest.raises(HTTPException) as exc:
+        reports.report_party_totals(client_id="c1", date_from=bad, date_to=None,
+                                    current_user={"id": "u1", "firm_id": "f1", "role": "Manager"})
+    assert exc.value.status_code == 422

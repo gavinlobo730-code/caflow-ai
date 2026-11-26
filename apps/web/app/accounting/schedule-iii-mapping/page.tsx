@@ -38,6 +38,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { formatPaise } from "@/lib/services/formatting";
 import { formatDate } from "@/lib/dates/format";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
+import { usePermissions } from "@/lib/auth/AuthContext";
 import { getClients } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
 
@@ -81,6 +82,8 @@ interface ScheduleIiiAnswer {
 
 
 export default function ScheduleIIIMappingPage() {
+  const { can, resolved } = usePermissions();
+  const mayEdit = resolved && can("accounting", "write");
   const [accounts, setAccounts] = useState<CoaRow[]>([]);
   const [sections, setSections] = useState<CaptionSection[]>([]);
   const [residual, setResidual] = useState<string[]>([]);
@@ -191,7 +194,14 @@ export default function ScheduleIIIMappingPage() {
   );
   if (error) return <div className="p-6"><div className="bg-state-problem-surface text-state-problem rounded-lg px-5 py-4 text-sm">{error}</div></div>;
 
-  const picker = (acc: CoaRow) => (
+  // A mapping is changed through PATCH /api/accounting/accounts/{id}, which asks `accounting` `write` (Manager and
+  // above by role). Somebody who may read the books and not change them was offered fifty pickers, each refused by
+  // the server after the choice (POST-A-447); they see the caption as text now. Closed while the permissions are read.
+  const shownCaption = (acc: CoaRow) =>
+    acc.schedule_iii_mapping && allCaptions.includes(acc.schedule_iii_mapping) ? acc.schedule_iii_mapping : null;
+  const picker = (acc: CoaRow) => !mayEdit ? (
+    <span className="text-2xs text-ps-label">{shownCaption(acc) ?? "— not mapped —"}</span>
+  ) : (
     <select aria-label={`Schedule III caption — ${acc.account_code} ${acc.account_name}`}
       value={acc.schedule_iii_mapping && allCaptions.includes(acc.schedule_iii_mapping)
         ? acc.schedule_iii_mapping : UNMAPPED}
@@ -255,6 +265,11 @@ export default function ScheduleIIIMappingPage() {
       />
 
       {saveError && <Callout tone="problem">{saveError}</Callout>}
+      {resolved && !mayEdit && (
+        <Callout tone="note">
+          You can read these mappings. Changing one needs permission to edit the books, which your access does not include.
+        </Callout>
+      )}
 
       {/* What the statements say about this firm's own mapping: the server's count, read off the lines it presents. A nil is a
           reading, so it is said; a count that could not be read is said to be unread and is never drawn as a nil. */}
@@ -308,7 +323,7 @@ export default function ScheduleIIIMappingPage() {
           </p>
           <p className="text-xs text-state-attention mt-0.5">
             The choice is recorded but the statements fall back to the account&apos;s subtype.
-            Re-pick below to make it count: {unrecognised.map(a => a.schedule_iii_mapping).filter((v, i, s) => s.indexOf(v) === i).join(", ")}
+            {mayEdit ? "Re-pick below to make it count" : "Someone who may edit the books can re-pick it below to make it count"}: {unrecognised.map(a => a.schedule_iii_mapping).filter((v, i, s) => s.indexOf(v) === i).join(", ")}
           </p>
         </div>
       )}

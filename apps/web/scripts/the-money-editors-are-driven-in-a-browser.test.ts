@@ -294,7 +294,8 @@ const DRIVEN: Record<string, string[]> = {
   "app/income-tax/advance-tax/page.tsx": ["[Instalment ${n} paid on]", "#sa-deposit-date", "#at-furnished-on"],
   // The second slice (4-11-2026).
   "components/compliance/MarkFiledModal.tsx": ["#mark-filed-date"],
-  "app/billing/page.tsx": ["#engagement-start", "#fee-receipt-date"],
+  // Both of this file's date boxes are in NOT_YET_DRIVEN since 21-11-2026: the forms that hold them cannot be opened by anybody.
+  "app/billing/page.tsx": [],
   "app/clients/[id]/fixed-assets/page.tsx": ["[Purchase date]", "[Disposal date]"],
   "app/accounting/retainer/page.tsx": ["#retainer-next"],
   "components/payroll/DisburseModal.tsx": ["#disburse-date"],
@@ -313,7 +314,7 @@ const DRIVEN: Record<string, string[]> = {
   "app/practice/profitability/page.tsx": ["#profitability-from", "#profitability-to"],
   "app/clients/[id]/inventory/page.tsx": ["#stock-adjust-date", "#writedown-date", "#stock-as-at", "[Stock ledger from]", "[Stock ledger to]"],
   // The fourth slice (4-11-2026).
-  "components/payroll/AddEmployeeModal.tsx": ["#employee-joining-date", "#date-of-birth", "#pf-actual-from"],
+  "components/payroll/AddEmployeeModal.tsx": ["#employee-joining-date", "#date-of-birth", "#pf-actual-from", "#fixed-term-end"],
   // Two files the first slices drove by rows but never listed here, so a date box added to either would have gone unseen (found by an independent read of the eighth slice).
   "app/tds/page.tsx": ["#tds-payment-date", "#tds-challan-date"],
   "components/invoices/CompliancePanel.tsx": ["[Acknowledgement date]", "[EWB date]", "[Valid upto]"],
@@ -367,12 +368,55 @@ const DRIVEN: Record<string, string[]> = {
   // The eighteenth slice (6-11-2026): the two catalogue boxes that date an opening stock, which the count of what was left found beside the eight it named.
   "components/catalogue/ProductServiceFormModal.tsx": ["[Opening balance as of]"],
   "components/catalogue/ProductServiceManagerPanel.tsx": ["#catalogue-import-opening-date"],
+  // The nineteenth slice (16-11-2026): the one date box of the POST-A-386 list that records a fact taken on a government portal.
+  "components/gst/ExpiringEwayBills.tsx": ["[New valid upto]"],
+  // A window or a filter that chooses what a screen reads and writes nothing: the claims are the ones of a form with the read standing where Save does.
+  "app/settings/audit-log/page.tsx": ["[Audit log from date]", "[Audit log to date]"],
+  // The twentieth slice (17-11-2026, POST-A-386 closed): every other window and filter, a row of WINDOWS each, and the practice's own records, a row of EDITORS each.
+  "app/clients/[id]/accounting/page.tsx": ["[Ledger from]", "[Ledger to]"],
+  "components/banking/WorthALookTab.tsx": ["#wal-from", "#wal-to"],
+  "components/purchases/VendorStatementsTab.tsx": ["#vs-start", "#vs-end"],
+  "components/banking/BankBook.tsx": ["[Bank book from]", "[Bank book to]"],
+  "components/banking/FindMatchModal.tsx": ["[Dated from]", "[Dated to]"],
+  "components/PeriodPicker.tsx": ["[From date]", "[To date]"],
+  "components/ui/data-table.tsx": ["[${def.label} from]", "[${def.label} to]"],
+  "app/clients/[id]/reports/ageing/page.tsx": ["#ageing-as-at"],
+  "app/portal/dashboard/page.tsx": ["[Statement from]", "[Statement to]"],
+  "app/time/page.tsx": ["[Hours from]", "[Hours to]", "[Export from]", "[Export to]"],
+  "app/reports/page.tsx": ["[Report from]", "[Report to]"],
+  "app/settings/dsc-tracker/page.tsx": ["[New expiry date]", "[New issue date]", "[Issue date]", "[Expiry date]"],
+  "app/pipeline/page.tsx": ["[Last contact date]", "[Next follow-up date]"],
+  "app/tasks/page.tsx": ["[Due date]"],
+  "components/TaskFormModal.tsx": ["[Due date]"],
+  "app/tasks/templates/page.tsx": ["[Due date]"],
+  "app/clients/documents/page.tsx": ["[Expiry date (optional)]"],
+  "app/health/[client_id]/HealthDetailClient.tsx": ["[Expires at (optional)]"],
+  "app/clients/[id]/health/page.tsx": ["[Expires at (optional)]"],
+  "app/clients/[id]/lifecycle/page.tsx": ["[Renewal date]"],
+  "app/client-portal/page.tsx": ["[Needed by]"],
+  // The NRV review sheet (POST-A-111, 16-11-2026) came after the count POST-A-386 was written from; the rule below found it.
+  "components/inventory/NrvReviewPanel.tsx": ["#nrv-review-date"],
 };
+
+/** Files whose date box is driven by a scenario of its own group and not by `dates.mjs`, each with the scenario file and the text that names the box there. */
+const DRIVEN_ELSEWHERE: Record<string, { scenario: string; names: string }> = {
+  "components/fixed-assets/AssetMovements.tsx": { scenario: "assetMovements.mjs", names: "#asset-moved-on-" },
+  "components/fixed-assets/VerificationTab.tsx": { scenario: "assetVerification.mjs", names: "#count-verified-on" },
+};
+
+/** Why the two date boxes of the earlier Fee Billing screen are not driven. They are driven again, or leave this table, when the
+ *  two forms are removed with the earlier fee routes (POST-B-193). */
+const WITHHELD_FEE_FORM = "the form that holds it cannot be opened: the earlier Fee Billing screen is a record since 21-11-2026 " +
+  "(POST-B-193) and every control that writes is withheld from everybody, so a scenario has no button to press";
 
 /** Date fields in those same editors that the drive does NOT yet drive, each with why. A table that can only
  *  shrink: a field added to a driven editor must get a scenario row or be named here. */
 const NOT_YET_DRIVEN: Record<string, Record<string, string>> = {
-  // Empty since the eighteenth slice (6-11-2026): every date box in a driven file has a row. The table stays, because a box added to a driven file must be named here with why or get a row.
+  // Empty from the eighteenth slice (6-11-2026) until 21-11-2026. The table stays, because a box added to a driven file must be named here with why or get a row.
+  "app/billing/page.tsx": {
+    "#engagement-start": WITHHELD_FEE_FORM,
+    "#fee-receipt-date": WITHHELD_FEE_FORM,
+  },
 };
 
 test("every date field the drive types into is a real DateInput in the editor it names", () => {
@@ -405,6 +449,36 @@ test("a driven editor cannot gain a date field the drive does not know about", (
     for (const named of Object.keys(NOT_YET_DRIVEN[file] ?? {})) {
       assert.ok(have.includes(named), `${file}: ${named} is named as not yet driven but is not a DateInput there`);
     }
+  }
+});
+
+test("the fee forms are named as not driven only while nobody can open them", () => {
+  // The reason in NOT_YET_DRIVEN is a claim about the screen. If the earlier Fee Billing screen takes a write again, the two forms can be
+  // opened and their date boxes need their rows back.
+  const page = read(join(WEB, "app/billing/page.tsx"));
+  assert.match(page, /const FEE_BILLING_IS_A_RECORD = true;/, "the earlier Fee Billing screen is no longer a record: drive its two date boxes again");
+  assert.match(page, /const canWrite = !FEE_BILLING_IS_A_RECORD && can\("billing", "write"\);/, "the screen's writing controls are no longer withheld from everybody");
+  const dates = read(join(SCENARIO_DIR, "dates.mjs"));
+  for (const box of Object.keys(NOT_YET_DRIVEN["app/billing/page.tsx"] ?? {})) {
+    assert.ok(!dates.includes(`"${box}"`), `${box} is named as not driven and a scenario types into it`);
+  }
+});
+
+test("every file that holds a date box is driven: a new DateInput anywhere needs a row (POST-A-386)", () => {
+  // The DRIVEN table used to be a list of the files somebody had driven, so a date box in any OTHER file was simply not looked at, and
+  // forty of them sat undriven for a fortnight. The rule now runs the other way: every .tsx under app/ and components/ that renders a
+  // DateInput is in DRIVEN, or in DRIVEN_ELSEWHERE with the scenario that types into it.
+  const holders = [...allFiles(join(WEB, "app")), ...allFiles(join(WEB, "components"))]
+    .filter((f) => f.endsWith(".tsx") && /<DateInput\b/.test(read(f)))
+    .map((f) => relative(WEB, f))
+    .filter((rel) => rel !== "components/ui/date-input.tsx");
+  assert.ok(holders.length >= 80, `only ${holders.length} files hold a DateInput: the scan has stopped seeing them`);
+  const undriven = holders.filter((rel) => !(rel in DRIVEN) && !(rel in DRIVEN_ELSEWHERE)).sort();
+  assert.deepEqual(undriven, [], `these files hold a date box no drive row types into: ${undriven.join(", ")}. Add a row to EDITORS or WINDOWS ` +
+    "in scripts/drive/scenarios/dates.mjs and the file to DRIVEN.");
+  for (const [rel, { scenario, names }] of Object.entries(DRIVEN_ELSEWHERE)) {
+    assert.ok(holders.includes(rel), `${rel} is named as driven elsewhere but holds no DateInput`);
+    assert.ok(read(join(SCENARIO_DIR, scenario)).includes(names), `${scenario} no longer types into ${names} of ${rel}`);
   }
 });
 

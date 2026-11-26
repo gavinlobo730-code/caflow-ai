@@ -6,7 +6,8 @@
 // The 4,964-line page was the reason small changes went unreviewed; each tab
 // is its own file now. Behaviour here is unchanged by the move.
 
-import { useEffect, useState, ReactNode } from "react";
+import { useEffect, useMemo, useState, ReactNode } from "react";
+import { recentFirst, useRecentPartyIds } from "@/lib/lookups/recentParties";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { CustomerLookup } from "@/components/lookups/CustomerLookup";
@@ -58,8 +59,14 @@ export function MultiInvoiceMatchModal({ txn, clientId, prefill, onClose, onDone
   const docLabel = isCredit ? "invoice" : "bill";
 
   const [parties, setParties] = useState<SplitParty[]>([]);
+  // The parties this client used most recently go to the top of the picker (POST-A-155); nothing is pre-selected.
+  const recentPartyIds = useRecentPartyIds(isCredit ? api.customers.recent : api.vendors.recent, clientId, true);
+  const recentParties = useMemo(() => recentFirst(recentPartyIds, parties), [recentPartyIds, parties]);
   const [partyId, setPartyId] = useState(prefill?.partyId ?? "");
   const [docs, setDocs] = useState<SplitDoc[]>([]);
+  // A read that did not come is not a party with no documents, nor a client with no parties (POST-A-527): this modal posts to the ledger.
+  const [partiesUnread, setPartiesUnread] = useState(false);
+  const [docsUnread, setDocsUnread] = useState(false);
   const [loadingDocs, setLoadingDocs] = useState(false);
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [amounts, setAmounts] = useState<Record<string, string>>({});   // rupees, per doc id
@@ -77,25 +84,28 @@ export function MultiInvoiceMatchModal({ txn, clientId, prefill, onClose, onDone
     (async () => {
       const supabase = getSupabaseClient();
       if (isCredit) {
-        const { data } = await selectAll<SplitParty>(() =>
+        const { data, error } = await selectAll<SplitParty>(() =>
           supabase.from("customers").select("id, name, gstin").eq("client_id", clientId).eq("is_active", true).order("name"));
-        setParties(data ?? []);
+        // The pager hands a failure back as `error` and does not throw.
+        setPartiesUnread(!!error);
+        setParties(error ? [] : data ?? []);
       } else {
-        const { data } = await selectAll<SplitParty>(() =>
+        const { data, error } = await selectAll<SplitParty>(() =>
           supabase.from("vendors").select("id, name, gstin").eq("client_id", clientId).eq("is_active", true).order("name"));
-        setParties(data ?? []);
+        setPartiesUnread(!!error);
+        setParties(error ? [] : data ?? []);
       }
     })();
   }, [clientId, isCredit]);
 
   useEffect(() => {
-    setChecked(new Set()); setAmounts({}); setDocs([]); setError(null);
+    setChecked(new Set()); setAmounts({}); setDocs([]); setError(null); setDocsUnread(false);
     if (!partyId) return;
     (async () => {
       setLoadingDocs(true);
       const supabase = getSupabaseClient();
       if (isCredit) {
-        const { data } = await selectAll<{
+        const { data, error } = await selectAll<{
           id: string; invoice_no: string; invoice_date: string; total_paise: number;
           paid_paise: number; credited_paise: number | null; debit_note_paise: number | null;
           status: string; txn_currency: string | null;
@@ -104,14 +114,15 @@ export function MultiInvoiceMatchModal({ txn, clientId, prefill, onClose, onDone
             .select("id, invoice_no, invoice_date, total_paise, paid_paise, credited_paise, debit_note_paise, status, txn_currency")
             .eq("client_id", clientId).eq("customer_id", partyId).is("deleted_at", null)
             .neq("status", "cancelled").neq("status", "draft").order("invoice_date"));
-        setDocs((data ?? []).map((r) => ({
+        setDocsUnread(!!error);
+        setDocs((error ? [] : data ?? []).map((r) => ({
           id: r.id, no: r.invoice_no, date: r.invoice_date, currency: r.txn_currency || "INR",
           // Mirrors bank_posting_service._invoice_outstanding (CGST Act §34).
           outstanding_paise: Math.max(
             r.total_paise + (r.debit_note_paise || 0) - r.paid_paise - (r.credited_paise || 0), 0),
         })).filter((d) => d.outstanding_paise > 0));
       } else {
-        const { data } = await selectAll<{
+        const { data, error } = await selectAll<{
           id: string; bill_no: string; bill_date: string; net_payable_paise: number; total_paise: number;
           paid_paise: number; debited_paise: number | null; credit_note_paise: number | null;
           status: string; txn_currency: string | null;
@@ -120,7 +131,8 @@ export function MultiInvoiceMatchModal({ txn, clientId, prefill, onClose, onDone
             .select("id, bill_no, bill_date, net_payable_paise, total_paise, paid_paise, debited_paise, credit_note_paise, status, txn_currency")
             .eq("client_id", clientId).eq("vendor_id", partyId).is("deleted_at", null)
             .not("status", "in", "(cancelled,draft)").order("bill_date"));
-        setDocs((data ?? []).map((r) => ({
+        setDocsUnread(!!error);
+        setDocs((error ? [] : data ?? []).map((r) => ({
           id: r.id, no: r.bill_no, date: r.bill_date, currency: r.txn_currency || "INR",
           // Mirrors bank_posting_service._bill_outstanding.
           outstanding_paise: Math.max(
@@ -253,9 +265,14 @@ export function MultiInvoiceMatchModal({ txn, clientId, prefill, onClose, onDone
         <div>
           <label className="block text-xs font-medium text-ps-label mb-1">{isCredit ? "Customer" : "Vendor"} *</label>
           {isCredit ? (
-            <CustomerLookup customers={parties} value={partyId} onChange={setPartyId} ariaLabel="Customer" placeholder={`Select customer…`} />
+            <CustomerLookup customers={parties} recent={recentParties} value={partyId} onChange={setPartyId} ariaLabel="Customer" placeholder={`Select customer…`} />
           ) : (
-            <VendorLookup vendors={parties} value={partyId} onChange={setPartyId} ariaLabel="Vendor" placeholder={`Select vendor…`} />
+            <VendorLookup vendors={parties} recent={recentParties} value={partyId} onChange={setPartyId} ariaLabel="Vendor" placeholder={`Select vendor…`} />
+          )}
+          {partiesUnread && (
+            <p role="alert" className="text-3xs text-state-problem mt-1">
+              The list of {isCredit ? "customers" : "vendors"} could not be read, so none can be chosen. That is not a client with none: close this and open it again.
+            </p>
           )}
           <p className="text-3xs text-ps-hint mt-1">All selected {docLabel}s must belong to this one {isCredit ? "customer" : "vendor"}.</p>
         </div>
@@ -263,6 +280,10 @@ export function MultiInvoiceMatchModal({ txn, clientId, prefill, onClose, onDone
         {partyId && (
           loadingDocs ? (
             <TransactionListSkeleton rows={3} />
+          ) : docsUnread ? (
+            <p role="alert" className="text-xs text-state-problem text-center py-6">
+              The open {docLabel}s could not be read, so none are listed. That is not {isCredit ? "a customer" : "a vendor"} with none: choose the {isCredit ? "customer" : "vendor"} again to read them.
+            </p>
           ) : docs.length === 0 ? (
             <p className="text-xs text-ps-hint text-center py-6">No open {docLabel}s for this {isCredit ? "customer" : "vendor"}.</p>
           ) : (

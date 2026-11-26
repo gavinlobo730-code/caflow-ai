@@ -76,13 +76,26 @@ def test_the_obligation_door_says_a_date_before_the_period_in_the_same_words_as_
 
 
 
+def _mca_could_not(action: str, path: Path = DRIVE) -> str:
+    """The drive's sentence for an MCA door's unanticipated failure, for one action."""
+    return _literal("MCA_COULD_NOT_SENTENCE", "action", path).replace("${action}", action)
+
+
+#: The MCA doors and the action each names when its write fails (POST-A-392: they all said "Unable to complete MCA operation").
+MCA_WRITE_DOORS = {"create_company": "save the company", "create_filing": "save the filing", "create_director": "save the director",
+                   "update_director": "update the director", "update_filing_status": "record the filing's status"}
+
+
 def test_the_mca_door_says_what_the_drive_says_when_its_insert_fails():
-    """A client's MCA tab creates a company and a filing through two doors that answer a failed insert with this one sentence (an HTTP 200 with success false), which the forms show."""
+    """A client's MCA tab creates a company and a filing through doors that answer a failed insert with a sentence naming the action (an HTTP 200 with
+    success false), which the forms show: `_could_not`'s, the same speaker the TDS doors use."""
     import inspect
     from routers import mca_workspace
-    sentence = _literal("MCA_COULD_NOT_SENTENCE")
-    for door in (mca_workspace.create_company, mca_workspace.create_filing, mca_workspace.create_director):
-        assert f'api_response(False, None, "{sentence}")' in inspect.getsource(door), f"{door.__name__} no longer answers a failed insert with the drive's sentence"
+    for name, action in MCA_WRITE_DOORS.items():
+        answer = mca_workspace._could_not(RuntimeError("something nobody anticipated"), action)
+        assert answer["success"] is False and answer["error"] == _mca_could_not(action)
+        assert f'_could_not(e, "{action}")' in inspect.getsource(getattr(mca_workspace, name)), f"{name} no longer names its action"
+    assert 'api_response(False, None, "Unable to complete MCA operation' not in inspect.getsource(mca_workspace)
 
 
 def test_the_mca_door_says_what_the_drive_says_when_a_director_is_added_twice():
@@ -131,13 +144,10 @@ def _compliance_literal(name: str) -> str:
 
 
 def test_the_mca_doors_that_change_a_row_say_what_the_drive_says_when_they_fail():
-    """A director's KYC change and a filing's status change answer a failed update with this one sentence (an HTTP 200 with success false), which the page now says above its table."""
-    import inspect
-    from routers import mca_workspace
-    sentence = _compliance_literal("MCA_COULD_NOT_SENTENCE")
-    assert sentence == _literal("MCA_COULD_NOT_SENTENCE"), "the two drive modules speak different sentences for one MCA door"
-    for door in (mca_workspace.update_director, mca_workspace.update_filing_status):
-        assert f'api_response(False, None, "{sentence}")' in inspect.getsource(door), f"{door.__name__} no longer answers a failed update with the drive's sentence"
+    """A director's KYC change and a filing's status change answer a failed update with a sentence naming the action (an HTTP 200 with success
+    false), which the page says above its table; the compliance drive module keeps its own copy of the sentence, pinned here to the other's."""
+    for action in ("update the director", "record the filing's status"):
+        assert _mca_could_not(action, COMPLIANCE_ANSWERS) == _mca_could_not(action), "the two drive modules speak different sentences for one MCA door"
 
 
 def test_the_compliance_drive_modules_not_found_sentence_is_the_one_the_client_check_raises():

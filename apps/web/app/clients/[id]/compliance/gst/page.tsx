@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { Badge } from "@/components/ui/badge";
-import { DashboardSkeleton, TableSkeleton } from "@/components/ui/skeleton";
+import { DashboardSkeleton, TableSkeleton, LoadingRegion } from "@/components/ui/skeleton";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 import AmendmentsTab from "@/components/gst/AmendmentsTab";
 import ItcRegisterTab from "@/components/gst/ItcRegisterTab";
@@ -28,7 +29,7 @@ import { formatPaise } from "@/lib/money/format";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 import { objectWithLists } from "@/lib/api/shape";
 import { errorMessage } from "@/lib/api";
-import { doingOf, failureSentence, fetchPlain, jsonPlain, type Doing, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, failureSentence, fetchBounded, jsonPlain, type Doing, type UntypedJson, LONG_REQUEST_BOUND_MS } from "@/lib/api/failureSentence";
 import type { CreditLedgerBlock, ProbableMatch2B } from "@/lib/api";
 import { readGstr2bText } from "@/lib/gst/gstr2bFile";
 import {
@@ -37,6 +38,7 @@ import {
 import { Probable2BMatches } from "@/components/gst/Probable2BMatches";
 import { CreateDraftBillFrom2B } from "@/components/gst/CreateDraftBillFrom2B";
 import { Button } from "@/components/ui/button";
+import { Drawer } from "@/components/ui/drawer";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { todayIstISO } from "@/lib/dates/format";
@@ -44,6 +46,7 @@ import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { istToday } from "@/lib/dateMath";
+import { usePermissions } from "@/lib/auth/AuthContext";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -65,7 +68,7 @@ async function apiFetch(path: string, opts?: RequestInit, asked?: Doing) {
   // A request that gets no answer, and a page that is not JSON, are said in the product's words (POST-A-406), by what the request was.
   // What the request was: its method, unless the caller says it is an estimator that persists nothing (a POST that only asks, such as "Compute from Books").
   const doing = asked ?? doingOf(opts?.method);
-  const res = await fetchPlain(`${API}${path}`, {
+  const res = await fetchBounded(`${API}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
@@ -220,6 +223,10 @@ function GSTR3BDetailDrawer({
 
   useEffect(() => {
     let cancelled = false;
+    // Another line's or period's rows are not this one's: a read that fails leaves nothing to export (POST-A-464).
+    setRows(null);
+    setTotals(null);
+    setError(null);
     (async () => {
       try {
         const r = await apiFetch(
@@ -257,21 +264,15 @@ function GSTR3BDetailDrawer({
     : totals.tax === expectedPaise;
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/30">
-      <div className="bg-white w-full max-w-4xl h-full overflow-y-auto shadow-xl">
-        <div className="sticky top-0 bg-white border-b px-5 py-3 flex items-center justify-between">
-          <div>
-            <p className="text-sm font-semibold text-ps-ink">{label}</p>
-            <p className="text-xs text-ps-label">Period {period} · the documents behind this figure</p>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={exportCsv} disabled={!rows?.length}
-              className="text-xs px-3 py-1.5 border rounded hover:bg-ps-bg disabled:opacity-40">
-              Export CSV
-            </button>
-            <button onClick={onClose}
-              className="text-xs px-3 py-1.5 border rounded hover:bg-ps-bg">Close</button>
-          </div>
+    // The shared side sheet (POST-A-130): named for the figure, modal, Tab kept inside, Escape closes it and focus goes back to the figure
+    // it was opened from. It only reads, so nothing holds its close.
+    <Drawer open title={<span className="font-sans">{label}</span>} ariaLabel={label} widthClass="sm:max-w-4xl" onClose={onClose}>
+        <div className="px-5 pt-3 flex items-center justify-between gap-3">
+          <p className="text-xs text-ps-label">Period {period} · the documents behind this figure</p>
+          <button onClick={exportCsv} disabled={!rows?.length}
+            className="text-xs px-3 py-1.5 border rounded hover:bg-ps-bg disabled:opacity-40">
+            Export CSV
+          </button>
         </div>
 
         <div className="p-5 space-y-3">
@@ -342,8 +343,7 @@ function GSTR3BDetailDrawer({
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </Drawer>
   );
 }
 
@@ -532,6 +532,14 @@ function GSTDashboard({ clientId }: { clientId: string }) {
 // ── GSTR-1 ─────────────────────────────────────────────────────────────────
 
 function GSTR1Tab({ clientId }: { clientId: string }) {
+  // A return's row offers each step only to someone its route admits (POST-A-455): Validate asks `gst` `compute`
+  // (an Executive and above), and CA Approve and Mark as filed ask `gst` `approve` (a Manager or a Partner). Delete asks
+  // `gst` `compute`, and `gst` `approve` for an approved return, as on the GSTR-3B tab (POST-A-547: the server could always
+  // delete an unfiled GSTR-1 and no row offered it, so a working saved for the wrong month stayed on the list). This tab has
+  // no Recheck. They were drawn to every member and came back refused.
+  const { can: canDo, resolved: permissionsRead } = usePermissions();
+  const mayCompute = canDo("gst", "compute");
+  const mayApprove = canDo("gst", "approve");
   const [returns, setReturns] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
   // Distinguishes "fetch failed" from "no GSTR-1 returns yet" — a masked
@@ -572,6 +580,8 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
   const [filingRow, setFilingRow] = useState<{ id: string; period: string } | null>(null);
   const [markingFiled, setMarkingFiled] = useState(false);
   const [rowError, setRowError] = useState<string | null>(null);
+  // The row a delete is running on: its buttons wait, so a second click cannot ask twice.
+  const [busyRow, setBusyRow] = useState<string | null>(null);
   // What the server said about the compliance obligation when a return was recorded as filed and it was NOT closed:
   // one sentence per return (each names its period), kept until dismissed so a run of back-recorded months does not
   // lose an earlier unresolved one to a later success.
@@ -657,6 +667,22 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
       setRowError(failureSentence(e, "Couldn't update the return.", "write"));
       return false;
     }
+  }
+
+  /** Delete an unfiled GSTR-1's saved working. The server refuses a filed one, and an approved one without the right to approve. */
+  async function deleteReturn(id: string, period: string) {
+    if (!(await confirmDialog({ message: `Delete the GSTR-1 for ${period}?\n\nThis removes the saved working only. ` +
+      `Nothing has been filed, and the underlying invoices and notes are untouched — ` +
+      `you can compute it again at any time.`, danger: true, confirmLabel: "Delete" }))) return;
+    setBusyRow(id);
+    setRowError(null);
+    try {
+      const r = await apiFetch(`/api/gst-workspace/gstr1/${id}`, { method: "DELETE" });
+      if (!r.success) { setRowError(r.error ?? "Couldn't delete this return."); return; }
+      load();
+    } catch (e) {
+      setRowError(failureSentence(e, "Couldn't delete this return.", "write"));
+    } finally { setBusyRow(null); }
   }
 
   /** Record what the CA filed on the portal — the ARN and the real date. */
@@ -760,14 +786,18 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
       <div className="flex justify-between items-center">
         <h3 className="font-medium">GSTR-1 Returns</h3>
         <div className="flex gap-2">
-          <button onClick={() => setShowCompute(true)}
-            className="text-sm px-3 py-1 border border-blue-300 text-blue-700 rounded hover:bg-blue-50">
-            Compute from Books
-          </button>
-          <button onClick={() => setShowNew(true)}
-            className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark">
-            + New GSTR-1
-          </button>
+          {mayCompute && (
+            <>
+              <button onClick={() => setShowCompute(true)}
+                className="text-sm px-3 py-1 border border-blue-300 text-blue-700 rounded hover:bg-blue-50">
+                Compute from Books
+              </button>
+              <button onClick={() => setShowNew(true)}
+                className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark">
+                + New GSTR-1
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -803,6 +833,15 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
             <button onClick={() => { setShowCompute(false); setComputeResult(null); setComputeError(null); setSaveComputedError(null); }} disabled={savingComputed}
               className="px-3 py-1 border rounded text-sm disabled:opacity-50">Cancel</button>
           </div>
+
+          {/* A read Compute starts (POST-A-449): the button keeps its own label, and the place the result will be drawn says
+              what is being read, and that the server may be waking up, while the read is out. The result's own Save is drawn
+              only with the result, so nothing here sits beside a save. */}
+          {computing && (
+            <LoadingRegion label="Computing GSTR-1 from the books" className="border-t pt-3 text-xs text-ps-hint">
+              <p>Computing GSTR-1 from the books…</p>
+            </LoadingRegion>
+          )}
 
           {computeResult && (() => {
             const rec = computeResult.reconciliation as Record<string, unknown>;
@@ -939,13 +978,16 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
                   </span>
                 </td>
                 <td className="px-3 py-2 space-x-2">
-                  {r.status === "draft" && (
+                  {r.status === "draft" && mayCompute && (
                     <Button variant="plain" size="none" onClick={() => updateStatus(r.id as string, "validated")}
                       className="text-xs px-2 py-0.5 border rounded hover:bg-ps-muted">Validate</Button>
                   )}
-                  {r.status === "validated" && (
+                  {r.status === "validated" && mayApprove && (
                     <Button variant="plain" size="none" onClick={() => updateStatus(r.id as string, "ca_approved")}
                       className="text-xs px-2 py-0.5 border rounded hover:bg-state-ready-surface text-state-ready">CA Approve</Button>
+                  )}
+                  {(r.status === "validated" || r.status === "ca_approved") && permissionsRead && !mayApprove && (
+                    <span className="text-xs text-ps-label">Approving it and recording the filing need permission to approve GST returns, so those buttons are not shown to you</span>
                   )}
                   {/* Only on an approved statement, and only where the server
                       says the walk-through exists — the dead-control rule. */}
@@ -958,7 +1000,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
                   {/* The real thing: the CA filed on gst.gov.in and records
                       the acknowledgement here. This is what writes the
                       public.filings row the period lock reads. */}
-                  {r.status === "ca_approved" && (
+                  {r.status === "ca_approved" && mayApprove && (
                     <button onClick={() => { setRowError(null); setFilingRow({ id: r.id as string, period: r.period as string }); }}
                       className="text-xs px-2 py-0.5 border border-state-ready-border rounded hover:bg-state-ready-surface text-state-ready">
                       Mark as filed
@@ -968,6 +1010,14 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
                     <span className="text-xs text-ps-label">
                       {(r.arn as string) ? `ARN ${r.arn as string}` : "filed — no ARN recorded"}
                     </span>
+                  )}
+                  {UNFILED.includes(r.status as string) && (r.status === "ca_approved" ? mayApprove : mayCompute) && (
+                    <Button variant="plain" size="none" onClick={() => deleteReturn(r.id as string, r.period as string)}
+                      disabled={busyRow === r.id} data-delete-gstr1=""
+                      title="Delete this saved working. Nothing has been filed."
+                      className="text-xs px-2 py-0.5 border border-state-problem-border rounded hover:bg-state-problem-hover text-state-problem disabled:opacity-40">
+                      {busyRow === r.id ? "Deleting…" : "Delete"}
+                    </Button>
                   )}
                 </td>
               </tr>
@@ -1004,6 +1054,13 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
 // ── GSTR-3B ────────────────────────────────────────────────────────────────
 
 function GSTR3BTab({ clientId }: { clientId: string }) {
+  // A return's row offers each step only to someone its route admits (POST-A-455): Validate asks `gst` `compute` (an
+  // Executive and above), and so does Recheck, which asks the route in its read-only `dry_run` form for any unfiled status;
+  // Delete asks `gst` `compute` as well, and `gst` `approve` for an approved return. CA Approve and Mark as filed ask
+  // `gst` `approve` (a Manager or a Partner). They were drawn to every member and came back refused.
+  const { can: canDo, resolved: permissionsRead } = usePermissions();
+  const mayCompute = canDo("gst", "compute");
+  const mayApprove = canDo("gst", "approve");
   const [returns, setReturns] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
   // The generic filing walk-through (services/filing_demo/gstr3b), rendered by
@@ -1206,7 +1263,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
   async function computeFromBooks() {
     // Refused before the request, never defaulted to the primary (GST-17).
     if (reg.choice.refused) { setComputeError(reg.choice.refused); return; }
-    if (dates.first) { setComputeError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setComputeError); return; }
     setComputing(true);
     setComputeError(null);
     setComputeResult(null);
@@ -1332,14 +1389,18 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
       <div className="flex justify-between items-center">
         <h3 className="font-medium">GSTR-3B Returns</h3>
         <div className="flex gap-2">
-          <button onClick={() => setShowCompute(true)}
-            className="text-sm px-3 py-1 border border-blue-300 text-blue-700 rounded hover:bg-blue-50">
-            Compute from Books
-          </button>
-          <button onClick={() => setShowNew(true)}
-            className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark">
-            + New GSTR-3B
-          </button>
+          {mayCompute && (
+            <>
+              <button onClick={() => setShowCompute(true)}
+                className="text-sm px-3 py-1 border border-blue-300 text-blue-700 rounded hover:bg-blue-50">
+                Compute from Books
+              </button>
+              <button onClick={() => setShowNew(true)}
+                className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark">
+                + New GSTR-3B
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -1375,6 +1436,15 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
             <button onClick={() => { setShowCompute(false); setComputeResult(null); setComputeError(null); setSaveComputedError(null); setFiledOn(""); }} disabled={savingComputed}
               className="px-3 py-1 border rounded text-sm disabled:opacity-50">Cancel</button>
           </div>
+
+          {/* A read Compute starts (POST-A-449): the button keeps its own label, and the place the result will be drawn says
+              what is being read, and that the server may be waking up, while the read is out. The result's own Save is drawn
+              only with the result, so nothing here sits beside a save. */}
+          {computing && (
+            <LoadingRegion label="Computing GSTR-3B from the books" className="border-t pt-3 text-xs text-ps-hint">
+              <p>Computing GSTR-3B from the books…</p>
+            </LoadingRegion>
+          )}
 
           {computeResult && (() => {
             const rec = computeResult.reconciliation as Record<string, unknown>;
@@ -1645,13 +1715,16 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                   </span>
                 </td>
                 <td className="px-3 py-2 space-x-2">
-                  {r.status === "draft" && (
+                  {r.status === "draft" && mayCompute && (
                     <Button variant="plain" size="none" onClick={() => updateStatus(r.id as string, "validated")}
                       disabled={busyRow === r.id}
                       className="text-xs px-2 py-0.5 border rounded hover:bg-ps-muted disabled:opacity-40">
                       {busyRow === r.id ? "Working…" : "Validate"}</Button>
                   )}
-                  {r.status === "validated" && (
+                  {(r.status === "validated" || r.status === "ca_approved") && permissionsRead && !mayApprove && (
+                    <span className="text-xs text-ps-label">Approving it and recording the filing need permission to approve GST returns, so those buttons are not shown to you</span>
+                  )}
+                  {r.status === "validated" && mayApprove && (
                     <Button variant="plain" size="none" onClick={() => updateStatus(r.id as string, "ca_approved")}
                       disabled={busyRow === r.id}
                       title="Approval re-checks the return against the books first, which can take a few seconds"
@@ -1673,7 +1746,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                       public.filings row journal_period_lock_reason reads, and
                       the ARN and date it carries are the ones its lock message
                       quotes (GST-23). */}
-                  {r.status === "ca_approved" && (
+                  {r.status === "ca_approved" && mayApprove && (
                     <button onClick={() => { setRowError(null); setFilingRow({ id: r.id as string, period: r.period as string }); }}
                       disabled={busyRow === r.id}
                       className="text-xs px-2 py-0.5 border border-state-ready-border rounded hover:bg-state-ready-surface text-state-ready disabled:opacity-40">
@@ -1684,21 +1757,21 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                       filing record that locks the period — the server refuses
                       both of these for it, and offering them here would be a
                       control that exists only to be told no. */}
-                  {UNFILED.includes(r.status as string) && (
-                    <>
-                      <Button variant="plain" size="none" onClick={() => recheck(r.id as string)}
-                        disabled={busyRow === r.id}
-                        title="Check whether the books have changed since this was computed"
-                        className="text-xs px-2 py-0.5 border rounded hover:bg-ps-muted disabled:opacity-40">
-                        {busyRow === r.id ? "…" : "Recheck"}
-                      </Button>
-                      <Button variant="plain" size="none" onClick={() => deleteReturn(r.id as string, r.period as string)}
-                        disabled={busyRow === r.id}
-                        title="Delete this saved working. Nothing has been filed."
-                        className="text-xs px-2 py-0.5 border border-state-problem-border rounded hover:bg-state-problem-hover text-state-problem disabled:opacity-40">
-                        Delete
-                      </Button>
-                    </>
+                  {UNFILED.includes(r.status as string) && mayCompute && (
+                    <Button variant="plain" size="none" onClick={() => recheck(r.id as string)}
+                      disabled={busyRow === r.id}
+                      title="Check whether the books have changed since this was computed"
+                      className="text-xs px-2 py-0.5 border rounded hover:bg-ps-muted disabled:opacity-40">
+                      {busyRow === r.id ? "…" : "Recheck"}
+                    </Button>
+                  )}
+                  {UNFILED.includes(r.status as string) && (r.status === "ca_approved" ? mayApprove : mayCompute) && (
+                    <Button variant="plain" size="none" onClick={() => deleteReturn(r.id as string, r.period as string)}
+                      disabled={busyRow === r.id}
+                      title="Delete this saved working. Nothing has been filed."
+                      className="text-xs px-2 py-0.5 border border-state-problem-border rounded hover:bg-state-problem-hover text-state-problem disabled:opacity-40">
+                      Delete
+                    </Button>
                   )}
                 </td>
               </tr>,
@@ -1855,6 +1928,9 @@ interface Recon2BResult {
 // bucket buttons and the "last reconciled" line below say the same thing.
 
 function GSTR2BTab({ clientId }: { clientId: string }) {
+  // Reading a file (`/gstr2b/inspect`) and reconciling it (`/gstr2b/upload`) both ask `gst` `compute` (POST-A-455).
+  const { can: canDo, resolved: permissionsRead } = usePermissions();
+  const mayCompute = canDo("gst", "compute");
   // THE FILE IS THE INPUT, AND THE MONTH IS NOT (gst-09). There is no period box
   // and no textarea: the CA chooses (or drops) the .json the portal gave them,
   // the server reads the month and the recipient GSTIN off it
@@ -1922,6 +1998,8 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
       setRaw(read.raw);
       // The server reads the month and the GSTIN. Nothing is stored by this.
       const resp = await apiFetch("/api/gst-workspace/gstr2b/inspect", {
+        // It carries the whole GSTR-2B file: the long bound (POST-A-470).
+        signal: AbortSignal.timeout(LONG_REQUEST_BOUND_MS),
         method: "POST",
         body: JSON.stringify({ client_id: clientId, raw_data: read.raw }),
       }, "read");
@@ -1945,6 +2023,8 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
       // The file and the client — no period. The server takes the month from the
       // file and asks the same question `inspect` just answered.
       const resp = await apiFetch("/api/gst-workspace/gstr2b/upload", {
+        // It carries the whole GSTR-2B file and reconciles it against the books: the long bound (POST-A-470).
+        signal: AbortSignal.timeout(LONG_REQUEST_BOUND_MS),
         method: "POST",
         body: JSON.stringify({ client_id: clientId, raw_data: raw }),
       });
@@ -1971,6 +2051,12 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
         </p>
       </div>
       <div className="space-y-3">
+        {permissionsRead && !mayCompute && (
+          <p className="text-xs text-ps-label">
+            Reading a GSTR-2B file and reconciling it needs permission to compute GST returns, so the file box and the button are not shown to you.
+          </p>
+        )}
+        {mayCompute && (
         <div
           data-testid="gstr2b-dropzone"
           onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
@@ -1992,7 +2078,8 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
               onChange={(e) => { void chooseFile(e.target.files?.[0] ?? null); }} />
           </label>
         </div>
-        {reading && <p className="text-xs text-ps-label">Reading the file…</p>}
+        )}
+        {reading && <LoadingRegion label="Reading the GSTR-2B file" className="text-xs text-ps-label">Reading the file…</LoadingRegion>}
 
         {/* WHAT THE SERVER MADE OF THE FILE. The month and the GSTIN are the
             file's and whether this client holds that registration is the
@@ -2040,10 +2127,12 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
           </p>
         )}
         {error && <p role="alert" className="text-state-problem text-sm">{error}</p>}
-        <Button variant="plain" size="none" onClick={upload} disabled={loading || reading || !raw || !inspection?.ok}
-          className="px-4 py-2 bg-brand text-white rounded text-sm disabled:opacity-50">
-          {loading ? "Reconciling…" : "Upload & Reconcile"}
-        </Button>
+        {mayCompute && (
+          <Button variant="plain" size="none" onClick={upload} disabled={loading || reading || !raw || !inspection?.ok}
+            className="px-4 py-2 bg-brand text-white rounded text-sm disabled:opacity-50">
+            {loading ? "Reconciling…" : "Upload & Reconcile"}
+          </Button>
+        )}
       </div>
 
       {result && (result.problems?.length ?? 0) > 0 && (
@@ -2445,7 +2534,9 @@ function GSTR9Tab({ clientId }: { clientId: string }) {
 // back in TABS. There is still no gstr9 computation builder in
 // apps/api/domain/gst — drafts are saved via POST /gst-workspace/gstr9, not
 // derived here.
-const TABS: { id: GSTTab; label: string }[] = [
+// `requires` is the permission a tab's own first read asks (POST-A-454): the GSTR-9 tab computes GSTR-9 and GSTR-9C on opening,
+// through routes that ask `gst` `compute`, so a Reviewer was offered a tab that refused them on arrival.
+const TABS: { id: GSTTab; label: string; requires?: readonly [string, string] }[] = [
   { id: "dashboard", label: "Dashboard" },
   { id: "gstr1", label: "GSTR-1" },
   // Its own tab, next to GSTR-1 and not inside it: an amendment is a
@@ -2458,7 +2549,7 @@ const TABS: { id: GSTTab; label: string }[] = [
   // from it, because the register CLASSIFIES journals the CA already posted
   // rather than being part of computing the return.
   { id: "itc", label: "ITC Register" },
-  { id: "gstr9", label: "GSTR-9" },
+  { id: "gstr9", label: "GSTR-9", requires: ["gst", "compute"] },
   { id: "gstr2b", label: "GSTR-2B Recon" },
   { id: "history", label: "Filing History" },
   // GST-20. Last, because most clients hold one registration and never open
@@ -2470,6 +2561,25 @@ const TABS: { id: GSTTab; label: string }[] = [
 export default function GSTWorkspacePage() {
   const { clientId } = useClientNav();
   const [tab, setTab] = useState<GSTTab>("dashboard");
+  const { can, resolved } = usePermissions();
+  const tabs = TABS.filter((t) => !t.requires || !resolved || can(t.requires[0], t.requires[1]));
+  // A link may open a tab by ?tab=<id> (the morning digest's GSTR-2B section opens "itc",
+  // where the §16(4) radar it summarises lives). Validated against this screen's own TABS,
+  // and a tab that asks a permission is opened only once the caller is known to hold it.
+  // Keyed on the VALUE, as the purchases and bank screens are, and a value is applied
+  // once, so a click on another tab is not snapped back by a query string that has not
+  // changed or by the permissions arriving.
+  const tabParam = useSearchParams().get("tab");
+  const appliedTabParam = useRef<string | null>(null);
+  useEffect(() => {
+    if (tabParam === appliedTabParam.current) return;
+    const wanted = TABS.find((t) => t.id === tabParam);
+    if (!wanted) return;
+    if (wanted.requires && !(resolved && can(wanted.requires[0], wanted.requires[1]))) return;
+    appliedTabParam.current = tabParam;
+    setTab(wanted.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabParam, resolved]);
 
   if (!clientId || clientId === "_placeholder") {
     return <p className="text-sm text-ps-label p-6">Select a client to view GST workspace.</p>;
@@ -2485,7 +2595,7 @@ export default function GSTWorkspacePage() {
       </div>
 
       <div className="flex gap-1 border-b">
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <button key={t.id} onClick={() => setTab(t.id)}
             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
               tab === t.id

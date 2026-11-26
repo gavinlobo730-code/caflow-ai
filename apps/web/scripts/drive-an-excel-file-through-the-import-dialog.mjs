@@ -168,7 +168,8 @@ const browser = await chromium.launch({ executablePath: installedChromium() });
 const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, acceptDownloads: true });
 const refs = ["127", "localhost", "placeholder"];
 await context.addInitScript(`(() => { try { for (const ref of ${JSON.stringify(refs)})
-  localStorage.setItem("sb-" + ref + "-auth-token", ${JSON.stringify(JSON.stringify(SESSION))}); } catch {} })();`);
+  localStorage.setItem("sb-" + ref + "-auth-token", ${JSON.stringify(JSON.stringify(SESSION))});
+  sessionStorage.setItem("practicesync_session_marker", "1"); } catch {} })();`);
 const page = await context.newPage();
 const problems = [];
 page.on("pageerror", (e) => problems.push(`pageerror: ${e.message}`));

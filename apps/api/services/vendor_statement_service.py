@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 
 from core.ist_clock import ist_today
+from domain.reporting.age_of_document import days_old
 from datetime import date, datetime, timezone, timedelta
 from typing import Optional
 
@@ -281,10 +282,8 @@ class VendorStatementService:
             if outstanding <= 0:                     # belt and braces: a stale fake DB
                 continue
             ref = b.get("due_date") or b.get("bill_date")
-            try:
-                days = (today - date.fromisoformat(_d(ref))).days if ref else 0
-            except (ValueError, TypeError):
-                days = 0
+            # A date that cannot be read ages the bill as current, which understates what is overdue, so it is reported (POST-A-505).
+            days = days_old(ref, today, operation="vendor_statement.ap_aging.unreadable_date", bill_id=str(b.get("id")))
             bucket = _aging_bucket(days)
             buckets[bucket] += outstanding
             total += outstanding

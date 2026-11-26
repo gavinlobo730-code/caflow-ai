@@ -3,8 +3,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { StickyNote, Plus, Pin, Archive, RefreshCw } from "lucide-react";
 import { api, type ApiResp } from "@/lib/api";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
+import { SectionPlaceholder } from "@/components/ui/page-frame";
 
 export interface Instruction {
   id: string; client_id: string; title: string; body: string;
@@ -101,7 +104,7 @@ export function ClientInstructions({
   }
 
   const visible = pinnedOnly ? items.filter((i) => i.is_pinned) : items;
-  if (loading) return <div className="text-xs text-gray-400">Loading instructions…</div>;
+  if (loading) return <SectionPlaceholder label="Loading instructions" shape="list" rows={3} />;
   // A pinned-only card with nothing to show renders nothing — but a FAILED
   // read is not "nothing pinned", so the error still shows.
   if (pinnedOnly && visible.length === 0 && !error) return null;
@@ -116,7 +119,7 @@ export function ClientInstructions({
           </div>
           <div className="flex items-center gap-3">
             {canWrite && <button onClick={() => setShowForm((v) => !v)} className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg bg-brand text-white"><Plus size={12} /> Add</button>}
-            <button onClick={load} className="text-gray-400 hover:text-brand"><RefreshCw size={13} /></button>
+            <button onClick={load} aria-label="Reload" title="Reload" className="text-gray-400 hover:text-brand"><RefreshCw size={13} aria-hidden="true" /></button>
           </div>
         </div>
       )}
@@ -148,7 +151,19 @@ export function ClientInstructions({
             </div>
           </div>
         ))}
-        {!pinnedOnly && visible.length === 0 && <p className="text-xs text-gray-400">No instructions yet.</p>}
+        {!pinnedOnly && visible.length === 0 && (
+          <EmptyState
+            className="py-6"
+            icon={<StickyNote size={24} />}
+            title="No instructions yet"
+            description="Note how this client wants their work handled, so everyone working on the client sees it."
+            action={canWrite ? (
+              <EmptyStateActions>
+                <EmptyStateAction requires={["client_instruction", "write"]} icon={<Plus size={14} />} label="Add an instruction" onClick={() => setShowForm(true)} />
+              </EmptyStateActions>
+            ) : undefined}
+          />
+        )}
       </div>
     </div>
   );

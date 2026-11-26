@@ -1,5 +1,6 @@
 "use client";
 
+import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { readRateInput } from "@/lib/time/rateInput";
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
@@ -8,6 +9,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -32,10 +34,13 @@ import { UnbilledWorkPanel } from "@/components/time/UnbilledWorkPanel";
 import { BillingRatesPanel } from "@/components/time/BillingRatesPanel";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
 import { windowDescription } from "@/lib/lists/window";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { SectionPlaceholder } from "@/components/ui/page-frame";
 
 type Tab = "mine" | "unbilled" | "rates";
 
@@ -201,7 +206,7 @@ export default function TimeTrackingPage() {
       setStartEngagementId("");
       // The server's own sentence about the rate (why no engagement was chosen,
       // that the time will be listed as "no rate") — shown, never reworded.
-      setRateNotice(rate && rate.notes.length ? rate.notes.join(" ") : null);
+      setRateNotice(rate && (rate.notes ?? []).length ? rate.notes.join(" ") : null);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to start timer");
     } finally {
@@ -246,7 +251,7 @@ export default function TimeTrackingPage() {
         is_billable: manualBillable,
         hourly_rate_paise: hourlyRate,
       });
-      setRateNotice(rate && rate.notes.length ? rate.notes.join(" ") : null);
+      setRateNotice(rate && (rate.notes ?? []).length ? rate.notes.join(" ") : null);
       setShowManual(false);
       setManualClientId("");
       setManualEngagementId("");
@@ -415,7 +420,7 @@ export default function TimeTrackingPage() {
                     summarySeq.current += 1;
                     summaryAsk.current = { period: "range" };
                     setSummary(null);
-                    setSummaryProblem(rangeDates.first);
+                    rangeDates.refuseWith(setSummaryProblem);
                     return;
                   }
                   void loadSummary({ period: "range", date_from: rangeFrom, date_to: rangeTo });
@@ -474,14 +479,13 @@ export default function TimeTrackingPage() {
         <CardContent className="py-3 flex flex-wrap items-end gap-3">
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">Client</label>
-            <select aria-label="Client to export"
+            <ClientLookup ariaLabel="Client to export"
+              clients={clients}
               value={exportClientId}
-              onChange={e => setExportClientId(e.target.value)}
-              className="border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
-            >
-              <option value="">All clients</option>
-              {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
-            </select>
+              onChange={setExportClientId}
+              placeholder="All clients"
+              clearable
+            />
           </div>
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">From</label>
@@ -518,14 +522,20 @@ export default function TimeTrackingPage() {
         </CardHeader>
         <CardContent className="p-0">
           {loading ? (
-            <div className="flex items-center justify-center py-10 text-ps-hint">
-              <Loader2 className="animate-spin mr-2" size={16} /> Loading…
-            </div>
+            <SectionPlaceholder label="Loading time entries" rows={5} cols={5} />
           ) : entries.length === 0 ? (
-            <div className="py-12 text-center text-ps-hint">
-              <Clock size={28} className="mx-auto mb-2 opacity-30" />
-              <p className="text-sm">No time entries yet</p>
-            </div>
+            <EmptyState
+              className="py-12"
+              icon={<Clock size={28} />}
+              title="No time entries yet"
+              description="Start a timer when you begin work for a client, or add the hours afterwards as a manual entry."
+              action={
+                <EmptyStateActions>
+                  {!isRunning && <EmptyStateAction requires={["time_entry", "write"]} icon={<Play size={14} />} label="Start Timer" onClick={() => setShowStart(true)} />}
+                  <EmptyStateAction requires={["time_entry", "write"]} icon={<Plus size={14} />} label="Manual Entry" variant="secondary" onClick={() => setShowManual(true)} />
+                </EmptyStateActions>
+              }
+            />
           ) : (
             <div className="divide-y">
               {entries.map((e) => (
@@ -600,25 +610,17 @@ export default function TimeTrackingPage() {
 
       {/* Start Timer Dialog */}
       {showStart && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="font-semibold text-ps-ink">Start Timer</h2>
-              <button onClick={() => setShowStart(false)} className="text-ps-hint hover:text-ps-label">
-                <X size={18} />
-              </button>
-            </div>
+        <Modal title="Start Timer" onClose={() => { if (!starting) setShowStart(false); }}>
             <div className="space-y-3">
               <div>
                 <label className="block text-xs font-medium text-ps-body mb-1">Client</label>
-                <select aria-label="Client"
+                <ClientLookup ariaLabel="Client"
+                  clients={clients}
                   value={startClientId}
-                  onChange={e => setStartClientId(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
-                >
-                  <option value="">No client</option>
-                  {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
-                </select>
+                  onChange={setStartClientId}
+                  placeholder="No client"
+                  clearable
+                />
               </div>
               <EngagementPicker
                 id="start-engagement"
@@ -658,31 +660,22 @@ export default function TimeTrackingPage() {
                 Start
               </Button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* Manual Entry Dialog */}
       {showManual && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="font-semibold text-ps-ink">Manual Time Entry</h2>
-              <button onClick={() => setShowManual(false)} className="text-ps-hint hover:text-ps-label">
-                <X size={18} />
-              </button>
-            </div>
+        <Modal title="Manual Time Entry" onClose={() => { if (!manualSaving) setShowManual(false); }}>
             <div className="space-y-3">
               <div>
                 <label className="block text-xs font-medium text-ps-body mb-1">Client</label>
-                <select aria-label="Client"
+                <ClientLookup ariaLabel="Client"
+                  clients={clients}
                   value={manualClientId}
-                  onChange={e => setManualClientId(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
-                >
-                  <option value="">No client</option>
-                  {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
-                </select>
+                  onChange={setManualClientId}
+                  placeholder="No client"
+                  clearable
+                />
               </div>
               <EngagementPicker
                 id="manual-engagement"
@@ -747,7 +740,7 @@ export default function TimeTrackingPage() {
               </div>
             </div>
             <div className="flex gap-2 justify-end pt-1">
-              <Button variant="outline" size="sm" onClick={() => setShowManual(false)}>Cancel</Button>
+              <Button disabled={manualSaving} variant="outline" size="sm" onClick={() => setShowManual(false)}>Cancel</Button>
               <Button
                 size="sm"
                 onClick={handleManualEntry}
@@ -757,8 +750,7 @@ export default function TimeTrackingPage() {
                 Save Entry
               </Button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

@@ -81,6 +81,12 @@ AUDITED: dict[str, tuple[str, ...]] = {
         # named and where assert_client_access runs; both endpoints reach the
         # database only through it.
         "_assemble_annexure_ii",
+        # The firm-wide payroll lists narrow through this since POST-A-532: it
+        # is `filter_by_client` and then guardrail G2 (the practice's own staff
+        # are left out of a list across clients). The sweep reads a route's own
+        # source, so it is named here; that it really calls `filter_by_client`
+        # first is `test_the_payroll_list_narrowing_is_the_assignment_narrowing_first`.
+        "_the_firms_clients_only",
     ),
     "/api/recurring-invoices": (
         "assert_client_access", "filter_by_client", "effective_client_ids",
@@ -765,28 +771,15 @@ AUDITED: dict[str, tuple[str, ...]] = {
     # access to a client outside your own book is the escalation Module 9
     # exists to prevent. Same convention as billing.py's Partner-only routes.
     "/api/assignments": ("assert_client_access", "effective_client_ids"),
-    # risks.py — the risk register (document_risks.client_id NOT NULL,
-    # migration 004, plus risks derived from compliance_records).
-    # list_risks took client_id from the query string and only ever narrowed
-    # it INTO the firm-scoped query; with client_id omitted — the default —
-    # it returned every client's risks in the firm, each row carrying
-    # client_id AND client_name. filter_by_client covers both. client_risks
-    # is addressed directly by client_id and had no check at all.
-    # update_risk_status is row-addressed by risk_id (so main.py's
-    # _CLIENT_GUARD never fires on it) and domain/risk_engine.update_risk
-    # scopes its UPDATE by id+firm_id only; new get_risk lookup in the engine
-    # + _assert_risk_scope resolver in the router (can_access_client, one
-    # fixed "Risk not found" message — already the pre-existing text) closes
-    # it. risk_stats and firm_score are EXEMPT below.
+    # risks.py — the firm-wide statutory risk register, and nothing else since 22-11-2026 (POST-A-548): the five routes over
+    # the risks recorded against documents (the list, the counts, one client's, the firm's score and the route that marked
+    # one resolved) were retired with their tests, because no screen called them and nothing records such a risk.
     # GET /register is a LIST across the caller's whole book rather than a row
     # addressed by a named client_id, so it narrows with `effective_client_ids`
     # the way the reporting endpoints and /api/mca-workspace/calendar/firm do
     # (ACC-17) instead of asserting access to one id it was handed. None means
     # firm-wide and an EMPTY set means nothing — never "no filter".
-    "/api/risks": (
-        "assert_client_access", "filter_by_client", "_assert_risk_scope",
-        "effective_client_ids",
-    ),
+    "/api/risks": ("effective_client_ids",),
     # notifications.py — the in-app notification feed. notifications.client_id
     # is nullable (migration 004): a notification is EITHER about a client or
     # firm-level. This router mounts no client guard at all, and
@@ -799,7 +792,10 @@ AUDITED: dict[str, tuple[str, ...]] = {
     # obeys — hence filter_by_client. The five remaining routes are
     # recipient-owned tallies and transitions with no client_id in them at
     # all; all EXEMPT below.
-    "/api/notifications": ("assert_client_access", "filter_by_client"),
+    # The unread count joined them (POST-A-451): it counts the notifications the
+    # list shows, narrowed by effective_client_ids, so it is audited and no
+    # longer exempt.
+    "/api/notifications": ("assert_client_access", "filter_by_client", "effective_client_ids"),
     # documents.py — documents.client_id is NOT NULL (migration 001).
     # upload_document/parse_document were already guarded via _scope_client
     # (multipart form fields are invisible to the mount-level guard, so those
@@ -975,9 +971,19 @@ EXEMPT: dict[str, str] = {
     # honour and spelling others differently, which is how nine live mappings
     # were being discarded. The write path that USES a caption —
     # PATCH /api/accounting/accounts/{id} — is client-guarded where it belongs.
+    # ── /api/accounting: the firm's manual-journal approval rule (POST-A-456) ──
+    "/api/accounting/journal-approval":
+        "firms.manual_journals_need_approval is a column on FIRMS (migration 681) and both methods scope to "
+        "`current_user['firm_id']`; the request names no client and none could be checked. The GET answers what the "
+        "CALLER may do under the rule (their own permissions, no client's data); the PUT is rbac('settings', 'write'), "
+        "a Partner's. The doors that post a journal are client-guarded where they belong.",
     "/api/accounting/schedule-iii/captions":
         "a statutory vocabulary, not data: no table, no client_id, and the same "
         "captions for every firm. The PATCH that stores one is guarded.",
+    # ── /api/accounting: the loans screen's EMI calculator (POST-A-266) ──────
+    "/api/accounting/emi":
+        "arithmetic on three numbers the caller typed (principal, rate, months): it reads no table, takes no "
+        "client_id and stores nothing, so there is no client to check. domain/loans/emi.py.",
     # ── /api/reconciliation: the check vocabulary, which holds no data ──────
     # What "Verify Books" checks, and what it deliberately does not. It reads
     # no table, takes no client_id, and returns the same sixteen entries for
@@ -1132,13 +1138,6 @@ EXEMPT: dict[str, str] = {
         "recorded in the audit doc.",
     "/api/lifecycle/leads/{lead_id}":
         "same table, addressed by id.",
-    "/api/memory/firm/profile":
-        "firm_profiles has firm_id and nothing else (migration 070) — the "
-        "firm's own intelligence profile, not any client's. It IS derived by "
-        "aggregating across the firm's clients, which is why the COMPUTE that "
-        "writes it is limited to firm-wide roles; the resulting figures are "
-        "firm-level and are what every member of the firm already sees on the "
-        "dashboards.",
     "/api/tasks/transitions":
         "the status machine itself (which status a task may move to from each), a constant of the product. No row, no client "
         "and no figure derived from either: the screens read it to offer only the moves the server will accept (POST-A-227).",
@@ -1207,12 +1206,6 @@ EXEMPT: dict[str, str] = {
         "every firm and every client, served so the form holds no vocabulary "
         "and no period. Same shape as /api/tds/sections above; the request "
         "model has no client_id to check.",
-    "/api/lifecycle/dashboard":
-        "aggregate counts only: lead stage tallies, a proposal count, an "
-        "overdue-renewal count. No client is named and no per-client figure is "
-        "returned. The renewal count IS a cardinality signal derived from "
-        "client rows — that is the line being drawn, stated rather than "
-        "pretending the endpoint touches nothing client-shaped.",
     # billing.py: every endpoint requires Partner (PERMISSIONS["billing"] is
     # Partner-only), the sole firm-wide role — these nine paths have no
     # client_id in the request at all (verified by
@@ -1421,8 +1414,29 @@ EXEMPT: dict[str, str] = {
         "completes a staff invite from a server-issued token — identity is "
         "established from the verified JWT and the pre-created invite row, "
         "never a client_id.",
+    "/api/identity/accept-invite/session":
+        "opens a sign-in for a staff invitation's own address from its "
+        "server-issued token (POST-A-445). `users` has no client_id column.",
+    "/api/identity/users/{user_id}/resend-invite":
+        "same table, addressed by a staff user_id: a fresh invitation token "
+        "for a member who has not joined (POST-A-445).",
     "/api/identity/login-event":
         "records the CALLER's own sign-in/sign-out event. No client_id.",
+    "/api/identity/session-seen":
+        "a tab says the CALLER's own session is in use (POST-A-486): the session is the verified token's, `login_sessions` has a "
+        "firm_id and a member and NO client_id (migration 765).",
+    "/api/identity/my-devices":
+        "the CALLER's own live sessions, addressed from the verified token: no id of anybody else is taken (POST-A-486). "
+        "`login_sessions` has no client_id.",
+    "/api/identity/sign-out-other-sessions":
+        "the caller acting on their OWN login: ends their other sessions and keeps this one. No id is taken and no client_id exists "
+        "on `users` or `login_sessions` (POST-A-486).",
+    "/api/identity/users/{user_id}/devices":
+        "one STAFF member's live sessions, addressed by their user_id and checked against the caller's firm (`_get_member`): "
+        "`login_sessions` has no client_id (POST-A-486).",
+    "/api/identity/devices":
+        "who in the firm is signed in on which devices now: a staff roster, `login_sessions` has a firm_id and NO client_id "
+        "(POST-A-486).",
     "/api/identity/me":
         "the caller's own display name, addressed from the verified token — "
         "there is no user_id parameter, let alone a client_id. `users` has a "
@@ -1455,10 +1469,17 @@ EXEMPT: dict[str, str] = {
         "approval_requests has a firm_id and NO client_id column (migration "
         "083) — a governance request is a firm object. Covers GET "
         "(list_approvals) and POST (create_approval), which share this path.",
+    "/api/approvals/access-requests":
+        "same table. A member of staff asks for one permission for "
+        "THEMSELVES (POST-A-543): the stored request names the caller and a "
+        "permission pair, never a client, and what may be asked for and by "
+        "whom is services/access_request_service.prepare.",
+    "/api/approvals/access-requests/mine":
+        "same table, filtered to the rows the CALLER raised "
+        "(approval_repo.by_requester): the asker's own requests for access "
+        "and nobody else's.",
     "/api/approvals/types":
         "the static REQUEST_TYPES tuple. No stored data read at all.",
-    "/api/approvals/{request_id}":
-        "same table, addressed by id (get_approval).",
     "/api/approvals/{request_id}/approve":
         "same table, the approve transition (Partner-only, MFA-guarded).",
     "/api/approvals/{request_id}/reject":
@@ -1593,9 +1614,6 @@ EXEMPT: dict[str, str] = {
     # scoped by user_id=the caller's own id, which is STRICTLER than a
     # client-assignment check: they read and write only the caller's own
     # inbox, never another staff member's.
-    "/api/notifications/count":
-        "the caller's own unread tally (count_unread(user_id=caller)) — one "
-        "integer, no client named.",
     "/api/notifications/read-all":
         "marks the CALLER's own notifications read (mark_all_read("
         "user_id=caller)). Touches no other user's row and names no client.",
@@ -1605,9 +1623,6 @@ EXEMPT: dict[str, str] = {
         "gate than client assignment, not a looser one.",
     "/api/notifications/{notification_id}/archive":
         "same table, same recipient scoping, the archive transition.",
-    "/api/notifications/stats":
-        "firm-wide counts by type/severity. No client is named and no "
-        "per-client figure is returned.",
     # practice_management-03 — the caller's OWN mail settings and record. There
     # is no user id to pass (the caller is always the subject), no client is
     # named, and nothing per-client is returned: a stricter scope than
@@ -1627,6 +1642,22 @@ EXEMPT: dict[str, str] = {
         "member can work is a property of that person, not of any client's "
         "book. Covers GET (list_capacity) and PUT (set_capacity), which "
         "share this path.",
+    # POST-A-212. The practice's own statement of how many minutes one filing of a kind takes: firm and an obligation TYPE, no client_id
+    # anywhere (migration 671). Covers PUT (set) and DELETE (clear), which share this path; its GET also lists the calendar's types and
+    # narrows that read with filter_by_client.
+    "/api/workload/obligation-estimates":
+        "compliance_effort_estimates has a firm_id and a kind of filing, and no client_id column: how long one GSTR-3B takes in this "
+        "practice is a property of the practice, not of any client's book.",
+    # POST-A-068. The filing season reads and runs for the caller's OWN clients; the narrowing is in the service
+    # (services/filing_season_service: filter_by_client on the list, effective_client_ids on the run, both asked before any row is
+    # read or computed), so no client id arrives for the route to assert.
+    "/api/itr/season":
+        "the list is the caller's own clients: services/filing_season_service narrows it with filter_by_client before counting a row, and a "
+        "test drives an assigned-only caller. There is no client_id on the request to assert.",
+    "/api/itr/season/compute":
+        "each chosen client is checked against effective_client_ids inside services/filing_season_service before its snapshot is read or "
+        "anything is computed, and one outside the caller's book is answered 'not your client'. The ids arrive as a list, which a single "
+        "assert_client_access cannot judge.",
     # analytics.py — the two routes that aggregate over STAFF, not clients.
     # intelligence.py — the one route built on the workload engine.
     "/api/intelligence/workload-insights":
@@ -1684,10 +1715,6 @@ EXEMPT: dict[str, str] = {
         "template. Covers GET (list) on this path.",
     "/api/automation/rules/{rule_id}/toggle":
         "same table, addressed by rule id — enables/disables a firm rule.",
-    "/api/automation/executions":
-        "the firm's rule-execution log, keyed by rule.",
-    "/api/automation/stats":
-        "firm-level counts of rules and executions. No client is named.",
     "/api/automation/trigger":
         "manually fires the firm's automation pass.",
     "/api/onboarding/firm":
@@ -1773,7 +1800,7 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/lifecycle": 19, "/api/payroll": 16,
               "/api/recurring-invoices": 11,
               "/api/recurring-journals": 9,
-              "/api/memory": 14,
+              "/api/memory": 13,
               "/api/tasks": 15, "/api/task-recurring": 9,
               "/api/tds-workspace": 12,
               "/api/tds": 8,
@@ -1783,7 +1810,7 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/reconciliation": 4,
               "/api/reminders": 3, "/api/engagements": 7,
               "/api/compliance-records": 5, "/api/task-templates": 6, "/api/customers": 10,
-              "/api/vendors": 10, "/api/billing": 15, "/api/invoices": 8,
+              "/api/vendors": 10, "/api/billing": 18, "/api/invoices": 7,
               "/api/copilot": 13, "/api/health": 13,
               "/api/year-end/{engagement_id}/adjustments": 7,
               "/api/itr": 17, "/api/platform": 9,
@@ -1802,15 +1829,15 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/purchase-credit-notes": 8, "/api/sales-debit-notes": 6,
               "/api/service-catalogue": 6, "/api/time-entries": 10,
               "/api/dsc": 5, "/api/firm-hsn-library": 7, "/api/settings": 14,
-              "/api/identity": 13, "/api/tally-migration": 7, "/api/reports": 2,
-              "/api/accounting": 21, "/api/approvals": 7, "/api/xbrl": 7,
+              "/api/identity": 18, "/api/tally-migration": 7, "/api/reports": 2,
+              "/api/accounting": 21, "/api/approvals": 8, "/api/xbrl": 7,
               "/api/income-tax": 11, "/api/compliance": 12,
               "/api/ai-insights": 5, "/api/eway-bill": 6, "/api/inventory": 6,
               "/api/public/engagement-letters": 3,
               "/api/receipts": 5, "/api/purchase-payments": 5,
               "/api/document-intelligence-v2": 5, "/api/payments": 6,
-              "/api/insights": 2, "/api/assignments": 5, "/api/risks": 5,
-              "/api/notifications": 10, "/api/documents": 5, "/api/workload": 4,
+              "/api/insights": 2, "/api/assignments": 5, "/api/risks": 1,
+              "/api/notifications": 9, "/api/documents": 5, "/api/workload": 4,
               "/api/team": 1, "/api/ai-copilot": 3,
               "/api/einvoice": 4, "/api/form-26as": 5, "/api/fixed-assets": 5,
               "/api/analytics": 4, "/api/intelligence": 6, "/api/hsn": 1,
@@ -1818,7 +1845,7 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/customer-statements": 4, "/api/party-credits": 3,
               "/api/timeline": 1, "/api/search": 1,
               "/api/firm-hsn-rate-history": 4, "/api/assistant": 1,
-              "/api/audit": 2, "/api/scheduler": 2, "/api/automation": 5,
+              "/api/audit": 2, "/api/scheduler": 2, "/api/automation": 3,
               "/api/onboarding": 3, "/api/practice": 3,
               "/api/document-intelligence-v1": 1,
               "/api/portal/self": 8, "/api/portal/me": 1,
@@ -1932,6 +1959,25 @@ def test_every_endpoint_in_an_audited_router_consults_client_scope(
         f"Firm scoping alone lets any member of the firm reach every client in "
         f"it. Expected one of: {', '.join(AUDITED[prefix])}. If this resource "
         f"genuinely has no client_id, add it to EXEMPT with the reason.")
+
+
+def test_the_payroll_list_narrowing_is_the_assignment_narrowing_first():
+    """`_the_firms_clients_only` is on the audited list for payroll. That is only
+    honest while it calls `filter_by_client` on what it was given, before anything
+    else, and returns nothing wider than that answer."""
+    import ast
+    import textwrap
+    from routers import payroll
+    fn = ast.parse(textwrap.dedent(inspect.getsource(payroll._the_firms_clients_only))).body[0]
+    stmts = [s for s in fn.body if not (isinstance(s, ast.Expr) and isinstance(s.value, ast.Constant))]
+    first = stmts[0]
+    assert isinstance(first, ast.Assign) and isinstance(first.value, ast.Call)
+    assert getattr(first.value.func, "id", None) == "filter_by_client"
+    assert [getattr(a, "id", None) for a in first.value.args] == ["current_user", "rows"]
+    assert [t.id for t in first.targets] == ["rows"], "the narrowed rows must replace what came in"
+    # Behaviour: it never returns a row the assignment narrowing dropped.
+    kept = payroll._the_firms_clients_only({"firm_id": "f", "role": "Partner", "id": "u"}, [{"client_id": "c1"}])
+    assert kept == [{"client_id": "c1"}]
 
 
 def test_a_shadowing_prefix_does_not_capture_a_longer_ones_routes():

@@ -9,6 +9,7 @@ import {
   setPasswordWithReauthNonce,
   isInvalidNonceError,
   isSessionMissingError,
+  isSamePasswordError,
   SESSION_EXPIRED_MESSAGE,
   type ReauthCapableAuth,
 } from "./reauth.ts";
@@ -87,4 +88,27 @@ test("isSessionMissingError detects the SDK's no-session error", () => {
 test("SESSION_EXPIRED_MESSAGE names the reason and both ways forward", () => {
   assert.match(SESSION_EXPIRED_MESSAGE, /expired|not signed in/i);
   assert.doesNotMatch(SESSION_EXPIRED_MESSAGE, /auth session missing/i);
+});
+
+test("a same-password refusal, by code or by message, is recognised and nothing else is (POST-A-478)", () => {
+  // As the live sign-in log recorded it on 18-11-2026: 422, code same_password.
+  assert.equal(isSamePasswordError({ code: "same_password", message: "New password should be different from the old password." }), true);
+  // A server that sends no code.
+  assert.equal(isSamePasswordError({ message: "New password should be different from the old password." }), true);
+  assert.equal(isSamePasswordError({ code: "weak_password", message: "Password should be at least 10 characters." }), false);
+  assert.equal(isSamePasswordError({ message: "Auth session missing!" }), false);
+  assert.equal(isSamePasswordError(null), false);
+  assert.equal(isSamePasswordError(undefined), false);
+  assert.equal(isSamePasswordError({}), false);
+});
+
+// POST-A-512: Settings > Security knows the current password and must send it with the change; an emailed-link screen has none.
+test("setPasswordWithReauthNonce sends the current password when the screen has one, and nothing extra when it has not", async () => {
+  const withCurrent = makeMockAuth();
+  await setPasswordWithReauthNonce(withCurrent.auth as unknown as ReauthCapableAuth, "New#Pass1", " 123456 ", "Old#Pass1");
+  assert.deepEqual(withCurrent.calls[0].args[0], { password: "New#Pass1", nonce: "123456", current_password: "Old#Pass1" });
+
+  const without = makeMockAuth();
+  await setPasswordWithReauthNonce(without.auth as unknown as ReauthCapableAuth, "New#Pass1", "123456");
+  assert.deepEqual(without.calls[0].args[0], { password: "New#Pass1", nonce: "123456" }, "no current_password key for a screen that has none");
 });

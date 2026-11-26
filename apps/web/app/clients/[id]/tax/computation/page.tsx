@@ -24,8 +24,9 @@ import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { toast } from "@/components/ui/use-toast";
+import { EmptyState } from "@/components/ui/states";
 import Link from "next/link";
-import { doingOf, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, fetchBounded, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 
 // WHAT THE PAYABLE FIGURE IS CALLED. The engine sets payable.net_payable_paise
 // to total_tax_paise - tds_and_advance_paise (domain/income_tax/itr_engine.py):
@@ -106,7 +107,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
   const doing = doingOf(opts?.method);
-  const res = await fetchPlain(`${BASE}${path}`, {
+  const res = await fetchBounded(`${BASE}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
@@ -368,7 +369,7 @@ export default function TaxComputationPage() {
   const lossUsesSeq = useRef(0);
   // A correction made by hand (POST-A-368, items 2 and 3): which loss it is for and whether a year is being recorded or one use taken back.
   // The server decides every refusal; `handError` is its sentence as written.
-  const [handEdit, setHandEdit] = useState<{ loss: BFLoss; take?: LossUse } | null>(null);
+  const [handEdit, setHandEdit] = useState<{ loss: BFLoss; take?: LossUse; takeHand?: { entry_id: string; amount_paise: number } } | null>(null);
   const [handBusy, setHandBusy] = useState(false);
   const [handError, setHandError] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<string | null>("overview");
@@ -722,11 +723,12 @@ export default function TaxComputationPage() {
         { financial_year: financialYear, amount_paise: amountPaise, reason })
       : undefined;
 
-  const takeBackUse = (reason: string) =>
-    handEdit?.take
-      ? sendHandEdit(`/api/itr/bf-losses/${encodeURIComponent(handEdit.loss.id)}/uses/${encodeURIComponent(handEdit.take.entry_id)}/take-back`,
-        { reason })
+  const takeBackUse = (reason: string) => {
+    const entryId = handEdit?.take?.entry_id ?? handEdit?.takeHand?.entry_id;
+    return handEdit && entryId
+      ? sendHandEdit(`/api/itr/bf-losses/${encodeURIComponent(handEdit.loss.id)}/uses/${encodeURIComponent(entryId)}/take-back`, { reason })
       : undefined;
+  };
 
   async function markSnapshotReviewed(snapshotId: string) {
     setReviewing(snapshotId);
@@ -951,8 +953,7 @@ export default function TaxComputationPage() {
       return;
     }
     // The box is hidden where the server does not offer the relief, and a hidden box is not asked.
-    const sanctionProblem = offers("s80ee") ? sanctionDates.first : null;
-    if (sanctionProblem) { setComputeError(sanctionProblem); return; }
+    if (offers("s80ee") && sanctionDates.first) { sanctionDates.refuseWith(setComputeError); return; }
     setComputing(true);
     setComputeError(null);
     setSnapshotError(null);
@@ -2436,7 +2437,11 @@ export default function TaxComputationPage() {
             </p>
 
             {disallowances.length === 0 ? (
-              <p className="text-xs text-ps-hint py-4 text-center">No disallowances recorded</p>
+              <EmptyState
+                className="py-4"
+                title="No disallowances recorded"
+                description="Record a cash payment over the limit or an unpaid statutory liability with Add Disallowance below; it is added back to business income."
+              />
             ) : (
               <div className="space-y-2">
                 {disallowances.map(d => (
@@ -2681,7 +2686,11 @@ export default function TaxComputationPage() {
             )}
 
             {bfLosses.length === 0 ? (
-              <p className="text-xs text-ps-hint py-4 text-center">No carried-forward losses recorded</p>
+              <EmptyState
+                className="py-4"
+                title="No carried-forward losses recorded"
+                description="Record a loss brought forward from an earlier year with Record a loss above; it is then offered against this year's income."
+              />
             ) : (
               <div className="space-y-2">
                 {bfLosses.map(l => (
@@ -2693,7 +2702,8 @@ export default function TaxComputationPage() {
                       <p className="text-3xs text-ps-hint">Expires AY {l.expiry_assessment_year}</p>
                       <LossUses state={lossUses.state} view={lossUses.byId[l.id]} canEdit={can("income_tax", "compute")}
                         onRecord={() => { setHandError(null); setHandEdit({ loss: l }); }}
-                        onTakeBack={(use) => { setHandError(null); setHandEdit({ loss: l, take: use }); }} />
+                        onTakeBack={(use) => { setHandError(null); setHandEdit({ loss: l, take: use }); }}
+                        onTakeBackHandRecorded={(entryId, amountPaise) => { setHandError(null); setHandEdit({ loss: l, takeHand: { entry_id: entryId, amount_paise: amountPaise } }); }} />
                     </div>
                     <div className="text-right">
                       <p className="text-xs font-semibold text-ps-ink">{paise(l.remaining_amount_paise)}</p>
@@ -2726,7 +2736,11 @@ export default function TaxComputationPage() {
                     <p className="text-3xs text-ps-hint">{formatDate(s.created_at)}</p>
                   </div>
                   <div className="text-right flex items-center gap-2">
-                    {s.status !== "reviewed" && (
+                    {/* Mark reviewed asks `income_tax` `approve` (a Manager or a Partner) and was drawn to every member (POST-A-455). */}
+                    {s.status !== "reviewed" && !can("income_tax", "approve") && (
+                      <span className="text-3xs text-ps-label">Marking it reviewed needs permission to approve income-tax returns, so the button is not shown to you</span>
+                    )}
+                    {s.status !== "reviewed" && can("income_tax", "approve") && (
                       <Button variant="plain" size="none"
                         onClick={() => markSnapshotReviewed(s.id)}
                         disabled={reviewing !== null}
@@ -2759,7 +2773,10 @@ export default function TaxComputationPage() {
           mode={handEdit.take
             ? { kind: "take_back", lossName: `${handEdit.loss.loss_type.replace(/_/g, " ")} loss, AY ${handEdit.loss.assessment_year}`,
                 entryLabel: `the use for FY ${handEdit.take.financial_year}`, byAReturn: handEdit.take.return_type !== "manual" }
-            : { kind: "record", lossName: `${handEdit.loss.loss_type.replace(/_/g, " ")} loss, AY ${handEdit.loss.assessment_year}` }}
+            : handEdit.takeHand
+              ? { kind: "take_back", lossName: `${handEdit.loss.loss_type.replace(/_/g, " ")} loss, AY ${handEdit.loss.assessment_year}`,
+                  entryLabel: `the ${paise(handEdit.takeHand.amount_paise)} recorded by hand with no year`, byAReturn: false }
+              : { kind: "record", lossName: `${handEdit.loss.loss_type.replace(/_/g, " ")} loss, AY ${handEdit.loss.assessment_year}` }}
           busy={handBusy}
           error={handError}
           onRecord={recordYearUse}

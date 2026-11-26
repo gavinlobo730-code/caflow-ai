@@ -40,6 +40,7 @@ from datetime import datetime, timezone
 from typing import Optional, Sequence
 
 from core.db_paging import fetch_all
+from core.db_provider import privileged_for
 from domain.accounting import opening_documents as _opening
 from domain.gst import draft_bill_from_2b, gstr2b_intake, itc_probable
 from domain.gst.gstr2b_routing import Holder, normalise as _normalise_gstin
@@ -420,8 +421,10 @@ def previous_reconciliation(db, *, firm_id: str, client_id: str,
     Read BEFORE a replace, so an upload that is about to supersede an earlier
     one can SAY so: a reconciliation is replaced whole, and a stale download
     dropped into a folder of sixty must not silently overwrite a newer one.
+    `gstin` is the registration that reconciliation was for: a client with two
+    holds one a month, and only the same registration's download can be older.
     """
-    rows = (db.table("gstr2b_reconciliations").select("reconciled_at, generated_on")
+    rows = (db.table("gstr2b_reconciliations").select("reconciled_at, generated_on, gstin")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .eq("return_period", period).limit(1).execute().data) or []
     return rows[0] if rows else None
@@ -440,7 +443,7 @@ def keep_upload(db, *, firm_id: str, client_id: str, period: str, raw: dict,
     `reconciliation_result` is the answer WITHOUT its per-document `matches`,
     which would be a second copy of what `gstr2a_records` already holds.
     """
-    db.table("gstr2b_uploads").insert({
+    privileged_for(db).table("gstr2b_uploads").insert({
         "id": str(uuid.uuid4()),
         "firm_id": firm_id,
         "client_id": client_id,

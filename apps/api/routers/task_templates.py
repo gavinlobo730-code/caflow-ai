@@ -4,9 +4,11 @@ from typing import Optional
 from models.common import api_response
 from core.permissions import rbac
 from core.authz import assert_client_access
+from services import named_row_ownership
 from domain.practice import task_estimate
 from repositories.task_template_repository import task_template_repo
 from models.iso_date import OptionalIsoDate
+from core.observability import capture_soft_failure
 
 router = APIRouter(prefix="/api/task-templates", tags=["task-templates"])
 
@@ -118,6 +120,10 @@ def instantiate_template(
     now = datetime.now(timezone.utc).isoformat()
 
     db = get_supabase()
+    # The person named is a member of this firm (the insert below goes through the privileged client, so nothing else asks) and can
+    # open the client the task is for (POST-A-451): the mail below names the client, and they do the work inside it.
+    named_row_ownership.member_is_the_firms(db, firm_id, body.assignee_id)
+    named_row_ownership.member_reaches_client(db, firm_id, body.assignee_id, body.client_id)
     task_data = {
         "firm_id": firm_id,
         "client_id": body.client_id,
@@ -159,15 +165,14 @@ def instantiate_template(
                 notification_service.notify_task_assigned(task, assignee, current_user)
         except Exception as exc:
             # The task was made; telling its assignee is best-effort, but a failure is reported.
-            from core.observability import capture_soft_failure
             capture_soft_failure(exc, operation="task_templates.assigned_mail", firm_id=firm_id)
 
     if tpl.get("tags"):
         for tag in tpl["tags"]:
             try:
                 task_extras_repo.add_tag(firm_id=firm_id, task_id=task["id"], tag=tag)
-            except Exception:
-                pass
+            except Exception as swallowed:
+                capture_soft_failure(swallowed, operation="task_templates.tag", firm_id=firm_id, task_id=task["id"])
 
     try:
         task_extras_repo.log_event(
@@ -178,7 +183,7 @@ def instantiate_template(
             actor_name=current_user.get("full_name") or current_user.get("email"),
             new_value={"source": "template", "template_id": template_id, "template_name": tpl["name"]},
         )
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="task_templates.created_timeline", firm_id=firm_id, task_id=task["id"])
 
     return api_response(True, {"task": task})

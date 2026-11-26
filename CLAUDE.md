@@ -90,12 +90,12 @@ asked for again. Where one of them differs from a default, this section wins.
   owner's go-ahead.
 - **Pull requests.** One theme per pull request: about ten hours-sized items, four days-sized
   items, one weeks- or months-sized item, or one rule of a mechanical sweep. At most three are
-  open at once and they are merged one at a time, each only when both required checks are green
+  open at once and they are merged one at a time, each only when all three required checks are green
   and it is current with `main` (squash). Branch from `origin/main` and, after a merge, reset
   the work branch to `main`. Close an item's ledger line in the same commit as its work. Before
   each batch, confirm every item in it is still true against the code and close any that is
-  already done or moot. A change that touches no backend or frontend file skips the heavy
-  checks; a migration merged to `main` applies to production (see Migrations).
+  already done or moot. A change confined to the web apps skips the backend tests, one confined to
+  `docs/` and CLAUDE.md, with or without the web apps, runs only the tests that read what changed; a migration merged to `main` applies to production (see Migrations).
 - **Sub-agents and workflows.** The default is to do the work directly. Sub-agents are for
   narrow, independent, read-only research, or an independent review of one specific diff: at
   most three at a time, each briefed with the goal, the files and what is already ruled out.
@@ -104,9 +104,11 @@ asked for again. Where one of them differs from a default, this section wins.
   launched on 10 October 2026 was stopped within minutes because every agent re-reads code and
   this container ran two at a time, and it would have cost far more than the owner expected. If
   a task would need more than five agents, tell the owner the rough cost first and wait. Say
-  plainly when credits look low.
+  plainly when credits look low. Emergency mode: docs/operations/emergency-mode.md.
 - **Telling the owner.** Plain English, with no file paths or function names: the owner has
-  chartered-accountant domain knowledge and does not read code. All times in IST. Report
+  chartered-accountant domain knowledge and does not read code. All times in IST. **A step in a dashboard
+  is given as a click path (the menu, then the tab, then the switch), never as a link: he works in
+  several accounts in one browser and a link opens in the wrong one (19-11-2026).** Report
   faithfully what was verified, what was not and what is waiting on whom. The owner's list
   (money, tasks only the owner can do, statutory and legal needs) is kept in one place and
   refreshed, not scattered across replies.
@@ -120,7 +122,7 @@ The long per-area design write-ups were moved out of this file on 10 October 202
 They are verbatim in `docs/design-record/`. **Before changing an area, open its record file** and read the entries
 listed for it below; each headline is the rule in one line. Entries that stayed in this file are not listed.
 
-### `docs/design-record/ai.md` (15 entries): AI providers, the model gateway, redaction, budgets and what a model may and may not do
+### `docs/design-record/ai.md` (16 entries): AI providers, the model gateway, redaction, budgets and what a model may and may not do
 
 - A MODEL MAY WORD A COMPUTED FACT AND MAY NOT ADD TO IT, AND A SCREEN THAT CANNOT COMPUTE A FIGURE SAYS SO
 - EVERY MODEL CALL GOES THROUGH ONE DOOR PER PROVIDER, AND A READING IS A PROPOSAL, NOT A WRITE
@@ -137,6 +139,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE HEALTH WORDS ON A SCREEN ARE THE ENGINE'S FIVE: THE DASHBOARD COUNTS THE NEEDS ATTENTION BAND APART, ONE TABLE COLOURS EVERY SCORE
 - A FIGURE THE FIRM CONTEXT CANNOT READ IS NOT AVAILABLE AND NEVER ZERO, THE HEALTH TILES COUNT BY THE ENGINE'S GRADE, AND A CALCULATION
 - A CLIENT WITH NOTHING ON RECORD IS NOT YET SCORED AND NEVER NEAR 100, BECAUSE THE ENGINE STARTS AT 100 AND CAN ONLY JUDGE WHAT IT FINDS
+- THE AI IS PRESENTED AS PRACTICESYNC AI, THE PROVIDER STAYS NAMED, AND A MODEL CODE IS SHOWN ONLY UNDER TECHNICAL DETAILS
 
 ### `docs/design-record/annual-update-and-statutory-data.md` (4 entries): What changes every financial year and the statutory data a human must supply
 
@@ -163,7 +166,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A TRUSTED RULE POSTS ONLY WHILE THE PERSON WHO TRUSTED IT COULD STILL POST, AND THE SCREEN'S NUMBER AND THE SWEEP BOTH ASK THE SAME
 - A BANK DEBIT EQUAL TO A RECORDED TDS CHALLAN IS PROPOSED AS ITS PAYMENT, NEVER READY, AND PASSING IT TIES THE CHALLAN
 
-### `docs/design-record/deployment-and-operations.md` (7 entries): Deployment, monitoring, request ids, service levels, runbooks and security headers
+### `docs/design-record/deployment-and-operations.md` (8 entries): Deployment, monitoring, request ids, service levels, runbooks and security headers
 
 - A CHECK ASKS THE THING ITSELF, AND AN ALERT MUST BE ABLE TO MATCH WHAT IS SENT
 - EVERY REQUEST HAS AN ID, AND ONE JSON LINE, AND THE LINE NEVER NAMES THE PATH THE CALLER TYPED
@@ -172,8 +175,9 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE TWO SITES AND THE API SEND SECURITY HEADERS, THE POLICY'S HOSTS ARE READ FROM THE BUILD AND NEVER WILDCARDED, AND EVERY ROUTE 
 - A BACKEND EVENT NAMES THE BUILD IT CAME FROM, AN UNLABELLED AI ROW NAMES NO RETIRED MODEL, AND A ROUTE NOTHING CALLED IS GONE
 - A BROAD HANDLER ON A MONEY OR LEDGER PATH REPORTS WHAT IT SWALLOWS, AND A ROLLBACK THAT DID NOT RUN IS A POSTING FAILURE
+- THE HEALTH ANSWER NAMES THE BUILD THE API RUNS, SO A DEPLOY THAT LAGS THE WEBSITE IS VISIBLE FROM OUTSIDE
 
-### `docs/design-record/documents-sales-purchase.md` (22 entries): Sales and purchase documents and cycles, templates, supplier master, ledger drill-through
+### `docs/design-record/documents-sales-purchase.md` (24 entries): Sales and purchase documents and cycles, templates, supplier master, ledger drill-through
 - A RECEIPT RECORDED THROUGH THE DATABASE FUNCTION KEEPS THE ID ITS LEDGER ENTRY NAMES, THE BANK ACCOUNT IT WAS
 - A CREDIT OR DEBIT NOTE LINE RECORDED THROUGH THE NUMBERING FUNCTION KEEPS ITS UNIT AND ITS CATALOGUE ITEM,
 
@@ -197,8 +201,10 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A SALES INVOICE LINE NAMES THE ORDER LINE IT BILLS, AN ORDER COUNTS ONLY THE INVOICES THAT NAME ITS LINES, AND BILLING
 - A SETTLEMENT AND A YEAR-END ADJUSTMENT OPEN FROM THE LEDGER ROW THAT NAMES THEM
 - AN AGEING BUCKET ON THE PRACTICE'S RECEIVABLES LISTS ITS INVOICES
+- A DEMO COMPANY IS SIZED BY ITS TURNOVER AND ITS COST SHARE, ITS OWNERS PAY FOR WHAT IT BOUGHT BEFORE THE BOOKS, AND A TEST WORKS ITS YEAR OUT
+- A CREDIT OR DEBIT NOTE IS RAISED AGAINST A DOCUMENT OF ITS OWN CUSTOMER OR SUPPLIER, AND A DRAFT WHOSE PARTY CHANGES DROPS THE OLD PARTY'S
 
-### `docs/design-record/engineering-and-ci.md` (15 entries): Tests, lint and coverage ratchets, CI, dependency lock, migrations and the schema-drift check
+### `docs/design-record/engineering-and-ci.md` (16 entries): Tests, lint and coverage ratchets, CI, dependency lock, migrations and the schema-drift check
 
 - THE BACKEND HAS A LINT RATCHET, A PROPERTY SUITE, ONE PAGER, ONE DOOR TO THE DATABASE CLIENT AND A COVERAGE FLOOR, AND EACH IS A R
 - THE SMOKE WALK RUNS BY ITSELF, NIGHTLY AND ON DEMAND, AND IS NOT A CHECK ANYTHING WAITS ON
@@ -215,8 +221,8 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A TEST THAT NAMES ANOTHER TEST NAMES ONE THAT EXISTS
 - THE BACKEND INSTALLS FROM A HASH-PINNED LOCK AND THE IMAGE HOLDS NO TEST SUITE
 - THE SHARED PAGER RETRIES A READ, BUILDS A QUERY AFRESH FOR EVERY PAGE, AND READS IN A STATED ORDER THAT ENDS IN `id`
-
-### `docs/design-record/filing-and-compliance.md` (10 entries): Filing to government portals, trackers and the period lock
+- A DOCS-ONLY CHANGE RUNS ONLY THE TESTS THAT READ THE DOCUMENTS, DERIVED AND NEVER LISTED, AND A PUSH TO `main` RUNS EVERYTHING
+### `docs/design-record/filing-and-compliance.md` (11 entries): Filing to government portals, trackers and the period lock
 - A TIED CHALLAN IS CHECKED AGAINST THE ACCOUNT IT CLEARS, AND THE CHALLANS NOBODY HAS TIED ARE A WORKLIST THAT FLAGS A MONTH'S WAIT
 
 - AND THE PRODUCT WORDS THAT POSITION ONCE
@@ -228,6 +234,8 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A WRONG TDS CHALLAN IS CORRECTED BY RETRACTING IT AND RECORDING IT AGAIN, NEVER EDITED IN PLACE, AND A MONTH CLOSED
 - A TAX AUDIT RECORDED AS COMPLETED OR FILED DOES NOT CARRY A DAY THAT HAS NOT COME
 - A NEW MCA FILING NAMES THE CLIENT'S COMPANY AND A YEAR THE CALENDAR HOLDS OPEN, AND BOTH COME FROM THE SERVER
+- THE FIRM'S OWN PAYROLL HAS ITS DATES ON THE PRACTICE'S OWN RECORD, AND NO LIST ACROSS THE FIRM'S CLIENTS CARRIES THEM
+
 ### `docs/design-record/fixed-assets-and-inventory.md` (24 entries): Fixed assets, capital work in progress, stock costing, ageing, godowns, batches and counts
 
 - AN ASSET UNDER CONSTRUCTION IS NOT IN THE REGISTER, AND THAT IS THE FIX
@@ -255,7 +263,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - AN ASSET'S PLACE AND KEEPER HAVE A DATED HISTORY, WRITTEN WITH THE ASSET IN ONE STEP, AND A TYPO IS AN EDIT, NOT A MOVEMENT
 - A PHYSICAL COUNT OF A CLIENT'S ASSETS IS A DATED WORKING PAPER WITH A FINDING PER ASSET HELD THAT DAY, AND A CLOSED COUNT NEVER CHANGES
 
-### `docs/design-record/frontend.md` (10 entries): Frontend rules: payload shapes, the browser's second data path, money input, loading and recurring screens
+### `docs/design-record/frontend.md` (17 entries): Frontend rules: payload shapes, the browser's second data path, money input, loading and recurring screens
 
 - A PAYLOAD IS NOT A LIST UNTIL SOMETHING HAS CHECKED, AND THE STATE TYPE HIDES IT
 - A THIRD path existed and it was not a database at all: `localStorage`
@@ -267,6 +275,13 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A LINE IS COPIED BY CTRL+D, COMMAND+D ON A MAC, IN A LINE'S CELL, AND THE TWO GRIDS DO NOT SHARE A HOOK
 - TWELVE HAND-BUILT DIALOGS ARE THE SHARED MODAL, AND THE BANK'S NESTED ONES WAIT FOR A STACK AND A FOOTER
 - A CLEARED BOX IS SENT AS NULL ONLY FOR A SOFT FIELD THE SCREEN SHOWED
+- THE WINDOW NEVER SCROLLS INSIDE THE SHELL: THE PAGE SCROLLS IN `<main>`, AND `<main>` IS WHERE AN ABSOLUTE DESCENDANT IS PLACED
+- A SCREEN BLOCKS WITH "LOADING…" FOR ITS FIRST READ ONLY
+- A WRITE THE BROWSER MAKES THROUGH THE SUPABASE CLIENT READS ITS ANSWER
+- A PLACEHOLDER A SCREEN DRAWS SAYS WHEN THE SERVER IS SLOW
+- THE RESET PAGE IS TOLD WHICH PAGE LOAD CAME BY A RECOVERY LINK BEFORE THE SIGN-IN LIBRARY CLEANS THE ADDRESS, BECAUSE THE GUARD HOLDS THE PAGE BACK UNTIL AFTER
+- EVIDENCE IN A TEXT BOX IS CORRECTED AND NOT REMOVED, AND ONLY A DRAFT MAY TAKE AWAY ITS LINK, ITS REASON OR ITS PLACE OF SUPPLY
+- A ROW'S MENU IS THE SHARED GROUP OF BUTTONS, WITH NO LAYER OVER THE WINDOW BEHIND IT
 
 ### `docs/design-record/identifiers.md` (5 entries): Identifiers: GSTIN, UAN, IFSC, party identifiers in imports, the firm's own GSTIN, FY and AY labels, ITR forms
 
@@ -297,7 +312,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE UPLOAD SCREENS WERE DRIVEN IN A BROWSER ONCE, AND AN EXCEL DATE CELL IS A SERIAL NUMBER
 - A TRIAL-BALANCE IMPORT MATCHES ONLY ITS OWN CLIENT'S ACCOUNTS AND CHECKS ITS NEW NAMES AND CODES AGAINST THE WHOLE FIRM'S CHART, BECAUSE
 
-### `docs/design-record/payroll.md` (11 entries): Payroll: accrual, PF on actual wages, bonus, monthly review, declarations
+### `docs/design-record/payroll.md` (14 entries): Payroll: accrual, PF on actual wages, gratuity, bonus, monthly review, declarations
 
 - THE PAYROLL ACCRUAL HAS TWO DEBITS, AND THE EMPLOYER SHARE COMES OFF THE SLIPS
 - THE STATUTORY BONUS IS AN ANNUAL DEBT AND THE PRODUCT COMPUTED IT ONLY FOR LEAVERS
@@ -310,6 +325,9 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A RELEASED PAYROLL RUN RECORDS THE LOAN WRITE-DOWN IT STILL OWES, A REVERSAL IS CLAIMED, AND A DELETE OR RECOMPUTE ACTS ONLY ON A RUN
 - A MONTHLY FIGURE ON A SCREEN IS THE SERVER'S, SERVED ON THE ROW, AND A COLUMN IS NAMED FOR WHAT IT ADDS UP
 - A TAX DECLARATION IS FILED IN ONE DATABASE TRANSACTION, BY THE SERVER ALONE, AND THE LOCK THAT PROTECTS IT IS THE ROW'S
+- THE PF WAGE CEILING IS THE NOTIFIED ONE FOR THE WAGE MONTH, AND THE MONTH THE CHANGE FALLS IN IS NAMED
+- THE ECR'S COLUMNS ARE EPFO'S OWN, A RETURN AND ITS CHALLAN HAVE TWO REFERENCES
+- A FIXED-TERM EMPLOYEE'S FIVE YEARS ARE WAIVED ON THE EXPIRY OF THE TERM, GRATUITY IS NAMED UNDER THE CODE, AND WHAT THE CODE LEAVES TO A NOTIFICATION IS SAID
 
 ### `docs/design-record/reporting.md` (12 entries): Reporting: Schedule III captions, report performance, paging, exports
 
@@ -326,7 +344,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A SEARCH ON A STATEMENT CHOOSES THE ROWS DRAWN, AND EVERY TOTAL STAYS THE WHOLE LEDGER'S
 - A MEMBER'S HOURS FOR A PERIOD ARE SUMMED BY THE DATABASE
 
-### `docs/design-record/screens-and-site.md` (29 entries): Screens that state what they read, double-click and keyboard rules, the public site's claims, dates and empty states
+### `docs/design-record/screens-and-site.md` (34 entries): Screens that state what they read, double-click and keyboard rules, the public site's claims, dates and empty states
 
 - AN ABSENT VALUE IS UNKNOWN, AND A GENUINE ZERO IS A READING
 - A RETURN FOR ONE OF SEVERAL REGISTRATIONS SAYS ITS DOCUMENTS ARE NOT SPLIT
@@ -357,6 +375,9 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A DATE BOX WHOSE BOUND MOVES JUDGES THE DAY IT HOLDS AGAIN
 - A DATE BOX THAT A FORM REFUSES A LATER DAY IN SAYS SO ON THE BOX, RED AND `aria-invalid`, AND A HINT STAYS A HINT
 - THE PRACTICE'S PROFITABILITY IS FEE REVENUE BEFORE GST LESS EACH MEMBER'S COST RATE TIMES THEIR HOURS, AND AN UNKNOWN IS A DASH
+- THE PAGES A PERSON SEES BEFORE THEY ARE INSIDE WEAR ONE WASH, A WORD ON IT IS WHITE AND SITS WHERE WHITE READS, AND THE SIGN-IN
+- A REFUSAL SAYS WHAT TO CORRECT IN A PERSON'S WORDS
+- A BUTTON THAT SAVES TELLS THE PERSON WHEN IT FAILS, AND A SCAN OVER EVERY BUTTON HOLDS THE RULE WITH A LIST OF WHAT WAS READ THAT MAY ONLY SHRINK
 
 ### `docs/design-record/tax-gst.md` (40 entries): GST: returns, e-invoice and e-way, ITC and the 2B reconciliation, late fees, HSN and UQC, registrations
 
@@ -423,7 +444,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - ITR-6'S GROSS BLOCK IS FILLED ONLY WHERE EACH LEDGER LINE TIES
 - A BROUGHT-FORWARD LOSS IS OFFERED FROM ITS RECORD, USED PER FILING AND PER YEAR, AND AN UPDATED RETURN WRITES NOTHING
 
-### `docs/design-record/tax-tds.md` (26 entries): TDS and TCS: sections and thresholds, the 2026 vocabulary fork, interest, 26AS
+### `docs/design-record/tax-tds.md` (30 entries): TDS and TCS: sections and thresholds, the 2026 vocabulary fork, interest, 26AS
 
 - From 01-04-2026 the whole TDS vocabulary changed, and `domain/tds/vocabulary.py` is the single place that knows it
 - A CONFIRMED SUBSET OF THE S. 393 PAYMENT-CODE TABLE IS NOW HELD
@@ -451,8 +472,12 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - AN AIS FIGURE IS WHAT OTHERS REPORTED, SO IT IS OFFERED LINE BY LINE AND APPLIED ONLY TO AN EMPTY BOX
 - A REGISTER ROW ITS DOCUMENT NO LONGER CARRIES IS NAMED ON THE LIST AND REMOVED BY THE DOCUMENT'S OWN SYNC
 - ONLY A MEMBER WHO MAY APPROVE TDS IS NAMED AS HAVING RECORDED A NO-PE DECLARATION, AND THE SUPPLIER FORM SAYS WHO
+- A DEDUCTION TYPED ON THE TDS SCREEN MAY NAME THE SUPPLIER IT WAS PAID TO, AND IS THEN COUNTED IN THAT SUPPLIER'S YEAR WITH ITS BILLS AND ADVANCES
+- s.194A HAS TWO RAISED LIMITS AND THEY HANG ON THE PAYER AS WELL AS THE PAYEE
+- A 2025-ACT DEDUCTEE ROW CARRIES ITS s.393 PAYMENT CODE, OR NAMES WHY NOT
+- THE TDS WORKSPACE ANSWERS A FAILURE WITH ITS OWN SENTENCE, AND A CONTENDED SNAPSHOT SAVE TAKES THE NEXT VERSION
 
-### `docs/design-record/tenancy-and-security.md` (86 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
+### `docs/design-record/tenancy-and-security.md` (95 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
 
 - EVERY QUERY ON A FIRM TABLE CARRIES ITS FIRM'S SCOPE OR IS NAMED ON A FROZEN LIST, THE TABLE SET IS THE SNAPSHOT'S, AND HOW LITTLE
 - ACCESS IS DECIDED PER PERSON, AND A ROLE IS THE TEMPLATE IT FALLS BACK TO
@@ -540,11 +565,22 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - EVERY WRITER OF A PERSON COLUMN IS TRACED TO THE ID IT STORES, A MODEL CALL IS ATTRIBUTED TO THE INTERNAL ID, AND AN AUDIT ROW NAM
 - THE IRN AND E-WAY BILL RECORDS AND THE SECTION 140A CHALLANS ARE WRITTEN BY THE API ONLY
 - A PERSON COLUMN WITH NO ROWS TAKES THE ID ITS CODE DECIDES, ITS WRITERS ARE FOLLOWED LIKE THE OTHERS', AND A NEW ONE IS ON NO LIST UNTIL
-### `docs/design-record/workflow-and-team.md` (3 entries): Workflow engine slices and the Team screen's permission notice
+- THE TDS REGISTER, THE TDS RETURNS, THE TDS CHALLANS AND THE TDS CERTIFICATES ARE WRITTEN BY THE API ONLY
+- EVERY TABLE A SIGNED-IN SESSION CAN REACH IS OBSERVED BY THE ROLE-BY-TABLE MATRIX OR NAMED ON A LIST THAT ONLY SHRINKS
+- AN ASSIGNMENT TO THE FIRM'S OWN PRACTICE GRANTS A NON-PARTNER NOTHING, AND THE RULE IS IN THE ASSIGNMENT READ EVERY ROUTE ASKS
+- THE GST WORKING TABLES ARE WRITTEN BY THE API ONLY, SO A REVIEWER NO LONGER WRITES A REVERSAL INTO THE REGISTER THAT FEEDS THE RETURN
+- AN UNSIGNED REQUEST TO THE PUBLIC WEBHOOK WRITES NOTHING DURABLE
+- A SIGN-UP LINK IS HELD BY THE SERVER, OPENS ON ITS OWN PAGE, USES NOTHING UP, AND CARRIES WHAT IT WAS ASKED FOR
+- A PURGED FIRM'S PEOPLE ARE TOLD THEIR FIRM IS CLOSED BY A MARKER THAT OUTLIVES THEIR MEMBER ROW
+- AN EMPLOYEE'S PORTAL INVITATION LINK EXISTS ONLY IN THE MAIL THE SERVER SENDS, AND THE SCREEN IS TOLD ONLY WHETHER THAT MAIL WENT
+- ONE SIGN-IN MAY BE BOTH A MEMBER OF STAFF AND A PORTAL EMPLOYEE
+
+### `docs/design-record/workflow-and-team.md` (4 entries): Workflow engine slices and the Team screen's permission notice
 
 - MIGRATION 481 IS THE SCHEMA FOR BOTH WORKFLOW HALVES, AND NOTHING READS IT YET
 - A SAVED WORKFLOW RUNS EVERY STEP IT WAS SAVED WITH, AND A PERSON WHO PRESSES RUN RUNS THAT WORKFLOW
 - THE TEAM SCREEN SAYS WHAT A BLOCK REACHES, AND A GUARD KEEPS THE SENTENCE TRUE
+- A STAFF INVITATION IS SENT BY THE SERVER, CAN BE SENT AGAIN, AND ITS LINK SIGNS THE INVITEE IN BY ITSELF
 
 ## Repo layout
 
@@ -581,9 +617,9 @@ frontend environment is at best ignored and at worst published. All AI calls hap
   Needs `GEMINI_API_KEY`. Default model `gemini-3.5-flash`, overridable via
   `GEMINI_VISION_MODEL`.
 
-Why two providers: Groq's vision models returned a live 404 `model_not_found` on this
-account; Gemini's free tier is multimodal-native and already provisioned. The PDF/text
-path stayed on Groq and works fine. Treat the model names above as current defaults,
+Why two providers: Groq's vision models returned a live 404 on this account; Gemini is
+multimodal-native, on Google's paid terms since 16-11-2026 (PRE-B-013). The PDF/text
+path stayed on Groq. Treat the model names above as current defaults,
 not as contracts — `gemini-2.5-flash` was retired by Google ahead of its announced
 shutdown, and the code reads the env var precisely so the next retirement is a config
 change. The code is the authority; keep this file in step with it.
@@ -901,8 +937,6 @@ _Longer design records for this area were moved to `docs/design-record/ledger-an
   NAMES the gaps rather than refusing, because a screen opening a form needs
   to say what to go and record; the boxes stay editable, and a value already
   typed is not overwritten when the panel reopens.
-- **THE TDS WORKSPACE ANSWERS A FAILURE WITH ITS OWN SENTENCE, AND A CONTENDED SNAPSHOT SAVE TAKES THE NEXT VERSION** (tds_income_tax-34). Twelve handlers (the audit counted nine) ended `return api_response(False, None, str(e))`; for a PostgREST failure that is the error dict (table, column, constraint, hint) inside an HTTP 200. `_could_not(exc, action)` logs the traceback and words the refusal through `core.exceptions.unhandled_failure`, the speaker `main.py` applies to every uncaught exception, so there is no second wording table; the guard is the RULE on broad handlers (`except Exception`/bare), not on the twelve sites, and leaves the narrow `except ValueError` that words the engine's own 422 because that message is authored there. `utcnow()` stamped five records naive. A duplicate `"194J(B)"` key was deleted with every registry compared byte-identical against git HEAD, so no figure moves. `save_computation_snapshot` retries on SQLSTATE 23505 and ONLY 23505 (migration 319's UNIQUE already existed; the finding's 'no guard' was wrong), re-reading the maximum version, five attempts, then the router's existing 409.
-
 - **A TDS ENGAGEMENT OWES TWELVE MONTHLY DEPOSITS, NOT FOUR STATEMENTS**
   (TDS-12). Rule 30(2) binds every deductor other than an office of the
   government, and `compliance_engine.tds_deposit_due_date` had exactly one
@@ -1086,10 +1120,6 @@ _Longer design records for this area were moved to `docs/design-record/ledger-an
 
 `services/compliance_engine.py` is the single source for every due date above. If prose
 and that module disagree, the module wins and the prose gets fixed.
-
-- **s.194A HAS TWO RAISED LIMITS AND THEY HANG ON THE PAYER AS WELL AS THE PAYEE** (TDS-INCOME-TAX-30, migration 454). One Rs 10,000 limit was held, with the Finance Act 2025 limits for a bank deposit (Rs 50,000) and a senior citizen's deposit (Rs 1,00,000) marked "not modelled". The finding's own reading (bank / senior / other as payee classes) would have UNDER-deducted on the commonest s.194A payment: the senior limit exists only INSIDE the bank-deposit limb, so a company paying a pensioner interest on a loan withholds at Rs 10,000 whoever is paid. `vendors.interest_threshold_class` is therefore a three-answer class (ordinary, bank_deposit, bank_deposit_senior), nullable with no backfill, and `ordinary` is a word for taking a class back because PATCH drops a null. `resolve_tds(threshold_class=)` refuses a class on a section with one limit and ignores it before FY 2025-26. NULL reads as Rs 10,000 (the lower, which cannot under-deduct), so no existing supplier's withholding changes. Deliberately NOT done: interest paid TO a bank (s.194A(3)(iii)) is named, not modelled; `THRESHOLD_CLASSES_194A_VERIFIED` is False.
-
-- **A 2025-ACT DEDUCTEE ROW CARRIES ITS s.393 PAYMENT CODE, OR NAMES WHY NOT** (TDS-INCOME-TAX-31). `payment_code_for` existed and nothing put it on a statement line. `domain/tds/deductee_payment_code.py` puts it on each deductee row of the 24Q/26Q/27Q builders (keys always present, null for a 1961-Act period). s.194C's code is read off the PAN's fourth character (P/H -> 1023; C,F,A,T,B,L,J,G -> 1024), never off the stored rate; s.192 -> 1002 with a stated non-government assumption; 194A, 194J(b) and the bare 194I/194J are named gaps, each with its own reason, and the keying sheet names rows with no code. Deliberately NOT done: the table is still a confirmed subset, and no RPU/FVU file is produced (TDS-16).
 
 _Longer design records for this area were moved to `docs/design-record/tax-tds.md`, `docs/design-record/tax-income-tax.md`, `docs/design-record/payroll.md`, `docs/design-record/fixed-assets-and-inventory.md`, `docs/design-record/documents-sales-purchase.md`, `docs/design-record/tax-gst.md`, `docs/design-record/filing-and-compliance.md`; see the Design record index._
 
@@ -1376,9 +1406,9 @@ _Longer design records for this area were moved to `docs/design-record/frontend.
   gave a Manager Billing they do not have while withholding the Reports and
   Settings they do.
 
-- **A LOGIN TOKEN MUST HAVE BEEN ISSUED FOR THIS PRODUCT, AND A SESSION WE CANNOT VERIFY IS REFUSED** (SECURITY-PRIVACY-21). Both `get_current_user` and `get_jwt_user` decoded a Supabase JWT with `verify_aud` off and no issuer or required-claims check, so any validly signed token from the same signing key, including one minted for another audience, was accepted. `core/auth.decode_supabase_jwt` is now the ONE decode and both doors call it: audience `authenticated`, issuer `{SUPABASE_URL}/auth/v1` (or `SUPABASE_JWT_ISSUER` where the project has a custom auth domain) and `exp`, `sub`, `iat` required. **The revocation compare used to swallow an unreadable timestamp and let the request through; it now answers 401 and logs at ERROR**, because a check that fails open is not a check. A naive `iat` is read as UTC (`_instant_epoch`). ⚠️ **The issuer is the one value this code cannot confirm**: a human must decode a live token's `iss` before deploy, and a custom auth domain needs `SUPABASE_JWT_ISSUER`, or every login 401s. That fails CLOSED by design. Deliberately NOT done: the algorithm list is unchanged, and no check was relaxed for dev/test header-auth mode.
+- **WHAT A MEMBER OF STAFF IS OFFERED IS ONE TABLE, AND IT ASKS PERMISSIONS, NEVER A ROLE** (POST-A-543, the owner's rule of 21-11-2026: the Partner's ticks decide what a person sees and can open; a role only sets the ticks they start with). `apps/web/lib/access/screenAccess.ts` says which pair opens each area of the firm menu and each firm screen; the menu, every panel, the one gate in the shell (`ScreenAccessGate`) and the guide read it. **Do not add a list of roles that hides an area or an address, and do not gate a firm page in its own layout**: add its pair to the table. My practice is the one exception (a Partner's alone, by role, on the server too); the Settings pages still carry role guards (POST-A-545). The record is in `docs/design-record/screens-and-site.md`.
 
-- **AN UNSIGNED REQUEST TO THE PUBLIC WEBHOOK WRITES NOTHING DURABLE** (SECURITY-PRIVACY-23). `payment_service.process_webhook` called `audit_log` for every request whose signature failed, and `audit_log.firm_id` is `NOT NULL`, so the row could not even be attributed to a firm: the append-only edit-log table was an unauthenticated write target, and an attacker could fill it. An unsigned request now leaves no `audit_log` row and is counted in `core/rate_window.SlidingWindowLimiter` (100 per address per 60 s, a refused hit is not recorded, at most 4096 keys), answered 429 with `Retry-After`; a capped sample (20 per hour) is logged so an attack is still visible. The body is capped at 256 KB on `Content-Length` and again after reading. A correctly signed webhook is processed exactly as before. Deliberately NOT done: the limiter is per process and in memory, so with several instances the ceiling multiplies; the protection that matters is that an unsigned request costs no row, and a shared store would be a new dependency for abuse damping.
+- **A LOGIN TOKEN MUST HAVE BEEN ISSUED FOR THIS PRODUCT, AND A SESSION WE CANNOT VERIFY IS REFUSED** (SECURITY-PRIVACY-21). Both `get_current_user` and `get_jwt_user` decoded a Supabase JWT with `verify_aud` off and no issuer or required-claims check, so any validly signed token from the same signing key, including one minted for another audience, was accepted. `core/auth.decode_supabase_jwt` is now the ONE decode and both doors call it: audience `authenticated`, issuer `{SUPABASE_URL}/auth/v1` (or `SUPABASE_JWT_ISSUER` where the project has a custom auth domain) and `exp`, `sub`, `iat` required. **The revocation compare used to swallow an unreadable timestamp and let the request through; it now answers 401 and logs at ERROR**, because a check that fails open is not a check. A naive `iat` is read as UTC (`_instant_epoch`). ⚠️ **The issuer is the one value this code cannot confirm**: a human must decode a live token's `iss` before deploy, and a custom auth domain needs `SUPABASE_JWT_ISSUER`, or every login 401s. That fails CLOSED by design. Deliberately NOT done: the algorithm list is unchanged, and no check was relaxed for dev/test header-auth mode.
 
 _Longer design records for this area were moved to `docs/design-record/tenancy-and-security.md`; see the Design record index._
 
@@ -1703,12 +1733,14 @@ communicated to the recipient, and **GSTR-2B is that communication**.
 
 _Longer design records for this area were moved to `docs/design-record/tax-gst.md`, `docs/design-record/tax-tds.md`; see the Design record index._
 
-## Bank data — the Account Aggregator is the only way in
+## Bank data — statement upload is the way in; the Account Aggregator route is closed
 
 Statement upload (CSV/XLSX, parsed server-side in `domain/banking/normalizer.py`)
-is how bank data enters the platform today, and it is not going away. When a live
-bank feed is built, it goes through India's **Account Aggregator** framework and
-nothing else.
+is how bank data enters the platform, and it is not going away. **A live bank feed
+is NOT promised anywhere**: the Account Aggregator route is closed (an FIU must be
+registered with a financial regulator, and no purpose code covers keeping a client's
+books; `docs/design-record/banking.md`, `docs/compliance/05` §7, grade `[S]`).
+The rest of this section is the shape any feed would have to take if it reopens.
 
 **The DPDP duties over bank data are live NOW and do not wait for AA.** An
 uploaded statement holds the client's account number and, in every narration, the
@@ -1771,10 +1803,15 @@ _Longer design records for this area were moved to `docs/design-record/engineeri
 
 ## CI
 
-Two **required** status checks on `main`, both in `.github/workflows/backend-ci.yml`:
+Three **required** status checks on `main`, two in `.github/workflows/backend-ci.yml` and one in `.github/workflows/frontend-ci.yml`
+(a merge is refused while any of them is failing, and the merge refusal names it; this file said two until 20 November 2026, when the
+third refused a merge):
 
 - `pytest — mock mode (Python 3.11)`
 - `migration apply — real Postgres 16`
+- `lint · typecheck · test · build (Node 22)`, the web app's `next lint`, type check, tests and build. **Run `pnpm lint` in `apps/web`
+  before pushing a web change**: it refuses an unescaped apostrophe in JSX text (`react/no-unescaped-entities`), which a type check and
+  the script tests do not see, and four were found only when this check refused #1177.
 
 Never add a `paths:` filter to the `on:` block of a workflow carrying a required check.
 A path-filtered workflow does not run when the filter misses, the check never reports,
@@ -1826,8 +1863,8 @@ _Longer design records for this area were moved to `docs/design-record/engineeri
   between regions.
 - `apps/web` and `apps/marketing` → two separate Cloudflare Pages projects. **Which
   hostname is which is not guessable**: the product is the Cloudflare project
-  `practicesync-ai` and it serves at **`caflow-ai.pages.dev`** (the project's `pages.dev`
-  name predates the rename and cannot change); **`practicesync.pages.dev` is the
+  `practicesync-ai` and it serves at **`caflow-ai.pages.dev`** (a name that
+  cannot change; people use `app.jlgsfinance.com`); **`practicesync.pages.dev` is the
   MARKETING site**, a different project built from `apps/marketing`. Both build from
   this repo, so every PR shows two Cloudflare checks and two bot comments.
 - **THE REDIRECT FILE IS A 100-RULE BUDGET THAT FAILS SILENTLY, AND CLOUDFLARE COUNTS IT
@@ -1847,9 +1884,9 @@ _Longer design records for this area were moved to `docs/design-record/engineeri
   `scripts/generate-redirects.test.ts` measures `cloudflareDynamicCount` (rules from the
   first dynamic one onward) and asserts the order on a synthetic tree as well as `app/`.
   **Do not interleave them again, and do not read the budget off a count of lines that
-  contain `:` or `*`.** Budget: 98 dynamic + 40 static, so **one more page under a
-  dynamic prefix costs 2 and lands on 100, and one that opens a new splat group costs 3
-  and breaks it** — decision D10: no new dynamic route under `/clients/[id]`; a new
+  contain `:` or `*`.** Budget: 99 dynamic + 40 static, so **one more page under a
+  dynamic prefix costs 2 and lands on 101, past the cap, and one that opens a new splat
+  group costs 3 and lands on 102** — decision D10: no new dynamic route under `/clients/[id]`; a new
   section there is a QUERY PARAMETER on an existing route. A route with no `:` of its
   own can still be shadowed by a sibling's placeholder (`/health/critical` vs
   `/health/:client_id`), which is what `staticLeafShadowRules` is for.
@@ -1918,7 +1955,7 @@ kernel, financial years, opening balances, manual journals, multi-currency, GST 
 reporting engine, bank entries, and the practice's own revenue loop and knowledge base.
 Read the relevant one before changing a subsystem.
 
-**THE FIRM'S OWN PRACTICE IS A CLIENT, AND ITS DESIGN RECORD IS `docs/architecture/11-revenue-ops-and-knowledge.md`** (POST-A-177). It covers the internal client (`clients.is_internal`), guardrails G1 to G4 (Partner-only; out of every client population; one linked customer; no payroll), the schedule -> draft -> issue -> receipt lifecycle with `uq_client_sales_invoices_billing_run`, collections, time capture and the knowledge base, written from the code and not from the June batch reports. `tests/test_the_revenue_ops_design_record_names_what_exists.py` holds every route, migration, function and path it names, and its "not built" statements expire (KB search has no ranking; the Manager is firm-wide in the KB alone; of six observed defects, five were fixed under POST-A-215 and POST-A-216 and one was decided to stay): when one fails, fix the record the same day. **A severity argued from "nothing reaches this" is a test** (POST-A-179): `tests/test_an_unreachable_premise_fails_when_it_becomes_reachable.py` is the register; add an entry when you write that sentence, delete it when the item closes.
+**THE FIRM'S OWN PRACTICE IS A CLIENT, AND ITS DESIGN RECORD IS `docs/architecture/11-revenue-ops-and-knowledge.md`** (POST-A-177). It covers the internal client (`clients.is_internal`), guardrails G1 to G4 (Partner-only; out of every client population; one linked customer; its own payroll the Partner's alone, a cap until 21-11-2026), the schedule -> draft -> issue -> receipt lifecycle with `uq_client_sales_invoices_billing_run`, collections, time capture and the knowledge base, written from the code and not from the June batch reports. `tests/test_the_revenue_ops_design_record_names_what_exists.py` holds every route, migration, function and path it names, and its "not built" statements expire (KB search has no ranking; the Manager is firm-wide in the KB alone; of six observed defects, five were fixed under POST-A-215 and POST-A-216 and one was decided to stay): when one fails, fix the record the same day. **A severity argued from "nothing reaches this" is a test** (POST-A-179): `tests/test_an_unreachable_premise_fails_when_it_becomes_reachable.py` is the register; add an entry when you write that sentence, delete it when the item closes.
 
 **`docs/open-items/` ANSWERS "WHAT IS LEFT", AND THE AUDIT DOCUMENTS THAT USED TO
 ARE DELETED** (2-8 October 2026). Start at `docs/open-items/README.md`: six
@@ -1972,8 +2009,8 @@ Tally migration, and prepare-only e-invoice/e-way/XBRL rails.
 
 **What the goal still needs.** The target scope is everything a practice and its clients use in India, enough to
 replace every platform on the market (see Goal and context). `docs/open-items/README.md` is the live list of what is
-still missing; the list above is only what exists. The last stage is real filing through the portals and live bank
-feeds (next section), which wait on registrations only the owner can obtain.
+still missing; the list above is only what exists. The last stage is real filing through the portals (next section), which waits on
+registrations only the owner can obtain. A live bank feed has no route today.
 
 The list above describes what exists. It is not a statement of what may be built: what to build, and in what order,
 is decided under the standing instructions at the top of this file. Two things are held back by name, in the next
@@ -2090,24 +2127,15 @@ its period**. It now PATCHes, and checks `res.success` — the GST workspace
 router answers refusals as HTTP 200 with `{success: false}`, so an unchecked
 call showed "Filed" for a request the server had declined.
 
-### Live bank feeds through the Account Aggregator
+### Live bank feeds
 
-Fully specified already — see **"Bank data — the Account Aggregator is the only
-way in"** above. Nothing about it has been built: statement upload is the only
-path in today, and it stays at parity for years regardless.
-
-Restated here only so this list is complete: register as an FIU, go via a TSP,
-the consent is the CLIENT's and is time-bound and revocable, and **never
-screen-scrape net banking**. Read that section before touching any of it.
-
-**The consent flow's SHAPE is written down and nothing is built** —
-`docs/compliance/05-…` §6. It exists so a first attempt does not put an "I agree"
-control on our own page: the request, the tokenised link, the expiry and the
-audit all follow `routers/engagement_sign_public.py`, and the ONE step that does
-not transfer is the approval, which happens at the AA. Six refusals are recorded
-there, including never render the approval, never touch an OTP, never treat a
-consent as durable (the client can revoke without telling the CA), and never
-declare purpose code 102.
+Not built, and not promised. The Account Aggregator route is CLOSED (see the Bank data
+section above): there is no FIU licence to apply for, and a partner or a bought
+registration fails on purpose. Net-banking screen-scraping is never an option and
+**never declare purpose code 102**. Statement upload stays the way in, at parity. The one
+open route is a per-bank agreement the owner would have to open (POST-C-162); nothing
+is built until a bank relationship exists. The consent flow's shape is kept in
+`docs/compliance/05-…` §6 for the day any route reopens.
 
 _Longer design records for this area were moved to `docs/design-record/filing-and-compliance.md`; see the Design record index._
 
@@ -2505,8 +2533,7 @@ than the code does.**
   year (a human step, `docs/compliance/`) turns it off, and the gap is recomputed at
   release so the draft need not be rebuilt.
 - **THE PUBLIC SITE IS HELD TO THE CODE FROM THE PYTHON SIDE**
-  (`tests/test_the_marketing_site_does_not_claim_what_the_code_does_not_do.py`; the
-  marketing app has no test runner). MFA is required of Partner and Manager on the routers
+  (`tests/test_the_marketing_site_does_not_claim_what_the_code_does_not_do.py`). MFA is required of Partner and Manager on the routers
   that carry `mfa_guard`, not "every sign-in"; the audit log records changes, not views;
   the database is in Mumbai, the API in Singapore, and AI calls leave India; the Tally
   importer writes customer and vendor masters only (the Migration Center's copy is built

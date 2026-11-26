@@ -24,6 +24,7 @@ from datetime import date, timedelta
 from typing import Optional
 
 from core.ist_clock import ist_now, ist_today
+from domain.payroll import ledger_accounts as payroll_ledgers
 from domain.payroll import remittance_match
 from domain.payroll.statutory import esi_contribution_period
 from core.db_paging import fetch_all, fetch_all_in
@@ -374,7 +375,7 @@ def stale_links(db, *, firm_id: str, client_id: str) -> list:
 
 
 #: The names the screen shows for each scheme's liability account.
-_ACCOUNT_SHOWN = {ESIC: "ESI Payable", PROFESSIONAL_TAX: "PT Payable"}
+_ACCOUNT_SHOWN = {ESIC: payroll_ledgers.ESI_PAYABLE.name, PROFESSIONAL_TAX: payroll_ledgers.PT_PAYABLE.name}
 
 
 def _that_stopped_debiting(db, *, firm_id: str, client_id: str, live: list) -> list:
@@ -436,17 +437,16 @@ def retract(db, *, firm_id: str, client_id: str, remittance_id: str,
 
 # ── Which ledger each scheme settles, and how far to look ────────────────────
 #
-# The name patterns are the ones services/phase2_journal_service already posts
-# the accrual to — %ESI Payable% and %PT Payable%. Named here rather than
-# re-derived: a matcher looking at a different account from the one the accrual
-# credited would find nothing and report every remittance as unmatched, which
-# is a worse answer than no matcher at all.
+# The account the accrual credited, found by the accrual's own resolver (POST-A-083): the payroll vocabulary and
+# `services/payroll_ledger_accounts`, key first and then the pattern the posting has always used. A matcher looking at a
+# different account from the one the accrual credited would find nothing and report every remittance as unmatched, which is
+# a worse answer than no matcher at all, and two spellings of one lookup is how that happens after a rename.
 #
 # EPF is absent on purpose. It has its own record (migration 335) with EPFO's
 # own sequencing, this table does not carry it, and `record` refuses it.
-_LIABILITY_PATTERN = {
-    ESIC: "%ESI Payable%",
-    PROFESSIONAL_TAX: "%PT Payable%",
+_LIABILITY_LEDGER = {
+    ESIC: payroll_ledgers.ESI_PAYABLE,
+    PROFESSIONAL_TAX: payroll_ledgers.PT_PAYABLE,
 }
 
 
@@ -454,21 +454,16 @@ def _liability_account_id(db, *, firm_id: str, client_id: str,
                           scheme: str) -> Optional[str]:
     """The account a scheme's accrual was credited to, or None.
 
-    None rather than a raise: a client whose chart has no ESI Payable has never
+    None rather than a raise when there is none: a client whose chart has no ESI Payable has never
     accrued ESI, so there is nothing to reconcile and the caller reports "no
-    candidates" rather than failing a screen.
+    candidates" rather than failing a screen. Two accounts that could each be it raise
+    `PayrollLedgerAmbiguous`, which is not "none".
     """
-    pattern = _LIABILITY_PATTERN.get(scheme)
-    if not pattern:
+    ledger = _LIABILITY_LEDGER.get(scheme)
+    if not ledger:
         return None
-    rows = (db.table("chart_of_accounts").select("id, client_id, account_name")
-            .eq("firm_id", firm_id).ilike("account_name", pattern)
-            .eq("is_active", True).execute().data) or []
-    # A firm-level account (client_id IS NULL) is allowed on any of that firm's
-    # entries — see the journal_lines trigger in migration 360 — so it is a
-    # legitimate match, but this client's OWN account wins where both exist.
-    own = [r for r in rows if r.get("client_id") == client_id]
-    return (own or rows)[0]["id"] if (own or rows) else None
+    from services.payroll_ledger_accounts import resolve_id
+    return resolve_id(db, firm_id=firm_id, client_id=client_id, ledger=ledger, required=False)
 
 
 def payment_candidates(db, *, firm_id: str, client_id: str,
@@ -484,9 +479,13 @@ def payment_candidates(db, *, firm_id: str, client_id: str,
     paid_on = remittance.get("paid_on")
     if not paid_on:
         return []
-    account_id = _liability_account_id(
-        db, firm_id=firm_id, client_id=client_id,
-        scheme=str(remittance.get("scheme") or ""))
+    try:
+        account_id = _liability_account_id(
+            db, firm_id=firm_id, client_id=client_id,
+            scheme=str(remittance.get("scheme") or ""))
+    except payroll_ledgers.PayrollLedgerAmbiguous:
+        # Two accounts could each be the liability: offering the entries that cleared one of them would be a guess.
+        return []
     if not account_id:
         return []
     return entries_clearing_account(
@@ -512,7 +511,10 @@ def entries_clearing_account(db, *, firm_id: str, client_id: str, account_id: st
     """
     try:
         centre = date.fromisoformat(str(paid_on)[:10])
-    except (ValueError, TypeError):
+    except (ValueError, TypeError) as unreadable:
+        # A payment date that cannot be read offers no entry that could be the payment: said, so a missing offer is not taken for none (POST-A-505).
+        from core.observability import capture_soft_failure
+        capture_soft_failure(unreadable, operation="statutory_remittance.paid_on_unreadable", paid_on=str(paid_on)[:20])
         return []
     lo = (centre - timedelta(days=window_days)).isoformat()
     hi = (centre + timedelta(days=window_days)).isoformat()

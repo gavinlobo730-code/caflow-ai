@@ -377,8 +377,9 @@ def test_the_ownership_module_reads_each_table_by_a_literal_name():
     tree = ast.parse(pathlib.Path(nro.__file__).read_text(encoding="utf-8"))
     tables = [n.args[0] for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "table"]
     # 9 until POST-A-353 added eight reads: the MCA company, the task (twice: by client and by firm), the lead, the year-end engagement, the
-    # payroll run, the income-tax filing and the practice's service.
-    assert len(tables) == 17 and all(isinstance(t, ast.Constant) and isinstance(t.value, str) for t in tables)
+    # payroll run, the income-tax filing and the practice's service; 18 after POST-A-451's one read of the member's role; 20 after
+    # POST-A-553's two (the invoice and the bill a note names, read with the party each belongs to).
+    assert len(tables) == 20 and all(isinstance(t, ast.Constant) and isinstance(t.value, str) for t in tables)
 
 
 # ── POST-A-342: a count that cannot be read is not zero ────────────────────────────────────────────────────────────────

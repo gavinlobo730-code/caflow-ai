@@ -161,8 +161,8 @@ export function PayrollPanel() {
       <nav className="flex-1 overflow-y-auto py-2 px-2">
         {groups.length === 0 && (
           <p className="px-3 py-2 text-2xs text-gray-500 leading-relaxed">
-            Payroll is open to Partners and Managers. Ask a Partner to grant
-            you payroll access from Settings → Team.
+            Payroll is not part of your access. A Partner decides which parts of
+            PracticeSync each person can open, on the Team screen.
           </p>
         )}
         {groups.map(({ heading, items }) => (

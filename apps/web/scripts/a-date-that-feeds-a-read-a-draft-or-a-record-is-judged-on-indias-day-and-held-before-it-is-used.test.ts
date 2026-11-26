@@ -99,7 +99,9 @@ test("the tax audit's boxes are bounded by India's today only when the status sa
   assert.match(code, /\{\(error \|\| dateRefusal\.shown\) && <Callout tone="problem">\{error \?\? dateRefusal\.shown\}<\/Callout>\}/, "the latched sentence is not drawn");
   assert.match(code, /\?\? auditDateRefusalMessage\(e as /, "the database's own sentence for a day that has not come is not what the screen shows");
   // ...and it comes before the generic fallback, or an Error's own message (which the supabase client builds from the same text) would be shown instead of the mapped one.
-  assert.ok(code.indexOf("auditDateRefusalMessage(") < code.indexOf("(e instanceof Error ? e.message : \"Save failed\")"), "the database's sentence is asked after the generic message");
+  // The generic sentence is the helper's since POST-A-414 (a request that got no answer is said as not known, not as "Save failed").
+  assert.ok(code.indexOf("failureSentence(e, \"Save failed\", \"write\")") > 0, "the tax audit's generic sentence is not the helper's");
+  assert.ok(code.indexOf("auditDateRefusalMessage(") < code.indexOf("failureSentence(e, \"Save failed\", \"write\")"), "the database's sentence is asked after the generic message");
   // a planned day is allowed: the bound is never unconditional
   assert.doesNotMatch(audit, /notAfter=\{todayIstISO\(\)\}/);
   assert.doesNotMatch(filing, /notAfter=\{todayIstISO\(\)\}/);
@@ -171,7 +173,7 @@ test("the ageing schedule starts from India's day, reads nothing for a blank or 
   // A slower answer for a date the box no longer holds is dropped, in both readings and on both paths of each (the answer and the failure).
   assert.match(load, /const mine = \+\+latestSchedule\.current;[\s\S]*?if \(!asOf\)/, "load() does not count its request before the blank guard: a request still out when the box is emptied would draw its schedule under it");
   assert.ok((load.match(/if \(mine !== latestSchedule\.current\) return;/g) ?? []).length >= 2, "load() draws an answer or a failure that is not the latest asked for");
-  assert.ok(load.indexOf("if (mine !== latestSchedule.current) return;") < load.indexOf("setSchedule(objectOrNull("), "load() checks that its answer is the latest only AFTER it has drawn it");
+  assert.ok(load.indexOf("if (mine !== latestSchedule.current) return;") < load.indexOf("setSchedule(sched)"), "load() checks that its answer is the latest only AFTER it has drawn it");
   assert.match(load, /finally \{\s*if \(mine === latestSchedule\.current\) setLoading\(false\);/, "an older request that finishes last clears the spinner of the one still out");
   assert.match(load.slice(firstGuard, firstGuard + 200), /setDetailError\(null\)/, "a blank box leaves the open documents' last failure on the screen");
   assert.ok((detail.match(/if \(mine !== latestDetail\.current\) return;/g) ?? []).length >= 2, "loadDetail() draws an answer or a failure that is not the latest asked for");

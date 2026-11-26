@@ -70,6 +70,11 @@ HELPERS = {
     # The one call graph of the API's own source (imports, singletons and methods resolved) that two rules read: the named-row rule and
     # the rule over the client a write of a closed table is made on. Imported by both, so neither carries its own resolver.
     "_call_graph.py",
+    # POST-A-166. What every write in the API puts in each column, read once: a payload built in one function and written by another (a
+    # repository's caller) is followed to where its dict is built, and a value held in a name is read as the literals bound to it. Imported
+    # by `test_users_fk_columns_take_the_internal_id_pg.py` (keyed columns, and the retired team_members keys) and
+    # `test_status_vocabularies_pg.py`, so both rules ask the same question of the same writes.
+    "_write_payloads.py",
     # What a test reads off a FastAPI body parameter, the same on the version in the lock and on the next (0.141 has no `ModelField.type_`).
     # Two test modules read the model a route takes, so the spelling is here once (POST-A-171).
     "_fastapi_compat.py",
@@ -110,6 +115,11 @@ HELPERS = {
     # fixture and one read back out of Postgres, and a second double would be
     # two fixtures agreeing with each other rather than with the database.
     "_hub_worklist_double.py",
+    # POST-A-008, the tranches of the tables a signed-in session can write that the access matrix does not observe. The three rules each
+    # "these tables are written with the privileged client" guard asks (every write privileged, every update and delete naming the firm
+    # and the client, the census of write sites), with the group as an argument, so each tranche names its tables and counts and none
+    # carries its own copy of the rules.
+    "_privileged_write_sites.py",
     # POST-A-234. Migration 499 takes the signed-in write privilege from seventeen payroll tables. The real-Postgres modules
     # that exist to measure the SECOND lock (the row policies and the 498 triggers) write as a signed-in role, so each
     # gives the privilege back in its own throwaway database through this one helper, which applies 499's rollback file
@@ -141,6 +151,12 @@ HELPERS = {
     # triggers of 539, 541 and 544, the internal-practice guard) write as a signed-in member, so each gives the privilege back in its
     # throwaway database through this one helper, which applies 563's rollback file and so cannot drift from what the migration took.
     "_signed_in_document_writes.py",
+    # POST-A-008, the tranche migrations from 595 on. The same device for the tables each tranche closes: a migration takes INSERT,
+    # UPDATE and DELETE from `authenticated` on the tables the API writes with its privileged client, and the older modules that
+    # measure the second lock (a row policy, a guard trigger) by writing as a signed-in member give the privilege back in their
+    # throwaway database through this one helper, which grants it only on the tables the closed list names, so one call stays right
+    # as later tranches close more of a module's tables.
+    "_signed_in_writes_handed_back.py",
     # POST-A-314, migration 532. A PostgREST-shaped client that runs each call in a REAL database as `authenticated` (with a
     # token's claims) or as `service_role`, for the tests that must see row security and grants: every other double answers from
     # Python, which is how the year lock's table could refuse every signed-in write and no test notice. Imported by
@@ -165,6 +181,11 @@ HELPERS = {
     # is proving (a hand-copied REAL_COLUMNS list is how the two drift). Imported by
     # `test_450_a_practices_own_mail_is_recorded_pg.py` and the notification-type guard.
     "_columns_from_migration.py",
+    # POST-A-038. The schema as the committed files describe it (the production snapshot, and the migrations replayed as text:
+    # columns, the values a CHECK on `status` allows, the keys to users), so the three frontend schema guards can be asked in the
+    # browser-contract job, which has no Postgres. Imported by `test_frontend_schema_guards_read_the_committed_files.py`; held to a
+    # migration-built database by `test_the_schema_read_from_the_committed_files_agrees_with_a_migration_built_database_pg.py`.
+    "_schema_from_files.py",
     # market_and_trust-09. The claims ledger, in three parts that are imported by
     # `test_every_capability_sentence_on_the_marketing_site_is_in_the_claims_ledger.py`
     # and are not tests: the copy extractor (`_marketing_copy`: what the site SAYS, as

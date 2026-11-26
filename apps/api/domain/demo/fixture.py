@@ -44,7 +44,7 @@ import math
 import random
 from dataclasses import dataclass, replace, field
 from datetime import date, datetime, timedelta, timezone
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Iterable, NamedTuple, Optional
 
 from domain.gst.gstin import checksum_char
@@ -109,6 +109,12 @@ class DemoParty:
     #: EXCEPTION, so most vendors here carry None and one per client does not.
     msmed_agreement_days: Optional[int] = None
     tds_section: Optional[str] = None
+    #: Whether an unregistered party's registration has been RECORDED as absent (`vendors.gst_registration_status`). None for
+    #: a party nobody has asked about: `domain/gst/rcm_documents` reads that as a named gap, not as unregistered, so the
+    #: section 31(3)(f) self-invoice stays undecided. One client's reverse-charge supplier is recorded (`build`), so the
+    #: self-invoice is due and issued there, and every other unregistered party is left unrecorded so the gap is still shown.
+    #: A party with a GSTIN is registered by the GSTIN itself and never carries this.
+    registration_recorded: Optional[str] = None
 
     @property
     def pan(self) -> Optional[str]:
@@ -231,6 +237,17 @@ class DemoEmployee:
     bank_account_no: str
     bank_ifsc: str
     bank_name: str
+    #: WHETHER THE EMPLOYEE IS INSURED UNDER THE ESI ACT, and an IP number for one who is (PRE-A-004, 17-11-2026). `EmployeeIn`
+    #: defaults `esi_applicable` to True, and the ESIC return (`domain/payroll/esic.build_return`) lists every flagged employee as a
+    #: member with their whole wages, and names every flagged employee with no IP number as a problem: the seeded firm sent
+    #: neither field, so all twelve employees were flagged, eleven of them earning above the ceiling and none with a number, and
+    #: the ESIC return and the payroll exceptions list were a page of gaps. Coverage is the ESI engine's own question
+    #: (`_compute_esi`: wages above the ceiling at the start of a contribution period are not covered), answered by
+    #: `esi_covered` from the ceiling `domain/payroll/statutory` holds, and a test holds it to the engine.
+    esi_applicable: Optional[bool] = None
+    #: Ten digits, which is all `domain/payroll/esic.IP_NUMBER_RE` checks; derived from the employee's place in the roster as
+    #: the UAN is, so it is stable, and like the UAN it is a number in the issuer's shape that nobody holds.
+    esi_number: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -373,6 +390,12 @@ class DemoIncomeTax:
     itr_form: Optional[str] = None
     salary_paise: int = 0
     salary_tds_paise: int = 0
+    #: The employer behind `salary_paise`, as its Form 16 names it, for the salary worksheet (Schedule S) the computation's
+    #: salary box is fed from (PRE-A-004, 17-11-2026). Fictitious; the TAN is in the Department's shape and nobody holds it,
+    #: as `tan_for`'s is. The salary is all of it section 17(1) salary: no perquisite, exemption or professional tax is stated,
+    #: because none is a fact this fixture has.
+    employer_name: Optional[str] = None
+    employer_tan: Optional[str] = None
     other_income_paise: int = 0
     capital_gain: Optional[DemoCapitalGain] = None
     #: Elect the section 44AD presumptive scheme on the books' turnover. How that turnover was RECEIVED (a bank or a
@@ -652,6 +675,11 @@ class DemoClient:
     cwip_projects: tuple[DemoCwipProject, ...] = ()
     #: What the CA keys for income tax that the books cannot hold. None for a client nobody has prepared a return for.
     income_tax: Optional[DemoIncomeTax] = None
+    #: What the client's purchases cost as a share of what it sells, in basis points (`Proportions`). Its opening stock is
+    #: costed at the same share.
+    cost_share_bps: int = 7_000
+    #: The partners of a partnership firm, whose remuneration the firm credits each quarter (`partner_remuneration_credits`).
+    partners: tuple["DemoPartner", ...] = ()
 
     @property
     def deducts_tax(self) -> bool:
@@ -670,6 +698,19 @@ class DemoClient:
         """
         return (self.entity_type not in _OUTSIDE_THE_DUTY_TO_DEDUCT
                 and any(v.withholds_tds for v in self.vendors))
+
+
+@dataclass(frozen=True)
+class DemoPartner:
+    """A partner of a partnership firm and the remuneration the deed gives them each quarter (PRE-A-004, 17-11-2026).
+
+    Fictitious, with a PAN built by `pan()` that nobody holds. The remuneration is a fact of the partnership deed, not a
+    figure of the Act: how much of it section 40(b) lets the firm deduct turns on a limit this repository does not hold and
+    is not asked here (the firm has no computed return in the demo, see `DemoIncomeTax`). The tax withheld from it under
+    section 194T is the ENGINE's answer, asked at the TDS screen's own door, never a figure here."""
+    name: str
+    pan: str
+    remuneration_per_quarter_paise: int
 
 
 @dataclass(frozen=True)
@@ -719,11 +760,14 @@ _SERVICES = [
 ]
 
 
-def _opening_cost_paise(rate_paise: int, qty: int) -> int:
-    """What `qty` units of opening stock COST: 70% of the selling rate in whole
-    rupees a unit. A margin, not a markup table: the figure only has to be a
-    plausible cost rather than the price (AS-2 paragraph 6)."""
-    return (rate_paise * 70 // 100 // 100 * 100) * qty
+def _opening_cost_paise(rate_paise: int, qty: int, cost_share_bps: int = 7_000) -> int:
+    """What `qty` units of opening stock COST: the client's cost share of the
+    selling rate (70% until the client's own is known), in whole rupees a unit.
+    A margin, not a markup table: the figure only has to be a plausible cost
+    rather than the price (AS-2 paragraph 6), and the same share the client
+    buys at, so a unit sold out of opening stock costs what a unit bought this
+    year does."""
+    return (rate_paise * cost_share_bps // 10_000 // 100 * 100) * qty
 
 
 def _catalogue(*lists) -> tuple[DemoCatalogueItem, ...]:
@@ -860,6 +904,135 @@ def _settlement(rng: random.Random, is_recent: bool, *,
 
 # ── The practice ─────────────────────────────────────────────────────────────
 
+# ── How big a client's year is, and what it costs to run (POST-A-269) ──────
+#
+# THE DOCUMENTS WERE DRAWN SMALL AND THE ASSETS WERE SIZED REAL, and every
+# company made a loss. A textile company turning over Rs 26 lakh carried a
+# Rs 4.2 crore factory, so its depreciation alone was larger than its sales;
+# and a purchase line was priced off the same catalogue rate as a sale line, so
+# a trader bought its goods for what it sold them for. A CA looking at books
+# like that believes nothing else on the screen. So each client states how big
+# its year is and what its purchases cost as a share of it, and the documents
+# are brought to that size AFTER every random draw: no document moves its
+# date, its party, its count or its lines, only its quantities and its rates.
+
+@dataclass(frozen=True)
+class Proportions:
+    """The size of a client's year and its cost of what it sells.
+
+    `turnover_paise` is the taxable value of the sales the seeder POSTS (every
+    month but `draft_month`), or None to keep the documents at the size they
+    were drawn. `cost_share_bps` is what the year's posted purchases cost, as a
+    share of that turnover: a trader's cost of goods, a consultancy's bought-in
+    work. The goods a client buys are first brought to the quantity it sells
+    over the year, so a trader buys about what it sells instead of selling a
+    year's stock out of an opening balance."""
+    turnover_paise: Optional[int]
+    cost_share_bps: int
+    #: What the bills a project under construction absorbs come to, in all (taxable value, the posted months). None
+    #: prices them like every other bill. Capital spending is a decision about a plant, not a share of a year's sales,
+    #: and left to the cost share a construction client's projects came to two-thirds of its turnover.
+    projects_paise: Optional[int] = None
+
+
+def _posted_docs(docs: Iterable["DemoDocument"], financial_year: str) -> list["DemoDocument"]:
+    draft = draft_month(financial_year)
+    return [d for d in docs if d.doc_date[:7] != draft]
+
+
+def _is_service_line(line: "DemoLine") -> bool:
+    """A SAC (Chapter 99) is a service and carries no stock: the split
+    `domain/gst/goods_or_services` makes and `stock_floor` reads."""
+    return line.hsn_sac_code.startswith("99")
+
+
+def _whole_rupees(paise: Decimal) -> int:
+    """A rate in whole rupees (never below one), so the paise arithmetic downstream stays exact."""
+    return max(100, int((paise / 100).to_integral_value(rounding=ROUND_HALF_UP)) * 100)
+
+
+def _whole_units(quantity: Decimal) -> str:
+    """A quantity in whole units (never below one), in the three-decimal form the line tables hold."""
+    return f"{max(1, int(quantity.to_integral_value(rounding=ROUND_HALF_UP)))}.000"
+
+
+def _resized(docs: tuple["DemoDocument", ...], line) -> tuple["DemoDocument", ...]:
+    return tuple(replace(d, lines=tuple(line(ln) for ln in d.lines)) for d in docs)
+
+
+def _goods_units(docs: Iterable["DemoDocument"]) -> dict[str, Decimal]:
+    """Units of each good across the documents, by code."""
+    out: dict[str, Decimal] = {}
+    for d in docs:
+        for ln in d.lines:
+            if not _is_service_line(ln):
+                out[ln.hsn_sac_code] = out.get(ln.hsn_sac_code, Decimal(0)) + Decimal(ln.quantity)
+    return out
+
+
+def _services_value(docs: Iterable["DemoDocument"]) -> int:
+    return sum(int((Decimal(ln.quantity) * ln.rate_paise).to_integral_value())
+               for d in docs for ln in d.lines if _is_service_line(ln))
+
+
+def _in_proportion(client: "DemoClient", size: Proportions, financial_year: str) -> "DemoClient":
+    """The client's documents brought to `size`. Pure and draws nothing, so it
+    moves no document (the trap `_documents` and `_employees` record).
+
+    A SALE grows by its quantity if it is a good (a bigger order of the same
+    cloth) and by its rate if it is a service (a bigger engagement: its
+    quantity is one). A GOOD BOUGHT is brought to the units of that good the
+    year sells (a good the year never sells keeps the year's average ratio)
+    and costs `cost_share_bps` of the rate it was drawn at, so the cost of
+    what is sold is that share of what it sells for, whichever item it is. A
+    SERVICE BOUGHT is priced so the year's bought-in services cost that share
+    of the year's services sold."""
+    posted_value = sum(document_taxable_paise(d) for d in _posted_docs(client.sales, financial_year))
+    scale = (Decimal(size.turnover_paise) / Decimal(posted_value)
+             if size.turnover_paise is not None and posted_value else Decimal(1))
+    share = Decimal(size.cost_share_bps) / 10_000
+
+    def sale(ln: "DemoLine") -> "DemoLine":
+        if _is_service_line(ln):
+            return replace(ln, rate_paise=_whole_rupees(ln.rate_paise * scale))
+        return replace(ln, quantity=_whole_units(Decimal(ln.quantity) * scale))
+    sales = _resized(client.sales, sale)
+
+    sold = _goods_units(_posted_docs(sales, financial_year))
+    bought = _goods_units(_posted_docs(client.purchases, financial_year))
+    overall = (sum(sold.values()) / sum(bought.values())) if sum(bought.values()) else Decimal(1)
+    services_sold = _services_value(_posted_docs(sales, financial_year))
+    # A bill a project under construction absorbs is capital spending, not the cost of what the year sells, so it is
+    # left out of the base the share is measured on (and priced at the same rate as every other bill).
+    capitalised = {n for p in client.cwip_projects for n in p.bills}
+    services_bought = _services_value(_posted_docs(
+        (d for n, d in enumerate(client.purchases, start=1) if n not in capitalised), financial_year))
+    services_by = ((share * services_sold / services_bought) if services_sold and services_bought
+                   else share * scale)
+
+    def purchase(ln: "DemoLine") -> "DemoLine":
+        if _is_service_line(ln):
+            return replace(ln, rate_paise=_whole_rupees(ln.rate_paise * services_by))
+        units, held = sold.get(ln.hsn_sac_code), bought.get(ln.hsn_sac_code)
+        # A good sold and bought only in the draft month has no posted purchase to measure against: the year's ratio.
+        by = (units / held) if units and held else overall
+        return replace(ln, quantity=_whole_units(Decimal(ln.quantity) * by),
+                       rate_paise=_whole_rupees(ln.rate_paise * share))
+    purchases = _resized(client.purchases, purchase)
+
+    if size.projects_paise is not None and capitalised:
+        posted = {n for n, d in enumerate(purchases, start=1) if d.doc_date[:7] != draft_month(financial_year)}
+        absorbed = sum(document_taxable_paise(d) for n, d in enumerate(purchases, start=1)
+                       if n in capitalised and n in posted)
+        if absorbed:
+            to_plan = Decimal(size.projects_paise) / Decimal(absorbed)
+            purchases = tuple(
+                _resized((d,), lambda ln, f=to_plan: replace(ln, rate_paise=_whole_rupees(ln.rate_paise * f)))[0]
+                if n in capitalised else d
+                for n, d in enumerate(purchases, start=1))
+    return replace(client, sales=sales, purchases=purchases, cost_share_bps=size.cost_share_bps)
+
+
 _CUSTOMER_NAMES = [
     "Nandini Retail Private Limited", "Gokhale Stores", "Shreyas Traders",
     "Bharat Distributors LLP", "Mahalaxmi Agencies", "Konkan Wholesale",
@@ -904,8 +1077,32 @@ def _parties(rng: random.Random, names: list[str], state: str, count: int,
     return tuple(out)
 
 
+def esi_wages_paise(basic_paise: int, hra_percent: float, special_paise: int) -> int:
+    """A full month's ESI wages for the salary structure this fixture gives an employee: basic, the HRA as a percentage of it
+    (half-rounded up, as `routers/payroll._percent_of` does) and the special allowance. Nothing else is paid to a seeded employee
+    and no one-time earning is seeded, so this is the figure `_compute_slip` tests the ceiling against in a month with no loss of
+    pay. A test holds it to the engine."""
+    hra = int((Decimal(basic_paise) * Decimal(str(hra_percent)) / 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    return basic_paise + hra + special_paise
+
+
+def esi_covered(basic_paise: int, hra_percent: float, special_paise: int, financial_year: str) -> Optional[bool]:
+    """Whether an employee who joined on the books' first day is insured under the ESI Act: their wages are not above the
+    ceiling `domain/payroll/statutory` holds for the year. The seeded salaries do not change during the year and loss of pay only
+    lowers a month's wages, so an employee covered in April stays covered and one above the ceiling in April never enters.
+
+    None for a year the registry does not hold: `rates_for` would answer another year's ceiling without a word, and the fixture
+    does not decide coverage on a figure nobody recorded for the year. The seeder then sends neither field and the door's own
+    default stands, which is where every year stood before."""
+    from domain.payroll.statutory import RATES_BY_FY
+    rates = RATES_BY_FY.get(financial_year)
+    if rates is None:
+        return None
+    return esi_wages_paise(basic_paise, hra_percent, special_paise) <= rates.esi.wage_ceiling_paise
+
+
 def _employees(rng: random.Random, count: int, doj: str,
-               *, code_prefix: str) -> tuple[DemoEmployee, ...]:
+               *, code_prefix: str, financial_year: str) -> tuple[DemoEmployee, ...]:
     people = [
         ("Rohan Kulkarni", "Production Supervisor", "Operations", 32_000_00),
         ("Sneha Patil", "Accounts Executive", "Finance", 28_000_00),
@@ -928,6 +1125,8 @@ def _employees(rng: random.Random, count: int, doj: str,
     for i in range(count):
         name, desig, dept, basic = people[i % len(people)]
         letters = "".join(rng.choice("ABCDEFGHJKLMNPQRSTUVWXYZ") for _ in range(5))
+        special = (basic * 25) // 100
+        covered = esi_covered(basic, 40.0, special, financial_year)
         out.append(DemoEmployee(
             name=name, designation=desig, department=dept,
             basic_paise=basic,
@@ -935,7 +1134,7 @@ def _employees(rng: random.Random, count: int, doj: str,
             # and the balance as special allowance — the shape a real Indian
             # salary structure takes, and what makes the §192 working readable.
             hra_percent=40.0,
-            special_paise=(basic * 25) // 100,
+            special_paise=special,
             pan=pan(letters, f"{rng.randint(1000, 9999)}",
                     rng.choice("ABCDEFGHJKLMNPQRSTUVWXYZ")),
             doj=doj,
@@ -947,6 +1146,8 @@ def _employees(rng: random.Random, count: int, doj: str,
             bank_account_no=f"{50100000 + i * 137:08d}{i + 1:03d}",
             bank_ifsc=ifscs[i % len(ifscs)],
             bank_name="HDFC Bank" if i % 2 == 0 else "State Bank of India",
+            esi_applicable=covered,
+            esi_number=f"3100{i + 11:03d}{i + 7:03d}" if covered else None,
         ))
     return tuple(out)
 
@@ -1040,6 +1241,70 @@ def draft_month(financial_year: str) -> str:
     return _fy_months(financial_year)[-1].isoformat()[:7]
 
 
+class CapitalIntroduction(NamedTuple):
+    """Money the owners put into a client's bank, as a journal: Dr the bank, Cr Capital Account."""
+    on: str                   # YYYY-MM-DD
+    amount_paise: int
+    narration: str
+
+
+def capital_introductions(client: "DemoClient", financial_year: str) -> tuple[CapitalIntroduction, ...]:
+    """The capital that paid for what the client bought before its year, and for its projects (POST-A-269).
+
+    AN ASSET HELD BEFORE THE BOOKS OPEN IS REGISTERED THROUGH THE `paid` DOOR,
+    which credits the client's bank on the purchase date, while the bank's
+    opening balance is dated the first day of the year. Nothing put the money
+    in, so every such purchase left the bank's ledger below nothing from the
+    day it was bought: a real seed read Anand Textiles at minus Rs 6.5 crore
+    and Vaibhav Infra at minus Rs 9.9 crore on 31 March. The owners' money is
+    what bought a factory, so it is recorded as theirs, the day before the
+    purchase, for exactly what the purchase took out of the bank.
+
+    A PROJECT UNDER CONSTRUCTION IS FUNDED THE SAME WAY, on the day it starts,
+    for the cost it was approved at: its bills are paid out of the bank like
+    any other, and a company does not build a plant out of a year's trading
+    cash. A project that runs over its approved cost (one of them does, on
+    purpose) pays the excess from the business.
+
+    Derived and pure: the amounts are the fixture's own figures, so the journal
+    and the purchase it pays for cannot disagree."""
+    start = _fy_months(financial_year)[0].isoformat()
+    owners = _CAPITAL_FROM.get(client.entity_type, "Capital introduced by the owner")
+    out: list[CapitalIntroduction] = []
+    for a in client.assets:
+        if a.purchase_date < start:
+            day_before = (date.fromisoformat(a.purchase_date) - timedelta(days=1)).isoformat()
+            out.append(CapitalIntroduction(day_before, paid_from_the_bank_paise(a), f"{owners} to pay for the {a.name}"))
+    # The bills the seeder RECEIVES (a draft posts nothing and is not moved into a project), as `_cwip` reads them.
+    draft = draft_month(financial_year)
+    bills = {n: d for n, d in enumerate(client.purchases, start=1) if d.doc_date[:7] != draft}
+    for p in client.cwip_projects:
+        cost = sum(document_taxable_paise(bills[n]) for n in p.bills if n in bills)
+        out.append(CapitalIntroduction(
+            p.started_on, p.approved_cost_paise(cost),
+            f"{owners} for the {p.name} project, at its approved cost"))
+    return tuple(sorted(out))
+
+
+#: Whose money it is, in the words the client's own books use: a company's promoters subscribe share capital (the
+#: `Capital Account` ledger is presented as Share Capital for a company), a firm's partners and a proprietor bring in
+#: capital.
+_CAPITAL_FROM = {
+    "Private Limited": "Share capital subscribed by the promoters",
+    "Partnership": "Capital introduced by the partners",
+    "LLP": "Capital contributed by the partners",
+    "Proprietorship": "Capital introduced by the proprietor",
+}
+
+
+def paid_from_the_bank_paise(asset: "DemoAsset") -> int:
+    """What the `paid` door takes out of the bank for an asset: its cost, and the tax on the invoice where the asset
+    says whether the credit is available (`routers/fixed_assets` and `journal_for_asset_acquisition`: the credit goes
+    to input tax or, blocked, into the cost; with neither stated, the tax is not posted at all)."""
+    tax = asset.igst_paise + asset.cgst_paise + asset.sgst_paise
+    return asset.cost_paise + (tax if asset.itc_eligible is not None else 0)
+
+
 def documents_in_order(client: "DemoClient") -> tuple[Step, ...]:
     """Every sale and purchase of one client, in the order the seeder writes
     them: by date, a purchase before a sale on the same day, then by position.
@@ -1079,14 +1344,14 @@ def stock_floor(client: "DemoClient", financial_year: str) -> dict[str, Decimal]
 
 def _opened_for_the_year(client: "DemoClient", financial_year: str) -> tuple[DemoCatalogueItem, ...]:
     """The client's catalogue with each goods item opened to at least what its
-    own year needs. The cost is recomputed on the same basis as the default."""
+    own year needs, every opening costed at the client's own cost share."""
     floor = stock_floor(client, financial_year)
     out = []
     for item in client.catalogue:
-        need = math.ceil(floor.get(item.hsn_sac_code, Decimal(0)))
-        if item.kind == "good" and need > item.opening_qty_units:
+        if item.kind == "good":
+            need = max(math.ceil(floor.get(item.hsn_sac_code, Decimal(0))), int(item.opening_qty_units))
             item = replace(item, opening_qty_units=float(need),
-                           opening_cost_paise=_opening_cost_paise(item.rate_paise, need))
+                           opening_cost_paise=_opening_cost_paise(item.rate_paise, need, client.cost_share_bps))
         out.append(item)
     return tuple(out)
 
@@ -1104,6 +1369,55 @@ def tan_for(client: "DemoClient") -> str:
     deductor has to carry."""
     city = "MUM" if client.state_code == HOME_STATE else "BLR"
     return f"{city}{client.name[0].upper()}{client.pan[5:9]}0{client.pan[-1]}"
+
+
+def payroll_registrations(client: "DemoClient") -> dict[str, str]:
+    """The employer's own payroll registrations, as `PUT /api/payroll/statutory-identity` takes them (PRE-A-004, 17-11-2026).
+
+    The seeded firm recorded only the TAN, so the ECR and ESIC panels of every payroll client named the establishment code and the
+    employer code as missing (`domain/payroll/identity.ecr_gaps`, `esic_gaps`), and the hand-off screen could not say which
+    establishment a file belonged to. Both are numbers EPFO and ESIC issue, so each is written as a seed's and could not pass for
+    one of theirs: it starts SEED, and nothing checks its shape (`identity.normalise_code` only trims and upper-cases, by design).
+
+      * the EPF establishment code for a client that runs payroll: every seeded employee is a PF member (`EmployeeIn` defaults
+        `pf_applicable` to True and the fixture does not change it);
+      * the ESIC employer code only where an employee is insured (`DemoEmployee.esi_applicable`), because a code recorded for an
+        employer with nobody insured would say a registration the fixture has no reason to state.
+
+    Empty for a client with no payroll. Derived from the client's PAN, so two runs give the same number."""
+    if not client.employees:
+        return {}
+    out = {"epf_establishment_code": f"SEED-EPF-{client.pan}"}
+    if any(e.esi_applicable for e in client.employees):
+        out["esic_employer_code"] = f"SEED-ESIC-{client.pan}"
+    return out
+
+
+class RemunerationCredit(NamedTuple):
+    """One quarter's remuneration credited to one partner's current account."""
+    on: str                   # YYYY-MM-DD, the last day of the quarter
+    partner: "DemoPartner"
+    amount_paise: int
+
+
+def partner_remuneration_credits(client: "DemoClient", financial_year: str) -> tuple[RemunerationCredit, ...]:
+    """The remuneration a firm credits its partners, on the last day of each quarter whose months are posted (PRE-A-004).
+
+    The quarter that ends in `draft_month` is not credited: nothing in the draft month is posted, and a credit there would
+    be the one posting of that month. So a year shows three quarters credited and the last one still to come, which is
+    where the payroll and the GST returns of the same month stand. Derived and pure: the dates come from the year's own
+    months, never a clock, and the amounts are the partners' own."""
+    if not client.partners:
+        return ()
+    draft = draft_month(financial_year)
+    out = []
+    for m in _fy_months(financial_year):
+        if m.month not in (6, 9, 12, 3) or m.isoformat()[:7] == draft:
+            continue
+        last_day = (date(m.year + (m.month == 12), m.month % 12 + 1, 1) - timedelta(days=1)).isoformat()
+        for p in client.partners:
+            out.append(RemunerationCredit(last_day, p, p.remuneration_per_quarter_paise))
+    return tuple(out)
 
 
 def engagements_for(client: "DemoClient") -> tuple[DemoEngagement, ...]:
@@ -1144,6 +1458,76 @@ def engagements_for(client: "DemoClient") -> tuple[DemoEngagement, ...]:
     if client.entity_type == "Private Limited":
         out.append(DemoEngagement("ROC and MCA Annual Filings", 18_000_00, "Annually"))
     return tuple(out)
+
+
+# ── The engagement letters and the people behind the companies (PRE-A-004, 17-11-2026) ──────────────────────────────────────
+#
+# The Engagement Letters screen and the Relationships hub opened empty on the demo firm. A letter is the practice's own paper to its
+# own client, so it is derived from the services the practice provides that client (`engagements_for`) and from nothing else: its fee
+# is those engagements' fees stated for the year (a monthly fee twelve times, a quarterly one four times, an annual one once), so the
+# letter and the fee billing cannot disagree. Letters are left where a practice leaves them before they go out: generated, not sent
+# (a send is an email to a client, and nothing in a seed is mailed). The people below are fictitious, their PANs are built by
+# `pan()` and belong to nobody, and every figure is a stated fact of the demo, not a computed one.
+
+#: How many times in a year each billing cycle (the CHECK on `fee_engagements.billing_cycle`) is charged.
+_CYCLES_A_YEAR = {"Monthly": 12, "Quarterly": 4, "Half-Yearly": 2, "Annually": 1, "One-time": 1}
+
+
+@dataclass(frozen=True)
+class DemoLetter:
+    title: str
+    fee_paise: int
+    start_date: str
+    expiry_date: str
+    recipient_name: str
+    recipient_email: str
+
+
+def letter_for(client: "DemoClient", financial_year: str) -> "DemoLetter":
+    """The one engagement letter of the year for a client: the services it is engaged for and what they cost over the year."""
+    engagements = engagements_for(client)
+    start_year = int(financial_year[:4])
+    services = ", ".join(e.service_type for e in engagements)
+    return DemoLetter(
+        title=f"Engagement letter FY {financial_year}: {services}",
+        fee_paise=sum(e.fee_paise * _CYCLES_A_YEAR[e.billing_cycle] for e in engagements),
+        start_date=f"{start_year}-04-01",
+        expiry_date=f"{start_year + 1}-03-31",
+        recipient_name=client.legal_name,
+        recipient_email="accounts@" + "".join(ch for ch in client.name.lower() if ch.isalnum()) + ".example",
+    )
+
+
+@dataclass(frozen=True)
+class DemoRole:
+    client_name: str
+    role_type: str          # one of the values `EntityRoleIn` documents
+    ownership_percent: Optional[float] = None
+
+
+@dataclass(frozen=True)
+class DemoPromoter:
+    """A person who stands behind more than one client. One entity, a role at each company, and (where two are related) a relationship."""
+    full_name: str
+    pan: str
+    email: str
+    roles: tuple[DemoRole, ...]
+    spouse_of: Optional[str] = None     # the full name of another promoter
+
+
+def promoters() -> tuple[DemoPromoter, ...]:
+    """Two promoters, each in two of the private companies, and married to each other: the cross-client view has a person at two clients
+    to find, and the relationship graph has an edge. Their PANs are fixture PANs (the fourth letter P is an individual's)."""
+    return (
+        DemoPromoter(
+            "Ashok Anand", pan("AJNPA", "4417", "L"), "ashok.anand@anandtextiles.example",
+            roles=(DemoRole("Anand Textiles", "Director", 60.0), DemoRole("Rathod Logistics", "Shareholder", 25.0)),
+            spouse_of="Sulochana Anand"),
+        DemoPromoter(
+            "Sulochana Anand", pan("AJNPA", "5528", "M"), "sulochana.anand@anandtextiles.example",
+            roles=(DemoRole("Anand Textiles", "Director", 40.0), DemoRole("Sunrise Foods", "Director", 30.0)),
+            spouse_of="Ashok Anand"),
+    )
 
 
 # ── The practice's own work: tasks, time, fee invoices and leads ─────────────
@@ -1431,6 +1815,20 @@ def _finished(client: "DemoClient", financial_year: str) -> "DemoClient":
     )
 
 
+def _recorded_where_reverse_charge_needs_it(client: "DemoClient", financial_year: str) -> "DemoClient":
+    """Record as UNREGISTERED each unregistered vendor that a posted reverse-charge bill of this client comes from (PRE-A-004).
+
+    That is the case CGST s.31(3)(f) asks a self-invoice for, and with the status left unrecorded `rcm_documents` cannot say the
+    document is due, so the seeded firm never showed one. Only those vendors: an unregistered party with no reverse-charge bill
+    stays unrecorded, which keeps the named gap on the screen. No random draw is made, so nothing else in the fixture moves."""
+    draft = draft_month(financial_year)
+    parties = {d.party % len(client.vendors) for d in client.purchases
+               if d.is_reverse_charge and d.doc_date[:7] != draft} if client.vendors else set()
+    vendors = tuple(replace(v, registration_recorded="unregistered") if i in parties and v.gstin is None else v
+                    for i, v in enumerate(client.vendors))
+    return replace(client, vendors=vendors) if vendors != client.vendors else client
+
+
 def build(financial_year: str = "2025-26") -> DemoFirm:
     """The practice, for one financial year.
 
@@ -1455,8 +1853,9 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
                sales_per_month=(2, 5), purchases_per_month=(1, 4),
                away_every=7, rcm_every=0, employees=0, sales_tds_bps=0,
                frequency="monthly", banks=(), operating_lines=(),
-               assets=(), cwip_projects=(), income_tax=None) -> DemoClient:
-        return _finished(DemoClient(
+               assets=(), cwip_projects=(), income_tax=None, partners=(),
+               size: Proportions) -> DemoClient:
+        return _finished(_in_proportion(DemoClient(
             name=name, legal_name=legal, entity_type=entity, pan=pan_value,
             gstin=gstin_for(state, pan_value) if registered else None,
             state_code=state,
@@ -1477,12 +1876,13 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
             # bills 200 → 209 on a change that added no document. Same trap
             # `_documents` records for the settlement stream, one level up.
             employees=_employees(rng, employees, f"{financial_year[:4]}-04-01",
-                                 code_prefix=f"{name[:3].upper()}-"),
+                                 code_prefix=f"{name[:3].upper()}-", financial_year=financial_year),
             banks=banks,
             bank_lines=_bank_lines(months, operating_lines) if banks else (),
             assets=assets,
             cwip_projects=cwip_projects,
             income_tax=income_tax,
+            partners=partners,
             # A month of payroll needs somebody to pay. The states the months
             # are left in are the engine's own (see _payroll_months); nothing
             # here chooses per client, because a demo in which one client's
@@ -1491,7 +1891,7 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
             payroll=_payroll_months(months, employees=employees) if employees else (),
             gst_filing_frequency=frequency,
             catalogue=_catalogue(sales_catalogue, purchase_catalogue),
-        ), financial_year)
+        ), size, financial_year), financial_year)
 
     def asset(name, category, month_index, day, cost, method="WDV",
               **kw) -> DemoAsset:
@@ -1548,6 +1948,7 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
     clients = (
         client("Anand Textiles", "Anand Textiles Private Limited",
                "Private Limited", pan("AABCA", "7412", "M"),
+               size=Proportions(turnover_paise=3_00_00_000_00, cost_share_bps=7_500),
                demonstrates="the ordinary monthly GST client — the volume "
                             "every return screen, ageing schedule and "
                             "reconciliation is judged on",
@@ -1560,7 +1961,7 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
                customers=6, vendors=5, sales_per_month=(4, 8),
                banks=(
                    DemoBankAccount("HDFC Bank", "50200041178822", "HDFC0001234",
-                                   opening_balance_paise=8_50_000_00),
+                                   opening_balance_paise=45_00_000_00),
                    # THE CARD, AND NO STATEMENT FOR IT — see DemoBankLine.
                    # Its ledger is a LIABILITY, which is the whole of BANK-21
                    # and what the register's sign convention and the Schedule
@@ -1575,11 +1976,11 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
                    # Held since the year before, so the movement note opens
                    # with a gross block rather than starting from nil.
                    asset("Factory building - Bhiwandi", "Building", -18, 1,
-                         4_20_00_000_00, "SL"),
+                         1_25_00_000_00, "SL"),
                    asset("Sulzer rapier looms (6)", "Plant & Machinery", -6, 12,
-                         1_85_00_000_00),
+                         75_00_000_00),
                    asset("Warping and sizing line", "Plant & Machinery", 1, 8,
-                         42_00_000_00),
+                         16_00_000_00),
                    asset("Office computers and printers", "Computer & IT Equipment",
                          3, 21, 2_40_000_00),
                    # §17(5)(a) blocks the credit on a motor car for personal
@@ -1596,6 +1997,10 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
                )),
         client("Kavya Consulting", "Kavya Consulting LLP", "LLP",
                pan("AAGFK", "3159", "R"),
+               # Kept well under Rs 40 lakh for the whole year: `compliance_obligation_service` notes an LLP audit above
+               # that turnover (LLP Act s.34(4), Rule 24(8)), a figure nobody here has read in the rules, so the demo
+               # LLP stays clear of the question rather than showing an audit it does not carry.
+               size=Proportions(turnover_paise=30_00_000_00, cost_share_bps=3_500),
                demonstrates="QRMP — Rule 61A quarterly returns with monthly "
                             "payment, which the return builder handles "
                             "differently and no other client here exercises",
@@ -1610,16 +2015,17 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
                # built and no screen exercised.
                sales_tds_bps=1_000,
                banks=(DemoBankAccount("ICICI Bank", "000705001234", "ICIC0000007",
-                                      opening_balance_paise=3_20_000_00),),
+                                      opening_balance_paise=15_00_000_00),),
                operating_lines=_OFFICE_OUTFLOWS,
                assets=(
                    asset("MacBook Pro fleet (4)", "Computer & IT Equipment",
-                         0, 18, 9_60_000_00),
+                         0, 18, 4_40_000_00),
                    asset("Workstations and storage", "Furniture & Fixtures",
                          2, 6, 3_40_000_00, "SL"),
                )),
         client("Meher Enterprises", "Meher Enterprises", "Proprietorship",
                pan("AFXPM", "9026", "D"),
+               size=Proportions(turnover_paise=45_00_000_00, cost_share_bps=8_400),
                demonstrates="a proprietor — the §44AD presumptive path and an "
                             "ITR-4, where the entity type is the whole "
                             "difference",
@@ -1629,20 +2035,21 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
                customers=4, vendors=3, sales_per_month=(2, 4),
                banks=(DemoBankAccount("Bank of Maharashtra", "60123456789",
                                       "MAHB0000456",
-                                      opening_balance_paise=1_40_000_00),),
+                                      opening_balance_paise=8_50_000_00),),
                operating_lines=_SMALL_OUTFLOWS,
                assets=(
                    asset("Delivery scooter", "Vehicles", 4, 9, 95_000_00),
                )),
         client("Rathod Logistics", "Rathod Logistics Private Limited",
                "Private Limited", pan("AAECR", "5583", "N"),
+               size=Proportions(turnover_paise=1_60_00_000_00, cost_share_bps=7_000),
                demonstrates="reverse charge — a goods transport agency, so "
                             "§9(3), Table 3.1(d), the self-invoice and the "
                             "payment voucher are not structurally nil",
                sales_catalogue=_SERVICES, purchase_catalogue=_SERVICES,
                customers=5, vendors=4, rcm_every=3,
                banks=(DemoBankAccount("Axis Bank", "918020033445566", "UTIB0000915",
-                                      opening_balance_paise=6_10_000_00),),
+                                      opening_balance_paise=26_00_000_00),),
                operating_lines=_OFFICE_OUTFLOWS,
                assets=(
                    # Schedule II Part C gives a lorry RUN ON HIRE six years
@@ -1658,37 +2065,43 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
                )),
         client("Sunrise Foods", "Sunrise Foods Private Limited",
                "Private Limited", pan("AADCS", "6647", "P"),
+               size=Proportions(turnover_paise=4_00_00_000_00, cost_share_bps=6_500),
                demonstrates="payroll and inventory — eight employees spanning "
                             "the ESI and Bonus Act ceilings, so both engines "
                             "have somebody they reach and somebody they do not",
                customers=5, vendors=5, employees=8, sales_per_month=(3, 6),
                banks=(DemoBankAccount("State Bank of India", "38104455662",
                                       "SBIN0007788",
-                                      opening_balance_paise=11_75_000_00),),
+                                      opening_balance_paise=32_00_000_00),),
                operating_lines=_FACTORY_OUTFLOWS,
                assets=(
                    asset("Cold storage - Ranjangaon", "Building", -24, 1,
-                         1_50_00_000_00, "SL"),
+                         1_20_00_000_00, "SL"),
                    # Part C gives a continuous process plant 25 years against
                    # the general rate's 15 — the second class under one
                    # category, which is why the table is a list per category
                    # and not a number.
                    asset("Packaging and sealing line", "Plant & Machinery",
-                         -3, 20, 3_40_00_000_00),
+                         -3, 20, 85_00_000_00),
                    asset("Blast freezer", "Plant & Machinery", 1, 11,
-                         28_00_000_00),
+                         12_00_000_00),
                    asset("Plant computers and weighing scales",
                          "Computer & IT Equipment", 4, 26, 3_10_000_00),
                )),
         client("Deshmukh & Sons", "Deshmukh and Sons", "Partnership",
                pan("AAJFD", "2274", "L"),
+               size=Proportions(turnover_paise=60_00_000_00, cost_share_bps=8_500),
                demonstrates="a firm — §184 partner remuneration, §194T on a "
                             "partner payment, and the firm rate the entity "
                             "registry holds",
                customers=3, vendors=3, sales_per_month=(1, 3),
+               # Two partners, each credited Rs 30,000 a quarter, the deed's figure (how much of it section 40(b) allows the
+               # firm to deduct is not asked here). The tax withheld under section 194T is the engine's.
+               partners=(DemoPartner("Suresh Deshmukh", pan("ACQPD", "4410", "H"), 30_000_00),
+                         DemoPartner("Mahesh Deshmukh", pan("ACQPD", "5521", "J"), 30_000_00)),
                banks=(DemoBankAccount("Bank of Baroda", "04410200009876",
                                       "BARB0PUNEXX",
-                                      opening_balance_paise=2_30_000_00),),
+                                      opening_balance_paise=7_00_000_00),),
                operating_lines=_SMALL_OUTFLOWS,
                assets=(
                    asset("Office furniture and fittings", "Furniture & Fixtures",
@@ -1696,6 +2109,7 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
                )),
         client("Priya Sharma", "Priya Sharma", "Individual",
                pan("AKQPS", "1138", "F"),
+               size=Proportions(turnover_paise=None, cost_share_bps=7_500),
                demonstrates="an individual below the registration threshold — "
                             "salary, capital gains and the §115BAC election, "
                             "with no GSTIN at all",
@@ -1706,6 +2120,7 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
                income_tax=DemoIncomeTax(
                    itr_form="ITR-3",
                    salary_paise=18_00_000_00, salary_tds_paise=2_00_000_00,
+                   employer_name="Sahyadri Analytics Private Limited", employer_tan="PNES04512K",
                    other_income_paise=85_000_00, savings_interest_paise=12_000_00,
                    capital_gain=DemoCapitalGain(
                        "Listed equity shares (demat)", "equity_shares",
@@ -1724,6 +2139,7 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
                                       opening_balance_paise=4_60_000_00),)),
         client("Vaibhav Infra", "Vaibhav Infra Private Limited",
                "Private Limited", pan("AAGCV", "8890", "T"),
+               size=Proportions(turnover_paise=3_20_00_000_00, cost_share_bps=7_500, projects_paise=1_10_00_000_00),
                demonstrates="construction — capital work in progress, its "
                             "Schedule III line and its ageing schedule, which "
                             "nothing else here produces",
@@ -1733,17 +2149,17 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
                sales_catalogue=_SERVICES, purchase_catalogue=_SERVICES,
                customers=3, vendors=5, employees=4,
                banks=(DemoBankAccount("Yes Bank", "004163900001122", "YESB0000041",
-                                      opening_balance_paise=9_40_000_00),),
+                                      opening_balance_paise=18_00_000_00),),
                operating_lines=_OFFICE_OUTFLOWS,
                assets=(
                    # LAND, which `_NOT_DEPRECIABLE` excludes — the one row in
                    # the whole register that is never charged, and a register
                    # in which everything depreciates cannot show that the
                    # engine asked.
-                   asset("Land - Chakan plot", "Land", -30, 1, 5_50_00_000_00,
+                   asset("Land - Chakan plot", "Land", -30, 1, 90_00_000_00,
                          "SL"),
                    asset("Hitachi ZX210 excavator", "Plant & Machinery", -12, 9,
-                         4_20_00_000_00),
+                         95_00_000_00),
                    asset("Site cabins and scaffolding", "Furniture & Fixtures",
                          3, 15, 3_80_000_00, "SL"),
                    asset("Total station and survey kit", "Office Equipment",
@@ -1767,6 +2183,8 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
                                 suspended=(10, 1)),
                )),
     )
+
+    clients = tuple(_recorded_where_reverse_charge_needs_it(c, financial_year) for c in clients)
 
     return DemoFirm(
         name="Sharma & Associates",

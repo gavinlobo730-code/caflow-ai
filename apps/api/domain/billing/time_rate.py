@@ -91,6 +91,7 @@ def clean_rate(rate: object) -> Optional[int]:
     try:
         value = int(rate)
     except (TypeError, ValueError):
+        # Not a number at all: no rate was stated (None, per the docstring), never a rate of 0.
         return None
     return value if value >= 0 and value == rate else None
 
@@ -118,6 +119,7 @@ def value_paise(minutes: object, rate_paise: object) -> Optional[int]:
     try:
         mins = int(minutes or 0)
     except (TypeError, ValueError):
+        # Minutes that are not a number: no value can be worked out, and None is not 0 (docstring).
         return None
     return (max(mins, 0) * rate) // 60
 
@@ -163,6 +165,21 @@ def entry_rate(entry: Mapping) -> object:
     both price an hour through this one function, so they cannot disagree about what the same hour is worth."""
     billable = entry.get("billable_rate_paise")
     return billable if billable is not None else entry.get("hourly_rate_paise")
+
+
+def entry_worth(entry: Mapping) -> dict:
+    """What ONE entry bills at and what its time is worth, as the Time screen and the time export both show it.
+
+    The rate is `entry_rate`'s; None for both columns is "no rate", never 0. A non-billable entry has no rate and no value
+    (what it would bill at is not a question about work nobody will bill), and a still-running entry (no `ended_at`) has a
+    rate and no value yet. It lived in the Time router while the export priced every hour from the legacy
+    `hourly_rate_paise` alone, so time recorded since migration 451 (whose rate is stored in `billable_rate_paise`) left
+    in the file at a rate of 0 and an amount of 0 (POST-A-169)."""
+    if not entry.get("is_billable"):
+        return {"rate_paise": None, "value_paise": None}
+    rate = entry_rate(entry)
+    return {"rate_paise": clean_rate(rate),
+            "value_paise": value_paise(entry.get("duration_minutes"), rate) if entry.get("ended_at") else None}
 
 
 def entry_group(entry: Mapping) -> Optional[dict]:

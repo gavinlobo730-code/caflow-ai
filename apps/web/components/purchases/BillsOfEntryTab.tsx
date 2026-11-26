@@ -21,7 +21,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
-import { Plus, X, AlertTriangle, Info, Ship, Trash2 } from "lucide-react";
+import { Plus, AlertTriangle, Info, Ship, Trash2 } from "lucide-react";
 import { api, type BillOfEntry, type BillOfEntryAuthorities } from "@/lib/api";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
@@ -31,10 +31,12 @@ import { AccountLookup, type AccountLike } from "@/components/lookups/AccountLoo
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { todayIstISO } from "@/lib/dates/format";
 import { Button } from "@/components/ui/button";
+import { Drawer } from "@/components/ui/drawer";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 type Msg = { type: "ok" | "err"; text: string } | null;
 
@@ -62,6 +64,8 @@ export function BillsOfEntryTab({ clientId, openDoc }:
       openDoc?: string | null }) {
   const [rows, setRows] = useState<BillOfEntry[]>([]);
   const [accounts, setAccounts] = useState<AccountLike[]>([]);
+  // A chart of accounts that could not be read is not a client with no accounts (POST-A-527): the form says so.
+  const [accountsUnread, setAccountsUnread] = useState(false);
   const [authorities, setAuthorities] = useState<BillOfEntryAuthorities | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -109,14 +113,15 @@ export function BillsOfEntryTab({ clientId, openDoc }:
     let alive = true;
     (async () => {
       const supabase = getSupabaseClient();
-      const { data } = await selectAll(() => supabase
+      const { data, error } = await selectAll(() => supabase
         .from("chart_of_accounts")
         .select("id, account_code, account_name, account_type, account_subtype, is_active, client_id")
         .or(`client_id.eq.${clientId},client_id.is.null`)
         .eq("is_active", true)
         .order("account_code")
         .order("id"));
-      if (alive) setAccounts((data as AccountLike[]) ?? []);
+      // The pager hands a failure back as `error` and does not throw.
+      if (alive) { setAccountsUnread(!!error); setAccounts(error ? [] : (data as AccountLike[]) ?? []); }
     })();
     return () => { alive = false; };
   }, [clientId]);
@@ -134,7 +139,7 @@ export function BillsOfEntryTab({ clientId, openDoc }:
   function closeForm() { setMsg(null); setShowForm(false); }
 
   async function handleSave() {
-    if (dates.first) { setMsg({ type: "err", text: dates.first }); return; }
+    if (dates.first) { dates.refuseWith(setMsg, (text) => ({ type: "err" as const, text })); return; }
     if (!form.be_number.trim()) {
       setMsg({ type: "err", text: "The Bill of Entry number is required." });
       return;
@@ -298,7 +303,7 @@ export function BillsOfEntryTab({ clientId, openDoc }:
       )}
 
       {loading ? (
-        <p className="text-xs text-ps-hint">Loading…</p>
+        <LoadingRegion label="Loading the bills of entry" className="text-xs text-ps-hint">Loading…</LoadingRegion>
       ) : rows.length === 0 ? (
         <EmptyState
           icon={<Ship size={28} />}
@@ -391,7 +396,7 @@ export function BillsOfEntryTab({ clientId, openDoc }:
         </div>
       )}
 
-      {authorities && authorities.not_modelled.length > 0 && (
+      {authorities && (authorities.not_modelled ?? []).length > 0 && (
         <div className="bg-ps-bg border border-ps-border rounded-lg px-3 py-2 text-2xs text-ps-label space-y-1">
           <p className="font-semibold">What this document does not say</p>
           {authorities.not_modelled.map((x, i) => <p key={i}>{x}</p>)}
@@ -399,15 +404,12 @@ export function BillsOfEntryTab({ clientId, openDoc }:
       )}
 
       {showForm && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-black/20">
-          <div className="w-full max-w-xl h-full bg-white shadow-xl flex flex-col">
-            <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between">
-              <p className="text-sm font-semibold text-ps-ink">Record a Bill of Entry</p>
-              <button onClick={closeForm} aria-label="Close"
-                className="p-1 rounded hover:bg-ps-muted text-ps-label"><X size={16} /></button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+        // The shared side sheet (POST-A-130): named, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it, its ×)
+        // is held while the Bill of Entry is being saved.
+        <Drawer open title={<span className="font-sans">Record a Bill of Entry</span>} ariaLabel="Record a Bill of Entry" widthClass="sm:max-w-xl"
+          onClose={() => { if (!saving) closeForm(); }}>
+          <div className="flex min-h-[calc(100%-3rem)] flex-col">
+            <div className="flex-1 px-5 py-4 space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <label className="text-xs">
                   <span className="block text-ps-body font-medium mb-1">Bill of Entry number *</span>
@@ -490,6 +492,11 @@ export function BillsOfEntryTab({ clientId, openDoc }:
               </div>
 
               <div className="border-t border-ps-border pt-3 space-y-3">
+                {accountsUnread && (
+                  <p role="alert" className="text-3xs text-state-problem">
+                    The client&apos;s accounts could not be read, so none can be chosen below. That is not a client with no accounts: reload this page to read them.
+                  </p>
+                )}
                 <div>
                   <label htmlFor="boe-payment-account" className="block text-xs font-medium text-ps-body mb-1">
                     Paid from
@@ -525,9 +532,9 @@ export function BillsOfEntryTab({ clientId, openDoc }:
             {msg?.type === "err" && (
               <p role="alert" className="mx-5 mb-3 rounded-lg px-3 py-2 text-xs bg-state-problem-surface border border-state-problem-border text-state-problem">{msg.text}</p>
             )}
-            <div className="px-5 py-3 border-t border-ps-border flex justify-end gap-2">
-              <button onClick={closeForm}
-                className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg">
+            <div className="sticky bottom-0 bg-white px-5 py-3 border-t border-ps-border flex justify-end gap-2">
+              <button disabled={saving} onClick={closeForm}
+                className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50">
                 Cancel
               </button>
               <Button variant="plain" size="none" onClick={handleSave} disabled={saving}
@@ -536,7 +543,7 @@ export function BillsOfEntryTab({ clientId, openDoc }:
               </Button>
             </div>
           </div>
-        </div>
+        </Drawer>
       )}
     </div>
   );

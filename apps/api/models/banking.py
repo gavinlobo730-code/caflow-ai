@@ -7,7 +7,7 @@ Phase B.0: models use the canonical bank_transactions field names
 that never existed as columns.
 """
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
-from typing import Optional
+from typing import ClassVar, FrozenSet, Optional
 
 from domain.banking import account_kind
 from domain.banking.register import OPENING_DATE_REQUIRED
@@ -89,6 +89,9 @@ class BankAccountIn(BaseModel):
 
 
 class BankAccountUpdateIn(BaseModel):
+    # POST-A-399. The IFSC is the one optional free-text particular of this edit: a branch code a CA may take away. NOT the opening-balance date
+    # (refused at the screen, POST-A-388) and NOT the ledger link, which every posting to the account reads (the screen refuses emptying one).
+    CLEARABLE: ClassVar[FrozenSet[str]] = frozenset({"ifsc"})
     bank_name: Optional[str] = None
     ifsc: Optional[str] = None
     account_type: Optional[str] = None
@@ -578,6 +581,13 @@ class MatchingRuleIn(BaseModel):
 class MatchingRuleUpdateIn(BaseModel):
     """Partial edit of an existing rule. Every field is optional; only the ones
     supplied are written. `client_id` is deliberately absent — see the router."""
+    # POST-A-399. What a person may take away on the rule form, each a column whose NULL is its own answer: no narration phrase, no amount
+    # bound, no proposed ledger, category or narration, no GST split. The router judges the merged rule by the create door's shape after a
+    # clear, so a rule is never left with no condition, nothing proposed, a rate with no ledger, or trusted with no ledger.
+    CLEARABLE: ClassVar[FrozenSet[str]] = frozenset({
+        "description_pattern", "amount_min_paise", "amount_max_paise", "suggested_account_id", "suggested_category",
+        "suggested_narration", "suggested_gst_rate_bps"})
+
     rule_name: Optional[str] = None
     description_pattern: Optional[str] = None
     amount_min_paise: Optional[int] = None
@@ -816,6 +826,16 @@ class EntriesPassReadyIn(BaseModel):
     only_trusted: bool = False
     bank_account_id: Optional[str] = None
     transaction_ids: Optional[list[str]] = None
+    # POST-A-489. A person's pass states ONE GST answer for the lines in it that they coded and that can carry GST: a rate
+    # from the list, or 0 for "carries none". Absent, those lines are not posted and come back in `gst_unanswered`. Ignored
+    # by a trusted-rule sweep, whose lines carry the rule's own treatment.
+    gst_rate_bps: Optional[int] = None
+    is_interstate: bool = False
+
+    @field_validator("gst_rate_bps")
+    @classmethod
+    def known_gst_rate(cls, v: Optional[int]) -> Optional[int]:
+        return _validate_gst_rate_bps(v)
 
 
 class PassEntryIn(BaseModel):

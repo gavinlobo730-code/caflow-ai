@@ -2,7 +2,7 @@ import * as React from "react";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LogoIcon } from "@/components/LogoIcon";
-import { SlowServerNotice } from "@/components/ui/slow-server-notice";
+import { SlowServerNotice, SlowServerScope } from "@/components/ui/slow-server-notice";
 
 /**
  * Shared loading primitives for PracticeSync. One source of truth so every
@@ -20,7 +20,8 @@ import { SlowServerNotice } from "@/components/ui/slow-server-notice";
  * server may be waking up (frontend_ux-05). They are mounted only while the
  * region loads, so the notice's lifetime is the wait. A skeleton has nothing to
  * read again, so none of them offers a Retry; `PageLoader` and `AsyncBoundary`
- * take an `onRetry` where the screen has one. The pieces (`Skeleton`,
+ * take an `onRetry` where the screen has one. A placeholder a screen composes
+ * itself goes inside `LoadingRegion`, which carries the notice for it. The pieces (`Skeleton`,
  * `SkeletonText`, `MetricCardSkeleton`, `ClientHeaderSkeleton`) are parts of a
  * region and carry none, and `Spinner` is an inline control indicator, not a
  * region. `scripts/a-loading-region-says-when-the-server-is-slow.test.ts` holds
@@ -52,6 +53,46 @@ export function SkeletonText({ lines = 3, className }: { lines?: number; classNa
 /** Inline spinner (lucide Loader2). Accessible label for screen readers. */
 export function Spinner({ className, label = "Loading" }: { className?: string; label?: string }) {
   return <Loader2 className={cn("animate-spin", className)} role="status" aria-label={label} />;
+}
+
+/**
+ * The region of a placeholder a screen composes itself: the `Skeleton` pieces, a
+ * spinner and its "Loading…" line, or a block of its own shape. Put it where the
+ * screen's loading branch used to put its outer `<div>` (it takes that div's
+ * `className`), and it carries the role, the label and the `SlowServerNotice`
+ * the shared skeletons carry (POST-A-147), so a bespoke placeholder says when
+ * the server may be waking up exactly as `TableSkeleton` does. Like them it is
+ * mounted only while the read is pending and offers no Retry: it is drawn by a
+ * read, and has nothing to read again. The notice goes after the children, so a
+ * region whose children sit in a row puts the row's classes on an inner element
+ * (or passes `noticeClassName`), and the sentence takes a line of its own. A
+ * shared skeleton drawn inside it (a header bar of `Skeleton` pieces above a
+ * `TableSkeleton`) is covered by its scope and does not say it a second time.
+ * `scripts/a-placeholder-a-screen-draws-says-when-the-server-is-slow.test.ts`
+ * fails a placeholder drawn outside one.
+ */
+export function LoadingRegion({
+  label,
+  className,
+  noticeClassName,
+  onRetry,
+  children,
+}: {
+  /** What is loading, read to a screen reader ("Loading the client's health"). */
+  label: string;
+  className?: string;
+  noticeClassName?: string;
+  /** Read again. Offered after twenty seconds, and only where the screen passes its own read (POST-A-530): a screen that
+   *  swaps a `PageLoader` for a shape keeps the way to ask again that the loader gave it. */
+  onRetry?: () => void;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div role="status" aria-label={label} className={className}>
+      <SlowServerScope>{children}</SlowServerScope>
+      <SlowServerNotice onRetry={onRetry} className={noticeClassName} />
+    </div>
+  );
 }
 
 /**

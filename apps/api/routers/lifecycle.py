@@ -9,7 +9,7 @@ All monetary values stored in integer paise (₹1 = 100 paise) — never float.
 from core.ist_clock import ist_today
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any, Optional, ClassVar, FrozenSet
 from datetime import datetime, timezone, date
 import logging
 import uuid
@@ -26,7 +26,9 @@ from core import db_provider
 from core.db_paging import fetch_window
 from core.list_window import probe, split
 from core.db_provider import privileged_for
+from core.observability import capture_soft_failure
 from models.iso_date import OptionalIsoDate, PatchIsoDate
+from models.clearable import patch_dict
 
 _logger = logging.getLogger("caflow.lifecycle")
 
@@ -140,8 +142,8 @@ def _next_proposal_no(db, firm_id: str) -> str:
             parts = rows[0]["proposal_no"].split("-")
             last_no = int(parts[-1])
             return f"PROP-{year}-{last_no + 1:04d}"
-        except Exception:
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="lifecycle.proposal_number_parse", firm_id=firm_id)
     return f"PROP-{year}-0001"
 
 
@@ -263,6 +265,7 @@ def _stage_rank(stage: Optional[str]) -> int:
     try:
         return _PIPELINE_STAGE_ORDER.index(stage)  # type: ignore[arg-type]
     except (ValueError, TypeError):
+        # By design, and in the docstring: a stage this pipeline does not list ranks below every listed one.
         return -1
 
 
@@ -328,8 +331,8 @@ def _audit_auto_stage_change(db, lead_id, firm_id, old_stage, new_stage, actor_i
             "info",
             firm_id=firm_id, entity_type="lead", entity_id=lead_id, actor_id=actor_id,
         )
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="lifecycle.auto_advance_timeline", firm_id=firm_id, lead_id=lead_id)
     try:
         log_event(
             firm_id, "lead", lead_id, "stage_change",
@@ -338,8 +341,8 @@ def _audit_auto_stage_change(db, lead_id, firm_id, old_stage, new_stage, actor_i
             new_data={"stage": new_stage},
             metadata={"automatic": True, "source": "engagement_letter"},
         )
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="lifecycle.auto_advance_audit", firm_id=firm_id, lead_id=lead_id)
     if db:
         try:
             db.table("client_lifecycle_events").insert({
@@ -352,8 +355,8 @@ def _audit_auto_stage_change(db, lead_id, firm_id, old_stage, new_stage, actor_i
                 "to_stage":    new_stage,
                 "created_at":  now,
             }).execute()
-        except Exception:
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="lifecycle.auto_advance_event", firm_id=firm_id, lead_id=lead_id)
 
 
 def advance_lead_stage(
@@ -469,8 +472,8 @@ def _audit_lead_stage_revert(db, lead_id, firm_id, old_stage, new_stage, actor_i
             "warning",
             firm_id=firm_id, entity_type="lead", entity_id=lead_id, actor_id=actor_id,
         )
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="lifecycle.revert_timeline", firm_id=firm_id, lead_id=lead_id)
     try:
         log_event(
             firm_id, "lead", lead_id, "stage_change",
@@ -479,8 +482,8 @@ def _audit_lead_stage_revert(db, lead_id, firm_id, old_stage, new_stage, actor_i
             new_data={"stage": new_stage},
             metadata={"automatic": True, "source": "engagement_closed"},
         )
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="lifecycle.revert_audit", firm_id=firm_id, lead_id=lead_id)
     if db:
         try:
             db.table("client_lifecycle_events").insert({
@@ -493,8 +496,8 @@ def _audit_lead_stage_revert(db, lead_id, firm_id, old_stage, new_stage, actor_i
                 "to_stage":    new_stage,
                 "created_at":  now,
             }).execute()
-        except Exception:
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="lifecycle.revert_event", firm_id=firm_id, lead_id=lead_id)
 
 
 def revert_lead_after_engagement_closed(
@@ -595,6 +598,11 @@ class LeadIn(BaseModel):
 
 
 class LeadUpdateIn(BaseModel):
+    #: What an edit may CLEAR (POST-A-399, fifth slice; read through `models.clearable.patch_dict`): a prospect's email and phone and
+    #: the note, which are soft and optional. NOT the company or the stage, which every lead has; NOT the source, the estimated fee,
+    #: the person it is assigned to or the expected close date, which no screen sends empty (each still reads null as "not sent").
+    CLEARABLE: ClassVar[FrozenSet[str]] = frozenset({"email", "phone", "notes"})
+
     company_name: Optional[str] = None
     contact_name: Optional[str] = None
     email: Optional[str] = None
@@ -706,7 +714,7 @@ def list_leads(
     assigned_to: Optional[str] = Query(None),
     limit: Annotated[int, Query(ge=1, le=LEAD_LIST_MAX)] = 50,
     offset: int = Query(0, ge=0),
-    current_user: dict = Depends(rbac("client", "read")),
+    current_user: dict = Depends(rbac("pipeline", "read")),
 ):
     """A window of the firm's active pipeline leads, newest first, and whether more exist beyond it. The board used to
     decide it had been cut short by asking whether the row count equalled the limit it had asked for (POST-A-259's family);
@@ -751,7 +759,7 @@ def list_leads(
 @router.post("/leads")
 def create_lead(
     data: LeadIn,
-    current_user: dict = Depends(rbac("client", "write")),
+    current_user: dict = Depends(rbac("pipeline", "write")),
 ):
     db = _db()
     # The assignee is a member of the caller's firm. `leads.assigned_to` is keyed to AUTH.USERS(id) (migration 059), unlike every other person
@@ -802,8 +810,8 @@ def create_lead(
             actor_email=current_user.get("email"),
             new_data={"company_name": data.company_name, "stage": data.stage},
         )
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="lifecycle.lead_create_audit_mock", firm_id=current_user.get("firm_id"), lead_id=mock_row["id"])
 
     if not db:
         _MOCK_LEADS.append(mock_row)
@@ -853,8 +861,8 @@ def create_lead(
             "description": f"Lead created for {data.company_name}",
             "created_at":  now,
         }).execute()
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="lifecycle.lead_create_event", firm_id=current_user.get("firm_id"), lead_id=db_row.get("id"))
     return api_response(True, db_row)
 
 
@@ -862,10 +870,11 @@ def create_lead(
 def update_lead(
     lead_id: str,
     data: LeadUpdateIn,
-    current_user: dict = Depends(rbac("client", "write")),
+    current_user: dict = Depends(rbac("pipeline", "write")),
 ):
     db = _db()
-    update = {k: v for k, v in data.model_dump().items() if v is not None}
+    # POST-A-399. An emptied email, phone or note is cleared (written NULL); every other null still reads "not sent".
+    update = patch_dict(data)
     update["updated_at"] = datetime.now(timezone.utc).isoformat()
     named_row_ownership.member_auth_id_is_the_firms(db, current_user["firm_id"], update.get("assigned_to"))   # keyed to auth.users: see create_lead
 
@@ -896,8 +905,8 @@ def update_lead(
                             old_data={"stage": old_stage},
                             new_data={"stage": data.stage},
                         )
-                except Exception:
-                    pass
+                except Exception as swallowed:
+                    capture_soft_failure(swallowed, operation="lifecycle.lead_update_audit_mock", firm_id=current_user.get("firm_id"), lead_id=lead_id)
                 return api_response(True, lead)
         raise HTTPException(status_code=404, detail="Lead not found")
 
@@ -929,8 +938,8 @@ def update_lead(
                 "to_stage":    data.stage,
                 "created_at":  now,
             }).execute()
-        except Exception:
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="lifecycle.lead_update_event", firm_id=current_user.get("firm_id"), lead_id=lead_id)
 
     # H10: audit the edit (and stage move, if any).
     try:
@@ -948,8 +957,8 @@ def update_lead(
                 old_data={"stage": old_stage},
                 new_data={"stage": data.stage},
             )
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="lifecycle.lead_update_audit", firm_id=current_user.get("firm_id"), lead_id=lead_id)
 
     return api_response(True, result)
 
@@ -958,7 +967,11 @@ def update_lead(
 def convert_lead(
     lead_id: str,
     data: LeadConvertIn,
-    current_user: dict = Depends(rbac("client", "write")),
+    current_user: dict = Depends(rbac("pipeline", "write")),
+    # Converting a lead CREATES a client (or attaches the lead to one), so it needs the right to do that as well as the
+    # pipeline's own. Before POST-A-543 this route asked `client:write` alone; the pipeline pair was added BESIDE it, not in
+    # its place, so a person ticked for the pipeline only cannot make a client through this door.
+    _may_create_a_client: dict = Depends(rbac("client", "write")),
 ):
     # LeadConvertIn.client_id is OPTIONAL: absent means "create a new client",
     # present means "attach this lead to an EXISTING one". The second case is a
@@ -1005,8 +1018,8 @@ def convert_lead(
                 actor_email=current_user.get("email"),
                 new_data={"lead_id": lead_id, "converted_client_id": data.client_id},
             )
-        except Exception:
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="lifecycle.convert_audit_mock", firm_id=current_user.get("firm_id"), lead_id=lead_id)
         return api_response(True, lead)
 
     # Try to fetch lead from DB — if not found (e.g. localStorage lead), use request body data
@@ -1139,8 +1152,8 @@ def convert_lead(
             ) or []
             if tmpl and tmpl[0].get("service_type"):
                 service_type = tmpl[0]["service_type"]
-        except Exception:
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="lifecycle.convert_template_read", firm_id=firm_id, lead_id=lead_id)
     if not service_type:
         service_type = "General"
     fee_paise = int(chosen_engagement.get("fee_amount_paise") or 0)
@@ -1232,8 +1245,8 @@ def convert_lead(
             "description": f"Client created from lead",
             "created_at":  now,
         }).execute()
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="lifecycle.convert_event", firm_id=firm_id, client_id=client_id)
 
     # H10: audit the conversion (DB path).
     try:
@@ -1243,8 +1256,8 @@ def convert_lead(
             actor_email=current_user.get("email"),
             new_data={"lead_id": lead_id, "converted_client_id": client_id},
         )
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="lifecycle.convert_audit", firm_id=firm_id, client_id=client_id)
 
     return api_response(True, {
         "converted_client_id": client_id,
@@ -1938,8 +1951,8 @@ def complete_onboarding_checklist(
     # Mark client as active
     try:
         db.table("clients").update({"status": "active", "updated_at": now}).eq("id", wf["client_id"]).eq("firm_id", current_user["firm_id"]).execute()
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="lifecycle.onboarding_client_activate", firm_id=current_user.get("firm_id"), client_id=wf.get("client_id"))
 
     timeline_service.log(
         wf["client_id"], "lifecycle", "Client Activated",
@@ -1957,8 +1970,8 @@ def complete_onboarding_checklist(
             "description": "Client activated after completing onboarding checklist",
             "created_at":  now,
         }).execute()
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="lifecycle.onboarding_activate_event", firm_id=current_user.get("firm_id"), client_id=wf.get("client_id"))
 
     all_steps = db.table("onboarding_checklist_steps").select("*").eq("workflow_id", workflow_id).order("step_number").execute().data or []
     return api_response(True, _enrich_workflow({**wf, "status": "completed", "completed_at": now, "progress_pct": 100}, all_steps))
@@ -2092,55 +2105,3 @@ def update_renewal_status(
         actor_id=current_user.get("auth_user_id"),
     )
     return api_response(True, (res.data or [{}])[0])
-
-
-# ─── Lifecycle Dashboard ──────────────────────────────────────────────────────
-
-@router.get("/dashboard")
-def lifecycle_dashboard(
-    current_user: dict = Depends(rbac("client", "read")),
-):
-    db = _db()
-    firm_id = current_user["firm_id"]
-
-    if not db:
-        stage_counts: dict[str, dict] = {}
-        for lead in _MOCK_LEADS:
-            s = lead.get("stage", "Unknown")
-            if s not in stage_counts:
-                stage_counts[s] = {"stage": s, "count": 0, "total_value_paise": 0}
-            stage_counts[s]["count"] += 1
-            stage_counts[s]["total_value_paise"] += lead.get("estimated_value_paise", 0)
-
-        today = ist_today().isoformat()
-        overdue_renewals = sum(
-            1 for r in _MOCK_RENEWALS
-            if r.get("status") == "pending" and r.get("renewal_date") and r["renewal_date"] < today
-        )
-        return api_response(True, {
-            "stages":             list(stage_counts.values()),
-            "total_leads":        len(_MOCK_LEADS),
-            "total_proposals":    len(_MOCK_PROPOSALS),
-            "overdue_renewals":   overdue_renewals,
-        })
-
-    today = ist_today().isoformat()
-
-    leads = db.table("leads").select("stage, estimated_value_paise").eq("firm_id", firm_id).execute().data or []
-    proposals = db.table("proposals").select("id").eq("firm_id", firm_id).execute().data or []
-    overdue_renewals_res = db.table("renewals").select("id", count="exact").eq("firm_id", firm_id).eq("status", "pending").lt("renewal_date", today).execute()
-
-    stage_counts: dict[str, dict] = {}
-    for lead in leads:
-        s = lead.get("stage", "Unknown")
-        if s not in stage_counts:
-            stage_counts[s] = {"stage": s, "count": 0, "total_value_paise": 0}
-        stage_counts[s]["count"] += 1
-        stage_counts[s]["total_value_paise"] += int(lead.get("estimated_value_paise") or 0)
-
-    return api_response(True, {
-        "stages":           list(stage_counts.values()),
-        "total_leads":      len(leads),
-        "total_proposals":  len(proposals),
-        "overdue_renewals": overdue_renewals_res.count or 0,
-    })

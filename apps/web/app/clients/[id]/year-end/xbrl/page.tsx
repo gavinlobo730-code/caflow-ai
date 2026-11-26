@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/dates/format";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
-import { doingOf, failureSentence, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, failureSentence, fetchBounded, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 // FROM THE CLOCK, NOT A LITERAL. This list ended at a year that is now in the
@@ -30,7 +30,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
   const doing = doingOf(opts?.method);
-  const res = await fetchPlain(`${BASE}${path}`, {
+  const res = await fetchBounded(`${BASE}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
@@ -147,27 +147,44 @@ export default function XBRLPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  // A request that never answers ends at the bound and THROWS: these two used to set their flag, await and reset it with no `finally`, so a
+  // timeout left every button of the page disabled until a reload and said nothing, though the package may have been made (found by the
+  // independent review). The flag is let go in a finally, and a write that did not answer says that it is not known whether it went through.
+  const [actionError, setActionError] = useState<string | null>(null);
+
   async function handleCreate() {
     setCreating(true);
-    const res = await apiFetch("/api/xbrl/packages", {
-      method: "POST",
-      body: JSON.stringify({ client_id: clientId, financial_year: fy }),
-    });
-    if (res.success) {
-      setShowCreate(false);
-      await load();
+    setActionError(null);
+    try {
+      const res = await apiFetch("/api/xbrl/packages", {
+        method: "POST",
+        body: JSON.stringify({ client_id: clientId, financial_year: fy }),
+      });
+      if (res.success) {
+        setShowCreate(false);
+        await load();
+      }
+    } catch (e) {
+      setActionError(failureSentence(e, "Couldn't create the package.", "write"));
+    } finally {
+      setCreating(false);
     }
-    setCreating(false);
   }
 
   async function handleValidate(pkg: XBRLPackage) {
     setValidating(true);
-    const res = await apiFetch(`/api/xbrl/packages/${pkg.id}/validate`, { method: "POST" });
-    if (res.success) {
-      setSelected(objectWithLists<XBRLPackage>(res.data, "missing_tags", "validation_errors"));
-      await load();
+    setActionError(null);
+    try {
+      const res = await apiFetch(`/api/xbrl/packages/${pkg.id}/validate`, { method: "POST" });
+      if (res.success) {
+        setSelected(objectWithLists<XBRLPackage>(res.data, "missing_tags", "validation_errors"));
+        await load();
+      }
+    } catch (e) {
+      setActionError(failureSentence(e, "Couldn't run PracticeSync's completeness check on the package.", "write"));
+    } finally {
+      setValidating(false);
     }
-    setValidating(false);
   }
 
   // Reached by URL for a non-company: say so rather than offering a New
@@ -239,6 +256,7 @@ export default function XBRLPage() {
         </div>
       )}
 
+      {actionError && <p role="alert" className="text-xs text-state-problem bg-state-problem-surface rounded px-3 py-2 mb-3">{actionError}</p>}
       {loading ? (
         <ListSkeleton rows={2} />
       ) : loadError ? (

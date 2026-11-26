@@ -135,7 +135,7 @@ BUDGET: dict[str, int] = {
     # CA the insights arrive "automatically", which nothing does.
     # 4 -> 3 on 01-10-2026 (ai-10): `GET /cross-client` was DELETED — it served
     # the same hardcoded sample (a director called Rajesh Mehta) to every firm.
-    "/api/memory": 7, "/api/relationships": 4, "/api/ai-insights": 3,
+    "/api/memory": 6, "/api/relationships": 4, "/api/ai-insights": 3,
     # /api/intelligence 6 -> 3 on 25-09-2026 (Phase 3a-5): all six had
     # `lib/api` methods and no screen caller. `/insights` reaches the
     # three client-facing reads — compliance risk, relationship health
@@ -162,13 +162,15 @@ BUDGET: dict[str, int] = {
     # named a column the table lacked, repaired by migration 450). It goes
     # through the API now, so that door is reached, and the new unread count and
     # mark-read endpoints are reached from the same screen.
-    "/api/automation": 5, "/api/gst-portal": 5,
-    "/api/itr": 4, "/api/lifecycle": 5, "/api/portal": 3,
+    "/api/automation": 3, "/api/gst-portal": 5,
+    "/api/itr": 4, "/api/lifecycle": 4, "/api/portal": 3,
     # /api/risks 5 -> 3 on 24-09-2026: `app/risks/page.tsx` derived its
     # whole register in the browser from six PostgREST reads and called no
     # endpoint on this prefix at all. It asks GET /register now, and the
-    # ratchet credits what that screen reaches.
-    "/api/risks": 3,
+    # ratchet credits what that screen reaches. 4 -> 0 on 22-11-2026 (POST-A-548):
+    # the five routes over the risks recorded against documents were RETIRED with
+    # their tests (no screen called them and nothing records such a risk), so the
+    # prefix holds the register alone and its line is gone.
     # /api/compliance 4 -> 3 on 01-10-2026 (practice_management-17):
     # `GET /obligations/calendar` had a `lib/api` method and no screen — the
     # firm Calendar built its deadlines in the browser instead. It is that
@@ -192,22 +194,42 @@ BUDGET: dict[str, int] = {
     # /api/invoices 3 -> 2 on 28-09-2026: the engagement screen's Raise
     # Invoice now asks POST /from-engagement/{id}, which carries the
     # once-per-billing-period refusal a hand-built invoice never did.
-    "/api/ai-copilot": 3, "/api/invoices": 2, "/api/purchase-cycle": 4,
+    # /api/invoices 4 -> 3 on 21-11-2026 (POST-B-194): `POST /from-time/{engagement_id}` DELETED. It billed time on the earlier fee tables, no
+    # screen called it, and time is billed through the sales engine now (`POST /api/billing/time-invoices`, which has its screen).
+    "/api/ai-copilot": 3, "/api/invoices": 3, "/api/purchase-cycle": 4,
     # /api/accounting 2 -> 1 on 25-09-2026 (Phase 3a-3): the client
     # Reports tab renders `GET /statement-analysis`, whose method
     # `lib/api.accounting.statementAnalysis` had carried with no caller
     # since the reporting engine was built.
     "/api/reminders": 3, "/api/tds": 3, "/api/accounting": 1,
     "/api/assignments": 2, "/api/customers": 2, "/api/form-26as": 1,
-    "/api/identity": 2, "/api/insights": 2, "/api/notifications": 2,
+    "/api/identity": 2, "/api/insights": 2, "/api/notifications": 1,
     "/api/public": 2, "/api/sales-cycle": 3,
     "/api/scheduler": 2, "/api/settings": 2, "/api/vendors": 1,
-    "/api/approvals": 2,
+    "/api/approvals": 1,
     "/api/document-intelligence-v2": 1, "/api/documents": 1,
     "/api/knowledge": 1,
     "/api/purchase-bills": 1,
     "/api/rcm-documents": 1,
     "/api/tds-workspace": 1,
+    # SEVEN RAISED ON 21-11-2026, AND NOT ONE OF THEM IS A NEW ROUTE (POST-A-547). `_literal_siblings` asked only for static siblings of the
+    # SAME verb, and a URL in the source carries no verb, so a read, an edit or a delete of one record was counted as called wherever a
+    # static route of ANOTHER verb sat beside it (`POST /gstr2b/upload` beside `GET /gstr2b/{upload_id}`). It was met when
+    # `POST /api/approvals/access-requests` made the unused `GET /api/approvals/{request_id}` read as called. With the rule corrected the
+    # tree owes seven more than this table said, each a route that was already unreached and that no screen calls:
+    #   /api/document-intelligence-v2  1 -> 2  GET /notices/{notice_id}
+    #   /api/gst-workspace             0 -> 2  DELETE /gstr1/{return_id}, GET /gstr2b/{upload_id}
+    #   /api/invoices                  2 -> 4  DELETE /{invoice_id}, GET /{invoice_id}
+    #   /api/risks                     3 -> 4  PATCH /{risk_id}
+    #   /api/tds-workspace             1 -> 2  GET /form26as/{upload_id}
+    # `/api/approvals` stays at 2 (`GET /{request_id}` is still owed). Each is to be wired or deleted under POST-A-547, lowering its line.
+    # DONE THE SAME DAY FOR FIVE OF THE EIGHT (POST-A-547 closed): `DELETE /gstr1/{return_id}` got its button (an unfiled GSTR-1's row offers
+    # Delete, as a GSTR-3B's always did), and four reads of one record that no screen opens were DELETED with their tests:
+    # `GET /notices/{notice_id}`, `GET /gstr2b/{upload_id}`, `GET /form26as/{upload_id}` and `GET /api/approvals/{request_id}`. So
+    # /api/document-intelligence-v2 2 -> 1, /api/gst-workspace 2 -> 0 (its line is gone), /api/tds-workspace 2 -> 1, /api/approvals 2 -> 1.
+    # STILL OWED, on a line that says why: `GET` and `DELETE /api/invoices/{invoice_id}` are the earlier fee engine's, whose routes are
+    # retired together under POST-B-193. (`PATCH /api/risks/{risk_id}` was one of five document-risk routes with no screen; all five were
+    # retired on 22-11-2026, POST-A-548.)
     # /api/gst-workspace and /api/workload 1 -> 0 on 7-11-2026 (POST-A-374): the two routes that had raised them from 0 to 1 on 2-11-2026 were
     # DELETED, not wired. `GET /gstr1/{return_id}` (read one return) and `GET /api/workload/{user_id}` (read one member's workload) had no
     # screen that called them (their static siblings `/gstr1/advances`, `/gstr1/exceptions`, `/gstr1/amendments`; `/capacity`,
@@ -314,7 +336,13 @@ NOT_REACHED_BY_A_SCREEN: dict[tuple[str, str], str] = {
 # allowed one more) is a visible edit of two numbers and not of one. A shuffle (one prefix allowed one more, another one fewer) still passes: that is the per-prefix budgets' job to refuse.
 # 195 -> 193 on 12-11-2026 (POST-B-321): the two staff cost-rate routes got a screen (the Profitability screen's cost-rate panel), and `/api/billing` fell 6 -> 4.
 # 193 -> 192 on 14-11-2026 (POST-A-156): `GET /api/time-entries/summary/me` got a screen, and `/api/time-entries` fell 1 -> 0.
-TOTAL_BUDGET = 192
+# 187 -> 194 on 21-11-2026 (POST-A-547): no route was added that reaches no screen. The scan's sibling rule was corrected to ignore the verb (see
+# `_literal_siblings` and the note in BUDGET), and seven routes that had been reading as called are counted. A raise with a reason: the debt
+# was there and the number could not see it.
+# 194 -> 193 on 21-11-2026 (POST-B-194): `POST /api/invoices/from-time/{engagement_id}` deleted, and `/api/invoices` fell 4 -> 3.
+# 193 -> 188 on 21-11-2026 (POST-A-547 closed): one route wired and four deleted, as the note in BUDGET says.
+# 188 -> 184 on 22-11-2026 (POST-A-548): the document-risk routes retired, and `/api/risks` fell 4 -> 0 (its line is gone).
+TOTAL_BUDGET = 184
 
 
 # ---------------------------------------------------------------------------
@@ -639,12 +667,17 @@ def _routes() -> set[tuple[str, str]]:
 
 
 def _literal_siblings(path: str, method: str) -> tuple[str, ...]:
-    """For a path that ends in a parameter, the final segments of the mounted static routes of the same method under the same parent."""
+    """For a path that ends in a parameter, the final segments of the mounted static routes under the same parent, of ANY method.
+
+    It asked for the same method until 21-11-2026, and that was a blind spot the day it was met: the blob is searched for a URL and a URL
+    carries no method, so when `POST /api/approvals/access-requests` was added, its literal satisfied `GET /api/approvals/{request_id}`,
+    which no screen calls, and the budget for the prefix read one lower than the tree owes. A URL that names a static sibling reaches that
+    static route whatever verb it is sent with. `method` stays in the signature for the callers that pass it."""
     if not path.endswith("}"):
         return ()
     parent = path.rsplit("/", 1)[0]
-    return tuple(sorted({other.rsplit("/", 1)[1] for m, other in _routes()
-                         if m == method and other.rsplit("/", 1)[0] == parent and not other.endswith("}")}))
+    return tuple(sorted({other.rsplit("/", 1)[1] for _m, other in _routes()
+                         if other.rsplit("/", 1)[0] == parent and not other.endswith("}")}))
 
 
 @pytest.fixture(scope="module")

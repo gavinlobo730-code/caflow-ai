@@ -396,6 +396,33 @@ const config: Config = {
       maxWidth: {
         "ps-data": "1600px",
       },
+      /* ── The front door: what a person sees before they are inside ───────
+         The blue-to-indigo wash the invitation page has carried since it was
+         built, kept on the owner's word (15-11-2026) and now the one
+         background of every page a person sees before they are inside the
+         product: sign-in, sign-up, the password pages, the two portals'
+         sign-in and first-visit pages, the engagement letter a client signs,
+         the invitation, and the signed-out error and not-found pages
+         (`components/FrontDoor.tsx`). NEVER behind a working screen, where it
+         would compete with figures.
+
+         The three stops are Tailwind's blue-600, indigo-900 and blue-400,
+         which is what the invitation page wrote, so naming it moves nothing
+         there. `to bottom right` puts the middle stop on the diagonal from
+         the top-right corner to the bottom-left one, so the colour at a point
+         is decided by (x/w + y/h) / 2 alone.
+
+         ⚠️ ONLY THE TOP-LEFT THREE QUARTERS CARRY TEXT. White on this wash is
+         better than 5:1 wherever (x/w + y/h) / 2 is at most 0.75, which is
+         the whole top half and the whole left half; towards the bottom-right
+         corner it falls to 2.5:1 on blue-400. So a word on it is white and
+         sits above the card or in the left half (the wordmark, the sign-in
+         page's left panel), and everything else is inside a white card.
+         scripts/a-front-door-page-wears-the-front-door.test.ts computes both
+         figures from the stops below, so moving a stop is checked. */
+      backgroundImage: {
+        "front-door": "linear-gradient(to bottom right, #2563EB, #312E81, #60A5FA)",
+      },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",

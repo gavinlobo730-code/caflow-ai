@@ -1,7 +1,8 @@
 """The marketing site and the product site send the same security headers, and the API's HSTS is the same value (security_privacy-05).
 
 WHY THIS IS A PYTHON TEST
-    `apps/marketing` has no test runner, and CLAUDE.md records the rule that follows: a guard for it lives on
+    `apps/marketing`'s own runner (`pnpm test`, since 16-11-2026) runs only in the path-filtered Marketing CI, and
+    CLAUDE.md records the rule that follows: a guard for it lives on
     the Python side (or in apps/web/scripts), which the backend job runs on EVERY pull request because it has no
     `paths:` filter. The product site's own tests are `apps/web/scripts/the-sites-send-security-headers.test.ts`;
     this reads both generators by actually RUNNING them under node, so it holds what each really writes and not

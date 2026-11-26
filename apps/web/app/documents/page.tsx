@@ -1,12 +1,15 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
+import { UploadProgress } from "@/components/ui/upload-progress";
+import type { UploadProgress as BytesSent } from "@/lib/api/uploadWithProgress";
 import { useState, useEffect, useRef, useMemo, useCallback, ChangeEvent } from "react";
 import {
   FileText,
   Upload,
   Download,
   Trash2,
-  X,
   Loader2,
 } from "lucide-react";
 import { api } from "@/lib/api";
@@ -126,6 +129,7 @@ function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
   const [financialYear, setFinancialYear] = useState<FinancialYear>(FINANCIAL_YEARS[0]);
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [sent, setSent] = useState<BytesSent | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -149,7 +153,7 @@ function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
       form.append("client_id", clientId);
       form.append("document_type", docType);
       form.append("financial_year", financialYear);
-      await api.documents.upload(form);
+      await api.documents.upload(form, setSent);
 
       onUploaded();
       onClose();
@@ -157,140 +161,129 @@ function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
       setError(err instanceof Error ? err.message : "Upload failed");
     } finally {
       setUploading(false);
+      setSent(null);
     }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 p-4">
-      <div className="w-full max-w-md rounded-xl bg-white shadow-xl">
-        {/* Modal header */}
-        <div className="flex items-center justify-between border-b border-ps-border px-6 py-4">
-          <h2 className="text-base font-semibold text-ps-ink">Upload Document</h2>
-          <button
-            onClick={onClose}
-            className="rounded p-1 text-ps-hint hover:bg-ps-muted hover:text-ps-label"
-          >
-            <X size={18} />
-          </button>
-        </div>
+    // The shared dialog (POST-A-130): named, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it, its ×) and its
+    // Cancel are held while its own request is out.
+    <Modal title="Upload Document" maxWidthClass="max-w-md" onClose={() => { if (!uploading) onClose(); }}
+      footer={<>
+        <button
+          onClick={onClose}
+          disabled={uploading}
+          className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-ps-body hover:bg-ps-bg disabled:opacity-50"
+        >
+          Cancel
+        </button>
+        <Button variant="plain" size="none" spinner={false}
+          onClick={handleUpload}
+          disabled={uploading || !file}
+          className="flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-50"
+        >
+          {uploading ? (
+            <>
+              <Loader2 size={14} className="animate-spin" />
+              Uploading…
+            </>
+          ) : (
+            <>
+              <Upload size={14} />
+              Upload
+            </>
+          )}
+        </Button>
+      </>}>
+    <div className="space-y-4">
+      {error && <Callout tone="problem">{error}</Callout>}
 
-        {/* Modal body */}
-        <div className="space-y-4 px-6 py-5">
-          {error && <Callout tone="problem">{error}</Callout>}
-
-          {/* Client */}
-          <div>
-            <label className="mb-1 block text-sm font-medium text-ps-body">
-              Client <span className="text-state-problem">*</span>
-            </label>
-            <div className="w-full">
-              <ClientLookup
-                clients={clients}
-                value={clientId}
-                onChange={setClientId}
-                ariaLabel="Client"
-                placeholder="Select client…"
-                disabled={uploading}
-              />
-            </div>
-          </div>
-
-          {/* Document type */}
-          <div>
-            <label className="mb-1 block text-sm font-medium text-ps-body">
-              Document Type <span className="text-state-problem">*</span>
-            </label>
-            <select aria-label="Document type"
-              value={docType}
-              onChange={(e) => setDocType(e.target.value as DocTypeValue)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand"
-              disabled={uploading}
-            >
-              {DOCUMENT_TYPES.map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Financial year */}
-          <div>
-            <label className="mb-1 block text-sm font-medium text-ps-body">
-              Financial Year
-            </label>
-            <YearPicker value={financialYear} onChange={v => setFinancialYear(v as FinancialYear)}
-            disabled={uploading} />
-          </div>
-
-          {/* File picker */}
-          <div>
-            <label className="mb-1 block text-sm font-medium text-ps-body">
-              File <span className="text-state-problem">*</span>
-            </label>
-            <div
-              onClick={() => !uploading && fileRef.current?.click()}
-              className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-6 transition-colors ${
-                file
-                  ? "border-blue-400 bg-blue-50"
-                  : "border-ps-border hover:border-blue-300 hover:bg-ps-bg"
-              } ${uploading ? "pointer-events-none opacity-60" : ""}`}
-            >
-              <input aria-label="File to upload"
-                ref={fileRef}
-                type="file"
-                className="hidden"
-                onChange={handleFileChange}
-                accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.csv,.doc,.docx"
-              />
-              {file ? (
-                <>
-                  <FileText className="h-6 w-6 text-blue-500" />
-                  <p className="text-sm font-medium text-blue-700">{file.name}</p>
-                  <p className="text-xs text-ps-label">{formatBytes(file.size)}</p>
-                </>
-              ) : (
-                <>
-                  <Upload className="h-6 w-6 text-ps-hint" />
-                  <p className="text-sm font-medium text-ps-label">
-                    Click to browse or drop a file
-                  </p>
-                  <p className="text-xs text-ps-hint">PDF, Excel, Word, Images</p>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Modal footer */}
-        <div className="flex items-center justify-end gap-3 border-t border-ps-border px-6 py-4">
-          <button
-            onClick={onClose}
+      {/* Client */}
+      <div>
+        <label className="mb-1 block text-sm font-medium text-ps-body">
+          Client <span className="text-state-problem">*</span>
+        </label>
+        <div className="w-full">
+          <ClientLookup
+            clients={clients}
+            value={clientId}
+            onChange={setClientId}
+            ariaLabel="Client"
+            placeholder="Select client…"
             disabled={uploading}
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-ps-body hover:bg-ps-bg disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleUpload}
-            disabled={uploading || !file}
-            className="flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-50"
-          >
-            {uploading ? (
-              <>
-                <Loader2 size={14} className="animate-spin" />
-                Uploading…
-              </>
-            ) : (
-              <>
-                <Upload size={14} />
-                Upload
-              </>
-            )}
-          </button>
+          />
+        </div>
+      </div>
+
+      {/* Document type */}
+      <div>
+        <label className="mb-1 block text-sm font-medium text-ps-body">
+          Document Type <span className="text-state-problem">*</span>
+        </label>
+        <select aria-label="Document type"
+          value={docType}
+          onChange={(e) => setDocType(e.target.value as DocTypeValue)}
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand"
+          disabled={uploading}
+        >
+          {DOCUMENT_TYPES.map((t) => (
+            <option key={t.value} value={t.value}>
+              {t.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Financial year */}
+      <div>
+        <label className="mb-1 block text-sm font-medium text-ps-body">
+          Financial Year
+        </label>
+        <YearPicker value={financialYear} onChange={v => setFinancialYear(v as FinancialYear)}
+        disabled={uploading} />
+      </div>
+
+      {/* File picker */}
+      <div>
+        <label className="mb-1 block text-sm font-medium text-ps-body">
+          File <span className="text-state-problem">*</span>
+        </label>
+        <div
+          onClick={() => !uploading && fileRef.current?.click()}
+          className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-6 transition-colors ${
+            file
+              ? "border-blue-400 bg-blue-50"
+              : "border-ps-border hover:border-blue-300 hover:bg-ps-bg"
+          } ${uploading ? "pointer-events-none opacity-60" : ""}`}
+        >
+          <input aria-label="File to upload"
+            ref={fileRef}
+            type="file"
+            className="hidden"
+            onChange={handleFileChange}
+            accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.csv,.doc,.docx"
+          />
+          {file ? (
+            <>
+              <FileText className="h-6 w-6 text-blue-500" />
+              <p className="text-sm font-medium text-blue-700">{file.name}</p>
+              <p className="text-xs text-ps-label">{formatBytes(file.size)}</p>
+            </>
+          ) : (
+            <>
+              <Upload className="h-6 w-6 text-ps-hint" />
+              <p className="text-sm font-medium text-ps-label">
+                Click to browse or drop a file
+              </p>
+              <p className="text-xs text-ps-hint">PDF, Excel, Word, Images</p>
+            </>
+          )}
         </div>
       </div>
     </div>
+
+    <div className="empty:hidden"><UploadProgress progress={sent} what="the document" /></div>
+    </Modal>
   );
 }
 
@@ -531,7 +524,7 @@ export default function DocumentsPage() {
             >
               <Download size={15} />
             </button>
-            <button
+            <Button variant="plain" size="none" spinner={false}
               onClick={() => handleDelete(doc)}
               disabled={deleting === doc.id}
               title="Delete"
@@ -542,7 +535,7 @@ export default function DocumentsPage() {
               ) : (
                 <Trash2 size={15} />
               )}
-            </button>
+            </Button>
           </div>
         )}
       />

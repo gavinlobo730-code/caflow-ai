@@ -32,6 +32,11 @@ from repositories.user_repository import user_repo
 F1, F2 = "firm-one", "firm-two"
 
 
+class _OneOf:
+    def __init__(self, values):
+        self.values = list(values)
+
+
 class _Query:
     def __init__(self, table):
         self.table = table
@@ -51,7 +56,14 @@ class _Query:
         self.filters.append((col, None if val in (None, "null") else val))
         return self
 
+    def in_(self, col, values):
+        self.filters.append((col, _OneOf(values)))
+        return self
+
     def order(self, *_a, **_k):
+        return self
+
+    def limit(self, *_a, **_k):
         return self
 
     def maybe_single(self):
@@ -67,7 +79,7 @@ class _Query:
         return self
 
     def _matches(self, row):
-        return all(row.get(c) == v for c, v in self.filters)
+        return all(row.get(c) in v.values if isinstance(v, _OneOf) else row.get(c) == v for c, v in self.filters)
 
     def execute(self):
         class R:
@@ -150,7 +162,8 @@ def test_a_partner_can_invite_a_member(db):
 
     created = out["data"]
     assert created["firm_id"] == F1 and created["status"] == "invited"
-    assert created["invite_token"]
+    assert "invite_token" not in created, "the token goes to the invitee's mailbox, not back to the Partner"
+    assert any(r.get("invite_token") for r in db.rows if r.get("email") == "n@one.test")
     assert any(r.get("email") == "n@one.test" and r["firm_id"] == F1 for r in db.rows)
 
 

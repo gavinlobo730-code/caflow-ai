@@ -1,7 +1,7 @@
 "use client";
 import { LogoIcon } from "@/components/LogoIcon";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Building2, CheckCircle, ChevronRight, ChevronLeft, KeyRound, Eye, EyeOff, Hash, Plus, Upload, ExternalLink } from "lucide-react";
@@ -11,11 +11,20 @@ import {
   setPasswordWithReauthNonce,
   isInvalidNonceError,
   isSessionMissingError,
+  isSamePasswordError,
   SESSION_EXPIRED_MESSAGE,
 } from "@/lib/auth/reauth";
 import { mayRenderOnboardingWizard } from "@/lib/auth/guardDecision";
 import { onboardingCompletionTarget } from "@/lib/auth/mfaEnrolment";
 import { authErrorMessage, knownAuthErrorMessage } from "@/lib/auth/authErrorMessage";
+import { passwordProblem } from "@/lib/auth/passwordRules";
+import { passwordStepButtonEnabled, passwordStepMode } from "@/lib/auth/passwordStep";
+import { onboardingProgress, progressFor, restoredStep } from "@/lib/auth/onboardingProgress";
+import { PasswordRules } from "@/components/auth/PasswordRules";
+import { clearSignupStash, newFirmSignupStarted, readSignupStash as readStash } from "@/lib/auth/signupStash";
+import { canAskAgain } from "@/lib/auth/signupContinue";
+import { requestSignupLink } from "@/lib/auth/requestSignupLink";
+import { signedInAsSentence, signupLanding } from "@/lib/auth/signupLanding";
 import { api, type ApiResp } from "@/lib/api";
 import CsvImportModal from "@/components/LazyCsvImportModal";
 import type { ImportRow, ImportResult } from "@/components/CsvImportModal";
@@ -23,15 +32,16 @@ import { FirmHsnLibraryQuickAddModal } from "@/components/lookups/FirmHsnLibrary
 import { Callout } from "@/components/ui/callout";
 import { gstinProblem } from "@/lib/gst/gstin";
 import { isValidPan } from "@/lib/identifiers/pan";
+import { ENTITY_TYPES } from "@/lib/clients/entityTypes";
 import { Button } from "@/components/ui/button";
 import { hasChanges, useUnsavedChanges } from "@/lib/invoices/dirtyState";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 
-interface SignupStash { firmName?: string; fullName?: string }
-function readSignupStash(): SignupStash {
-  if (typeof window === "undefined") return {};
-  try { return JSON.parse(localStorage.getItem("practicesync_signup") || "{}"); } catch { return {}; }
+// The sign-up page's hand-over across the emailed link: lib/auth/signupStash (it now keeps the address too).
+function browserStorage(): Storage | null {
+  try { return typeof window === "undefined" ? null : window.localStorage; } catch { return null; }
 }
+function readSignupStash() { return readStash(browserStorage()); }
 
 // ─── Indian states list ────────────────────────────────────────────────────
 const INDIAN_STATES = [
@@ -100,6 +110,8 @@ function otpTrace(step: string, detail: Record<string, unknown> = {}) {
 // ─── Types ─────────────────────────────────────────────────────────────────
 interface FirmForm {
   name: string;
+  /** The firm's own legal form, "" until chosen. The practice's own books are set up as this (POST-A-533). */
+  entity_type: string;
   pan: string;
   gstin: string;
   phone: string;
@@ -112,6 +124,7 @@ interface FirmForm {
 
 const EMPTY_FIRM: FirmForm = {
   name: "",
+  entity_type: "",
   pan: "",
   gstin: "",
   phone: "",
@@ -285,11 +298,52 @@ function ProgressBar({ step }: { step: number }) {
 
 // ─── Main page ─────────────────────────────────────────────────────────────
 export default function OnboardingPage() {
-  const { user, session, loading: authLoading, refreshUserContext, resolveEnrolmentRequired } = useAuth();
+  const { user, session, loading: authLoading, refreshUserContext, resolveEnrolmentRequired, hasFirm, fullName: memberName, userRole, signOut } = useAuth();
   const router = useRouter();
   const supabase = getSupabaseClient();
 
-  const [step, setStep] = useState(1);
+  // Seeded from what the wizard remembers, so a remount paints the restored step at once and not step 1 for a frame.
+  const [step, setStep] = useState<number>(() => restoredStep({
+    progress: onboardingProgress.get(), userId: user?.id, ownerName: readSignupStash().fullName ?? "",
+  }));
+  // THE ADDRESS ALREADY HAS A PRACTICE (POST-A-480). A new-firm sign-up was started in this browser (the stash is
+  // there) and the person the link signed in is already a member of a practice: say so, never open that practice
+  // as if it were the new one. `createdHere` is true once THIS wizard made the firm, when having one is expected.
+  const [signupStarted] = useState(() => newFirmSignupStarted(readSignupStash()));
+  const [createdHere, setCreatedHere] = useState(false);
+  const [existingFirmName, setExistingFirmName] = useState<string | null>(null);
+  const landing = signupLanding({ hasSession: !!session, hasFirm, signupStarted, createdHere });
+
+  // NOBODY IS SIGNED IN HERE (POST-A-479, 485). A sign-up link lands on /signup/continue and works until it expires or the practice is
+  // created, so a person reaches this page without a session by opening the address of an older emailed link that has been used
+  // (those worked once), by a bookmark, or after signing out. With the address and names the sign-up page kept, they can have a new
+  // link sent by the server instead of starting again.
+  const stashedEmail = readSignupStash().email ?? null;
+  const canEmailNewLink = canAskAgain(readSignupStash());
+  const [linkSending, setLinkSending] = useState(false);
+  const [linkWait, setLinkWait] = useState(0);
+  const [linkNote, setLinkNote] = useState<{ tone: "ok" | "problem"; text: string } | null>(null);
+  useEffect(() => {
+    if (linkWait <= 0) return;
+    const timer = setTimeout(() => setLinkWait((n) => n - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [linkWait]);
+  async function emailNewLink() {
+    const stash = readSignupStash();
+    if (!canAskAgain(stash) || linkSending || linkWait > 0) return;
+    setLinkSending(true);
+    setLinkNote(null);
+    try {
+      // The SERVER keeps and mails the link (POST-A-485), and says in its own sentence when it will not or could not.
+      const sent = await requestSignupLink({ email: stash.email ?? "", firmName: stash.firmName ?? "", fullName: stash.fullName ?? "" });
+      setLinkNote({ tone: "ok", text: `A new link is on its way to ${stash.email}. It works until ${sent.validUntil}, and you can open it more than once.` });
+      setLinkWait(sent.waitSeconds);
+    } catch (e) {
+      setLinkNote({ tone: "problem", text: e instanceof Error && e.message ? e.message : "Could not send a new link. Please try again." });
+    } finally {
+      setLinkSending(false);
+    }
+  }
   const [ownerName, setOwnerName] = useState(() => readSignupStash().fullName?.trim() ?? "");
   const [firmId, setFirmId] = useState<string | null>(null);
   const [firmForm, setFirmForm] = useState<FirmForm>(EMPTY_FIRM);
@@ -311,6 +365,40 @@ export default function OnboardingPage() {
   const [showPw, setShowPw] = useState(false);
   const [pwError, setPwError] = useState<string | null>(null);
   const [pwSet, setPwSet] = useState(false);
+  // THE PASSWORD STEP'S MEMORY LIVES OUTSIDE THIS COMPONENT (POST-A-478). Saving
+  // a password makes AuthGuard unmount this page for a round trip (the sign-in
+  // assurance is re-read, and unresolved is not permission), so it mounted again
+  // at step 1 with "password set" forgotten and the boxes empty — and typing the
+  // same password again is refused as the same password. lib/auth/onboardingProgress
+  // holds the fact in a module and in session storage, keyed on the person.
+  const progress = useSyncExternalStore(onboardingProgress.subscribe, onboardingProgress.get, () => null);
+  const mine = progressFor(progress, user?.id);
+  // True once THIS mount has moved the wizard on itself, so the restore below
+  // does not move it a second time.
+  const advancedHere = useRef(false);
+  // The name typed on step 1, readable by the restore without making it re-run on every keystroke.
+  const ownerNameNow = useRef(ownerName);
+  ownerNameNow.current = ownerName;
+  useEffect(() => {
+    if (!mine || advancedHere.current) return;
+    advancedHere.current = true;
+    if (mine.passwordSet) setPwSet(true);
+    // A verification code was emailed and the person went to read it: bring its box back (the password itself is
+    // never kept, so it is typed again above).
+    if (mine.reauthPending) setNeedsReauth(true);
+    // A mount that finds the step done is the one that lost its place. Step 2 only when the name is known; step 3
+    // once the firm exists (restoredStep).
+    const target = restoredStep({ progress: mine, userId: user?.id, ownerName: ownerNameNow.current });
+    setStep((s) => (s === 1 ? target : s));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mine]);
+  function rememberPasswordSet() {
+    advancedHere.current = true;
+    if (user?.id) onboardingProgress.markPasswordSet(user.id);
+    setPwSet(true);
+    setNeedsReauth(false);
+    setPw(""); setPw2("");
+  }
 
   // UNSAVED TYPING (frontend_ux-23). A reload in the middle of the wizard drops
   // the owner back at step 1 with everything typed gone, and this is the one
@@ -339,7 +427,7 @@ export default function OnboardingPage() {
   // RLS that forbids a firm-less user from inserting a firms row. Single
   // entrypoint (called from Save and Skip) so there is no create race.
   const ensureFirmExists = useCallback(
-    async (extra?: { pan?: string; gstin?: string; phone?: string; address?: string; city?: string; state?: string }): Promise<string | null> => {
+    async (extra?: { pan?: string; gstin?: string; phone?: string; address?: string; city?: string; state?: string; entity_type?: string }): Promise<string | null> => {
       if (firmId) return firmId;
       if (!user?.email) return null;
       const stash = readSignupStash();
@@ -354,7 +442,12 @@ export default function OnboardingPage() {
       });
       const newId = resp?.data?.firm?.id ?? null;
       if (!newId) throw new Error(resp?.error ?? "Firm creation did not return a firm ID.");
-      if (typeof window !== "undefined") localStorage.removeItem("practicesync_signup");
+      clearSignupStash(browserStorage());
+      setCreatedHere(true);
+      // Remembered: a remount after this goes on to step 3, never back to a blank step 2 whose save would overwrite
+      // the profile just entered.
+      advancedHere.current = true;
+      if (user?.id) onboardingProgress.markFirmCreated(user.id);
       setFirmId(newId);
       await refreshUserContext();
       return newId;
@@ -394,12 +487,15 @@ export default function OnboardingPage() {
         .eq("id", firmId)
         .maybeSingle();
       if (firmData?.name) {
-        router.replace("/");
+        // A member who only visited this page goes to their dashboard as before; one who STARTED a new-firm sign-up
+        // with this address is told (the notice below) and never taken there silently (POST-A-480).
+        if (landing === "existing-practice") setExistingFirmName(firmData.name);
+        else if (landing === "go-home") router.replace("/");
       }
     }
     checkAlreadyOnboarded();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [firmId]);
+  }, [firmId, landing]);
 
   // ─── Navigation ───────────────────────────────────────────────────────
   function goNext() { setStep((s) => Math.min(s + 1, STEPS.length)); }
@@ -421,6 +517,8 @@ export default function OnboardingPage() {
       return;
     }
     await refreshUserContext();
+    // The wizard is done: its memory of this person's password step goes with it.
+    onboardingProgress.clear();
     // A new owner the MFA policy covers is refused by every administration
     // screen until they enrol, and nothing at sign-in asks them to — so the
     // wizard's last step is the enrol screen for them, and Home for everyone
@@ -449,7 +547,9 @@ export default function OnboardingPage() {
     setError(null);
     setPwError(null);
     if (!ownerName.trim()) { setPwError("Please enter your full name."); return; }
-    if (pw.length < 10) { setPwError("Use at least 10 characters."); return; }
+    // Every rule the sign-in service enforces, before anything is sent (POST-A-477).
+    const rulesProblem = passwordProblem(pw);
+    if (rulesProblem) { setPwError(rulesProblem); return; }
     if (pw !== pw2) { setPwError("Passwords do not match."); return; }
     setSaving(true);
     try {
@@ -460,6 +560,14 @@ export default function OnboardingPage() {
         otpTrace("step 1 response: updateUser returned error", {
           code: upErr.code, status: upErr.status, message: upErr.message,
         });
+        // The password typed IS the one already on the account (a second visit to this
+        // step, or the page that came back after a save): it is set, so carry on.
+        if (isSamePasswordError(upErr)) {
+          otpTrace("step 1 response: same password — already set, carrying on");
+          rememberPasswordSet();
+          goNext();
+          return;
+        }
         // "Secure password change" is enabled, so a magic-link session that isn't
         // "recently signed in" must reauthenticate first. reauthenticate() emails a
         // nonce that is later consumed by updateUser({ password, nonce }).
@@ -474,6 +582,10 @@ export default function OnboardingPage() {
             throw new Error(knownAuthErrorMessage(raErr) ?? "Could not send verification code. Please try again.");
           }
           otpTrace("step 2 response: reauthenticate OK — verification code emailed");
+          // Remembered: reading the emailed code means leaving this tab, and coming back signs the person in again and
+          // remounts this page; the code box has to come back with it (the password is typed again, never kept).
+          advancedHere.current = true;
+          if (user?.id) onboardingProgress.markReauthPending(user.id, true);
           setNeedsReauth(true);
           return;
         }
@@ -485,15 +597,24 @@ export default function OnboardingPage() {
         throw new Error(authErrorMessage(upErr));
       }
       otpTrace("step 1 response: password set without reauthentication");
-      setPwSet(true);
-      // Clear the in-memory password values once set.
-      setPw(""); setPw2("");
+      // Remembered BEFORE the page moves on: this component may already have been
+      // unmounted by the guard, and the next mount reads it from the store.
+      rememberPasswordSet();
       goNext();
     } catch (err) {
       setPwError(authErrorMessage(err, "Could not set your password. Please try again."));
     } finally {
       setSaving(false);
     }
+  }
+
+  // The password is already set (the person came back to this step): go on without
+  // asking for one again. Their name is still needed for the firm.
+  function continueWithSetPassword() {
+    setError(null);
+    setPwError(null);
+    if (!ownerName.trim()) { setPwError("Please enter your full name."); return; }
+    goNext();
   }
 
   async function verifyAndSetPassword() {
@@ -503,6 +624,8 @@ export default function OnboardingPage() {
     // The reauthentication code is sent verbatim — no truncation/parseInt/slice.
     const nonce = reauthOtp.trim();
     try {
+      // Back from reading the emailed code the boxes are empty (the password is never kept): ask for it again.
+      if (!pw) throw new Error("Type your password in the boxes above again, then enter the code.");
       // ── ROOT-CAUSE FIX ─────────────────────────────────────────────────────
       // The code emailed by reauthenticate() is a REAUTHENTICATION NONCE, not an
       // email OTP. The Supabase SDK is explicit: "After receiving the OTP, include
@@ -517,6 +640,13 @@ export default function OnboardingPage() {
         method: "auth.updateUser", email: user.email, tokenLength: nonce.length, token: nonce,
       });
       const { error: upErr } = await setPasswordWithReauthNonce(supabase.auth, pw, nonce);
+      if (upErr && isSamePasswordError(upErr)) {
+        // The password typed IS the one already on the account: it is set, carry on.
+        setReauthOtp("");
+        rememberPasswordSet();
+        goNext();
+        return;
+      }
       if (upErr) {
         otpTrace("verify response: updateUser returned error", {
           code: upErr.code, status: upErr.status, message: upErr.message,
@@ -536,8 +666,7 @@ export default function OnboardingPage() {
       otpTrace("verify response: password updated — reauthentication accepted");
       setNeedsReauth(false);
       setReauthOtp("");
-      setPwSet(true);
-      setPw(""); setPw2("");
+      rememberPasswordSet();
       goNext();
     } catch (err) {
       setReauthError(authErrorMessage(err, "Verification failed. Please try again."));
@@ -593,6 +722,9 @@ export default function OnboardingPage() {
         // Backend seeds the full Chart of Accounts automatically; no onboarding step needed.
         const id = await ensureFirmExists({
           pan: firmForm.pan.trim() || undefined,
+          // The firm's own legal form: its own books are set up as this. Not chosen is not sent, and the server then
+          // records a Partnership, which Practice home says and lets a Partner correct.
+          entity_type: firmForm.entity_type || undefined,
           gstin: firmForm.gstin.trim() || undefined,
           phone: firmForm.phone.trim() || undefined,
           address: firmForm.address.trim() || undefined,
@@ -623,7 +755,7 @@ export default function OnboardingPage() {
       if (!updateRes.success) throw new Error(updateRes.error ?? "Failed to save the firm profile.");
       // Idempotent CoA seed — covers the edge case where firm exists but CoA was
       // never seeded (e.g. partial onboarding). Non-blocking; failure is not fatal.
-      api.account.seedCoa().catch(() => {});
+      api.account.seedCoa().catch(() => { /* idempotent top-up for a firm whose chart was never seeded; non-blocking by design, as the note above says */ });
       // Provision the internal practice client now that a PAN may be set (non-fatal).
       if (firmForm.pan.trim()) {
         try {
@@ -633,6 +765,12 @@ export default function OnboardingPage() {
               "Your practice books could not be set up automatically. You can set them up later from the Practice section.");
           } else {
             setProvisionNote(null);
+            // The books exist now: record the legal form chosen here on them. A refusal is said and does not stop the
+            // step, because the form can be corrected on Practice home.
+            if (firmForm.entity_type) {
+              const kept = await api.practice.updateIdentity({ entity_type: firmForm.entity_type }) as ApiResp<unknown>;
+              if (!kept?.success) setProvisionNote(kept?.error || "Your firm's legal form could not be recorded just now. You can set it on Practice home.");
+            }
           }
         } catch {
           setProvisionNote("Your practice books will be set up later — you can trigger it from the Practice section.");
@@ -659,11 +797,26 @@ export default function OnboardingPage() {
             <LogoIcon size="sm" />
             <span className="text-sm font-semibold text-ps-body">PracticeSync AI</span>
           </div>
-          <h1 className="text-xl font-bold text-ps-ink mb-2">This sign-up link has expired</h1>
+          <h1 className="text-xl font-bold text-ps-ink mb-2">You are not signed in</h1>
           <p className="text-sm text-ps-label mb-6">
-            You are not signed in, so this setup page cannot continue. Request a new
-            sign-up link, or sign in if you already have a password.
+            This setup page cannot continue until you are. If you have a sign-up email, open its link again: it can be opened more than once until it expires.
+            {canEmailNewLink ? ` Or we can email a new link to ${stashedEmail}, the address you signed up with, and you can sign in if you already have a password.` : " Or request a new sign-up link, and sign in if you already have a password."}
           </p>
+          {canEmailNewLink && (
+            <div className="mb-3 space-y-2">
+              <Button
+                variant="plain" size="none" onClick={() => emailNewLink()} disabled={linkSending || linkWait > 0}
+                className="w-full bg-brand text-white text-sm font-medium py-2 rounded-lg hover:bg-brand-dark transition-colors disabled:opacity-50"
+              >
+                {linkSending ? "Sending…" : linkWait > 0 ? `Email me a new link (wait ${linkWait}s)` : "Email me a new link"}
+              </Button>
+              {linkNote && (
+                <p role={linkNote.tone === "problem" ? "alert" : "status"} className={`text-xs ${linkNote.tone === "problem" ? "text-state-problem" : "text-green-700"}`}>
+                  {linkNote.text}
+                </p>
+              )}
+            </div>
+          )}
           <div className="flex flex-col gap-2">
             <Link
               href="/signup"
@@ -677,6 +830,43 @@ export default function OnboardingPage() {
             >
               Sign in
             </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── This address already has a practice (POST-A-480) ─────────────────
+  if (landing === "existing-practice") {
+    return (
+      <div className="min-h-screen bg-ps-bg flex items-center justify-center p-4">
+        <div data-existing-practice="" className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-ps-border p-8 text-center">
+          <div className="flex items-center gap-2 justify-center mb-4">
+            <LogoIcon size="sm" />
+            <span className="text-sm font-semibold text-ps-body">PracticeSync AI</span>
+          </div>
+          {/* An h2, not a third h1: a screen's own h1 is on a frozen list (scripts/a-screen-names-itself-through-one-component). */}
+          <h2 className="text-xl font-bold text-ps-ink mb-2">This address already has a practice</h2>
+          <p className="text-sm text-ps-body mb-2">{signedInAsSentence(memberName, userRole, existingFirmName)}</p>
+          <p className="text-sm text-ps-label mb-6">
+            One sign-in belongs to one practice, so it cannot start a new firm. To set up a different firm, sign out
+            and use another email address.
+          </p>
+          <div className="flex flex-col gap-2">
+            <Button
+              variant="plain" size="none"
+              onClick={() => { clearSignupStash(browserStorage()); router.replace("/"); }}
+              className="flex items-center justify-center gap-2 px-5 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors"
+            >
+              {existingFirmName ? `Continue to ${existingFirmName}` : "Continue to my practice"}
+            </Button>
+            <Button
+              variant="plain" size="none"
+              onClick={async () => { clearSignupStash(browserStorage()); await signOut(); router.replace("/signup"); }}
+              className="flex items-center justify-center gap-2 px-5 py-2 border border-ps-border text-ps-body text-sm font-medium rounded-lg hover:bg-ps-bg transition-colors"
+            >
+              Sign out and use another address
+            </Button>
           </div>
         </div>
       </div>
@@ -730,14 +920,16 @@ export default function OnboardingPage() {
                   className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg"
                 />
               </div>
+              {(!pwSet || pw !== "" || pw2 !== "") && <PasswordRules password={pw} id="onboarding-password-rules" />}
               <div>
-                <label className="text-xs font-medium text-ps-label block mb-1">Password<span className="text-state-problem ml-0.5">*</span></label>
+                <label className="text-xs font-medium text-ps-label block mb-1">{pwSet ? "New password (only if you want to change it)" : "Password"}{!pwSet && <span className="text-state-problem ml-0.5">*</span>}</label>
                 <div className="relative">
                   <input aria-label="Password"
+                    aria-describedby={!pwSet || pw !== "" || pw2 !== "" ? "onboarding-password-rules" : undefined}
                     type={showPw ? "text" : "password"}
                     value={pw}
                     onChange={(e) => setPw(e.target.value)}
-                    placeholder="At least 10 characters"
+                    placeholder="Create a password"
                     autoComplete="new-password"
                     className={`w-full text-sm text-ps-ink border rounded-lg px-3 py-2 pr-10 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg ${pwError ? "border-red-400 bg-state-problem-surface" : "border-ps-border"}`}
                   />
@@ -747,7 +939,7 @@ export default function OnboardingPage() {
                 </div>
               </div>
               <div>
-                <label className="text-xs font-medium text-ps-label block mb-1">Confirm password<span className="text-state-problem ml-0.5">*</span></label>
+                <label className="text-xs font-medium text-ps-label block mb-1">Confirm password{!pwSet && <span className="text-state-problem ml-0.5">*</span>}</label>
                 <input aria-label="Confirm password"
                   type={showPw ? "text" : "password"}
                   value={pw2}
@@ -802,14 +994,21 @@ export default function OnboardingPage() {
             </div>
 
             <div className="flex items-center justify-end mt-8 pt-5 border-t border-ps-border">
-              <button
-                onClick={savePassword}
-                disabled={saving || !pw || !pw2 || needsReauth}
-                className="flex items-center gap-2 px-5 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors disabled:opacity-50"
-              >
-                {saving ? "Saving…" : "Set Password & Continue"}
-                {!saving && <ChevronRight size={16} />}
-              </button>
+              {(() => {
+                // Once the password is set the step asks for nothing more; typing a new one makes it a change again
+                // (lib/auth/passwordStep).
+                const carryOn = passwordStepMode({ passwordSet: pwSet, pw, pw2 }) === "continue";
+                return (
+                  <button
+                    onClick={carryOn ? continueWithSetPassword : savePassword}
+                    disabled={!passwordStepButtonEnabled({ passwordSet: pwSet, pw, pw2, saving, needsReauth })}
+                    className="flex items-center gap-2 px-5 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors disabled:opacity-50"
+                  >
+                    {saving ? "Saving…" : carryOn ? "Continue" : "Set Password & Continue"}
+                    {!saving && <ChevronRight size={16} />}
+                  </button>
+                );
+              })()}
             </div>
           </div>
         )}
@@ -834,6 +1033,18 @@ export default function OnboardingPage() {
                   required
                 />
               </div>
+              <div>
+                <label htmlFor="firm-entity-type" className="text-xs font-medium text-ps-label block mb-1">Your firm&apos;s legal form</label>
+                <select id="firm-entity-type" data-firm-entity-type
+                  value={firmForm.entity_type}
+                  onChange={(e) => setFirmForm((p) => ({ ...p, entity_type: e.target.value }))}
+                  className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg"
+                >
+                  <option value="">Select…</option>
+                  {ENTITY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+                <p className="text-xs text-ps-hint mt-1">Your firm&apos;s own books are set up as this. Left blank, they are set up as a Partnership, which you can correct in My practice.</p>
+              </div>
               <Field
                 label="PAN"
                 field="pan"
@@ -841,7 +1052,7 @@ export default function OnboardingPage() {
                 setForm={setFirmForm}
                 errors={firmErrors}
                 placeholder="e.g. AABCU9603R"
-                hint="IT Act §139A — 10-char PAN"
+                hint="Your firm's own PAN. Its own books are set up from it; without it they are not created until you add it in My practice."
                 maxLength={10}
               />
               <Field
@@ -932,7 +1143,7 @@ export default function OnboardingPage() {
               <h2 className="text-base font-semibold text-ps-ink">Import your HSN/SAC library</h2>
             </div>
             <p className="text-sm text-ps-label mb-5">
-              Caflow does not ship or suggest HSN/SAC classifications — you own and curate the codes your
+              PracticeSync does not ship or suggest HSN/SAC classifications — you own and curate the codes your
               firm bills against. Add a few now, import a list, or skip and add codes as you invoice.
             </p>
 

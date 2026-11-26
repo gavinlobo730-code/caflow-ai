@@ -7,9 +7,13 @@
 //     what it said. Separately, the typed form told the CA "the year's total for this payee has not reached it either" over a nil that meant "no PAN, so nothing was
 //     looked up" (and, for a section with no yearly threshold, over a year that was never compared with anything).
 //
+//     Since POST-A-078's last part the statement CARRIES the typed deductions as deductee rows (outside the ledger tie-out, which no journal stands behind), and a typed row
+//     recorded for another statement is left out. The server names both (`typed_on_statement`, `excluded_typed`), and each has its own note.
+//
 //     The rules, held from the side that reads the screens:
-//       * both return screens draw ONE component, `TypedDeductionsNote`, handed the server's answer whole; neither reads a count, a tax or a row itself;
-//       * that component draws the server's sentence as it arrived, through the one reader, calls nothing but the reader, the two shared formatters and `.map`, and
+//       * both return screens draw ONE component per answer, `TypedDeductionsOnStatementNote` and `TypedDeductionsNote`, each handed the server's answer whole; neither
+//         screen reads a count, a tax or a row itself;
+//       * each component draws the server's sentence as it arrived, through the one reader, calls nothing but the reader, the two shared formatters and `.map`, and
 //         does no arithmetic of any kind (an AST rule, not a list of spellings);
 //       * the typed form says the year's total is below the section's yearly threshold ONLY when the server says it added the year up (`aggregate_tested === true`), a
 //         server that sends no key does not count as saying so, and the form shows what a settled quote says and nothing of a quote that has just been typed over.
@@ -24,6 +28,7 @@ const TAB = "app/clients/[id]/compliance/tds/page.tsx";
 const PAGE = "app/tds/returns/page.tsx";
 const TYPED_FORM = "app/tds/page.tsx";
 const NOTE = "components/tds/TypedDeductionsNote.tsx";
+const NOTE_CARRIED = "components/tds/TypedDeductionsOnStatementNote.tsx";
 const READER = "lib/tds/excludedTyped.ts";
 const DATA = "lib/data/tds.ts";
 
@@ -52,15 +57,15 @@ function sourceFiles(dir: string): string[] {
 
 // ── the rules, as functions of a source text, so the self-test can run them on a spoiled copy ──────────────────────
 
-/** A screen draws the note once, hands it the whole answer, and reads nothing of it itself. */
-function screenProblems(src: string, key: string): string[] {
+/** A screen draws the note once, hands it the whole answer, and reads nothing of it itself. `component` is the note, `field` the server's key it is handed. */
+function screenProblems(src: string, key: string, component = "TypedDeductionsNote", field = "excluded_typed"): string[] {
   const problems: string[] = [];
-  const draws = [...src.matchAll(/<TypedDeductionsNote\s+raw=\{([^}]*)\}\s*\/>/g)];
+  const draws = [...src.matchAll(new RegExp(`<${component}\\s+raw=\\{([^}]*)\\}\\s*\\/>`, "g"))];
   if (draws.length !== 1) problems.push(`draws the note ${draws.length} times`);
   else if (draws[0][1].replace(/\s+/g, "") !== key) problems.push(`hands the note ${draws[0][1]} and not ${key}`);
-  if (!/import \{ TypedDeductionsNote \} from "@\/components\/tds\/TypedDeductionsNote";/.test(src)) problems.push("does not import the shared note");
-  const reads = [...src.matchAll(/excluded_typed/g)].length;
-  if (reads !== 1) problems.push(`names excluded_typed ${reads} times (once, in the hand-over)`);
+  if (!new RegExp(`import \\{ ${component} \\} from "@\\/components\\/tds\\/${component}";`).test(src)) problems.push("does not import the shared note");
+  const reads = [...src.matchAll(new RegExp(field, "g"))].length;
+  if (reads !== 1) problems.push(`names ${field} ${reads} times (once, in the hand-over)`);
   if (/readExcludedTyped|ExcludedTyped\b/.test(src)) problems.push("reads the answer itself");
   return problems;
 }
@@ -133,13 +138,33 @@ function formProblems(src: string): string[] {
   return problems;
 }
 
-test("both return screens draw the one shared note, handed the server's answer whole", () => {
+test("both return screens draw the one shared note of each answer, handed the server's answer whole", () => {
   assert.deepEqual(screenProblems(code(PAGE), "result.excluded_typed"), []);
   assert.deepEqual(screenProblems(code(TAB), "computeResult.excluded_typed"), []);
+  assert.deepEqual(screenProblems(code(PAGE), "result.typed_on_statement", "TypedDeductionsOnStatementNote", "typed_on_statement"), []);
+  assert.deepEqual(screenProblems(code(TAB), "computeResult.typed_on_statement", "TypedDeductionsOnStatementNote", "typed_on_statement"), []);
 });
 
-test("the note draws the server's sentence through the one reader, says when it cannot read, and makes no figure", () => {
+test("each note draws the server's sentence through the one reader, says when it cannot read, and makes no figure", () => {
   assert.deepEqual(noteProblems(fs.readFileSync(path.join(WEB, NOTE), "utf8")), []);
+  assert.deepEqual(noteProblems(fs.readFileSync(path.join(WEB, NOTE_CARRIED), "utf8")), []);
+});
+
+test("the note of the carried rows says they are on the statement and outside the tie-out, and the other says they are not on it", () => {
+  const carried = code(NOTE_CARRIED);
+  assert.match(carried, /\{one \? "is" : "are"\} on this statement\./);
+  assert.ok(!/not on this statement/.test(carried.replace(/aria-label="[^"]*"/g, "").replace(/<caption[^>]*>[^<]*<\/caption>/g, "")), "the carried note says the rows are not on the statement");
+  assert.match(code(NOTE), /\{one \? "is" : "are"\} not on this statement\./);
+});
+
+test("the two screens do not call the ledger tie-up clean over a total that holds typed tax", () => {
+  const typed = (src: string) => /reconciliation\.typed_paise|rec\.typed_paise/.test(src);
+  assert.ok(typed(code(PAGE)), "the firm-level screen does not read the server's typed tax beside the tie-up");
+  assert.ok(typed(code(TAB)), "the client's TDS tab does not read the server's typed tax beside the tie-up");
+  assert.match(code(PAGE), /the purchase bills and advances agree with the general ledger/);
+  assert.match(code(TAB), /The purchase bills and advances reconcile to the General Ledger/);
+  // the figure is the server's: neither screen adds the typed tax to anything
+  for (const src of [code(PAGE), code(TAB)]) assert.ok(!/typed_paise\s*[-+*\/]|[-+*\/]\s*(?:result\.reconciliation|rec)\.typed_paise/.test(src), "a screen does arithmetic on the typed tax");
 });
 
 test("the reader is pure: it imports nothing and draws nothing", () => {
@@ -152,6 +177,9 @@ test("the reader is pure: it imports nothing and draws nothing", () => {
 test("the payload type does not pretend to know the answers", () => {
   const src = code(DATA);
   assert.match(src, /excluded_typed\?: unknown;/);
+  assert.match(src, /typed_on_statement\?: unknown;/);
+  assert.match(src, /typed_paise\?: number;/);
+  assert.match(src, /recorded_by\?: "purchase_bill" \| "advance" \| "tds_register";/);
   assert.match(src, /aggregate_tested\?: boolean;/);
   assert.ok(!/aggregate_read/.test(src), "the old field is still named");
 });
@@ -173,6 +201,7 @@ test("nothing else in the app reads the fields", () => {
   const files = sourceFiles(".");
   const holding = (word: RegExp) => files.filter((f) => word.test(code(f))).sort();
   assert.deepEqual(holding(/\bexcluded_typed\b/), [DATA, PAGE, TAB].sort());
+  assert.deepEqual(holding(/\btyped_on_statement\b/), [DATA, PAGE, TAB].sort());
   assert.deepEqual(holding(/\baggregate_tested\b/), [DATA, TYPED_FORM].sort());
 });
 
@@ -194,6 +223,11 @@ test("self-test: the rules fail on a spoiled copy of each file", () => {
   assert.ok(screenProblems(tab.replace(/import \{ TypedDeductionsNote \}[^\n]*\n/, ""), "computeResult.excluded_typed").length, "a screen that does not import the note");
   assert.ok(screenProblems(tab + "\nreadExcludedTyped(x);", "computeResult.excluded_typed").length, "a screen that reads the answer through the reader");
 
+  const carried = fs.readFileSync(path.join(WEB, NOTE_CARRIED), "utf8");
+  assert.ok(screenProblems(spoil(page, "<TypedDeductionsOnStatementNote raw={result.typed_on_statement} />", ""), "result.typed_on_statement", "TypedDeductionsOnStatementNote", "typed_on_statement").length, "a screen that stopped drawing the carried note");
+  assert.ok(screenProblems(spoil(tab, "<TypedDeductionsOnStatementNote raw={computeResult.typed_on_statement} />", "<TypedDeductionsOnStatementNote raw={computeResult.typed_on_statement?.count} />"), "computeResult.typed_on_statement", "TypedDeductionsOnStatementNote", "typed_on_statement").length, "a screen that hands the carried note a piece");
+  assert.ok(noteProblems(spoil(carried, "{typed.reason ? ` ${typed.reason}` : \"\"}", "")).length, "a carried note that stopped drawing the server's sentence");
+  assert.ok(noteProblems(spoil(carried, "formatPaise(typed.tds_paise)", "(typed.tds_paise / 100).toFixed(2)")).length, "a carried note that formats the tax itself");
   assert.ok(noteProblems(spoil(note, "{typed.reason ? ` ${typed.reason}` : \"\"}", "")).length, "a note that stopped drawing the server's sentence");
   assert.ok(noteProblems(spoil(note, "if (reading.kind === \"none\" || reading.kind === \"absent\") return null;", "")).length, "a note that draws for none");
   assert.ok(noteProblems(spoil(note, "if (reading.kind === \"unreadable\") {", "if (false) {")).length, "a note that says nothing for an answer it cannot read");
@@ -219,4 +253,14 @@ test("self-test: the rules fail on a spoiled copy of each file", () => {
   assert.ok(formProblems(spoil(form, "Nothing is deducted — this payment is below", "the year&apos;s total for this payee has not reached it either. Nothing is deducted — this payment is below")).length, "a form that kept the old sentence");
   assert.ok(formProblems(spoil(form, "const shown = quoting ? null : quote;", "const shown = quote;")).length, "a form that shows a quote that has just been typed over");
   assert.ok(formProblems(spoil(form, "{shown?.explain.rate_basis && (", "{quote?.explain.rate_basis && (")).length, "a form that reads the unsettled quote in one place");
+});
+
+test("neither screen says a typed deduction has no journal: it says nothing records which journal, if any, carries one", () => {
+  // The review of PRE-A-004: the demo partnership passes a journal behind each typed s.194T row, so "has no journal" was false of the
+  // seeded books. What the product knows is that it records no link from a typed row to a journal, so the tie-out leaves the row out.
+  for (const rel of [PAGE, TAB]) {
+    const src = fs.readFileSync(path.join(WEB, rel), "utf8");
+    assert.ok(!/has no journal/.test(src), `${rel} says a typed deduction has no journal`);
+    assert.match(src, /nothing records which journal, if any, carries it/, `${rel} does not say what the product knows`);
+  }
 });

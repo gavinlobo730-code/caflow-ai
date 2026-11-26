@@ -111,8 +111,8 @@ TABLE_5C_NOT_DERIVED = (
 )
 FORM_NUMBERING = (
     "The form's table numbers and column names are written from knowledge and "
-    "were not read off the notified form, which could not be reached from this "
-    "environment. Check them against the utility before keying anything."
+    "have not been read off the notified form. Check them against the utility "
+    "before keying anything."
 )
 WASTE_IS_NOT_SUBTRACTED = (
     "Losses and wastes are recorded and shown, but are NOT subtracted from what "
@@ -149,6 +149,8 @@ def _iso(value) -> Optional[date]:
     try:
         return date.fromisoformat(str(value)[:10])
     except (TypeError, ValueError):
+        # Not a date. A DATE or timestamp column always reads back as ISO text, so a stored one never lands here: this is an absent value or text that
+        # was never a date, and None says there is none.
         return None
 
 
@@ -364,6 +366,8 @@ def table_5a(challans: list[dict], lines: list[dict], returns: list[dict],
             gaps.append({"challan_no": ch.get("document_no"), "kind": "uqc", "reason": problem})
         rows.append({
             "challan_id": ch.get("id"), "challan_line_id": ln.get("id"),
+            # The lot's own id: the one thing a retraction names (POST-A-418). A row derived from a whole-challan return below has none.
+            "lot_id": r.get("id"),
             "job_worker": worker,
             "original_challan_no": ch.get("document_no"),
             "original_challan_date": str(ch.get("document_date"))[:10],
@@ -410,6 +414,7 @@ def table_5a(challans: list[dict], lines: list[dict], returns: list[dict],
                 "uqc": _uqc.normalise(ln.get("unit")),
                 "quantity": _qty(rest), "lost_or_wasted_quantity": _qty(Decimal(0)),
                 "derived_from_whole_challan_return": True,
+                "lot_id": None,
             })
     rows.sort(key=lambda x: (x["returned_on"], str(x["original_challan_no"])))
     return {"title": TABLE_5A, "rows": rows, "count": len(rows), "gaps": gaps}

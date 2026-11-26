@@ -31,13 +31,16 @@ holds the sentence, the long form, the forbidden words, the ids this file cites 
    **GSTR-1** and **GSTR-3B** tabs and the client's overview, and stop if anything is empty or red. Stay on
    FY 2025-26, the year the product has verified (section 6).
 3. Sign-in. A Partner account with its authenticator code to hand: a second factor is required in
-   production (PRE-C-002).
-4. The AI. Press **Check now** for Groq and for Gemini on Settings, AI status, once before anyone arrives
-   (PRE-B-014). No successful live call on the current models has ever been recorded, and the assistant and
-   the invoice reader depend on it. If either fails, take the assistant and the invoice reader off the run.
-5. Mail. Do not send an engagement letter, invoice, statement, reminder or sign-up link live: mail cannot
-   reach a client until a verified sending address exists (PRE-B-016, PRE-C-003). Show the screen and the PDF,
-   and say what the button does.
+   production (the security status screen showed it on, 16 Nov 2026).
+4. The AI. Press **Check now** for Groq and for Gemini on Settings, AI status, once before anyone arrives.
+   Both answered on 16 Nov 2026; the press proves they still answer that morning, and the assistant and the
+   invoice reader depend on it. If either fails, take the assistant and the invoice reader off the run.
+   Then press Where is…? on the top bar and ask it one question. It asks the same provider as the assistant
+   (Groq), and it has been driven in a browser against a stand-in server only, never against the real one:
+   if the answer is not a screen that fits the question, do not offer it on the day.
+5. Mail. Mail leaves from a verified sending address on a temporary demo domain: a staff invitation, an
+   invoice and an engagement letter each reached an outside inbox on 15 and 16 Nov 2026. Send live only to an
+   address you hold. The website's Book a demo form takes no requests until a business mailbox exists.
 6. A GSTR-2B file. The 2B step needs the portal's GSTR-2B JSON for a client and month whose purchase bills
    are in the product. The seed does not write one and the repository holds none, and no open item holds
    that gap yet. Without one, show the **GSTR-2B Recon** tab as it opens and say what a file would do.
@@ -103,16 +106,37 @@ the product's source. Cut from the bottom if time is short: first the Schedule I
 ## 5. Questions that will come
 
 - "Does it file?" and "Can I use this for my practice tomorrow?" Section 2, word for word.
-- "Where is our data?" The database is in Supabase's Mumbai region (the owner confirms the region in the
-  dashboard: PRE-C-006). The server that does the computing runs in Singapore. The AI features send content
+- "Where is our data?" The database is in Supabase's Mumbai region (the owner read the region in the
+  Supabase dashboard on 16 November 2026; read it again before each pricing or security review). The server that does the computing runs in Singapore. The AI features send content
   to AI providers outside India: Groq for text and for PDFs with a text layer, Google Gemini for photographs
   and scanned pages. In a chat, anything shaped like a PAN or a GSTIN is replaced before the request leaves;
   names typed into a chat, and documents sent for reading, go as they are.
-- "Is our clients' data used to train a model?" "I cannot say: we have not confirmed the providers' terms for
-  the plans we use, and I will not say either way until we have" (PRE-B-013).
+- "Is our clients' data used to train a model?" "Gemini, which reads scanned and photographed bills, is on
+  Google's paid terms, which say Google does not use the documents or prompts to improve its products and
+  keeps them only for a limited time to check for abuse. Groq, which answers questions and reads PDFs, has
+  zero data retention switched on for our account. Both are outside India." (Read from the providers' own
+  pages on 16 Nov 2026; docs/compliance/06, section 8.)
 - "Can it connect to our bank?" "A statement comes in as an uploaded file, and the machine proposes the
   coding. There is no live bank feed."
 - "Does it replace Tally?" "It runs alongside Tally on one ledger. Keep both as long as you like."
+- "Can I decide what each of my staff sees?" "Yes. On the Team screen (`/team`) a Partner opens a person and
+  ticks what they may open, laid out under the menu's own names, and the screen shows that person's menu
+  before anything is saved. A role only sets where the ticks start. Somebody who opens a screen they were not
+  given is told that it «is not part of your access» and can ask for it from that notice; the request goes to
+  the Partners on Approvals (`/approvals`), and nobody decides their own. My practice is a Partner's alone
+  and no tick opens it." Shown with stand-in data only so far: walk it once on the seeded firm, signed in as a
+  second member of staff, before showing it.
+- "Where do I find something?" "Where is…? on the top bar. Ask in your own words and it names the screen and
+  opens it. It offers only the screens that person may open." See step 4 of section 1 before relying on it.
+- "Can it raise our own fee bills, and bill our time?" "The practice's own billing is in My practice: a
+  billing schedule prepares a draft bill in the firm's own books. Time recorded as billable is listed under
+  Unbilled work on the Time screen (`/time`); a Partner presses Bill this time on a client's row, ticks the
+  entries, names the practice's service and the rate of GST, and a draft invoice is made for a Partner to
+  review and issue. Nothing is issued or sent by itself, and no rate of GST is assumed." The seeded firm's
+  hours are not billable (it bills a fixed fee), so that list is empty on it: record one billable entry
+  before the day if you mean to show this.
+- "Our fee is quoted inclusive of GST." "On an invoice line, the calculator beside the rate takes a price that
+  includes GST, and the taxable rate is worked back by the server, not by the screen."
 
 ## 6. Avoid or explain
 
@@ -140,8 +164,8 @@ avoid: a screen that overstates is steered round, not explained away.
 | explain | Settings, Scheduled Reports | The screens say «Sending them is coming soon.» and «Nothing is emailed automatically yet.»: a schedule only records what is planned, and the report is not prepared or sent by anything yet. | COMING-002, PRE-B-002 |
 | explain | Work, Workflows | The screen opens empty and says «Templates for common firm workflows are planned; none exist to run yet». | COMING-003, PRE-B-002 |
 | explain | A client portal that cannot receive a file | "The portal shows what you have asked a client for and says plainly that uploading is not available yet." | COMING-004 |
-| explain | Mail that does not leave: letters, invoices, statements, reminders, staff notices and sign-up links | "Mail needs a verified sending address that the owner has not set up yet, and the screens say when email is switched off." | COMING-005, COMING-006, PRE-B-016 |
-| explain | The assistant, the copilot and invoice reading when a key is not set | "Without its key the screen says the assistant is not configured and names the setting." | COMING-007, PRE-B-014 |
+| explain | Mail that does not leave: letters, invoices, statements, reminders, staff notices and sign-up links | "Mail needs a verified sending address that the owner has not set up yet, and the screens say when email is switched off." | COMING-005, COMING-006, POST-B-053 |
+| explain | The assistant, the copilot and invoice reading when a key is not set | "Without its key the screen says the assistant is not configured and names the setting." | COMING-007, POST-B-080 |
 | explain | Settings, Multi-currency, and books kept in a currency other than rupees | "Rupee books that deal in foreign currency are supported and the platform setting is off for this deployment. Keeping the books themselves in another currency is not built." | COMING-008, COMING-009 |
 | explain | Edges a CA reaches only by looking: an LLP's Form 11 and Form 8, TDS on a foreign-currency receipt, a GST rate with a multi-account bank split, registrations that file other returns, s.195 rates for a firm or co-operative payee, Form 3CD clauses 33, 35 and 40, a professional-tax challan | "Each of these refuses, or leaves the work to the CA, in words on the screen. None is on the run of show." | COMING-020, COMING-021, COMING-022, COMING-023, COMING-024, COMING-025, COMING-026 |
 | explain | Settings, Email Templates | "Three of the four templates say they are not applied yet, because no mail uses the wording written there." | COMING-027 |
@@ -154,9 +178,9 @@ Each of these is built and shown, and is held off by something only the owner ca
 
 | What is off | What it means on the day | Held by |
 |---|---|---|
-| Mail: a verified sending address and domain | Letters, invoices, statements, reminders and staff notices cannot reach anyone, and sign-up and invitation mail has its own limits. Show the screens and the PDFs; do not send. | COMING-005, COMING-006, PRE-B-016, PRE-C-003 |
+| Mail: the business mailbox and the final domain | Mail leaves from a temporary demo domain; the website's demo form takes no requests until a business mailbox exists. | COMING-005, COMING-006, POST-B-053 |
 | Online payment: a payment gateway account | Pay Now cannot take a payment. Do not click it. | COMING-001, PRE-B-002 |
-| The AI keys, and the providers' terms | The assistant and image reading answer only once a key is set and the status screen has been pressed; what the providers do with content is not stated, on purpose. | COMING-007, PRE-B-013, PRE-B-014 |
+| A fallback AI model | Both keys are set and answered on 16 Nov 2026; no fallback model is set, so if a provider retires its model the assistant stops until the setting changes. | COMING-007, POST-B-080 |
 | The multi-currency platform setting | The settings screen shows it off and does not offer it. | COMING-008 |
 
 Registrations are not a switch and are not in this table. A GSP, an ERI and NIC credentials are the owner's
@@ -195,7 +219,8 @@ Why the others are on the list:
 - "Accepted by GSTN", and "the offline tool took it": no accepted-upload record exists.
 - "Encrypted", and the words near it (secure, compliant, certified): nothing in the repository cites or
   checks the claim.
-- "Trained on", and "not trained on": the AI providers' terms have not been confirmed (PRE-B-013).
+- "Trained on", and "not trained on": say what each provider's terms say, in their words (the answer in
+  section 5); the privacy notice that will state it is not written yet (POST-B-259).
 
 ## 9. After the demo
 

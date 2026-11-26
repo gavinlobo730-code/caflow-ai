@@ -10,13 +10,14 @@ import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { currentFinancialYearLabel } from "@/lib/dateMath";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { errorMessage } from "@/lib/api";
-import { doingOf, failureSentence, fetchPlain, jsonPlain, type Doing, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, failureSentence, fetchBounded, jsonPlain, type Doing, type UntypedJson, LONG_REQUEST_BOUND_MS } from "@/lib/api/failureSentence";
 import type { CalendarAnswer } from "@/lib/data/tds";
 import { Callout } from "@/components/ui/callout";
 import { RecordAnywayAsk } from "@/components/tds/RecordAnywayAsk";
 import { TypedDeductionsNote } from "@/components/tds/TypedDeductionsNote";
+import { TypedDeductionsOnStatementNote } from "@/components/tds/TypedDeductionsOnStatementNote";
 import { Badge } from "@/components/ui/badge";
-import { DashboardSkeleton, TableSkeleton } from "@/components/ui/skeleton";
+import { DashboardSkeleton, TableSkeleton, LoadingRegion } from "@/components/ui/skeleton";
 import { YearPicker } from "@/components/ui/year-picker";
 import { formatPaise } from "@/lib/money/format";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,7 @@ import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { todayIstISO } from "@/lib/dates/format";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
+import { usePermissions } from "@/lib/auth/AuthContext";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -44,7 +46,7 @@ async function apiFetch(path: string, opts?: RequestInit, asked?: Doing) {
   // A request that gets no answer, and a page that is not JSON, are said in the product's words (POST-A-406), by what the request was.
   // What the request was: its method, unless the caller says it is an estimator that persists nothing (a POST that only asks, such as "Compute from Books").
   const doing = asked ?? doingOf(opts?.method);
-  const res = await fetchPlain(`${API}${path}`, {
+  const res = await fetchBounded(`${API}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
@@ -264,7 +266,13 @@ function DeductionsTab({ clientId }: { clientId: string }) {
                 <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
               </td></tr>
             ) : rows.length === 0 && (
-              <tr><td colSpan={6} className="px-3 py-4 text-center text-ps-hint">No deductions recorded.</td></tr>
+              <tr><td colSpan={6}>
+                <EmptyState
+                  className="py-6"
+                  title="No deductions recorded"
+                  description="A deduction is listed here when a purchase bill or vendor payment of this client carries TDS, or when one is typed on the firm's TDS screen against this client."
+                />
+              </td></tr>
             )}
           </tbody>
         </table>
@@ -275,9 +283,13 @@ function DeductionsTab({ clientId }: { clientId: string }) {
 
 // ── Challans ───────────────────────────────────────────────────────────────
 
-const EMPTY_CHALLAN_FORM = { challan_no: "", challan_date: "", bsr_code: "", section: "", amount_rupees: "", financial_year: "", quarter: "Q1" };
+// `deduction_month` (POST-A-267): on a salary challan, the wage month (YYYY-MM) whose tax it deposits; blank on any other. The server
+// refuses it on another section or outside the challan's quarter, in words, and says what it closed on the compliance calendar.
+const EMPTY_CHALLAN_FORM = { challan_no: "", challan_date: "", bsr_code: "", section: "", amount_rupees: "", financial_year: "", quarter: "Q1", deduction_month: "" };
 
 function ChallansTab({ clientId }: { clientId: string }) {
+  // Recording a challan or a certificate and preparing a return ask `tds` `compute`; a Reviewer's is read only (POST-A-455).
+  const mayCompute = usePermissions().can("tds", "compute");
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
   // Distinguishes "fetch failed" from "no challans yet".
@@ -369,10 +381,12 @@ function ChallansTab({ clientId }: { clientId: string }) {
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h3 className="font-medium">TDS Challans</h3>
-        <button onClick={openForm}
-          className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark">
-          + New Challan
-        </button>
+        {mayCompute && (
+          <button onClick={openForm}
+            className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark">
+            + New Challan
+          </button>
+        )}
       </div>
 
       {/* What recording a challan did to the compliance calendar, in the server's words; the tone is attention only for a month the server left open. */}
@@ -401,6 +415,7 @@ function ChallansTab({ clientId }: { clientId: string }) {
               { key: "section", placeholder: "TDS Section (e.g. 194C)" },
               { key: "amount_rupees", placeholder: "Amount (₹)" },
               { key: "financial_year", placeholder: "FY (e.g. 2025-26)" },
+              { key: "deduction_month", placeholder: "Wage month, salary challans only (e.g. 2025-07)" },
             ].map(({ key, placeholder, date }: { key: string; placeholder: string; date?: boolean }) => date ? (
               // The one date box: a typed "07/10/2026" is read by the one rule and sent as the ISO date. That it is a day, and not after today in India, is judged here,
               // as at the server: the bank has taken the tax by the day the challan is dated. How far back it may go is the period lock's, and nothing in this screen knows.
@@ -488,6 +503,11 @@ function ChallansTab({ clientId }: { clientId: string }) {
 // ── Returns ────────────────────────────────────────────────────────────────
 
 function ReturnsTab({ clientId }: { clientId: string }) {
+  // Prepare asks `tds` `compute` (an Executive and above) and CA Approve asks `tds` `approve` (a Manager or a Partner);
+  // both were drawn to every member and came back refused (POST-A-455).
+  const { can: canDo, resolved: permissionsRead } = usePermissions();
+  const mayCompute = canDo("tds", "compute");
+  const mayApprove = canDo("tds", "approve");
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
   // Distinguishes "fetch failed" from "no TDS returns yet".
@@ -729,16 +749,18 @@ function ReturnsTab({ clientId }: { clientId: string }) {
       )}
       <div className="flex justify-between items-center">
         <h3 className="font-medium">TDS Returns</h3>
-        <div className="flex gap-2">
-          <button onClick={() => { setShowCompute(true); loadDeductor(); }}
-            className="text-sm px-3 py-1 border border-blue-300 text-blue-700 rounded hover:bg-blue-50">
-            Compute from Books
-          </button>
-          <button onClick={() => setShowNew(true)}
-            className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark">
-            + New Return
-          </button>
-        </div>
+        {mayCompute && (
+          <div className="flex gap-2">
+            <button onClick={() => { setShowCompute(true); loadDeductor(); }}
+              className="text-sm px-3 py-1 border border-blue-300 text-blue-700 rounded hover:bg-blue-50">
+              Compute from Books
+            </button>
+            <button onClick={() => setShowNew(true)}
+              className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark">
+              + New Return
+            </button>
+          </div>
+        )}
       </div>
 
       {showCompute && (
@@ -778,7 +800,7 @@ function ReturnsTab({ clientId }: { clientId: string }) {
               className="border rounded px-3 py-1.5 text-sm col-span-2" />
           </div>
           {deductorLoading && (
-            <p className="text-xs text-ps-hint">Reading the deductor details on file…</p>
+            <LoadingRegion label="Reading the deductor details on file" className="text-xs text-ps-hint">Reading the deductor details on file…</LoadingRegion>
           )}
           {deductorGaps.length > 0 && (
             <div className="text-xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2 space-y-1">
@@ -808,9 +830,19 @@ function ReturnsTab({ clientId }: { clientId: string }) {
               <div className="border-t pt-3 space-y-2">
                 <div className={`text-sm px-3 py-2 rounded ${matched ? "bg-state-ready-surface text-state-ready" : "bg-state-attention-surface text-state-attention"}`}>
                   {!accountFound
-                    ? "⚠ Couldn't find the TDS Payable control account in the Chart of Accounts — reconciliation skipped."
-                    : matched ? "✓ Reconciled to the General Ledger"
+                    // The server's sentence when it has one (POST-A-083): two accounts that could each be the salary TDS
+                    // account are named there, and "couldn't find" would be false.
+                    ? (typeof rec?.account_note === "string" && rec.account_note
+                      ? `⚠ ${rec.account_note} Reconciliation skipped.`
+                      : "⚠ Couldn't find the TDS Payable control account in the Chart of Accounts — reconciliation skipped.")
+                    : matched ? (rec.typed_paise ? "✓ The purchase bills and advances reconcile to the General Ledger" : "✓ Reconciled to the General Ledger")
                     : "⚠ Does not reconcile to the General Ledger — review before saving"}
+                  {/* The server's own figure (POST-A-078): typed deductions are in the totals below, and nothing records which journal, if any, carries them, so they are outside this check. */}
+                  {accountFound && Boolean(rec.typed_paise) && (
+                    <span className="block mt-1 text-xs">
+                      The {rupees(rec.typed_paise as number)} of tax on deductions typed on the TDS screen is outside this check: nothing records which journal, if any, carries it.
+                    </span>
+                  )}
                   {accountFound && !matched && (
                     <span className="block mt-1 text-xs">
                       Books: {rupees((rec.books_paise as number) ?? 0)} vs Ledger: {rupees((rec.ledger_paise as number) ?? 0)}
@@ -870,8 +902,10 @@ function ReturnsTab({ clientId }: { clientId: string }) {
                     </p>
                   );
                 })()}
-                {/* AND THE DEDUCTIONS TYPED ON THE TDS SCREEN (POST-A-078): a 26Q built from the books carries posted purchase bills and advances
-                    only, so a typed deduction is not on it. The server names them (a 26Q only; a 24Q or 27Q sends no key and gets no note). */}
+                {/* AND THE DEDUCTIONS TYPED ON THE TDS SCREEN (POST-A-078): a 26Q built from the books carries them as deductee rows beside the
+                    purchase bills' and advances', outside the ledger tie-out above (no journal stands behind them), and leaves out a typed row recorded
+                    for another statement. The server names both (a 26Q only; a 24Q or 27Q sends no key and gets no note). */}
+                <TypedDeductionsOnStatementNote raw={computeResult.typed_on_statement} />
                 <TypedDeductionsNote raw={computeResult.excluded_typed} />
                 {((computeResult.challan_gaps as ChallanGap[]) ?? []).length > 0 && (
                   <div className="space-y-1 bg-state-attention-surface border border-state-attention-border rounded px-3 py-2">
@@ -964,13 +998,16 @@ function ReturnsTab({ clientId }: { clientId: string }) {
                   </span>
                 </td>
                 <td className="px-3 py-2 space-x-2">
-                  {r.status === "pending" && (
+                  {r.status === "pending" && mayCompute && (
                     <Button variant="plain" size="none" onClick={() => updateStatus(r.id as string, "prepared")}
                       className="text-xs px-2 py-0.5 border rounded hover:bg-ps-muted">Prepare</Button>
                   )}
-                  {r.status === "prepared" && (
+                  {r.status === "prepared" && mayApprove && (
                     <Button variant="plain" size="none" onClick={() => updateStatus(r.id as string, "ca_approved")}
                       className="text-xs px-2 py-0.5 border rounded hover:bg-state-ready-surface text-state-ready">CA Approve</Button>
+                  )}
+                  {r.status === "prepared" && permissionsRead && !mayApprove && (
+                    <span className="text-xs text-ps-label">Approving it needs permission to approve TDS statements, so the button is not shown to you</span>
                   )}
                   {/* Only on an approved statement, and only where the server says the walk-through exists — the dead-control rule. */}
                   {r.status === "ca_approved" && demoFlows.includes("tds") && (
@@ -1014,6 +1051,8 @@ function ReturnsTab({ clientId }: { clientId: string }) {
 // ── 26AS Reconciliation ────────────────────────────────────────────────────
 
 function Form26ASTab({ clientId }: { clientId: string }) {
+  // Reconciling a 26AS and recording a §197 certificate ask `tds` `compute`; a Reviewer's access is read only (POST-A-455).
+  const mayCompute = usePermissions().can("tds", "compute");
   const [fy, setFy] = useState(currentFinancialYearLabel());
   const [jsonText, setJsonText] = useState("");
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
@@ -1040,6 +1079,8 @@ function Form26ASTab({ clientId }: { clientId: string }) {
     setLoading(true);
     try {
       const resp = await apiFetch("/api/tds-workspace/form26as/upload", {
+        // It carries the whole Form 26AS: the long bound (POST-A-470).
+        signal: AbortSignal.timeout(LONG_REQUEST_BOUND_MS),
         method: "POST",
         body: JSON.stringify({ client_id: clientId, financial_year: fy, raw_data }),
       });
@@ -1102,10 +1143,12 @@ function Form26ASTab({ clientId }: { clientId: string }) {
           value={jsonText} onChange={(e) => setJsonText(e.target.value)}
           rows={8} className="w-full border rounded px-3 py-2 text-sm font-mono" />
         {error && <p className="text-state-problem text-sm">{error}</p>}
-        <Button variant="plain" size="none" onClick={upload} disabled={loading || !fy || !jsonText}
-          className="px-4 py-2 bg-brand text-white rounded text-sm disabled:opacity-50">
-          {loading ? "Reconciling…" : "Reconcile"}
-        </Button>
+        {mayCompute && (
+          <Button variant="plain" size="none" onClick={upload} disabled={loading || !fy || !jsonText}
+            className="px-4 py-2 bg-brand text-white rounded text-sm disabled:opacity-50">
+            {loading ? "Reconciling…" : "Reconcile"}
+          </Button>
+        )}
       </div>
 
       {recon && (
@@ -1144,6 +1187,8 @@ function Form26ASTab({ clientId }: { clientId: string }) {
 // ── Certificates ───────────────────────────────────────────────────────────
 
 function CertificatesTab({ clientId }: { clientId: string }) {
+  // Recording a challan or a certificate and preparing a return ask `tds` `compute`; a Reviewer's is read only (POST-A-455).
+  const mayCompute = usePermissions().can("tds", "compute");
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
   // Distinguishes "fetch failed" from "no certificates generated".
@@ -1199,10 +1244,12 @@ function CertificatesTab({ clientId }: { clientId: string }) {
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h3 className="font-medium">TDS certificate register (Form 16/16A)</h3>
-        <button onClick={() => setShowNew(true)}
-          className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark">
-          + Record certificate
-        </button>
+        {mayCompute && (
+          <button onClick={() => setShowNew(true)}
+            className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark">
+            + Record certificate
+          </button>
+        )}
       </div>
       {/* The register entry is ALL this creates. No certificate document is
           produced here — Form 16 / 16A (Form 130 / 131 from FY 2026-27) are
@@ -1392,6 +1439,8 @@ export default function TDSWorkspacePage() {
  *  the four facts and shows them back.
  */
 function LowerDeductionTab({ clientId }: { clientId: string }) {
+  // Reconciling a 26AS and recording a §197 certificate ask `tds` `compute`; a Reviewer's access is read only (POST-A-455).
+  const mayCompute = usePermissions().can("tds", "compute");
   const [rows, setRows] = useState<LowerDeductionRow[]>([]);
   const [vendors, setVendors] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1471,7 +1520,7 @@ function LowerDeductionTab({ clientId }: { clientId: string }) {
       setSaveError("Rule 28AA(4) issues a certificate for a specified AMOUNT. Enter the amount it applies up to.");
       return;
     }
-    if (certDates.first) { setSaveError(certDates.first); return; }
+    if (certDates.first) { certDates.refuseWith(setSaveError); return; }
     if (!form.valid_from || !form.valid_to || form.valid_to < form.valid_from) {
       setSaveError("Enter the validity period. Rule 28AA(4) caps it at the financial year.");
       return;
@@ -1522,10 +1571,12 @@ function LowerDeductionTab({ clientId }: { clientId: string }) {
             check the number, the rate and the period before you save.
           </p>
         </div>
-        <button onClick={() => { setShowNew((s) => !s); setSaveError(null); }}
-          className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark whitespace-nowrap">
-          + Record Certificate
-        </button>
+        {mayCompute && (
+          <button onClick={() => { setShowNew((s) => !s); setSaveError(null); }}
+            className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark whitespace-nowrap">
+            + Record Certificate
+          </button>
+        )}
       </div>
 
       {loadError && <p className="text-sm text-state-problem">{loadError}</p>}

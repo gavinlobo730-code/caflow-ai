@@ -56,6 +56,8 @@ def _as_date(v) -> Optional[date]:
     try:
         return date.fromisoformat(_d(v)) if v else None
     except (ValueError, TypeError):
+        # Not a date. A DATE or timestamp column always reads back as ISO text, so a stored one never lands here: this is an absent value or text that
+        # was never a date, and None says there is none.
         return None
 
 

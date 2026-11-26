@@ -35,7 +35,10 @@ import { PageHeader } from "@/components/ui/page-header";
 import { formatDate } from "@/lib/dates/format";
 
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { TypedDeductionsNote } from "@/components/tds/TypedDeductionsNote";
+import { usePermissions } from "@/lib/auth/AuthContext";
+import { TypedDeductionsOnStatementNote } from "@/components/tds/TypedDeductionsOnStatementNote";
 function r(paise: number) {
   return "₹" + (paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 });
 }
@@ -87,6 +90,12 @@ const QUARTER_LABELS: Record<TDSQuarter, string> = {
 };
 
 export default function TDSReturnsPage() {
+  // CA Approve and Mark as Filed ask `tds` `approve` (a Manager or a Partner) and were drawn to every member, who was
+  // refused (POST-A-455).
+  const { can: canDo, resolved: permissionsRead } = usePermissions();
+  const mayApprove = canDo("tds", "approve");
+  // Computing a statement saves it, which asks `tds` `compute`, a Reviewer's access does not hold (POST-A-455).
+  const mayCompute = canDo("tds", "compute");
   const { clients, clientId, setClientId } = useClientPicker();
   const [returnType, setReturnType] = useState<TDSReturnType>("26Q");
   const [financialYear, setFinancialYear] = useState(currentFinancialYear());
@@ -243,7 +252,7 @@ export default function TDSReturnsPage() {
 
   async function markFiled(recordAnyway: boolean) {
     if (!returnId || !prn || !filingDate) return;
-    if (dates.first) { setFiledError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setFiledError); return; }
     const asked = returnId;
     setFiledError(null);
     setHeldBack(null);
@@ -334,10 +343,17 @@ export default function TDSReturnsPage() {
           </div>
         </div>
         <div className="mt-4 flex items-center gap-3">
-          <Button variant="plain" size="none" onClick={handleCompute} disabled={actionInFlight || !clientId}
-            className="flex items-center gap-2 bg-brand text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-brand-dark disabled:opacity-50">
-            {loading ? "Computing…" : `Compute ${returnType}`}
-          </Button>
+          {mayCompute && (
+            <Button variant="plain" size="none" onClick={handleCompute} disabled={actionInFlight || !clientId}
+              className="flex items-center gap-2 bg-brand text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-brand-dark disabled:opacity-50">
+              {loading ? "Computing…" : `Compute ${returnType}`}
+            </Button>
+          )}
+          {permissionsRead && !mayCompute && (
+            <span className="text-xs text-ps-label">
+              Computing a statement from the books needs permission to compute TDS, so the button is not shown to you.
+            </span>
+          )}
           {result && (
             <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${statusCfg.color}`}>
               {statusCfg.label}
@@ -469,8 +485,10 @@ export default function TDSReturnsPage() {
                     </div>
                   )}
 
-                  {/* AND THE DEDUCTIONS TYPED ON THE TDS SCREEN (POST-A-078): a 26Q built from the books carries posted purchase bills and advances
-                      only, so a typed deduction is not on it. The server names them; this draws what it said and adds nothing to the totals above. */}
+                  {/* AND THE DEDUCTIONS TYPED ON THE TDS SCREEN (POST-A-078): a 26Q built from the books carries them as deductee rows beside the purchase
+                      bills' and advances', outside the ledger tie-up below (no journal stands behind them), and leaves out a typed row recorded for another
+                      statement. The server names both; this draws what it said and adds nothing to the totals above. */}
+                  <TypedDeductionsOnStatementNote raw={result.typed_on_statement} />
                   <TypedDeductionsNote raw={result.excluded_typed} />
 
                   <div className="text-xs text-ps-label space-y-1">
@@ -484,11 +502,16 @@ export default function TDSReturnsPage() {
                         Ledger tie-up:{" "}
                         <strong className={result.reconciliation.matched ? "text-green-700" : "text-state-attention"}>
                           {!result.reconciliation.account_found
-                            ? "the TDS Payable control account was not found"
+                            // The server's sentence when it has one: two accounts that could each be it is not "none was found".
+                            ? (result.reconciliation.account_note || "the TDS Payable control account was not found")
                             : result.reconciliation.matched
-                            ? "books agree with the general ledger"
+                            ? (result.reconciliation.typed_paise
+                              ? "the purchase bills and advances agree with the general ledger"
+                              : "books agree with the general ledger")
                             : `books and ledger differ by ${r(Math.abs(result.reconciliation.difference_paise))}`}
                         </strong>
+                        {/* The server's own figure (POST-A-078): the typed deductions' tax is in the totals, and nothing records which journal, if any, carries it, so it is outside this check. */}
+                        {result.reconciliation.typed_paise ? <> · the {r(result.reconciliation.typed_paise)} of tax on typed deductions is outside it: nothing records which journal, if any, carries it</> : null}
                       </p>
                     )}
                   </div>
@@ -521,7 +544,13 @@ export default function TDSReturnsPage() {
                     <tbody className="divide-y divide-ps-border">
                       {result.deductees.map((d, i) => (
                         <tr key={i} className="bg-white hover:bg-ps-bg">
-                          <td className="px-3 py-2">{d.deductee_name}</td>
+                          <td className="px-3 py-2">
+                            {d.deductee_name}
+                            {d.recorded_by === "tds_register" && (
+                              <span className="ml-1.5 text-3xs text-ps-label border border-ps-border rounded px-1 py-0.5 whitespace-nowrap"
+                                title="Typed on the TDS screen: no journal stands behind this deduction.">typed on the TDS screen</span>
+                            )}
+                          </td>
                           <td className="px-3 py-2 font-mono">{d.deductee_pan}</td>
                           <td className="px-3 py-2">
                             <span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded text-xs">{d.section}</span>
@@ -700,7 +729,10 @@ export default function TDSReturnsPage() {
 
           {/* Actions */}
           <div className="flex flex-wrap gap-3">
-            {(filingStatus === "prepared") && (
+            {(filingStatus === "prepared" || filingStatus === "ca_approved") && permissionsRead && !mayApprove && (
+              <p className="text-xs text-ps-label self-center">Approving this statement and recording the filing need permission to approve TDS statements, so those buttons are not shown to you.</p>
+            )}
+            {(filingStatus === "prepared") && mayApprove && (
               <Button variant="plain" size="none" onClick={handleApprove} disabled={actionInFlight || result.validation_errors.length > 0}
                 className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50">
                 <CheckCircle size={15} />
@@ -722,7 +754,7 @@ export default function TDSReturnsPage() {
                 File (demo)
               </button>
             )}
-            {filingStatus === "ca_approved" && (
+            {filingStatus === "ca_approved" && mayApprove && (
               <button onClick={openFiledModal}
                 className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700">
                 <FileText size={15} />
@@ -735,11 +767,20 @@ export default function TDSReturnsPage() {
 
       {/* Mark as Filed Modal */}
       {showFiledModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-brand-dark/60" onClick={() => { if (!filing) setShowFiledModal(false); }} />
-          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-            <h3 className="font-semibold text-ps-ink">Mark {returnType} as Filed</h3>
-            <p className="text-sm text-ps-label">Enter the details from the e-filing portal acknowledgement after successful upload on incometax.gov.in.</p>
+        // The shared dialog (POST-A-130): named, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it, its ×) and
+        // its Cancel are held while the filing is being recorded.
+        <Modal title={`Mark ${returnType} as Filed`} maxWidthClass="max-w-md" onClose={() => { if (!filing) setShowFiledModal(false); }}
+          note="Enter the details from the e-filing portal acknowledgement after successful upload on incometax.gov.in."
+          footer={<>
+            <button onClick={() => setShowFiledModal(false)} disabled={filing}
+              className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-ps-body hover:bg-ps-bg disabled:opacity-50">
+              Cancel
+            </button>
+            <Button variant="plain" size="none" onClick={handleMarkFiled} disabled={!prn || !filingDate || filing}
+              className="flex-1 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
+              Confirm Filed
+            </Button>
+          </>}>
             <div>
               <label className="block text-xs font-medium text-ps-body mb-1">PRN (Provisional Receipt Number) *</label>
               <input aria-label="PRN (Provisional Receipt Number)" value={prn} onChange={e => setPrn(e.target.value.toUpperCase())}
@@ -763,18 +804,7 @@ export default function TDSReturnsPage() {
               <RecordAnywayAsk sentence={heldBack.sentence} what="filed" busy={filing}
                 onConfirm={() => markFiled(true)} onLeave={() => setHeldBack(null)} />
             )}
-            <div className="flex gap-3 pt-1">
-              <button onClick={() => setShowFiledModal(false)} disabled={filing}
-                className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-ps-body hover:bg-ps-bg disabled:opacity-50">
-                Cancel
-              </button>
-              <Button variant="plain" size="none" onClick={handleMarkFiled} disabled={!prn || !filingDate || filing}
-                className="flex-1 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
-                Confirm Filed
-              </Button>
-            </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

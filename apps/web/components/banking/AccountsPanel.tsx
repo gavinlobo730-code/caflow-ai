@@ -10,10 +10,10 @@
 // "Accounts" link opens this. `onChanged` tells the caller an import or an
 // account change happened, so it can propose for the new lines at once.
 
+import { UploadProgress } from "@/components/ui/upload-progress";
+import type { UploadProgress as BytesSent } from "@/lib/api/uploadWithProgress";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { Plus, RefreshCw, Upload, CheckCircle, X, FileText, Pencil, Landmark } from "lucide-react";
-import { getSupabaseClient } from "@/lib/supabase/client";
-import { selectAll } from "@/lib/supabase/selectAll";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { formatPaise } from "@/lib/services/formatting";
 import { api, ApiRefusal, type BankAccountTypeInfo } from "@/lib/api";
@@ -24,21 +24,25 @@ import { pdfPasswordAsk, type PdfPasswordAsk } from "@/lib/banking/pdfPassword";
 //: a guard holds this in step with it.
 const FALLBACK_ACCOUNT_TYPES = ["Current", "Savings", "Cash Credit",
                                 "Overdraft", "Credit Card"];
-import { TableSkeleton } from "@/components/ui/skeleton";
+import { TableSkeleton, LoadingRegion } from "@/components/ui/skeleton";
 
 import { getBankStatements, getBankTransactions, BankStatement, BankTransaction } from "@/lib/data/bankStatements";
 import { fmt, BankAccount } from "@/components/banking/shared";
 import { objectWithLists, objectOrNull } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { AiDisclosure } from "@/components/ai/AiDisclosure";
 import { SavedColumnMappings } from "@/components/banking/SavedColumnMappings";
 import { formatDate } from "@/lib/dates/format";
+import { unreadHeading, unreadRowsOf, whatStopped, type UnreadRow } from "@/lib/banking/unreadRows";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { removedDateProblem } from "@/lib/dates/removedDate";
+import { editedText } from "@/lib/forms/editedValue";
+import { PasswordField } from "@/components/auth/PasswordField";
 
 export function BankAccounts({ clientId, onChanged }: { clientId: string; onChanged?: () => void }) {
   const [statements, setStatements] = useState<BankStatement[]>([]);
@@ -50,6 +54,9 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
   // panel used to compose its own from blocked_by, which meant two wordings of
   // one refusal and neither of them naming a law.
   const [deletability, setDeletability] = useState<Record<string, { deletable: boolean; blocked_by: string[]; reason?: string | null }>>({});
+  // Whether an account can be deleted is the server's answer. One that did not come is not "cannot be deleted" and not "can", so the
+  // row says it could not be read instead of leaving a column with no button and no reason (POST-A-515 (d)).
+  const [deletabilityUnread, setDeletabilityUnread] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showImport, setShowImport] = useState(false);
   // null = closed, "new" = create form, BankAccount = edit that account.
@@ -81,6 +88,7 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
       setStatements(stmts);
       setAccounts(accRes.success ? (accRes.data ?? []) : []);
       setDeletability(delRes.success ? (delRes.data ?? {}) : {});
+      setDeletabilityUnread(!delRes.success);
     } catch (e) {
       // Was a bare empty-comment placeholder, which read as "an empty statement list" — the
       // same screen a client with nothing imported yet gets. Say which it is.
@@ -255,6 +263,9 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
                       <span className="ml-3 text-ps-disabled cursor-not-allowed"
                             title={deletability[a.id].reason
                               || `Cannot be deleted because ${deletability[a.id].blocked_by.join("; ")}. Deactivate it instead — that keeps its history.`}>Delete</span>
+                    ) : deletabilityUnread ? (
+                      <span className="ml-3 text-ps-disabled cursor-not-allowed"
+                            title="Whether this account can be deleted could not be read. Reload this page to try again.">Delete</span>
                     ) : null}
                   </td>
                 </tr>
@@ -348,6 +359,7 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
             <p className="text-xs font-semibold text-ps-body">Transactions</p>
             {txnsLoading && <RefreshCw size={13} className="animate-spin text-ps-hint" />}
           </div>
+          {txnsLoading && <LoadingRegion label="Loading the transactions" noticeClassName="px-4" />}
           {!txnsLoading && stmtTxns.length > 0 && (
             <div className="overflow-x-auto max-h-72 overflow-y-auto">
               <table className="w-full text-xs">
@@ -428,6 +440,7 @@ export function BankAccountModal({ clientId, account, onClose, onSaved }: {
   const [coaId, setCoaId] = useState(account?.coa_account_id ?? "");
   const [isActive, setIsActive] = useState(account?.is_active ?? true);
   const [coaAccounts, setCoaAccounts] = useState<CoaAccountLite[]>([]);
+  const [newLedgerName, setNewLedgerName] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // BANK-21. The vocabulary is the engine's — the type decides whether this
@@ -450,31 +463,31 @@ export function BankAccountModal({ clientId, account, onClose, onSaved }: {
     (accountTypes.find(t => t.value === accountType)?.balance_label ?? "Balance")
       === "Amount owed" ? "Opening Amount Owed" : "Opening Balance";
 
+  // POST-A-492. The ledgers this account may be linked to, and the name a new one would be given, come from the SERVER, which
+  // owns what a bank can sit on (an asset or a liability ledger of this client's or the firm's, never another bank's, never a
+  // cash ledger). This form used to read the whole chart straight from the database and offer every asset and liability
+  // ledger, "Cash in Hand" among them, and said nothing of the ledger it makes when none is chosen. Asked again, a moment
+  // after the person stops typing, when the bank or the number changes the name.
   useEffect(() => {
-    (async () => {
-      // ASSET **OR** LIABILITY, because an overdraft is not an asset (BANK-02).
-      // bank_accounts.account_type has allowed 'Cash Credit' and 'Overdraft'
-      // since migration 054 and this form offers both — but the picker filtered
-      // `account_type = "Asset"`, so a CA who created an OD account could not
-      // point it at a liability ledger even by hand. Migration 342 creates the
-      // right one automatically and re-classifies the existing ones; this is
-      // what lets the manual picker agree with it.
-      const supabase = getSupabaseClient();
-      const { data } = await selectAll(() => supabase
-        .from("chart_of_accounts")
-        .select("id, account_code, account_name, account_type, account_subtype")
-        .or(`client_id.eq.${clientId},client_id.is.null`)
-        .eq("is_active", true)
-        .in("account_type", ["Asset", "Liability"])
-        .order("account_code").order("id"));
-      setCoaAccounts((data as CoaAccountLite[]) ?? []);
-    })();
-  }, [clientId]);
+    let live = true;
+    const t = window.setTimeout(async () => {
+      try {
+        const res = await api.banking.ledgerChoices({
+          client_id: clientId, bank_name: bankName.trim(), account_no: editing ? (account?.account_no ?? "") : accountNo.trim(),
+          ...(account ? { account_id: account.id } : {}),
+        });
+        if (!live || !res.success) return;
+        setCoaAccounts(res.data?.ledgers ?? []);
+        setNewLedgerName(res.data?.new_ledger_name ?? null);
+      } catch { /* the form still works: a name or a list that did not arrive is simply not shown */ }
+    }, 350);
+    return () => { live = false; window.clearTimeout(t); };
+  }, [clientId, account, editing, bankName, accountNo]);
 
   async function save() {
     if (!bankName.trim()) { setError("Bank name is required."); return; }
     if (!editing && !accountNo.trim()) { setError("Account number is required."); return; }
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError); return; }
     // An opening balance read wrong is wrong for the life of the account: every
     // reconciliation after it starts from this number.
     const openingPaise = paiseFromRupeeInput(openingBal || "0");
@@ -497,13 +510,20 @@ export function BankAccountModal({ clientId, account, onClose, onSaved }: {
     }
     // The date on file cannot be emptied (above). Said beside the button as a derived sentence; a server answer left over from an earlier press is not shown next to it.
     if (openingCleared) { setError(null); openingRefusal.refuse(); return; }
+    // POST-A-399. The ledger a linked account posts to is changed and not removed by an edit: every posting to this account reads it, and the route
+    // keeps a link the request sends empty, so "Not linked" over a link would leave the link and say the account was saved.
+    if (editing && account?.coa_account_id && !coaId) {
+      setError("The ledger account on file can be changed but not removed: choose the ledger this account posts to.");
+      return;
+    }
     setSaving(true); setError(null);
     try {
       const res = (editing
         ? await api.banking.updateBankAccount(account!.id, {
-            bank_name: bankName.trim(), ifsc: ifsc.trim() || null, account_type: accountType,
+            // An emptied IFSC that was on file is sent as null and the route clears it (POST-A-399); an empty box over nothing is not sent.
+            bank_name: bankName.trim(), ifsc: editedText(ifsc, account!.ifsc), account_type: accountType,
             opening_balance_paise: openingPaise, opening_balance_date: openingDate || null,
-            coa_account_id: coaId || null, is_active: isActive,
+            coa_account_id: coaId || undefined, is_active: isActive,
           })
         : await api.banking.createBankAccount({
             client_id: clientId, bank_name: bankName.trim(), account_no: accountNo.trim(),
@@ -525,12 +545,15 @@ export function BankAccountModal({ clientId, account, onClose, onSaved }: {
   const labelCls = "block text-xs font-medium text-ps-label mb-1";
 
   return (
-    <div className="fixed inset-0 bg-ps-ink/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-ps-ink">{editing ? "Edit Bank Account" : "Add Bank Account"}</h3>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
-        </div>
+    // The shared dialog (POST-A-130): named, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it, its ×) and its
+    // Cancel are held while the account is being saved.
+    <Modal title={editing ? "Edit Bank Account" : "Add Bank Account"} maxWidthClass="max-w-md" onClose={() => { if (!saving) onClose(); }}
+      footer={<>
+        <button disabled={saving} onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-40">Cancel</button>
+        <Button variant="plain" size="none" onClick={save} disabled={saving} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
+          {saving ? "Saving…" : editing ? "Save Changes" : "Add Account"}
+        </Button>
+      </>}>
         <div className="space-y-3">
           <div>
             <label className={labelCls}>Bank Name *</label>
@@ -588,23 +611,20 @@ export function BankAccountModal({ clientId, account, onClose, onSaved }: {
           <div>
             <label className={labelCls}>Ledger Account (GL link)</label>
             <select aria-label="Ledger Account (GL link)" value={coaId} onChange={(e) => setCoaId(e.target.value)} className={inputCls}>
-              <option value="">— Not linked —</option>
+              <option value="">{editing ? "— Not linked —" : `Create a new ledger for this account${newLedgerName ? ` — “${newLedgerName}”` : ""}`}</option>
               {coaAccounts.map((c) => <option key={c.id} value={c.id}>{c.account_code} · {c.account_name}</option>)}
             </select>
-            <p className="text-3xs text-ps-hint mt-1">Links this bank account to a chart-of-accounts asset account so postings and the opening balance hit the right GL account.</p>
+            <p className="text-3xs text-ps-hint mt-1">
+              {editing
+                ? "The ledger this account posts to. Postings and the opening balance hit it; a cash ledger cannot be used, and each bank account needs its own."
+                : "Leave this on creating a new ledger and one is made for this account, named as shown (a number is added if that name is already taken). Choose an existing ledger only if this account already has one of its own; a cash ledger cannot be used."}
+            </p>
           </div>
         </div>
         {error && <p role="alert" className="text-xs text-state-problem bg-state-problem-surface rounded px-3 py-2">{error}</p>}
         {/* The form's own answer to the press comes first: with a balance and no date the older sentence is the true one, and two alerts would say it twice. */}
         {!error && openingRefusal.shown && <p role="alert" className="text-xs text-state-problem bg-state-problem-surface rounded px-3 py-2">{openingRefusal.shown}</p>}
-        <div className="flex gap-3 justify-end">
-          <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
-          <Button variant="plain" size="none" onClick={save} disabled={saving} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
-            {saving ? "Saving…" : editing ? "Save Changes" : "Add Account"}
-          </Button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -654,6 +674,29 @@ interface TotalsCheck {
    *  which of them totals the whole statement cannot be told from the file.
    *  Not the same as printing none, and the CA is told which it is. */
   ambiguous?: boolean;
+}
+
+/**
+ * The rows of the file that look like transactions and were not read (POST-A-551): each with its date where that was read, its
+ * narration and the cell as the bank printed it, so the row can be found in the file. Drawn in the preview, before the CA
+ * imports under a mapping, and beside the import's result, where "42 imported" over a file of 43 has to say which is missing.
+ */
+function UnreadRows({ rows, className }: { rows: UnreadRow[]; className?: string }) {
+  if (rows.length === 0) return null;
+  return (
+    <div role="status" data-unread-rows={rows.length}
+      className={`text-xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2 ${className ?? ""}`}>
+      <p className="font-medium">{unreadHeading(rows.length)}</p>
+      <ul className="mt-1 space-y-0.5">
+        {rows.map((r, i) => (
+          <li key={i}>
+            {r.date ? `${formatDate(r.date)} · ` : ""}{r.description || "(no description)"}: {whatStopped(r)}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-1">Correct {rows.length === 1 ? "it" : "them"} in the file, or check the column mapping, and upload it again.</p>
+    </div>
+  );
 }
 
 interface ImportResult {
@@ -728,6 +771,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? "");
   const [file, setFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
+  const [sent, setSent] = useState<BytesSent | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -839,7 +883,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
     try {
       const form = baseForm();
       form.append("bank_account_id", account.id);
-      const res = (await api.banking.inspectStatement(form)) as { success: boolean; data: StatementInspection };
+      const res = (await api.banking.inspectStatement(form, setSent)) as { success: boolean; data: StatementInspection };
       const info = res.data;
       setInspected(info);
       // A saved mapping for this exact layout wins; then the detected adapter,
@@ -851,6 +895,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
       askForPassword(err);
       setError(err instanceof Error ? err.message : "Could not read the file.");
     } finally {
+      setSent(null);
       setChecking(false);
     }
   }
@@ -862,7 +907,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
     try {
       const form = baseForm();
       form.append("column_mapping", JSON.stringify(cleanMapping(mapping)));
-      const res = (await api.banking.previewStatement(form)) as { success: boolean; data: StatementPreview };
+      const res = (await api.banking.previewStatement(form, setSent)) as { success: boolean; data: StatementPreview };
       const shaped = objectWithLists<StatementPreview>(res.data, "rows");
       // The panel reads `balance_check.checked`, `.agrees` and `.reason` (POST-A-149): a preview without its balance check cannot say
       // whether the file agrees with itself, so it is not shown as one that does.
@@ -873,6 +918,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
       askForPassword(err);
       setError(err instanceof Error ? err.message : "Could not read the file with that mapping.");
     } finally {
+      setSent(null);
       setChecking(false);
     }
   }
@@ -911,7 +957,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
       // is substantive — the server refuses a shorter one, and refuses it
       // outright when there is nothing to acknowledge.
       if (totalsRefusal && ackReady) form.append("acknowledge_totals_mismatch", ackReason.trim());
-      const res = (await api.banking.uploadStatement(form)) as {
+      const res = (await api.banking.uploadStatement(form, setSent)) as {
         success: boolean; data: ImportResult; error?: string;
       };
       if (!res.success) { setError(res.error ?? "Import failed."); setImporting(false); return; }
@@ -934,22 +980,54 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
       if (!mapping && looksLikeAFormatProblem(message)) void startMapping();
     } finally {
       setImporting(false);
+      setSent(null);
     }
   }
 
   const inputCls = "w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand";
 
   return (
-    <div className="fixed inset-0 bg-ps-ink/60 z-50 flex items-center justify-center p-4">
-      <div className={`bg-white rounded-xl shadow-xl w-full p-6 space-y-4 ${inspected ? "max-w-3xl max-h-[90vh] overflow-y-auto" : "max-w-md"}`}>
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-ps-ink">
-            {inspected ? "Map the statement columns" : "Import Bank Statement"}
-          </h3>
-          <button onClick={onClose} disabled={importing} aria-label="Close"
-                  className="text-ps-hint hover:text-ps-label disabled:opacity-40"><X size={16} /></button>
-        </div>
-
+    // The shared dialog (POST-A-130): named, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it, its ×) and its
+    // Cancel are held while the import is out, for the reason written beside Cancel below; a read is abandonable, so they stay live for that.
+    <Modal title={inspected ? "Map the statement columns" : "Import Bank Statement"} maxWidthClass={inspected ? "max-w-3xl" : "max-w-md"}
+      onClose={() => { if (!importing) onClose(); }}
+      footer={result ? (
+        <button onClick={onImported} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark">Done</button>
+      ) : (
+        <>
+          {/* Closing mid-import would unmount the dialog with the upload still
+              in flight: the write continues server-side and the CA never
+              learns whether 292 transactions landed, so the honest thing is
+              to make them wait for the answer. A read is abandonable —
+              nothing has been written — so Cancel stays live for that. */}
+          <button onClick={onClose} disabled={importing}
+                  className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-40">Cancel</button>
+          {!inspected && file && (
+            <button onClick={startMapping} disabled={busy || !account}
+                    className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-40">
+              {checking ? "Reading…" : "Map columns"}
+            </button>
+          )}
+          <Button variant="plain" size="none"
+            onClick={handleImport}
+            disabled={
+              busy || !file || accounts.length === 0
+              // With the mapper open, importing is gated on a check having
+              // been run: the preview IS the safety argument for skipping
+              // the column-label validation, so importing without it would
+              // give up the guard and gain nothing.
+              || (!!inspected && !preview)
+              || (!!preview && preview.balance_check.agrees === false && !overrideBalance)
+              // Refused on the statement's own totals: the button is now
+              // "Import anyway", and it needs the reason first.
+              || (!!totalsRefusal && !ackReady)
+            }
+            className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40"
+          >
+            {importing ? "Importing…" : totalsRefusal ? "Import anyway" : "Import"}
+          </Button>
+        </>
+      )}>
         {result ? (
           <>
             {/* LEAD WITH THE OUTCOME, NOT THE COUNTER.
@@ -1003,9 +1081,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                 Compare the totals against the statement before you rely on these figures.
               </p>
             )}
-            <div className="flex justify-end">
-              <button onClick={onImported} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark">Done</button>
-            </div>
+            <UnreadRows rows={unreadRowsOf(result)} />
           </>
         ) : (
           <>
@@ -1040,12 +1116,12 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                   <label htmlFor="stmt-pdf-password" className="block text-xs font-medium text-ps-label mb-1">
                     PDF password *
                   </label>
-                  <input id="stmt-pdf-password" type="password" value={pdfPassword}
+                  <PasswordField id="stmt-pdf-password" label="PDF password" value={pdfPassword}
                          autoComplete="new-password" spellCheck={false} autoFocus
-                         aria-invalid={passwordAsk === "incorrect"}
-                         onChange={(e) => setPdfPassword(e.target.value)}
-                         onKeyDown={(e) => { if (e.key === "Enter" && pdfPassword && !busy) void handleImport(); }}
-                         className={inputCls} />
+                         ariaInvalid={passwordAsk === "incorrect"}
+                         onChange={setPdfPassword}
+                         onKeyDown={(e) => (e.key === "Enter" && pdfPassword && !busy ? handleImport() : undefined)}
+                         inputClassName={inputCls} eyeSize={14} />
                   <p className="text-3xs text-ps-hint mt-1">
                     {passwordAsk === "incorrect"
                       ? "That one did not open it — check the bank's email and type it again."
@@ -1217,6 +1293,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                       {preview.parsed_count} of {preview.total_rows} rows read
                       {preview.skipped_count > 0 && <span className="text-state-attention"> · {preview.skipped_count} skipped</span>}
                     </p>
+                    <UnreadRows rows={unreadRowsOf(preview)} />
                     <div className="overflow-x-auto border border-ps-border rounded-lg">
                       <table className="w-full text-2xs">
                         <thead className="bg-ps-bg text-ps-label">
@@ -1272,43 +1349,10 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                 </p>
               </div>
             )}
-            <div className="flex gap-3 justify-end">
-              {/* Closing mid-import would unmount the dialog with the upload still
-                  in flight: the write continues server-side and the CA never
-                  learns whether 292 transactions landed, so the honest thing is
-                  to make them wait for the answer. A read is abandonable —
-                  nothing has been written — so Cancel stays live for that. */}
-              <button onClick={onClose} disabled={importing}
-                      className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-40">Cancel</button>
-              {!inspected && file && (
-                <button onClick={startMapping} disabled={busy || !account}
-                        className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-40">
-                  {checking ? "Reading…" : "Map columns"}
-                </button>
-              )}
-              <Button variant="plain" size="none"
-                onClick={handleImport}
-                disabled={
-                  busy || !file || accounts.length === 0
-                  // With the mapper open, importing is gated on a check having
-                  // been run: the preview IS the safety argument for skipping
-                  // the column-label validation, so importing without it would
-                  // give up the guard and gain nothing.
-                  || (!!inspected && !preview)
-                  || (!!preview && preview.balance_check.agrees === false && !overrideBalance)
-                  // Refused on the statement's own totals: the button is now
-                  // "Import anyway", and it needs the reason first.
-                  || (!!totalsRefusal && !ackReady)
-                }
-                className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40"
-              >
-                {importing ? "Importing…" : totalsRefusal ? "Import anyway" : "Import"}
-              </Button>
-            </div>
+            <UploadProgress progress={sent} what="the statement" />
           </>
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }
 

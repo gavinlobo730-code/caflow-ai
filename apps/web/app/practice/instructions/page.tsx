@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { api, type ApiResp } from "@/lib/api";
 import { PartnerGuard } from "@/components/practice/PartnerGuard";
 import { ClientInstructions } from "@/components/knowledge/ClientInstructions";
-import { PageLoader } from "@/components/ui/skeleton";
+import { PagePlaceholder, pageFrameClass } from "@/components/ui/page-frame";
 
 function PracticeInstructions() {
   const [internalId, setInternalId] = useState<string | null>(null);
@@ -29,14 +29,14 @@ function PracticeInstructions() {
     })();
   }, []);
 
-  if (loading) return <PageLoader />;
-  if (loadError) return <div className="p-8 text-sm text-red-600">{loadError}</div>;
-  if (!internalId) return <div className="p-8 text-sm text-gray-500">Set up the Practice first (Overview).</div>;
+  if (loading) return <PagePlaceholder label="Loading the practice's instructions" shape="list" width="form" />;
+  if (loadError) return <div role="alert" className={pageFrameClass("data", "text-sm text-state-problem")}>{loadError}</div>;
+  if (!internalId) return <div className={pageFrameClass("data", "text-sm text-gray-500")}>Set up the Practice first (Overview).</div>;
   // The internal client is the PRACTICE's own books, not a client of it, so the
   // component's default "Client Instructions" heading misdescribed this list.
   // A client's instructions live on that client's own Instructions tab.
   return (
-    <div className="p-6 max-w-3xl">
+    <div className={pageFrameClass("form")}>
       <ClientInstructions
         clientId={internalId}
         title="Practice standing instructions (the firm's own books)"

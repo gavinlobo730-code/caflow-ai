@@ -252,6 +252,7 @@ def _duplicate_suspect(txn: dict, ctx: TxnContext, policy: ExceptionPolicy,
     try:
         when = date.fromisoformat(str(txn.get("transaction_date"))[:10])
     except (TypeError, ValueError):
+        # No readable date on the line: a repeat cannot be judged by a window of days, so none is suspected.
         return None
     window = timedelta(days=policy.duplicate_window_days)
     for sib_id, sib_date, sib_amt, sib_payee in ctx.siblings:
@@ -262,6 +263,7 @@ def _duplicate_suspect(txn: dict, ctx: TxnContext, policy: ExceptionPolicy,
         try:
             sib_when = date.fromisoformat(str(sib_date)[:10])
         except (TypeError, ValueError):
+            # A sibling with no readable date cannot be inside the window: skip it, it is not evidence of a repeat.
             continue
         if abs((sib_when - when).days) <= window.days:
             return BankException(

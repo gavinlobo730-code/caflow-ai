@@ -10,5 +10,5 @@ export default function Error(props: {
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  return <ModuleErrorBoundary {...props} moduleName="Sign" />;
+  return <ModuleErrorBoundary {...props} moduleName="Sign" frontDoor frontDoorName="PracticeSync" />;
 }

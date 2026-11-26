@@ -1,13 +1,16 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { Suspense, useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { Library, Search, Plus, History, RotateCcw, RefreshCw } from "lucide-react";
 import { api, type ApiResp } from "@/lib/api";
 import { usePermissions } from "@/lib/auth/AuthContext";
-import { PageLoader } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { formatDate } from "@/lib/dates/format";
+import { PagePlaceholder, SectionPlaceholder, pageFrameClass } from "@/components/ui/page-frame";
 
 interface Article {
   id: string; scope: string; department?: string | null; client_id?: string | null;
@@ -113,17 +116,25 @@ function KnowledgeInner() {
 
   async function restore(id: string, version: number) {
     setRowBusy(true);
+    setError("");
     try {
-    try {
-      await api.knowledge.restoreVersion(id, version); await open(id); await open(id);
+      // A refused restore (the backend enforces who may) is said, not swallowed: the page used to look as if the version had come back
+      // (POST-A-515). `open` is asked once; it was asked twice.
+      const res = (await api.knowledge.restoreVersion(id, version)) as { success?: boolean; error?: string | null } | null;
+      if (res && res.success === false) {
+        setError(res.error ?? "Couldn't restore that version.");
+        return;
+      }
+      await open(id);
       // A restore writes a new current version, so the row's version and what a search finds in its text have moved.
       void load(query);
-    } catch { /* backend enforces */ }
-  } finally { setRowBusy(false); }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't restore that version.");
+    } finally { setRowBusy(false); }
   }
 
   return (
-    <div className="p-6 max-w-4xl">
+    <div className={pageFrameClass("data")}>
       <PageHeader
         icon={<Library size={18} className="text-brand" />}
         title={`Knowledge Base${scope ? ` — ${scope}` : ""}`}
@@ -163,9 +174,21 @@ function KnowledgeInner() {
         </form>
       )}
 
-      {loading ? <PageLoader onRetry={() => { void load(query); }} /> : (
+      {loading ? <SectionPlaceholder label="Loading articles" shape="list" onRetry={() => { void load(query); }} /> : (
         <div className="space-y-2">
-          {articles.length === 0 && !answered && <p className="text-xs text-ps-hint">No articles found.</p>}
+          {articles.length === 0 && !answered && (
+            <EmptyState
+              className="py-10"
+              icon={<Library size={32} />}
+              title="No articles found"
+              description="The firm's own articles are listed here. A Partner or Manager writes one with New article."
+              action={
+                <EmptyStateActions>
+                  <EmptyStateAction requires={["knowledge", "write"]} icon={<Plus size={14} />} label="New article" onClick={() => setShowForm(true)} />
+                </EmptyStateActions>
+              }
+            />
+          )}
           {articles.length === 0 && answered && (
             <p className="text-xs text-ps-hint">
               No article in this list has every word of &ldquo;{answered}&rdquo; in its title or its current text.
@@ -197,7 +220,7 @@ function KnowledgeInner() {
                       <li key={v.version} className="flex items-center justify-between text-xs text-gray-600">
                         <span>v{v.version}{v.changed_at ? ` · ${formatDate(v.changed_at)}` : ""}</span>
                         {canAuthor && v.version !== a.current_version && (
-                          <button disabled={rowBusy} onClick={() => restore(a.id, v.version)} className="flex items-center gap-1 text-blue-600 hover:underline"><RotateCcw size={11} /> Restore</button>
+                          <Button variant="plain" size="none" spinner={false} disabled={rowBusy} onClick={() => restore(a.id, v.version)} className="flex items-center gap-1 text-blue-600 hover:underline"><RotateCcw size={11} /> Restore</Button>
                         )}
                       </li>
                     ))}
@@ -214,7 +237,7 @@ function KnowledgeInner() {
 
 export default function KnowledgePage() {
   return (
-    <Suspense fallback={<PageLoader />}>
+    <Suspense fallback={<PagePlaceholder label="Loading the knowledge base" shape="list" />}>
       <KnowledgeInner />
     </Suspense>
   );

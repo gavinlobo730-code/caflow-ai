@@ -1,10 +1,12 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { useState, useEffect, useCallback } from "react";
-import { RefreshCw, Plus, X, Activity, AlertTriangle } from "lucide-react";
+import { RefreshCw, Plus, Activity, AlertTriangle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton, LoadingRegion } from "@/components/ui/skeleton";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { formatDate } from "@/lib/dates/format";
@@ -14,7 +16,9 @@ import { PageHeader } from "@/components/ui/page-header";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
-import { doingOf, failureSentence, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, failureSentence, fetchBounded, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import {
   HEALTH_DIMENSIONS, dimensionLabel, gradeBadgeClass, gradeOf, scoreBarClass, scoreTextClass, weightLabel,
   type HealthDimensionKey,
@@ -26,7 +30,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
   const { data: { session } } = await getSupabaseClient().auth.getSession();
   const token = session?.access_token ?? "";
   const doing = doingOf(opts?.method);
-  const res = await fetchPlain(`${API}${path}`, {
+  const res = await fetchBounded(`${API}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
@@ -290,7 +294,7 @@ export default function ClientHealthPage() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-6">
+      <LoadingRegion label="Loading the client's health" className="p-6 space-y-6">
         {/* Score hero */}
         <div className="rounded-xl border border-gray-200 bg-white p-6">
           <div className="flex items-center gap-6">
@@ -323,7 +327,7 @@ export default function ClientHealthPage() {
             </div>
           ))}
         </div>
-      </div>
+      </LoadingRegion>
     );
   }
 
@@ -332,17 +336,24 @@ export default function ClientHealthPage() {
       <div className="p-6 space-y-4">
         {error && <Callout tone="problem">{error}</Callout>}
         <Card className="bg-white border border-gray-200">
-          <CardContent className="py-12 text-center">
-            <Activity size={32} className="text-gray-300 mx-auto mb-3" />
-            <p className="text-sm text-gray-500 mb-4">No health score calculated yet</p>
-            <button
-              onClick={handleRecalculate}
-              disabled={actionInFlight}
-              className="inline-flex items-center gap-2 text-sm bg-brand text-white px-4 py-2 rounded-md hover:bg-brand-dark disabled:opacity-50"
-            >
-              <RefreshCw size={14} className={recalculating ? "animate-spin" : ""} />
-              {recalculating ? "Calculating…" : "Calculate Now"}
-            </button>
+          <CardContent className="p-0">
+            <EmptyState
+              className="py-12"
+              icon={<Activity size={32} />}
+              title="No health score calculated yet"
+              description="The score is recalculated every night. Calculate it now to see it straight away."
+              action={
+                <EmptyStateActions>
+                  <EmptyStateAction
+                    requires={["client", "write"]}
+                    icon={<RefreshCw size={14} />}
+                    label={recalculating ? "Calculating…" : "Calculate Now"}
+                    onClick={() => handleRecalculate()}
+                    disabled={actionInFlight}
+                  />
+                </EmptyStateActions>
+              }
+            />
           </CardContent>
         </Card>
       </div>
@@ -354,14 +365,14 @@ export default function ClientHealthPage() {
       <PageHeader
         title="Client Health"
         actions={
-          <button
+          <Button variant="plain" size="none" spinner={false}
             onClick={handleRecalculate}
             disabled={actionInFlight}
             className="flex items-center gap-1.5 text-xs text-gray-600 border border-gray-200 px-3 py-1.5 rounded hover:bg-gray-50 disabled:opacity-50"
           >
             <RefreshCw size={12} className={recalculating ? "animate-spin" : ""} />
             Recalculate
-          </button>
+          </Button>
         }
       />
 
@@ -569,13 +580,13 @@ export default function ClientHealthPage() {
                       <td className="px-3 py-3 text-gray-700 text-xs max-w-xs truncate">{o.reason}</td>
                       <td className="px-3 py-3 text-gray-500 text-xs">{formatDate(o.expires_at)}</td>
                       <td className="px-3 py-3 text-right">
-                        <button
+                        <Button variant="plain" size="none" spinner={false}
                           onClick={() => handleRemoveOverride(o.id)}
                           disabled={removingOverride === o.id}
                           className="text-xs text-state-problem hover:underline disabled:opacity-50"
                         >
                           {removingOverride === o.id ? "Removing…" : "Remove"}
-                        </button>
+                        </Button>
                       </td>
                     </tr>
                     );
@@ -589,71 +600,67 @@ export default function ClientHealthPage() {
 
       {/* Override Modal */}
       {overrideModal && (
-        <div className="fixed inset-0 bg-gray-900/60 flex items-center justify-center z-50 px-4">
-          <div className="bg-white border border-gray-200 rounded-xl shadow-xl p-6 w-full max-w-md">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-sm font-semibold text-brand">Add Override</h2>
-              <button onClick={() => setOverrideModal(false)} className="text-gray-400 hover:text-gray-700"><X size={16} /></button>
-            </div>
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs text-gray-600">Dimension</label>
-                <select aria-label="Dimension"
-                  value={overrideForm.dimension}
-                  onChange={(e) => setOverrideForm({ ...overrideForm, dimension: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
-                >
-                  {DIMENSIONS.map((d) => (
-                    <option key={d.key} value={d.key}>{d.label} ({weightLabel(d.weightBp)})</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-gray-600">Override Score (0–100) *</label>
-                <input aria-label="Override Score (0–100)"
-                  type="number" min="0" max="100"
-                  value={overrideForm.override_score}
-                  onChange={(e) => setOverrideForm({ ...overrideForm, override_score: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
-                  placeholder="0–100"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-gray-600">Reason *</label>
-                <textarea aria-label="Reason"
-                  rows={3}
-                  value={overrideForm.reason}
-                  onChange={(e) => setOverrideForm({ ...overrideForm, reason: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 resize-none focus:outline-none focus:ring-2 focus:ring-brand"
-                  placeholder="Explain why…"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-gray-600">Expires At (optional)</label>
-                <DateInput
-                  aria-label="Expires at (optional)"
-                  value={overrideForm.expires_at}
-                  onChange={(v) => setOverrideForm({ ...overrideForm, expires_at: v })}
-                  onStateChange={overrideDates.watch("expires", "Expires at")}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
-                />
-              </div>
-            </div>
-            {overrideRefusal.shown && (
-              <p role="alert" className="mt-3 text-xs text-state-problem">{overrideRefusal.shown}</p>
-            )}
-            <div className="flex gap-2 mt-5">
-              <button onClick={() => setOverrideModal(false)} className="flex-1 text-sm text-gray-600 border border-gray-200 py-2 rounded-md hover:bg-gray-50">Cancel</button>
-              <button
-                onClick={handleAddOverride}
-                disabled={actionInFlight || !overrideForm.reason.trim() || !overrideForm.override_score}
-                className="flex-1 text-sm bg-brand text-white py-2 rounded-md hover:bg-brand-dark disabled:opacity-50"
-              >
-                {savingOverride ? "Saving…" : "Add Override"}
-              </button>
-            </div>
+        // The shared dialog (POST-A-130): named, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it, its ×) and its
+        // Cancel are held while its own request is out.
+        <Modal title="Add Override" maxWidthClass="max-w-md" onClose={() => { if (!actionInFlight) setOverrideModal(false); }}
+          footer={<>
+            <button disabled={actionInFlight} onClick={() => setOverrideModal(false)} className="flex-1 text-sm text-gray-600 border border-gray-200 py-2 rounded-md hover:bg-gray-50 disabled:opacity-50">Cancel</button>
+            <Button variant="plain" size="none" spinner={false}
+              onClick={handleAddOverride}
+              disabled={actionInFlight || !overrideForm.reason.trim() || !overrideForm.override_score}
+              className="flex-1 text-sm bg-brand text-white py-2 rounded-md hover:bg-brand-dark disabled:opacity-50"
+            >
+              {savingOverride ? "Saving…" : "Add Override"}
+            </Button>
+          </>}>
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-gray-600">Dimension</label>
+            <select aria-label="Dimension"
+              value={overrideForm.dimension}
+              onChange={(e) => setOverrideForm({ ...overrideForm, dimension: e.target.value })}
+              className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
+            >
+              {DIMENSIONS.map((d) => (
+                <option key={d.key} value={d.key}>{d.label} ({weightLabel(d.weightBp)})</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-gray-600">Override Score (0–100) *</label>
+            <input aria-label="Override Score (0–100)"
+              type="number" min="0" max="100"
+              value={overrideForm.override_score}
+              onChange={(e) => setOverrideForm({ ...overrideForm, override_score: e.target.value })}
+              className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
+              placeholder="0–100"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-600">Reason *</label>
+            <textarea aria-label="Reason"
+              rows={3}
+              value={overrideForm.reason}
+              onChange={(e) => setOverrideForm({ ...overrideForm, reason: e.target.value })}
+              className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 resize-none focus:outline-none focus:ring-2 focus:ring-brand"
+              placeholder="Explain why…"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-600">Expires At (optional)</label>
+            <DateInput
+              aria-label="Expires at (optional)"
+              value={overrideForm.expires_at}
+              onChange={(v) => setOverrideForm({ ...overrideForm, expires_at: v })}
+              onStateChange={overrideDates.watch("expires", "Expires at")}
+              className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
+            />
           </div>
         </div>
+        {overrideRefusal.shown && (
+          <p role="alert" className="mt-3 text-xs text-state-problem">{overrideRefusal.shown}</p>
+        )}
+        </Modal>
       )}
     </div>
   );

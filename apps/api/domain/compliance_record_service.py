@@ -12,7 +12,7 @@ from core.observability import capture_soft_failure
 from repositories.compliance_records_repository import compliance_records_repo
 from repositories.client_repository import client_repo
 from core import db_provider
-from domain.practice.compliance_overdue import is_overdue, is_settled
+from domain.practice.compliance_overdue import FILED, NOT_REQUIRED, is_filed, is_overdue, is_settled
 
 # Valid status transitions. Phase 4.4 adds the terminal Filed -> Completed step
 # (Module D progression: ... -> Ready To File -> Filed -> Completed).
@@ -25,6 +25,9 @@ VALID_TRANSITIONS: dict[str, list[str]] = {
     "Filed": ["Completed"],
     "Completed": [],
     "Overdue": ["In Progress", "Awaiting Documents"],
+    # Reached and left only through `mark_not_required` / `mark_required_again`, each with a written reason (POST-A-267, item 4): no
+    # ordinary move goes to it or from it, so it is in no list above and leads nowhere here.
+    "Not Required": [],
 }
 
 
@@ -42,6 +45,25 @@ REOPENED_STATUS = "Ready To File"
 
 MAX_REOPEN_REASON_CHARS = 500
 
+#: The obligations a CA may record as NOT REQUIRED of the client (POST-A-267, item 4). Advance tax alone: the calendar generates all four
+#: instalments for every client with the engagement, and whether a client owes an instalment turns on facts the calendar does not hold
+#: (a §44AD or §44ADA assessee pays the whole amount by 15 March, §211(1) proviso). Every other generated obligation follows from a
+#: registration or an engagement the client has, and one that does not apply is corrected there, not hidden here. The product holds
+#: no threshold and decides nothing: the CA states the reason.
+NOT_REQUIRABLE_OBLIGATION_TYPES = frozenset({"ADVANCE_TAX"})
+
+#: Where an obligation goes when a "not required" record is taken back: the start, from which its due date says whether it is late.
+REQUIRED_AGAIN_STATUS = "Not Started"
+
+
+def _reason_or_refuse(reason: Optional[str], empty: str) -> str:
+    why = (reason or "").strip()
+    if not why:
+        raise ValidationError("reason", empty)
+    if len(why) > MAX_REOPEN_REASON_CHARS:
+        raise ValidationError("reason", f"The reason is too long: keep it to {MAX_REOPEN_REASON_CHARS} characters.")
+    return why
+
 #: What a person is told after a reopen about the payment record that closed the obligation, which a reopen never touches. Per type,
 #: because the truth differs: some closers re-close from a record that still stands, and a TDS challan recorded in error is retracted
 #: on the Challans tab (POST-A-362) before the month is reopened.
@@ -50,7 +72,11 @@ REOPEN_AFTERMATH: dict[str, str] = {
     "ESI_DEPOSIT": "A payment record that closed it, if there was one, is still there: retract it on the payroll hand-off if it was "
                    "wrong. Nothing closes it again by itself.",
     "EPF_DEPOSIT": "Nothing closes it again by itself: record it as filed when it is.",
-    "TDS_SALARY_DEPOSIT": "Nothing closes it again by itself: record it as filed when it is.",
+    "TDS_SALARY_DEPOSIT": "The salary challans that closed it are remembered on the month, so while only those same challans name "
+                          "it, recording another salary challan for the month does not close it again; a different one that pays "
+                          "it on time does, or you can mark it filed from Compliance with the date it really went. If a challan "
+                          "was recorded in error, retract it on the Challans tab first (a Manager or Partner can): that reopens "
+                          "the month it closed.",
     "TDS_NON_SALARY_DEPOSIT": "The challans that closed it are remembered on the month, so while only those same challans cover it, "
                               "recording another challan for the quarter does not close it again; a different challan covering it "
                               "does, or you can mark it filed from Compliance with the date it really went. If a challan was "
@@ -95,7 +121,7 @@ def _assert_return_period_has_ended(record: dict) -> None:
         )
 
 
-def clean_filed_date(v: object) -> str:
+def clean_filed_date(v: object, what: str = "The date filed") -> str:
     """YYYY-MM-DD, a real date, and not in the future (IST).
 
     The shape check keeps a typo out of `filings.filed_date`, which is a DATE
@@ -104,13 +130,20 @@ def clean_filed_date(v: object) -> str:
     itself: a return cannot have been filed tomorrow, and this is the field the
     audit reads to say when it went. IST, because a filing date is an Indian
     calendar date. Raises ValueError with the sentence, so a Pydantic validator
-    and the service can both use it — the two doors that take a date."""
+    and the service can both use it — the two doors that take a date.
+
+    THE SENTENCE NAMES THE DATE IN WORDS, NOT A COLUMN (POST-A-392). It said "filed_date cannot be in the future", and the doors that
+    reuse it patched the column they take into it ("filing_date", "original_filing_date"). `what` is the date's name as a person reads
+    it ("The filing date", "The earlier return's filing date"), and a day after today names both days and says the day is India's, so
+    a CA who gets past a screen's own box (or a caller that is not a screen) is told what to correct."""
     try:
         when = date.fromisoformat(str(v or "").strip())
     except ValueError:
-        raise ValueError("filed_date must be YYYY-MM-DD")
-    if when > ist_today():
-        raise ValueError("filed_date cannot be in the future")
+        raise ValueError(f"{what} is not a date: write it as YYYY-MM-DD.")
+    today = ist_today()
+    if when > today:
+        raise ValueError(f"{what}, {when:%d %b %Y}, is after today's date in India, {today:%d %b %Y}: a return cannot have been "
+                         f"filed on a day that has not come.")
     return when.isoformat()
 
 
@@ -126,6 +159,7 @@ def year_end_not_yet_reached_on(financial_year: Optional[str], filed_on: str) ->
         # Normalised first: `fy_bounds` reads the first four characters and ignores the rest, so "2025-99" would be judged as FY 2025-26.
         year_end = fy_bounds(normalise_fy_label(str(financial_year or "")))[1]
     except ValueError:
+        # A label that is not a financial year is not judged (docstring): there is nothing to compare the date with.
         return None
     return year_end if str(filed_on)[:10] < year_end else None
 
@@ -292,7 +326,7 @@ def _audit_transition(record: dict, old_status: str, new_status: str,
                              f"Compliance {new_status}",
                              f"{record.get('obligation_type') or record.get('compliance_type','')} "
                              f"{record.get('period_label','')}: {old_status} → {new_status}",
-                             "success" if new_status in ("Filed", "Completed") else "info",
+                             "success" if is_filed(new_status) else "info",
                              firm_id=firm_id or record.get("firm_id", ""),
                              entity_type="compliance_record", entity_id=record["id"])
     except Exception:  # pragma: no cover
@@ -377,12 +411,12 @@ class ComplianceRecordService:
         # and the period closed; creating a record already in a terminal status
         # would be a second way to "Filed" that writes no filing and locks
         # nothing — the defect this service's Filed path was rewritten to end.
-        if data.get("status") in ("Filed", "Completed"):
+        if is_settled(data.get("status")):
             raise ValidationError(
                 "status",
                 f"A compliance record cannot be created as {data['status']}. Create it "
                 f"open and mark it filed, which records the filing date and closes the "
-                f"period.")
+                f"period, or record it as not required, which keeps the reason.")
         payload = {
             "firm_id": firm_id,  # Always from current_user, never from request body
             "client_id": client_id,
@@ -471,9 +505,11 @@ class ComplianceRecordService:
         # Filed clears it (Filed to Completed is the same closure).
         if new_status == "Filed" and record.get("closing_tds_challan_ids") is not None:
             updated = compliance_records_repo.update_clearing(
-                record_id, firm_id or record.get("firm_id") or "", updates, clear=compliance_records_repo.CLEARABLE_RECORD)
+                record_id, firm_id or record.get("firm_id") or "", updates, clear=compliance_records_repo.CLEARABLE_RECORD,
+                client_id=record.get("client_id"))
         else:
-            updated = compliance_records_repo.update(record_id, updates)
+            updated = compliance_records_repo.update(record_id, updates, firm_id=firm_id or record.get("firm_id"),
+                                                     client_id=record.get("client_id"))
         if not updated:
             raise NotFoundError("ComplianceRecord", record_id)
 
@@ -510,7 +546,7 @@ class ComplianceRecordService:
                                             "and in the audit log.")
         if len(why) > MAX_REOPEN_REASON_CHARS:
             raise ValidationError("reason", f"The reason is too long: keep it to {MAX_REOPEN_REASON_CHARS} characters.")
-        if record["status"] not in ("Filed", "Completed"):
+        if not is_filed(record["status"]):
             raise ValidationError("status", f"This obligation is {record['status']}, not filed, so there is nothing to reopen.")
         otype = str(record.get("obligation_type") or "")
         if otype not in REOPENABLE_OBLIGATION_TYPES:
@@ -529,7 +565,7 @@ class ComplianceRecordService:
         updated = compliance_records_repo.update_clearing(
             record_id, firm_id or record["firm_id"], {"status": REOPENED_STATUS, "notes": notes},
             clear=compliance_records_repo.CLEARABLE + (compliance_records_repo.CLEARABLE_RECORD if forget_what_closed_it else ()),
-            only_if_status=("Filed", "Completed"))
+            only_if_status=FILED, client_id=record.get("client_id"))
         if not updated:
             # The row was read as filed a moment ago, so it is gone, or somebody changed it in between (reopened it, or recorded
             # it as filed again with a new date). Writing over that would erase their change.
@@ -555,6 +591,82 @@ class ComplianceRecordService:
             capture_soft_failure(exc, operation="compliance.reopen.timeline", record_id=record_id)
         return {**updated, "risk_score": _compute_risk_score(updated)}
 
+    def mark_not_required(self, record_id: str, reason: str, firm_id: Optional[str] = None,
+                          actor: Optional[dict] = None) -> dict:
+        """Record that an obligation the calendar carries is not owed by this client (POST-A-267, item 4; migration 670).
+
+        The calendar generates the four advance-tax instalments for every client with the engagement, while a §44AD or §44ADA
+        assessee pays the whole amount by 15 March under the proviso to §211(1), so three of the four stood open and turned overdue
+        with nothing that could take them off: "Filed" would claim a payment that was never made, and the only other way off the
+        calendar was deleting a row the generator puts back. This is that third state. It is the CA's statement, not the
+        product's: the product decides nothing about who owes what, holds no threshold, and asks for a written REASON, kept on the
+        row's notes and in the audit log. It is offered only on the types in `NOT_REQUIRABLE_OBLIGATION_TYPES`, only on an open
+        obligation (a filed one is reopened first, by its own door), and a person takes it back with `mark_required_again`.
+
+        Written with the status it was read at as a condition, so a change made in between (somebody filed it) is not overwritten."""
+        record = self.get_record(record_id, firm_id=firm_id)
+        why = _reason_or_refuse(reason, "Say why this obligation is not required of the client. The reason is kept on the "
+                                        "obligation and in the audit log.")
+        otype = str(record.get("obligation_type") or "")
+        if otype not in NOT_REQUIRABLE_OBLIGATION_TYPES:
+            raise ValidationError(
+                "obligation_type",
+                f"{record.get('period_label') or otype or 'This obligation'} cannot be recorded as not required from here. Only an "
+                "advance-tax instalment can be: every other obligation the calendar generates follows from the client's own "
+                "registrations and engagements, so one that does not apply is corrected there.")
+        if record["status"] == NOT_REQUIRED:
+            raise ValidationError("status", "This obligation is already recorded as not required.")
+        if is_filed(record["status"]):
+            raise ValidationError("status", f"This obligation is {record['status']}: a recorded filing is not taken back by this. "
+                                            "Reopen it first if the filing was recorded in error.")
+        return self._move_with_reason(record, firm_id, actor, why, to_status=NOT_REQUIRED, verb="Recorded as not required",
+                                      event="not_required", tone="info")
+
+    def mark_required_again(self, record_id: str, reason: str, firm_id: Optional[str] = None,
+                            actor: Optional[dict] = None) -> dict:
+        """Take back a "not required" record: the obligation is owed after all, and goes back to Not Started, where its due date says
+        whether it is late. The reason is kept beside the first one."""
+        record = self.get_record(record_id, firm_id=firm_id)
+        why = _reason_or_refuse(reason, "Say why this obligation is required after all. The reason is kept on the obligation and in "
+                                        "the audit log.")
+        if record["status"] != NOT_REQUIRED:
+            raise ValidationError("status", f"This obligation is {record['status']}, not recorded as not required, so there is "
+                                            "nothing to take back.")
+        return self._move_with_reason(record, firm_id, actor, why, to_status=REQUIRED_AGAIN_STATUS, verb="Required again",
+                                      event="required_again", tone="warning")
+
+    def _move_with_reason(self, record: dict, firm_id: Optional[str], actor: Optional[dict], why: str, *, to_status: str,
+                          verb: str, event: str, tone: str) -> dict:
+        actor = actor or {}
+        old_status = record["status"]
+        note = f"{verb} on {ist_today().isoformat()} by {actor.get('email') or 'a team member'}: {why}"
+        notes = f"{record['notes']}\n{note}" if record.get("notes") else note
+        updated = compliance_records_repo.update_clearing(
+            record["id"], firm_id or record["firm_id"], {"status": to_status, "notes": notes}, clear=(),
+            only_if_status=(old_status,), client_id=record.get("client_id"))
+        if not updated:
+            if not compliance_records_repo.find_by_id(record["id"]):
+                raise NotFoundError("ComplianceRecord", record["id"])
+            raise ValidationError("status", "Somebody changed this obligation just now. Look at it again before changing it.")
+        try:
+            from services.audit_service import log_event
+            log_event(firm_id or record.get("firm_id") or "", "compliance_record", record["id"], event,
+                      actor_id=actor.get("auth_user_id"), actor_email=actor.get("email"),
+                      old_data={"status": old_status}, new_data={"status": to_status, "reason": why},
+                      metadata={"compliance_type": record.get("compliance_type"),
+                                "obligation_type": record.get("obligation_type")})
+        except Exception as exc:  # audit is non-fatal and the note on the row is the durable copy, but a lost entry is reported
+            capture_soft_failure(exc, operation=f"compliance.{event}.audit", record_id=record["id"])
+        try:
+            from services.timeline_service import timeline_service
+            timeline_service.log(record.get("client_id", ""), "compliance", f"Compliance {verb.lower()}",
+                                 f"{record.get('period_label', '')}: {old_status} → {to_status} ({why})", tone,
+                                 firm_id=firm_id or record.get("firm_id", ""), entity_type="compliance_record",
+                                 entity_id=record["id"])
+        except Exception as exc:
+            capture_soft_failure(exc, operation=f"compliance.{event}.timeline", record_id=record["id"])
+        return {**updated, "risk_score": _compute_risk_score(updated)}
+
     # Deterministic path from any open status to Filed, skipping the
     # documents-waiting branch (not applicable when a CA is asserting the
     # simple, terminal fact "this was filed").
@@ -575,7 +687,11 @@ class ComplianceRecordService:
         rather than the ARN being written afterwards, which is too late for the
         filing record that carries it."""
         record = self.get_record(record_id, firm_id=firm_id)
-        if record["status"] in ("Filed", "Completed"):
+        if record["status"] == NOT_REQUIRED:
+            raise ValidationError(
+                "status", "This obligation is recorded as not required of the client, so it cannot be marked filed. If it is "
+                          "owed after all, mark it required again first; that keeps both reasons on the obligation.")
+        if is_filed(record["status"]):
             updated = {**record, "filing_lock": {
                 "recorded": False, "locked_from": None, "locked_to": None,
                 "reason": "This obligation was already recorded as filed, so nothing "

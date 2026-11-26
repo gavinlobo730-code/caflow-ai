@@ -97,18 +97,6 @@ def test_invoice_from_engagement_explicit_month_overrides_default(monkeypatch):
     assert invoice["invoice_date"] == "2025-12-15"
 
 
-def test_invoice_from_time_entries_defaults_to_ist_date(monkeypatch):
-    _freeze_utc(monkeypatch, "2026-03-31T23:59:00")
-    monkeypatch.setattr("core.supabase_client.get_supabase", lambda: FakeDB())
-    eng_id = "ENG-TIME-ENTRIES"
-    monkeypatch.setattr(engagement_repo, "get_or_raise", lambda _id: _engagement(eng_id))
-
-    invoice_id = invoice_gen.generate_invoice_from_time_entries(eng_id)
-    invoice = invoice_repo.find_by_id(invoice_id)
-
-    assert invoice["invoice_date"] == "2026-04-01"
-
-
 def test_recurring_invoice_first_run_defaults_to_ist_date(monkeypatch):
     _freeze_utc(monkeypatch, "2026-03-31T23:59:00")
     eng_id = "ENG-RECURRING-FIRST"

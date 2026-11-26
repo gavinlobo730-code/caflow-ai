@@ -47,6 +47,7 @@ import uuid
 from pathlib import Path
 
 import pytest
+from tests._signed_in_writes_handed_back import hand_back
 
 API_ROOT = Path(__file__).resolve().parents[1]
 MIGRATIONS = API_ROOT / "migrations"
@@ -75,17 +76,25 @@ PEOPLE = {            # name: (users.id, auth id, role)
 }
 _F = f"'{FIRM}'"
 
-# the twelve columns the clearing function guards here: (table, column); the chart has its own function
+# the columns the clearing function guards here that a signed-in member can still reach: (table, column); the chart has its own function
 CLEARABLE = [("activity_logs", "client_id"), ("ai_evidence", "client_id"), ("ai_signals", "client_id"),
              ("client_lifecycle_events", "client_id"), ("knowledge_articles", "client_id"), ("mca_filings", "client_id"),
              ("proposals", "client_id"), ("reminders", "client_id"), ("scheduled_reports", "client_id"),
-             ("task_recurring_configs", "client_id"), ("time_entries", "client_id"), ("onboarding_tasks", "workflow_id")]
+             ("task_recurring_configs", "client_id"), ("onboarding_tasks", "workflow_id")]
+#: `time_entries` was the twelfth. Migration 778 (22-11-2026, POST-A-546) took every write of a time entry from the signed-in role once
+#: the server wrote it with its own client, so no signed-in member reaches this trigger any more: a Manager's and a Partner's update
+#: are both refused by the privilege, before the trigger is asked. The trigger is still on the table (540 is not undone, and the
+#: catalogue rule below still counts it as guarded), and the refusal by privilege is held by
+#: tests/test_777_778_the_register_is_read_and_a_time_entry_is_written_by_the_api_only_pg.py.
+GUARDED_AND_CLOSED_BY_778 = {"time_entries"}
 CHART = ("chart_of_accounts", "client_id")
 EXEMPT_FROM_THE_CATALOGUE_RULE = {"notifications": "a notification is read by its recipient; its client is a label and not an access path"}
 # the four 537 guarded, so the catalogue rule can be seen to cover the whole family
 GUARDED_BY_537 = {"engagements", "properties", "tally_migration_jobs"}      # (and customer_payment_events, whose column is payment_id)
-# migrations 505, 509 and 536 (a sandbox table nothing reads or writes); found by their grant and not by this list
-READ_ONLY_TO_THE_SIGNED_IN_ROLE = {"ai_recommendations", "workflow_instances", "demo_filings"}
+# migrations 505, 509 and 536 (a sandbox table nothing reads or writes), and 715 (a bulk GSTR-2B drop's file rows, whose client is
+# NULL for a file routed to no client; the signed-in role holds no privilege on it); found by their grant and not by this list
+# and 778 (a time entry, written by the API only: see GUARDED_AND_CLOSED_BY_778 above)
+READ_ONLY_TO_THE_SIGNED_IN_ROLE = {"ai_recommendations", "workflow_instances", "demo_filings", "gstr2b_bulk_drop_files"} | GUARDED_AND_CLOSED_BY_778
 
 
 def _q(value) -> str:
@@ -234,6 +243,9 @@ def world(seeded):
         # privilege is handed back in the throwaway copy, as a later grant or the platform's defaults might hand it back.
         handed_back = _psql(w.dsn, "GRANT SELECT, UPDATE ON public.activity_logs, public.ai_evidence, public.ai_signals TO authenticated;")
         assert handed_back.returncode == 0, handed_back.stderr
+        # Migration 680 (POST-A-442) took INSERT, UPDATE and DELETE on mca_filings away from the signed-in role; its trigger stays as the
+        # second lock and is measured the same way.
+        assert hand_back(w.dsn, ["mca_filings"]) == ["mca_filings"]
         yield w
     finally:
         _psql(admin_dsn, f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE);')
@@ -369,10 +381,11 @@ def test_every_table_with_a_nullable_client_and_a_write_grant_carries_a_guard(wo
     read_only = {r[0] for r in rows if r[1] == "f"}
     assert _unguarded_and_writable(rows) == set(), f"a signed-in member can clear the client of: {sorted(_unguarded_and_writable(rows))}"
     assert read_only == READ_ONLY_TO_THE_SIGNED_IN_ROLE, f"the tables the signed-in role cannot write changed: {sorted(read_only)}"
-    expected = {t for t, c in CLEARABLE if c == "client_id"} | {CHART[0]} | GUARDED_BY_537
+    expected = {t for t, c in CLEARABLE if c == "client_id"} | {CHART[0]} | GUARDED_BY_537 | GUARDED_AND_CLOSED_BY_778
     assert guarded == expected, f"the guarded set is not the one this family is known by: missing {sorted(expected - guarded)}, extra {sorted(guarded - expected)}"
     assert len(guarded) == 15, "the eleven and the chart of 540 and the three of 537 that guard a client column"
     assert {r[0] for r in rows} == guarded | read_only | set(EXEMPT_FROM_THE_CATALOGUE_RULE), "a table with a nullable client is neither guarded nor named"
+    assert guarded & read_only == GUARDED_AND_CLOSED_BY_778, "a table that is both guarded and closed to the signed-in role is not the one this file names"
 
 
 def test_the_rule_sees_a_table_the_moment_the_signed_in_role_can_write_it(world):
@@ -384,8 +397,14 @@ def test_the_rule_sees_a_table_the_moment_the_signed_in_role_can_write_it(world)
     assert _psql(world.dsn, "REVOKE UPDATE ON public.ai_recommendations FROM authenticated; "
                             "GRANT UPDATE (client_id) ON public.workflow_instances TO authenticated;").returncode == 0
     assert _unguarded_and_writable(_family(world.dsn)) == {"workflow_instances"}, "a column-only grant must be seen"
+    assert _psql(world.dsn, "DROP TRIGGER a_reminder_keeps_its_client_unless_a_partner_clears_it ON public.reminders;").returncode == 0
+    assert _unguarded_and_writable(_family(world.dsn)) == {"workflow_instances", "reminders"}
+    # A guarded table the signed-in role cannot write is not named when its guard goes (it is not writable), and is named the moment
+    # the write comes back: the time entry, closed by migration 778.
     assert _psql(world.dsn, "DROP TRIGGER a_time_entry_keeps_its_client_unless_a_partner_clears_it ON public.time_entries;").returncode == 0
-    assert _unguarded_and_writable(_family(world.dsn)) == {"workflow_instances", "time_entries"}
+    assert _unguarded_and_writable(_family(world.dsn)) == {"workflow_instances", "reminders"}
+    assert _psql(world.dsn, "GRANT UPDATE ON public.time_entries TO authenticated;").returncode == 0
+    assert _unguarded_and_writable(_family(world.dsn)) == {"workflow_instances", "reminders", "time_entries"}
 
 
 # ── THE CLIENTS TABLE ─────────────────────────────────────────────────────────────
@@ -570,8 +589,9 @@ def test_a_second_run_of_the_migration_changes_nothing(world):
 
 
 def test_the_rollback_gives_the_earlier_behaviour_back_and_a_reapply_closes_it_again(world):
-    row = world.row("time_entries", "A")
-    clear = f"UPDATE time_entries SET client_id = NULL WHERE id = '{row}'"
+    # A reminder, where this used a time entry until migration 778 took the signed-in write of one away.
+    row = world.row("reminders", "A")
+    clear = f"UPDATE reminders SET client_id = NULL WHERE id = '{row}'"
     bare = _bare_client(world, "07")
     assert _refused(_count_op(world.dsn, "manager_a", clear))
     assert _refused(_count_op(world.dsn, "partner", f"DELETE FROM clients WHERE id = '{bare}'"))

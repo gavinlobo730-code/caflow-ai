@@ -10,10 +10,13 @@
 // Electronic acceptance (typed name + explicit consent) is a valid contract
 // under the Information Technology Act, 2000, Section 10A.
 
+import { Button } from "@/components/ui/button";
 import { useEffect, useState } from "react";
 import { CheckCircle2, Loader2, AlertCircle, FileText, XCircle } from "lucide-react";
 import { formatDateTime } from "@/lib/dates/format";
-import { PlainFailure, failureSentence, fetchPlain, notOursSentence } from "@/lib/api/failureSentence";
+import { FrontDoor } from "@/components/FrontDoor";
+import { PlainFailure, failureSentence, fetchBounded, jsonPlain, notOursSentence, type UntypedJson } from "@/lib/api/failureSentence";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -73,10 +76,12 @@ export default function SignPage() {
     }
     setToken(t);
     // A dropped connection said "Failed to fetch" to the CLIENT on this public page (POST-A-406): the product's sentence is said instead.
-    fetchPlain(`${API}/api/public/engagement-letters/${encodeURIComponent(t)}`, undefined, "read")
+    fetchBounded(`${API}/api/public/engagement-letters/${encodeURIComponent(t)}`, undefined, "read")
       .then(async (r) => {
-        const j = await r.json().catch(() => null);
-        // A body that is not JSON is a gateway's page (the API waking, a proxy), not an answer about THIS link: a client holding a valid link was told that it was invalid or had expired.
+        // `jsonPlain` says WHY there is no body: a page that is not JSON is "not the product's answer", and a body the bound cut off while it was
+        // being read is "did not answer in time" (POST-A-501: both used to be `.catch(() => null)`, so a timeout was named a gateway's page).
+        const j = await jsonPlain<UntypedJson>(r, "read");
+        // A body of literal `null` is not an answer about THIS link either, and a client holding a valid link was told that it was invalid or had expired.
         if (j === null) throw new PlainFailure("not_ours", notOursSentence("read"));
         if (!r.ok || !j?.success) {
           // Read both shapes: api_response uses `error`, FastAPI HTTPException
@@ -95,12 +100,13 @@ export default function SignPage() {
     setSubmitting(true);
     setActionErr(null);
     try {
-      const r = await fetchPlain(`${API}/api/public/engagement-letters/${encodeURIComponent(token)}${path}`, {
+      const r = await fetchBounded(`${API}/api/public/engagement-letters/${encodeURIComponent(token)}${path}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       }, "write");
-      const j = await r.json().catch(() => null);
+      // A body cut off by the bound says so ("not known whether it went through"), and one that is not JSON says it is not the product's answer.
+      const j = await jsonPlain<UntypedJson>(r, "write");
       // A body that is not JSON says nothing about whether the letter was accepted, and "please try again" could accept it twice.
       if (j === null) throw new PlainFailure("not_ours", notOursSentence("write"));
       if (!r.ok || !j?.success) throw new Error(j?.error || j?.detail || "Something went wrong. Please try again.");
@@ -113,191 +119,190 @@ export default function SignPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 py-8 px-4">
-      <div className="mx-auto w-full max-w-2xl">
-        {/* Header */}
-        <div className="mb-5 flex items-center gap-2 text-slate-500">
-          <FileText size={18} />
-          <span className="text-sm font-medium">Engagement Letter</span>
-        </div>
+    <FrontDoor width="letter" card={false} mark={false}>
+      {/* Header: on the wash, above the first card, so white (components/FrontDoor.tsx says where a word may sit). */}
+      <div className="mb-4 flex items-center justify-center gap-2 text-white">
+        <FileText size={18} />
+        <span className="text-sm font-medium">Engagement Letter</span>
+      </div>
 
-        {loading && (
-          <div className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white p-10 text-slate-500">
+      {loading && (
+        <LoadingRegion label="Loading the letter" className="rounded-xl border border-slate-200 bg-white p-10 text-slate-500" noticeClassName="justify-center text-center">
+          <div className="flex items-center justify-center gap-2">
             <Loader2 size={18} className="animate-spin" /> Loading…
           </div>
-        )}
+        </LoadingRegion>
+      )}
 
-        {!loading && error && (
-          <div className="rounded-xl border border-state-problem-border bg-white p-8 text-center">
-            <AlertCircle size={32} className="mx-auto mb-3 text-state-problem" />
-            <h1 className="text-lg font-semibold text-slate-900">{couldNotReach ? "The letter could not be loaded" : "Link unavailable"}</h1>
-            <p className="mt-1 text-sm text-slate-600">{error}</p>
-            {couldNotReach && (
-              <button onClick={() => window.location.reload()}
-                className="mt-4 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
-                Try again
-              </button>
+      {!loading && error && (
+        <div className="rounded-xl border border-state-problem-border bg-white p-8 text-center">
+          <AlertCircle size={32} className="mx-auto mb-3 text-state-problem" />
+          <h1 className="text-lg font-semibold text-slate-900">{couldNotReach ? "The letter could not be loaded" : "Link unavailable"}</h1>
+          <p className="mt-1 text-sm text-slate-600">{error}</p>
+          {couldNotReach && (
+            <button onClick={() => window.location.reload()}
+              className="mt-4 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
+              Try again
+            </button>
+          )}
+        </div>
+      )}
+
+      {!loading && letter && (
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+          {/* Card header */}
+          <div className="border-b border-ps-border px-6 py-4">
+            <p className="font-mono text-2xs text-ps-hint">{letter.engagement_number}</p>
+            <h1 className="text-lg font-semibold text-slate-900">{letter.title}</h1>
+            <p className="mt-0.5 text-sm text-slate-500">from {letter.firm_name}</p>
+          </div>
+
+          <div className="space-y-5 p-6">
+            {/* Signed / rejected banners */}
+            {letter.status === "Signed" && (
+              <div className="flex items-start gap-3 rounded-lg border border-green-200 bg-green-50 px-4 py-3">
+                <CheckCircle2 size={20} className="mt-0.5 shrink-0 text-green-600" />
+                <div>
+                  <p className="text-sm font-semibold text-green-800">Accepted — thank you</p>
+                  <p className="text-sm text-green-700">
+                    Signed by {letter.signed_by_name || "you"}
+                    {letter.signed_at ? ` on ${formatDateTime(letter.signed_at)}` : ""}. A confirmation
+                    has been recorded with {letter.firm_name}.
+                  </p>
+                </div>
+              </div>
+            )}
+            {letter.status === "Rejected" && (
+              <div className="flex items-start gap-3 rounded-lg border border-state-problem-border bg-state-problem-surface px-4 py-3">
+                <XCircle size={20} className="mt-0.5 shrink-0 text-state-problem" />
+                <div>
+                  <p className="text-sm font-semibold text-red-800">Engagement declined</p>
+                  <p className="text-sm text-state-problem">
+                    You declined this engagement{letter.rejected_at ? ` on ${formatDateTime(letter.rejected_at)}` : ""}.
+                    If this was a mistake, please contact {letter.firm_name}.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Expired — past validity date, can no longer be signed */}
+            {letter.expired && letter.status !== "Signed" && letter.status !== "Rejected" && (
+              <div className="flex items-start gap-3 rounded-lg border border-state-attention-border bg-state-attention-surface px-4 py-3">
+                <AlertCircle size={20} className="mt-0.5 shrink-0 text-amber-600" />
+                <div>
+                  <p className="text-sm font-semibold text-amber-800">This letter has expired</p>
+                  <p className="text-sm text-state-attention">
+                    This engagement letter is past its validity date and can no longer be signed
+                    online. Please contact {letter.firm_name} to request an updated copy.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Letter body */}
+            <LetterFrame html={letter.content} />
+
+            {/* Acceptance form — only when still actionable and not expired */}
+            {(letter.status === "Sent" || letter.status === "Viewed") && !letter.expired && (
+              <div className="space-y-4 border-t border-ps-border pt-5">
+                {!showDecline ? (
+                  <>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-slate-700">
+                        Full name (your electronic signature)
+                      </label>
+                      <input aria-label="Full name (your electronic signature)"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder="e.g. Rahul Patel"
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-light"
+                      />
+                    </div>
+                    <label className="flex items-start gap-2 text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={consent}
+                        onChange={(e) => setConsent(e.target.checked)}
+                        className="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-brand"
+                      />
+                      <span>
+                        I, the person named above, have read and <strong>accept the terms</strong> of
+                        this engagement letter. I understand that typing my name and confirming here
+                        constitutes my electronic signature.
+                      </span>
+                    </label>
+
+                    {actionErr && (
+                      <div role="alert" className="flex items-start gap-2 rounded-lg border border-state-problem-border bg-state-problem-surface px-3 py-2 text-sm text-state-problem">
+                        <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                        {actionErr}
+                      </div>
+                    )}
+
+                    <div className="flex flex-wrap gap-2">
+                      <Button variant="plain" size="none" spinner={false}
+                        disabled={submitting || !name.trim() || !consent}
+                        onClick={() => post("/sign", { signer_name: name.trim(), consent })}
+                        className="flex items-center gap-1.5 rounded-lg bg-brand px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-50 transition-colors"
+                      >
+                        {submitting ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                        Accept &amp; Sign
+                      </Button>
+                      <button
+                        disabled={submitting}
+                        onClick={() => { setShowDecline(true); setActionErr(null); }}
+                        className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        Decline
+                      </button>
+                    </div>
+                    <p className="text-xs text-ps-hint">
+                      Your name, the date/time, and your IP address will be recorded as proof of acceptance.
+                    </p>
+                  </>
+                ) : (
+                  <div className="space-y-3">
+                    <label className="block text-sm font-medium text-slate-700">
+                      Reason for declining (optional)
+                    </label>
+                    <textarea aria-label="Reason for declining (optional)"
+                      value={declineReason}
+                      onChange={(e) => setDeclineReason(e.target.value)}
+                      rows={3}
+                      placeholder="Let the firm know why, if you'd like…"
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100"
+                    />
+                    {actionErr && (
+                      <div role="alert" className="flex items-start gap-2 rounded-lg border border-state-problem-border bg-state-problem-surface px-3 py-2 text-sm text-state-problem">
+                        <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                        {actionErr}
+                      </div>
+                    )}
+                    <div className="flex gap-2">
+                      <Button variant="plain" size="none" spinner={false}
+                        disabled={submitting}
+                        onClick={() => post("/reject", { reason: declineReason || undefined })}
+                        className="flex items-center gap-1.5 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                      >
+                        {submitting ? <Loader2 size={14} className="animate-spin" /> : <XCircle size={14} />}
+                        Confirm Decline
+                      </Button>
+                      <button
+                        disabled={submitting}
+                        onClick={() => setShowDecline(false)}
+                        className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        Back
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
           </div>
-        )}
+        </div>
+      )}
 
-        {!loading && letter && (
-          <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-            {/* Card header */}
-            <div className="border-b border-ps-border px-6 py-4">
-              <p className="font-mono text-2xs text-ps-hint">{letter.engagement_number}</p>
-              <h1 className="text-lg font-semibold text-slate-900">{letter.title}</h1>
-              <p className="mt-0.5 text-sm text-slate-500">from {letter.firm_name}</p>
-            </div>
-
-            <div className="space-y-5 p-6">
-              {/* Signed / rejected banners */}
-              {letter.status === "Signed" && (
-                <div className="flex items-start gap-3 rounded-lg border border-green-200 bg-green-50 px-4 py-3">
-                  <CheckCircle2 size={20} className="mt-0.5 shrink-0 text-green-600" />
-                  <div>
-                    <p className="text-sm font-semibold text-green-800">Accepted — thank you</p>
-                    <p className="text-sm text-green-700">
-                      Signed by {letter.signed_by_name || "you"}
-                      {letter.signed_at ? ` on ${formatDateTime(letter.signed_at)}` : ""}. A confirmation
-                      has been recorded with {letter.firm_name}.
-                    </p>
-                  </div>
-                </div>
-              )}
-              {letter.status === "Rejected" && (
-                <div className="flex items-start gap-3 rounded-lg border border-state-problem-border bg-state-problem-surface px-4 py-3">
-                  <XCircle size={20} className="mt-0.5 shrink-0 text-state-problem" />
-                  <div>
-                    <p className="text-sm font-semibold text-red-800">Engagement declined</p>
-                    <p className="text-sm text-state-problem">
-                      You declined this engagement{letter.rejected_at ? ` on ${formatDateTime(letter.rejected_at)}` : ""}.
-                      If this was a mistake, please contact {letter.firm_name}.
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* Expired — past validity date, can no longer be signed */}
-              {letter.expired && letter.status !== "Signed" && letter.status !== "Rejected" && (
-                <div className="flex items-start gap-3 rounded-lg border border-state-attention-border bg-state-attention-surface px-4 py-3">
-                  <AlertCircle size={20} className="mt-0.5 shrink-0 text-amber-600" />
-                  <div>
-                    <p className="text-sm font-semibold text-amber-800">This letter has expired</p>
-                    <p className="text-sm text-state-attention">
-                      This engagement letter is past its validity date and can no longer be signed
-                      online. Please contact {letter.firm_name} to request an updated copy.
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* Letter body */}
-              <LetterFrame html={letter.content} />
-
-              {/* Acceptance form — only when still actionable and not expired */}
-              {(letter.status === "Sent" || letter.status === "Viewed") && !letter.expired && (
-                <div className="space-y-4 border-t border-ps-border pt-5">
-                  {!showDecline ? (
-                    <>
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-slate-700">
-                          Full name (your electronic signature)
-                        </label>
-                        <input aria-label="Full name (your electronic signature)"
-                          value={name}
-                          onChange={(e) => setName(e.target.value)}
-                          placeholder="e.g. Rahul Patel"
-                          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-light"
-                        />
-                      </div>
-                      <label className="flex items-start gap-2 text-sm text-slate-700">
-                        <input
-                          type="checkbox"
-                          checked={consent}
-                          onChange={(e) => setConsent(e.target.checked)}
-                          className="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-brand"
-                        />
-                        <span>
-                          I, the person named above, have read and <strong>accept the terms</strong> of
-                          this engagement letter. I understand that typing my name and confirming here
-                          constitutes my electronic signature.
-                        </span>
-                      </label>
-
-                      {actionErr && (
-                        <div role="alert" className="flex items-start gap-2 rounded-lg border border-state-problem-border bg-state-problem-surface px-3 py-2 text-sm text-state-problem">
-                          <AlertCircle size={14} className="mt-0.5 shrink-0" />
-                          {actionErr}
-                        </div>
-                      )}
-
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          disabled={submitting || !name.trim() || !consent}
-                          onClick={() => post("/sign", { signer_name: name.trim(), consent })}
-                          className="flex items-center gap-1.5 rounded-lg bg-brand px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-50 transition-colors"
-                        >
-                          {submitting ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-                          Accept &amp; Sign
-                        </button>
-                        <button
-                          disabled={submitting}
-                          onClick={() => { setShowDecline(true); setActionErr(null); }}
-                          className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-                        >
-                          Decline
-                        </button>
-                      </div>
-                      <p className="text-xs text-ps-hint">
-                        Your name, the date/time, and your IP address will be recorded as proof of acceptance.
-                      </p>
-                    </>
-                  ) : (
-                    <div className="space-y-3">
-                      <label className="block text-sm font-medium text-slate-700">
-                        Reason for declining (optional)
-                      </label>
-                      <textarea aria-label="Reason for declining (optional)"
-                        value={declineReason}
-                        onChange={(e) => setDeclineReason(e.target.value)}
-                        rows={3}
-                        placeholder="Let the firm know why, if you'd like…"
-                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100"
-                      />
-                      {actionErr && (
-                        <div role="alert" className="flex items-start gap-2 rounded-lg border border-state-problem-border bg-state-problem-surface px-3 py-2 text-sm text-state-problem">
-                          <AlertCircle size={14} className="mt-0.5 shrink-0" />
-                          {actionErr}
-                        </div>
-                      )}
-                      <div className="flex gap-2">
-                        <button
-                          disabled={submitting}
-                          onClick={() => post("/reject", { reason: declineReason || undefined })}
-                          className="flex items-center gap-1.5 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
-                        >
-                          {submitting ? <Loader2 size={14} className="animate-spin" /> : <XCircle size={14} />}
-                          Confirm Decline
-                        </button>
-                        <button
-                          disabled={submitting}
-                          onClick={() => setShowDecline(false)}
-                          className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-                        >
-                          Back
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        <p className="mt-5 text-center text-xs text-ps-hint">Powered by PracticeSync</p>
-      </div>
-    </div>
+    </FrontDoor>
   );
 }

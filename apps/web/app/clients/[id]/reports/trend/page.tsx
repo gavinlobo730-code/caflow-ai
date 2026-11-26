@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 // (scripts/a-dynamic-xlsx-import-has-no-default.test.ts); the rule that no file
 // imports it statically is scripts/the-spreadsheet-library-is-not-in-the-first-load.test.ts.
 import {
-  ArrowLeft, RefreshCw, AlertTriangle, Info, Loader2, Download,
+  ArrowLeft, RefreshCw, AlertTriangle, Info, Download,
   TrendingUp, TrendingDown, Minus,
 } from "lucide-react";
 import { api, type MultiYearTrend, type TrendSeries, type TrendRatioSeries } from "@/lib/api";
@@ -18,6 +18,7 @@ import { objectOrNull } from "@/lib/api/shape";
 import { Callout } from "@/components/ui/callout";
 import { buildWorkbook, moneyCell } from "@/lib/export/xlsx";
 import { istToday } from "@/lib/dateMath";
+import { SectionPlaceholder } from "@/components/ui/page-frame";
 
 /**
  * The multi-year trend — Schedule III captions and the clause (Q) ratios across
@@ -106,6 +107,8 @@ export default function ClientTrendPage() {
     if (!clientId) return;
     setLoading(true);
     setError(null);
+    // The trend of an earlier window is not this one: a read that fails leaves nothing to export (POST-A-464).
+    setTrend(null);
     try {
       const r = await api.accounting.scheduleIiiTrend(clientId, years, toFy);
       if (!r.success) throw new Error(r.error ?? "Could not build the trend");
@@ -201,7 +204,7 @@ export default function ClientTrendPage() {
           </button>
           <button
             onClick={exportExcel}
-            disabled={!trend || trend.fys.length === 0}
+            disabled={!trend || (trend.fys ?? []).length === 0}
             className="flex items-center gap-1.5 text-2xs text-ps-label hover:text-ps-body border border-ps-border rounded-lg px-2.5 py-1.5 disabled:opacity-40"
           >
             <Download size={12} /> Excel
@@ -210,9 +213,7 @@ export default function ClientTrendPage() {
       </div>
 
       {loading && (
-        <div className="flex items-center gap-2 text-2xs text-ps-hint py-8">
-          <Loader2 size={14} className="animate-spin" /> Building the window…
-        </div>
+        <SectionPlaceholder label="Building the window" rows={8} cols={6} />
       )}
 
       {error && <Callout tone="problem">{error}</Callout>}

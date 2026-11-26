@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   NOT_OURS_READ, NOT_OURS_WRITE, NO_ANSWER_CODE, NO_ANSWER_READ, NO_ANSWER_WRITE,
-  PlainFailure, browserFailureOf, doingOf, errorPageSentence, failureSentence, fetchPlain, jsonPlain, looksLikeMarkup, modelSentence, plainFailure, stillNoAnswerSentence, timedOutSentence,
+  LONG_REQUEST_BOUND_MS, PlainFailure, REQUEST_BOUND_MS, browserFailureOf, doingOf, errorPageSentence, failureSentence, fetchBounded, fetchPlain, jsonPlain, looksLikeMarkup, modelSentence, plainFailure, stillNoAnswerSentence, timedOutSentence,
 } from "./failureSentence.ts";
 
 const NO_ANSWER_SPELLINGS: [string, unknown][] = [
@@ -94,8 +94,10 @@ test("nothing else is rewritten: a server's sentence, a programming error and a 
 
 test("a read says that no result came back and a write says that it is not known whether it went through", () => {
   for (const [, e] of NO_ANSWER_SPELLINGS) {
-    assert.equal(failureSentence(e, "x", "read"), NO_ANSWER_READ);
-    assert.equal(failureSentence(e, "x", "write"), NO_ANSWER_WRITE);
+    // A request given up on at its bound says it did not answer IN TIME (POST-A-470); every other no-answer says it got none.
+    const timed = (e as { name?: string }).name === "TimeoutError";
+    assert.equal(failureSentence(e, "x", "read"), timed ? timedOutSentence("read") : NO_ANSWER_READ);
+    assert.equal(failureSentence(e, "x", "write"), timed ? timedOutSentence("write") : NO_ANSWER_WRITE);
   }
   for (const [, e] of NOT_OURS_SPELLINGS) {
     assert.equal(failureSentence(e, "x", "read"), NOT_OURS_READ);
@@ -189,11 +191,65 @@ test("fetchPlain says the plain sentence for a dropped connection, by what the r
   });
 });
 
+// A fetch that answers only when its signal is aborted (or never, when it has none): a server that never answers.
+const neverAnswers: typeof fetch = (_input, init) => new Promise((_resolve, reject) => {
+  const signal = init?.signal;
+  if (!signal) return;
+  if (signal.aborted) return reject(signal.reason);
+  // Node does not keep itself running for AbortSignal.timeout's own timer, so the "server" holds the loop open until the bound fires.
+  const hold = setTimeout(() => {}, 10_000);
+  signal.addEventListener("abort", () => { clearTimeout(hold); reject(signal.reason); }, { once: true });
+});
+
+test("fetchBounded gives up on a request that never answers and says, for a write, that it is not known whether it went through (POST-A-470)", async () => {
+  await withFetch(neverAnswers, async () => {
+    await assert.rejects(fetchBounded("https://api.test/x", { method: "POST" }, "write", 20), (e: Error) => {
+      assert.ok(e instanceof PlainFailure, "the browser's TimeoutError reached the screen as it was");
+      assert.equal(e.message, timedOutSentence("write"));
+      assert.match(e.message, /not known whether the request went through/);
+      return true;
+    });
+    await assert.rejects(fetchBounded("https://api.test/x", undefined, "read", 20), { message: timedOutSentence("read") });
+  });
+});
+
+test("fetchBounded's default is lib/api's 45 seconds, a caller's own signal wins, and the long bound is longer", async () => {
+  assert.equal(REQUEST_BOUND_MS, 45_000);
+  assert.ok(LONG_REQUEST_BOUND_MS > REQUEST_BOUND_MS);
+  let seen: AbortSignal | null | undefined;
+  const records: typeof fetch = async (_input, init) => { seen = init?.signal; return new Response("{}", { status: 200 }); };
+  await withFetch(records, async () => {
+    await fetchBounded("https://api.test/x", undefined, "read");
+    assert.ok(seen instanceof AbortSignal && !seen.aborted, "the default call went out with no signal");
+    const own = AbortSignal.timeout(LONG_REQUEST_BOUND_MS);
+    await fetchBounded("https://api.test/x", { signal: own }, "read");
+    assert.equal(seen, own, "a caller's own (longer) signal was overridden by the default bound");
+  });
+  // The bound is real: a caller that brings a short signal through the default path is aborted by it, not by 45 seconds.
+  await withFetch(neverAnswers, async () => {
+    await assert.rejects(fetchBounded("https://api.test/x", { signal: AbortSignal.timeout(20) }, "read"), { message: timedOutSentence("read") });
+  });
+});
+
 test("jsonPlain reads JSON, and says that a page is not the product's answer", async () => {
   assert.deepEqual(await jsonPlain<{ a: number }>(new Response('{"a":1}'), "read"), { a: 1 });
   await assert.rejects(jsonPlain(new Response("<html><body>Bad gateway</body></html>", { status: 200 }), "write"), { message: NOT_OURS_WRITE });
   await assert.rejects(jsonPlain(new Response("<html><body>Bad gateway</body></html>", { status: 200 }), "read"), { message: NOT_OURS_READ });
   await assert.rejects(jsonPlain(new Response("", { status: 200 }), "write"), { message: NOT_OURS_WRITE });
+});
+
+test("a body the bound cut off midway is told as a timeout, not as a page that is not the product's (POST-A-501)", async () => {
+  // A response whose body stream fails while it is being read, as `AbortSignal.timeout` does to a body still arriving.
+  const cutOff = (name: string) => new Response(new ReadableStream({
+    start(controller) { controller.enqueue(new TextEncoder().encode('{"success": tr')); },
+    pull(controller) { controller.error(Object.assign(new Error("The operation timed out."), { name })); },
+  }), { status: 200 });
+  await assert.rejects(jsonPlain(cutOff("TimeoutError"), "read"), (e: unknown) => e instanceof PlainFailure && e.message === timedOutSentence("read"));
+  await assert.rejects(jsonPlain(cutOff("TimeoutError"), "write"), (e: unknown) => e instanceof PlainFailure && e.message === timedOutSentence("write"));
+  // A body that arrived whole and is not JSON is still the other sentence.
+  await assert.rejects(jsonPlain(new Response("<html>Bad gateway</html>"), "read"), (e: unknown) => e instanceof PlainFailure && e.message === NOT_OURS_READ);
+  // The write sentence keeps saying it is not known whether the change went through.
+  assert.match(timedOutSentence("write"), /not known/i);
 });
 
 test("a body that opens as a document is a page and nothing else is", () => {

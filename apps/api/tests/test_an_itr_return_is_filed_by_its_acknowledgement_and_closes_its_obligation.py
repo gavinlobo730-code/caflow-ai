@@ -128,14 +128,14 @@ def test_the_state_machine_still_leads_ready_for_filing_to_filed_for_the_acknowl
 def test_a_date_that_is_not_a_date_is_refused_before_it_reaches_the_database(day):
     with pytest.raises(ValidationError) as refused:
         itr.AcknowledgementRequest(acknowledgement_number=ACK, filing_date=day)
-    assert "filing_date must be YYYY-MM-DD" in str(refused.value)
+    assert "The filing date is not a date: write it as YYYY-MM-DD." in str(refused.value)
     assert "filed_date" not in str(refused.value).replace("filing_date", "")
 
 
 def test_a_filing_date_in_the_future_is_refused():
     with pytest.raises(ValidationError) as refused:
         itr.AcknowledgementRequest(acknowledgement_number=ACK, filing_date="2999-01-01")
-    assert "cannot be in the future" in str(refused.value)
+    assert "The filing date, " in str(refused.value) and "is after today's date in India" in str(refused.value)
 
 
 @pytest.mark.parametrize("number", ["", "   "])

@@ -27,7 +27,9 @@ WHO IT DOES NOT TOUCH
     A signed-in user's own requests. Nothing here is on a route that needs a staff, portal or employee
     session, with four exceptions that are the calls a person makes BEFORE they have an account: the
     three accept-invite routes (a login plus a one-time invite token) and firm creation (a login, once
-    per person). Every other authenticated route is untouched, and
+    per person). The staff invitation's sign-in (`POST /api/identity/accept-invite/session`, POST-A-445)
+    needs no login at all, like the employee activation route, and is on the `invite` bucket beside them.
+    Every other authenticated route is untouched, and
     `tests/test_every_public_route_is_rate_limited.py` derives which routes are in scope from the route
     table, so a fifth cannot appear unlimited.
 
@@ -47,6 +49,11 @@ THE NUMBERS, AND WHY NO REAL CA IS REFUSED
                              honeypot hit or a bad address returns before it counts).
         signup  60 / 1 h     creating a firm. A person does it once; a training class of thirty from one
                              network is inside it.
+        signup_link 60 / 1 h asking for the mailed link that starts a sign-up (POST-A-485). A bucket of its own
+                             so that junk sent at a MAILING route cannot spend the one a person needs to create
+                             the firm the link was for: asking and creating are two hits per sign-up, and sharing
+                             one budget halved a class's room. The per-ADDRESS limits (30 seconds, five an
+                             hour) are the row's own, in `domain/firm/signup_link`; this is the per-network one.
 
     A mis-keyed address is the other way this could hurt, and the budgets are the answer to it: if
     `TRUSTED_PROXY_HOPS` were too small, every caller would key on the proxy's address and share one
@@ -82,6 +89,7 @@ BUCKETS: Dict[str, Tuple[int, int]] = {
     "invite": (120, 60),
     "form": (120, 60),
     "signup": (60, 3600),
+    "signup_link": (60, 3600),
 }
 
 _limiters: Dict[str, SlidingWindowLimiter] = {

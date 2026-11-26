@@ -77,6 +77,7 @@ def _iso_date(value: Any) -> tuple[Optional[date], bool]:
         try:
             return date.fromisoformat(value.strip()), False
         except ValueError:
+            # Shaped like a date and not one (2026-02-30): no date, WITH the flag that something was printed there.
             return None, True
     return None, True
 

@@ -17,6 +17,18 @@
 # 590 creates journal_narration_templates (POST-A-093) with no signed-in write: its writers are the API's privileged client from the start.
 # 591 creates fixed_asset_movements (POST-A-112) with no signed-in write: record_fixed_asset_movement, called by the API's privileged client, is its one writer.
 # 592 creates fixed_asset_verifications and fixed_asset_verification_findings (POST-A-112) with no signed-in write: the API's privileged client opens a count, and record_fixed_asset_finding and close_fixed_asset_verification are the only other writers.
+# 593 closes tds_deductions, tds_returns, tds_challans and tds_certificates (POST-A-443): the TDS register, returns, challans and certificates are written by the API's privileged client since the change that shipped before it.
+# 595 closes itc_reversal_register, gstr2b_uploads, gst_sync_jobs, gst_portal_snapshots, client_gst_turnover, hsn_sac_preferences and gst_challans (POST-A-008, the GST tranche): the API writes the first six with its privileged client since the change that shipped before it, and nothing writes gst_challans.
+# 617 creates ecommerce_operator_supply_amendments and ecommerce_operator_unregistered_supply_amendments (POST-A-056, GSTR-8 Table 4 and 4.1) with no signed-in privilege at all: the API's privileged client is their one reader and writer.
+# 620 creates stock_effect_settlements (POST-A-092) with no signed-in privilege at all: the marks that a document's stock was put right by hand are written and read by the API's privileged client only.
+# 641 creates payroll_opening_positions (POST-A-082) with no signed-in privilege at all: the API's privileged client is its only reader and writer.
+# 660 creates nightly_exception_results (POST-A-050) with no signed-in write: the nightly books check, through the API's privileged client, is its one writer.
+# 671 creates compliance_effort_estimates (POST-A-212) with no signed-in write: its writer is the API's privileged client from the start.
+# 680 closes mca_filings (POST-A-442): the MCA filings are written by the API's privileged client since the change that shipped before it.
+# 705 closes compliance_records (POST-A-461): the obligation store is written by the API's privileged client, naming the firm and the client, since the change that shipped before it.
+# 707 closes compliance_calendar (POST-A-208): the filing calendar is written by the API's privileged client (the add and Mark Filed), naming the firm and the client, since the change that shipped before it.
+# 715 creates gstr2b_bulk_drops and gstr2b_bulk_drop_files (POST-A-057) with no signed-in privilege at all: the API's privileged client is their one reader and writer.
+# 778 closes time_entries (POST-A-546): its three writers moved to the server's own client in the change before it.
 account_group_mappings
 account_period_balances
 activity_logs
@@ -56,6 +68,7 @@ capital_gain_reinvestments
 capital_gains
 client_documents
 client_gst_registrations
+client_gst_turnover
 client_payroll_settings
 client_portal_sessions
 client_portal_users
@@ -66,6 +79,9 @@ client_sales_invoice_lines
 client_sales_invoices
 client_statutory_identity
 client_year_locks
+compliance_calendar
+compliance_effort_estimates
+compliance_records
 credit_note_allocations
 credit_note_lines
 credit_notes
@@ -83,7 +99,9 @@ document_risks
 documents
 dsc_records
 ecommerce_operator_supplies
+ecommerce_operator_supply_amendments
 ecommerce_operator_unregistered_supplies
+ecommerce_operator_unregistered_supply_amendments
 einvoice_records
 email_outbox
 email_suppressions
@@ -113,7 +131,13 @@ fx_adjustments
 fx_revaluations
 goods_receipt_lines
 goods_receipt_notes
+gst_challans
 gst_credit_ledger_openings
+gst_portal_snapshots
+gst_sync_jobs
+gstr2b_bulk_drop_files
+gstr2b_bulk_drops
+gstr2b_uploads
 gstr4_annual_b2b_rc_supplies
 gstr4_annual_b2b_supplies
 gstr4_annual_import_of_services
@@ -122,10 +146,12 @@ gstr9c_expense_lines
 gstr9c_rate_wise_lines
 gstr9c_reconciliations
 hsn_master
+hsn_sac_preferences
 inventory_stock_ledger
 invoice_sequences
 invoice_settings
 invoice_templates
+itc_reversal_register
 journal_entries
 journal_lines
 journal_narration_templates
@@ -135,6 +161,8 @@ lead_contacts
 leads
 leave_balances
 login_events
+mca_filings
+nightly_exception_results
 party_credit_balances
 party_credit_ledger
 pattern_anomalies
@@ -144,6 +172,7 @@ payroll_it_declarations
 payroll_loan_recoveries
 payroll_loans
 payroll_one_time_earnings
+payroll_opening_positions
 payroll_perquisites
 payroll_run_transitions
 payroll_runs
@@ -194,15 +223,21 @@ self_assessment_challans
 statutory_remittances
 stock_count_lines
 stock_count_sessions
+stock_effect_settlements
 task_dependencies
 task_escalations
 task_tags
 task_templates
 task_timeline_events
 tax_audit_checklists
+tds_certificates
+tds_challans
+tds_deductions
 tds_lower_deduction_certificates
+tds_returns
 tds_section_limits
 team_members
+time_entries
 user_capacity
 workflow_action_logs
 workflow_approvals

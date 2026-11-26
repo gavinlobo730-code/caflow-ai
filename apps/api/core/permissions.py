@@ -63,6 +63,7 @@ PERMISSIONS: dict[str, dict[str, set[str]]] = {
     # borrowed from "team" (Partner-only write) or left on "ai" (read, and the
     # wrong subject entirely), so the guard states what it actually protects.
     "identity": {
+        "read":   _ALL_STAFF,
         "write":  _ALL_STAFF,
     },
     # ── Clients ──────────────────────────────────────────────────────────────
@@ -166,7 +167,20 @@ PERMISSIONS: dict[str, dict[str, set[str]]] = {
     "accounting": {
         "read":   _AT_LEAST_EXECUTIVE,
         "write":  _AT_LEAST_MANAGER,
-        "approve": _PARTNER_ONLY,   # post/approve journal entry
+        # Reverse a posted entry, cancel a document, and, where the firm has a Partner approve every manual journal (migration 681), post
+        # one or change one on the books. Where the firm does not, `write` posts a manual journal at both doors (POST-A-456,
+        # services/journal_approval_rule).
+        "approve": _PARTNER_ONLY,
+    },
+    # ── The audit log, a permission of its own (POST-A-550) ─────────────────────
+    # The firm's audit log says who changed which client, document and ledger entry, and when. It was read on
+    # `accounting` `approve`, the permission that approves a manual journal and locks a year, so a Partner who let a
+    # Manager approve journals had also handed them the whole log, and the tick screen had to say so beside the tick.
+    # Approving in the books and reading who did what are two decisions; this is the second one's own pair. A Partner's to
+    # start with, like the pair it was read on, so a firm that has ticked nothing sees no change. Asked by BOTH audit
+    # routes (the firm's log and the history of one record): one record's history is the same log asked about one row.
+    "audit": {
+        "read": _PARTNER_ONLY,
     },
     # ── Banking — deliberately looser than `accounting`, and the reason matters.
     # Categorising a bank statement is the work a practice HIRES someone to do:
@@ -176,8 +190,10 @@ PERMISSIONS: dict[str, dict[str, set[str]]] = {
     # statement line — 15,000 a month across 50 clients — which is not review, it
     # is rubber-stamping.
     #
-    # A MANUAL journal stays Partner-only, because that is judgement rather than
-    # clerical. That distinction is the whole point of this resource existing.
+    # A MANUAL journal is `accounting`, because that is judgement rather than
+    # clerical, and a firm may have a Partner approve every one (POST-A-456,
+    # services/journal_approval_rule). That distinction is the whole point of
+    # this resource existing.
     "banking": {
         "read":   _AT_LEAST_EXECUTIVE,
         "write":  _AT_LEAST_EXECUTIVE,   # import, categorise, match, post, exclude
@@ -300,7 +316,19 @@ PERMISSIONS: dict[str, dict[str, set[str]]] = {
         "write": _AT_LEAST_MANAGER,
     },
     # Fee engagements / proposals / engagement letters — Manager+.
+    # The engagement-letter routes ASK this pair since POST-A-543 (21-11-2026). Until then the resource was declared and
+    # no route used it: the letters were read with `client:read`, which every member of staff holds, so an Executive or a
+    # Reviewer could list the letters of their own clients, fees and all. The owner's decision: engagement letters carry
+    # fees and are a Partner's and a Manager's by default; a Partner can tick the pair for anybody else.
     "engagement": {
+        "read":  _AT_LEAST_MANAGER,
+        "write": _AT_LEAST_MANAGER,
+    },
+    # The pipeline: leads, people and businesses who are not clients yet (POST-A-543, the owner's decision of 21-11-2026).
+    # A lead has no client, so no assignment can narrow the list: whoever may read it reads every lead of the firm. It was
+    # read with `client:read`, which every member of staff holds. It is its own pair so that a Partner can tick the
+    # pipeline for one person without also giving them the right to create and edit clients (`client:write`).
+    "pipeline": {
         "read":  _AT_LEAST_MANAGER,
         "write": _AT_LEAST_MANAGER,
     },
@@ -387,6 +415,7 @@ def _to_role(role: str) -> Role:
         try:
             return Role(candidate)
         except ValueError:
+            # This spelling is not the enum's: try the next. A role none of them match is RAISED below, not swallowed.
             continue
     # Legacy/foreign vocabulary.
     mapped = LEGACY_ROLE_MAP.get(role.strip().lower())
@@ -406,6 +435,7 @@ def canonical_role(role: str | None) -> str | None:
     try:
         return _to_role(role).value
     except ValueError:
+        # The stated contract (docstring): None for anything that is not a role, never a guessed one.
         return None
 
 
@@ -422,6 +452,7 @@ def can(role: str, resource: str, action: str) -> bool:
     try:
         r = _to_role(role)
     except ValueError:
+        # An unknown role holds no permission: the answer is no.
         return False
     resource_perms = PERMISSIONS.get(resource, {})
     allowed_roles = resource_perms.get(action, set())
@@ -584,6 +615,7 @@ def is_at_least(role: str, minimum: str) -> bool:
     try:
         return ROLE_HIERARCHY.index(_to_role(role)) >= ROLE_HIERARCHY.index(_to_role(minimum))
     except ValueError:
+        # A role that is not a role is below every minimum: the answer is no.
         return False
 
 

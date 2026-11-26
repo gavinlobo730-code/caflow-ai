@@ -7,7 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/ui/page-header";
 import { formatDate } from "@/lib/dates/format";
-import { doingOf, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, fetchBounded, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { SectionPlaceholder } from "@/components/ui/page-frame";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -17,7 +18,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
   } = await getSupabaseClient().auth.getSession();
   const token = session?.access_token ?? "";
   const doing = doingOf(opts?.method);
-  const res = await fetchPlain(`${API}${path}`, {
+  const res = await fetchBounded(`${API}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
@@ -241,9 +242,7 @@ export default function RelationshipIntelligencePage() {
       </div>
 
       {loading && (
-        <div className="flex items-center justify-center py-16">
-          <div className="w-5 h-5 border-2 border-brand border-t-transparent rounded-full animate-spin" />
-        </div>
+        <SectionPlaceholder label="Loading relationship intelligence" rows={6} cols={6} />
       )}
 
       {error && (

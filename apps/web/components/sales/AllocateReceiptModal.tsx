@@ -36,8 +36,10 @@ import {
 } from "@/lib/sales/receiptAllocation";
 import { Callout } from "@/components/ui/callout";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { formatDate } from "@/lib/dates/format";
 import { selectAll } from "@/lib/supabase/selectAll";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 type OpenInvoice = {
   id: string;
@@ -154,29 +156,9 @@ export default function AllocateReceiptModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/25 p-4" onClick={onClose}>
-      <div className="w-full max-w-[720px] max-h-[88vh] overflow-y-auto bg-white rounded-xl shadow-xl"
-        onClick={(e) => e.stopPropagation()}>
-        <div className="sticky top-0 bg-white border-b border-ps-border px-5 py-3 flex items-start justify-between gap-3">
-          <div>
-            <p className="text-sm font-semibold text-ps-ink">
-              Apply {receipt.receipt_no}
-            </p>
-            <p className="text-2xs text-ps-hint">
-              {receipt.customer_name ?? "Customer"} · {fmt(settlement)} to settle
-              {Number(receipt.tds_paise ?? 0) > 0
-                ? ` (${fmt(receipt.amount_paise)} received + ${fmt(Number(receipt.tds_paise))} TDS)`
-                : ""}
-            </p>
-          </div>
-          <button onClick={onClose}
-            className="text-xs text-ps-label border border-ps-border rounded-lg px-2.5 py-1 hover:bg-ps-bg shrink-0">
-            Close
-          </button>
-        </div>
-
-        <div className="p-5 space-y-3">
-          {loading ? <p className="text-xs text-ps-hint">Loading open invoices…</p>
+    // POST-A-130: the shared dialog (named, Escape, Tab kept inside, focus given back). It stays open while the allocation is being saved.
+    <Modal title={`Apply ${receipt.receipt_no}`} note={<>{receipt.customer_name ?? "Customer"} · {fmt(settlement)} to settle{Number(receipt.tds_paise ?? 0) > 0 ? ` (${fmt(receipt.amount_paise)} received + ${fmt(Number(receipt.tds_paise))} TDS)` : ""}</>} maxWidthClass="max-w-[720px]" onClose={() => { if (!saving) onClose(); }}>
+          {loading ? <LoadingRegion label="Loading open invoices" className="text-xs text-ps-hint">Loading open invoices…</LoadingRegion>
             : loadFailed ? (
               <div className="flex items-center gap-3">
                 <p className="text-xs text-state-problem">
@@ -248,7 +230,7 @@ export default function AllocateReceiptModal({
               )}
             </span>
             <div className="flex gap-2">
-              <button onClick={onClose}
+              <button disabled={saving} onClick={onClose}
                 className="px-3 py-1.5 text-xs border border-ps-border rounded-lg text-ps-body hover:bg-ps-bg">
                 Cancel
               </button>
@@ -274,8 +256,6 @@ export default function AllocateReceiptModal({
             An amount left over stays on the receipt as unallocated and can be
             applied to a later invoice from here.
           </p>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

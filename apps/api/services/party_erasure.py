@@ -57,6 +57,8 @@ def _parse(value: str | None) -> date | None:
     try:
         return date.fromisoformat(value[:10])
     except ValueError:
+        # Not a date. A DATE or timestamp column always reads back as ISO text, so a stored one never lands here: this is an absent value or text that
+        # was never a date, and None says there is none.
         return None
 
 
@@ -112,7 +114,7 @@ def refusal(
 _RECORD_WORDS = {
     "invoices": "invoices", "receipts": "receipts", "credit_notes": "credit notes", "debit_notes": "debit notes",
     "recurring_templates": "recurring templates", "bills": "bills", "payments": "payments",
-    "cheques": "post-dated cheques", "certificates": "lower-deduction certificates",
+    "cheques": "post-dated cheques", "certificates": "lower-deduction certificates", "tds_register": "TDS deductions typed on the TDS screen",
 }
 
 

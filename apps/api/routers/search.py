@@ -15,6 +15,7 @@ from core.permissions import rbac
 from core.authz import effective_client_ids
 from repositories.client_repository import client_repo
 from core import db_provider
+from core.observability import capture_soft_failure
 
 router = APIRouter(prefix="/api/search", tags=["search"])
 
@@ -47,7 +48,7 @@ def global_search(
         return api_response(True, {"results": []})
 
     firm_id = current_user.get("firm_id")
-    eff = effective_client_ids(current_user)  # None ⇒ firm-wide (Partner/Manager)
+    eff = effective_client_ids(current_user)  # None ⇒ firm-wide (a Partner; a Manager is assignment-scoped, M3)
     ql = query.lower()
     results: list[dict] = []
 
@@ -89,8 +90,8 @@ def global_search(
                     # before that this href was never actually client-scoped.
                     "href": f"/clients/{a['client_id']}/accounting" if a.get("client_id") else "/accounting",
                 })
-        except Exception:
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="search.accounts", firm_id=firm_id)
         try:
             jr_q = (_db().table("journal_entries")
                     .select("id, narration, entry_date, client_id")
@@ -109,8 +110,8 @@ def global_search(
                     # href was never actually client-scoped.
                     "href": f"/clients/{j['client_id']}/accounting" if j.get("client_id") else "/accounting",
                 })
-        except Exception:
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="search.journals", firm_id=firm_id)
 
     # ── Leads (pipeline) — firm-scoped; assignment-scoped via converted client ──
     try:
@@ -144,8 +145,8 @@ def global_search(
                 count += 1
             if count >= 8:
                 break
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="search.leads", firm_id=firm_id)
 
     # ── Engagement letters — firm-scoped (no per-client assignment column) ──────
     try:
@@ -182,8 +183,8 @@ def global_search(
                 count += 1
             if count >= 8:
                 break
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="search.engagements", firm_id=firm_id)
 
     # ── Tasks — firm-scoped via repo; assignment-scoped on client_id ───────────
     try:
@@ -204,8 +205,8 @@ def global_search(
                 count += 1
             if count >= 8:
                 break
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="search.tasks", firm_id=firm_id)
 
     # ── Documents — firm-scoped via repo; assignment-scoped on client_id ───────
     try:
@@ -228,8 +229,8 @@ def global_search(
                 count += 1
             if count >= 8:
                 break
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="search.documents", firm_id=firm_id)
 
     # ── DSC records — firm-level (no client association) ────────────────────────
     # Lazily imported & try/excepted so search still works if the repo is absent.
@@ -250,7 +251,7 @@ def global_search(
                 count += 1
             if count >= 8:
                 break
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="search.dsc", firm_id=firm_id)
 
     return api_response(True, {"results": results})

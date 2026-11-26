@@ -27,10 +27,12 @@ from typing import Optional
 
 from fastapi import HTTPException
 
+from core.db_provider import privileged_for
 from core.db_paging import fetch_all, fetch_all_in
 from core.ist_clock import ist_now, ist_today
 from services import delivery_challan_writes as challan_writes
 from services import named_row_ownership
+from services.line_item_ownership import items_are_the_clients
 from domain.gst import compensation_cess
 from domain.gst import delivery_challan as dc
 from domain.gst import discount as gst_discount
@@ -415,7 +417,9 @@ def check_invoice_lines_against_orders(db, firm_id: str, client_id: str, custome
 
     WHAT IT DOES NOT HOLD: the read and the write are two requests, so two saves made at the same moment can each find the other absent.
     Such a draft is refused at ISSUE, where this is asked again (`check_invoice_still_bills_its_orders`) and the other draft is counted;
-    only two issues made at the same moment as well get past it (POST-A-440).
+    two issues made at the same moment as well can each pass it, and the DATABASE refuses the second (migration 650, POST-A-440: a
+    trigger takes the order line's lock and sums what the issued invoices bill, with this rule as its parity-tested twin), which the
+    issue route words.
     """
     wanted: dict = {}
     items: dict = {}
@@ -677,6 +681,7 @@ def create_quotation(db, firm_id: str, payload: dict,
     client_id = str(payload["client_id"])
     # THE CUSTOMER IS THIS CLIENT'S (POST-A-338): the foreign key is not client-aware.
     named_row_ownership.customer_is_the_clients(db, firm_id, client_id, payload.get("customer_id"))
+    items_are_the_clients(db, firm_id, client_id, payload.get("lines"))
     _refuse_duplicate(db, "sales_quotations", firm_id, client_id,
                       payload["document_no"], payload.get("kind"), None)
     priced, totals = compute_lines(
@@ -754,6 +759,7 @@ def create_order(db, firm_id: str, payload: dict,
                  actor_id: Optional[str] = None) -> dict:
     client_id = str(payload["client_id"])
     named_row_ownership.customer_is_the_clients(db, firm_id, client_id, payload.get("customer_id"))
+    items_are_the_clients(db, firm_id, client_id, payload.get("lines"))
     if payload.get("quotation_id"):
         # THE QUOTATION THIS ORDER CONVERTS IS THIS CLIENT'S (POST-A-338): it is marked converted below, by firm and id.
         row_of_client(db, "sales_quotations", firm_id, str(payload["quotation_id"]), client_id, "quotation")
@@ -874,6 +880,7 @@ def create_challan(db, firm_id: str, payload: dict,
     named_row_ownership.sales_invoice_is_the_clients(db, firm_id, client_id, payload.get("sales_invoice_id"))
     if payload.get("order_id"):
         row_of_client(db, "sales_orders", firm_id, str(payload["order_id"]), client_id, "sales order")
+    items_are_the_clients(db, firm_id, client_id, payload.get("lines"))
     _refuse_duplicate(db, "delivery_challans", firm_id, client_id,
                       payload["document_no"], None, None)
 
@@ -970,6 +977,11 @@ def _refuse_over_delivery(db, firm_id: str, order_id: Optional[str],
     position = order_open_position(db, firm_id, str(order_id))
     by_id = {str(ln["order_line_id"]): ln for ln in position["lines"]}
     problems: list = []
+    # THE LINES THAT NAME ONE ORDER LINE ARE ADDED TOGETHER before the rule is asked: two lines of 6 against an order line of 10 deliver 12,
+    # though each fits on its own. A line that is not positive is refused on its own, as the rule refuses it.
+    wanted: dict = {}
+    count: dict = {}
+    open_lines: dict = {}
     for ln in priced:
         lid = str(ln.get("order_line_id") or "")
         if not lid:
@@ -980,15 +992,47 @@ def _refuse_over_delivery(db, firm_id: str, order_id: Optional[str],
                 f"{ln['description']}: that order line does not belong to this "
                 f"order.")
             continue
-        problem = oc.over_delivery(
-            oc.OpenLine(order_line_id=lid, description=row["description"],
-                        ordered_qty=Decimal(row["ordered_qty"]),
-                        delivered_qty=Decimal(row["delivered_qty"]),
-                        invoiced_qty=Decimal(row["invoiced_qty"])),
-            Decimal(str(ln["quantity"])))
+        open_lines[lid] = oc.OpenLine(order_line_id=lid, description=row["description"],
+                                      ordered_qty=Decimal(row["ordered_qty"]),
+                                      delivered_qty=Decimal(row["delivered_qty"]),
+                                      invoiced_qty=Decimal(row["invoiced_qty"]))
+        quantity = Decimal(str(ln["quantity"]))
+        if quantity <= 0:
+            problems.append(oc.over_delivery(open_lines[lid], quantity))
+            continue
+        wanted[lid] = wanted.get(lid, Decimal(0)) + quantity
+        count[lid] = count.get(lid, 0) + 1
+    for lid, quantity in wanted.items():
+        problem = oc.over_delivery(open_lines[lid], quantity)
         if problem:
-            problems.append(problem)
+            problems.append(problem + (f" ({count[lid]} lines of this challan name this order line, and their quantities are added together.)"
+                                       if count[lid] > 1 else ""))
     return problems
+
+
+def orders_whose_status_would_change(db, firm_id: str, client_id: Optional[str] = None, *, apply: bool = False) -> list:
+    """Every live order whose stored status is not the one its lines say, and (with `apply`) the status written again (POST-A-421, part c).
+
+    The rule that derives an order's status is Python (`order_cycle.order_status_for`), and an order the OLD rule left `delivered` or `partially_delivered` (by a challan whose goods were marked
+    received back, or a word a person set) keeps that word until a challan on it is next issued, cancelled or marked back. This derives each live order again, one at a time, through the same
+    reading the screens use (`order_open_position`) and the same writer (`_resettle_order_status`), so it can write nothing the screen would not show. It is a DATA step for production and is run
+    by a person (`scripts/resettle_sales_orders.py`, a dry run unless told): nothing calls it by itself. `closed` and `cancelled` orders are decisions and are never read or changed.
+    Returns `[{order_id, document_no, client_id, from, to}]` for the orders that differ (and were written, when `apply`)."""
+    orders = fetch_all(
+        lambda: (lambda q: q.eq("client_id", client_id) if client_id else q)(
+            db.table("sales_orders").select("id, client_id, document_no, status").eq("firm_id", firm_id)
+            .in_("status", sorted({*oc.ORDER_OPEN_STATUSES, "delivered"}))),
+        key="id", label="sales_cycle.resettle_orders")
+    changes: list = []
+    for order in orders:
+        position = order_open_position(db, firm_id, str(order["id"]))
+        wanted = position["status_would_be"]
+        if wanted != str(order.get("status") or ""):
+            changes.append({"order_id": str(order["id"]), "document_no": order.get("document_no"), "client_id": order.get("client_id"),
+                            "from": order.get("status"), "to": wanted})
+            if apply:
+                _resettle_order_status(db, firm_id, str(order["id"]))
+    return changes
 
 
 def _resettle_order_status(db, firm_id: str, order_id: Optional[str]) -> None:
@@ -998,9 +1042,10 @@ def _resettle_order_status(db, firm_id: str, order_id: Optional[str]) -> None:
     current = str(position["order"].get("status") or "")
     wanted = position["status_would_be"]
     if wanted != current:
-        (db.table("sales_orders")
+        # On the privileged client and naming the order's own client: the order's position was read under the firm, and the re-derivation step (`orders_whose_status_would_change`) has no caller session at all.
+        (privileged_for(db).table("sales_orders")
          .update({"status": wanted, "updated_at": ist_now().isoformat()})
-         .eq("firm_id", firm_id).eq("id", str(order_id)).execute())
+         .eq("firm_id", firm_id).eq("client_id", str(position["order"].get("client_id"))).eq("id", str(order_id)).execute())
 
 
 def update_quotation(db, firm_id: str, quotation_id: str, patch: dict) -> dict:
@@ -1024,11 +1069,18 @@ def update_quotation(db, firm_id: str, quotation_id: str, patch: dict) -> dict:
     fields = {k: v for k, v in patch.items()
               if v is not None and k != "lines"}
     lines = patch.get("lines")
+    # A taken number is refused BEFORE the lines are replaced: refused after, the lines were already new while the header
+    # kept its old totals, a document that no longer added up to its own lines (the independent review of 16-11-2026).
+    if fields.get("document_no"):
+        _refuse_duplicate(db, "sales_quotations", firm_id,
+                          str(row["client_id"]), fields["document_no"],
+                          str(row.get("kind")), quotation_id)
     if lines is not None:
         if not lines:
             raise HTTPException(
                 status_code=422,
                 detail="A quotation needs at least one line.")
+        items_are_the_clients(db, firm_id, str(row["client_id"]), lines)
         # THE DOCUMENT-LEVEL DISCOUNT FALLS BACK TO THE STORED ONE. A CA who
         # amends a line and does not re-send the header discount has not
         # withdrawn it — and re-pricing without it would silently raise every
@@ -1051,10 +1103,6 @@ def update_quotation(db, firm_id: str, quotation_id: str, patch: dict) -> dict:
              .eq("firm_id", firm_id).eq("id", str(old.get("id"))).execute())
         _write_quotation_lines(db, firm_id, str(row["client_id"]),
                                quotation_id, priced)
-    if fields.get("document_no"):
-        _refuse_duplicate(db, "sales_quotations", firm_id,
-                          str(row["client_id"]), fields["document_no"],
-                          str(row.get("kind")), quotation_id)
     fields["updated_at"] = ist_now().isoformat()
     (db.table("sales_quotations").update(fields)
      .eq("firm_id", firm_id).eq("id", quotation_id).execute())
@@ -1078,6 +1126,11 @@ def update_order(db, firm_id: str, order_id: str, patch: dict) -> dict:
     fields = {k: v for k, v in patch.items()
               if v is not None and k != "lines"}
     lines = patch.get("lines")
+    # A taken number is refused BEFORE the lines are replaced: refused after, the lines were already new while the header
+    # kept its old totals, a document that no longer added up to its own lines (the independent review of 16-11-2026).
+    if fields.get("document_no"):
+        _refuse_duplicate(db, "sales_orders", firm_id, str(row["client_id"]),
+                          fields["document_no"], None, order_id)
     if lines is not None:
         position = order_open_position(db, firm_id, order_id, with_drafts=True)
         if invoice_lines_naming(db, [ln["order_line_id"] for ln in position["lines"]]):
@@ -1095,6 +1148,7 @@ def update_order(db, firm_id: str, order_id: str, patch: dict) -> dict:
         if not lines:
             raise HTTPException(status_code=422,
                                 detail="A sales order needs at least one line.")
+        items_are_the_clients(db, firm_id, str(row["client_id"]), lines)
         # The stored document discount stands unless the patch replaces it —
         # see `update_quotation`.
         priced, totals = compute_lines(
@@ -1135,9 +1189,6 @@ def update_order(db, firm_id: str, order_id: str, patch: dict) -> dict:
                 "line_cess_paise": ln["line_cess_paise"],
                 "created_at": now,
             }).execute()
-    if fields.get("document_no"):
-        _refuse_duplicate(db, "sales_orders", firm_id, str(row["client_id"]),
-                          fields["document_no"], None, order_id)
     fields["updated_at"] = ist_now().isoformat()
     (db.table("sales_orders").update(fields)
      .eq("firm_id", firm_id).eq("id", order_id).execute())
@@ -1148,9 +1199,9 @@ def _latest_returned_on(db, firm_id: str, client_id: str, challan_id: str) -> Op
     """The latest day goods were recorded as RETURNED on FORM GST ITC-04 against this challan (`delivery_challan_returns`), or None (POST-A-383): the day the WHOLE challan came back is
     the day its last goods did, so it cannot be before this one. A row that records only quantity lost or wasted (migration 462 allows one) is not goods returned and is not counted:
     whether scrap counts as received back for s.143 is not a judgement this product takes."""
-    rows = (db.table("delivery_challan_returns").select("returned_on, quantity_returned")
-            .eq("firm_id", firm_id).eq("client_id", client_id).eq("challan_id", challan_id)
-            .order("returned_on", desc=True).execute().data) or []
+    rows = challan_writes.read_live_lots(lambda live: (challan_writes.live_only(db.table("delivery_challan_returns").select("returned_on, quantity_returned")
+            .eq("firm_id", firm_id).eq("client_id", client_id).eq("challan_id", challan_id), live)
+            .order("returned_on", desc=True).execute().data) or [])
     for r in rows:
         raw = str(r.get("quantity_returned") or "0").strip()
         # NUMERIC(10,3) comes back as a plain decimal; a value that is not one is not goods returned (no exception handler here: the service holds exactly one, and it is not around a read).
@@ -1163,9 +1214,9 @@ def _latest_lot_recorded_on(db, firm_id: str, client_id: str, challan_id: str) -
     """The latest day ANY lot was recorded against this challan on FORM GST ITC-04 (goods returned, or lost or wasted), or None (POST-A-398). The cancel guard asks this and not
     `_latest_returned_on`: a lot of waste alone leaves the challan's balance larger (waste is never subtracted from it), and a cancelled challan's balance is not listed, so cancelling one with
     such a lot would drop a deemed supply out of the statement."""
-    rows = (db.table("delivery_challan_returns").select("returned_on")
-            .eq("firm_id", firm_id).eq("client_id", client_id).eq("challan_id", challan_id)
-            .order("returned_on", desc=True).limit(1).execute().data) or []
+    rows = challan_writes.read_live_lots(lambda live: (challan_writes.live_only(db.table("delivery_challan_returns").select("returned_on")
+            .eq("firm_id", firm_id).eq("client_id", client_id).eq("challan_id", challan_id), live)
+            .order("returned_on", desc=True).limit(1).execute().data) or [])
     return date.fromisoformat(str(rows[0]["returned_on"])[:10]) if rows else None
 
 
@@ -1395,11 +1446,15 @@ def issue_challan(db, firm_id: str, challan_id: str, *, client_id: str, consigne
     now = ist_now().isoformat()
     # THE MOMENT IT WAS ISSUED IS STORED (POST-A-419, migration 585): `updated_at` is overwritten by any later amendment and the audit event is allowed to be lost, so `issued_at` is the one place the moment
     # is kept, written once and with the status (a trigger refuses a moment on a draft and any change to one that is written).
-    done = (db.table("delivery_challans").update({"status": dc.STATUS_ISSUED, "issued_at": now, "updated_at": now})
-            .eq("firm_id", firm_id).eq("client_id", client_id).eq("id", challan_id).eq("status", dc.STATUS_DRAFT).execute())
-    if not (done.data or []):
-        # another request changed the challan between the read and the write (an issue, a cancel): say so, and write nothing more
-        raise HTTPException(status_code=409, detail=f"Challan {no} was changed while it was being issued. Reload it and look at its status.")
+    # THE ISSUE LOCKS THE ORDER (POST-A-421, migration 652): the compare-and-set below protected this challan's row and not the quantity the order's lines hold, so two drafts of the whole order issued in
+    # the same instant each passed the check above and each won its own row. The function takes the challan's lock and then the order's, asks `over_delivery`'s rule again in SQL and writes the status.
+    if challan_writes.issue_in_one_transaction(db, firm_id, client_id, challan_id, now, document_no=no) is None:
+        # The API is live a few minutes before the migration that goes with it: issue as it was issued until it is (a compare-and-set on the status), and say so. Deleted once 652 has been in production.
+        _logger.error("issue_challan: migration 652 is not applied to this database; issuing %s with a compare-and-set", challan_id)
+        done = (db.table("delivery_challans").update({"status": dc.STATUS_ISSUED, "issued_at": now, "updated_at": now})
+                .eq("firm_id", firm_id).eq("client_id", client_id).eq("id", challan_id).eq("status", dc.STATUS_DRAFT).execute())
+        if not (done.data or []):
+            raise HTTPException(status_code=409, detail=f"Challan {no} was changed while it was being issued. Reload it and look at its status.")
     _resettle_order_status(db, firm_id, row.get("order_id"))      # the goods on it are delivered against its order from now
     return {**row, "status": dc.STATUS_ISSUED, "issued_at": now, "updated_at": now}
 

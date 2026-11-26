@@ -1,0 +1,117 @@
+# The money-editor drive in Firefox and WebKit, and at a phone's width (POST-A-387).
+#
+# WHY IT EXISTS
+#     apps/web/scripts/driveMoneyEditors.mjs has only ever run in Chromium, at a desktop's width, because Chromium was the one
+#     browser installed where it was written. Until it runs elsewhere, a Safari-only or phone-only fault in a form a CA posts money
+#     through is UNKNOWN, and the browsers of the pilot firms are not known either. This runs the drive's dates, double-click,
+#     keyboard and dialog groups in Firefox and in WebKit at the desktop width, and in Chromium at 390 pixels (the dialogs that
+#     scroll were found at 900 and 720 pixels by the probe PROBE_DIALOG_FIT=1; the other hand-built overlays were never measured).
+#
+# WHAT A RED RUN MEANS, AND WHAT IS NOT BUILT
+#     The first run's triage is LEFT (ledger line POST-A-387): nothing here was run in Firefox or WebKit when it was written, because the
+#     container it was written in cannot install them. A difference in how a browser draws a focus ring or a date is not a defect of the
+#     product; one in what is SENT or SHOWN is. Expect red the first time and read each failure before believing it.
+#
+# NOT A REQUIRED CHECK, and it must not become one: it has no pull_request trigger, so a required check named here would be
+# "pending forever" (CLAUDE.md, CI). It runs WEEKLY and on demand, and not nightly, because each of its three jobs builds the export and
+# drives for up to 24 minutes of the owner's Actions time: the nightly drive's allowance is not raised for it.
+#
+# The build and the drive are the nightly's (smoke-walk.yml), the Playwright version the same (a test holds the two equal).
+name: Drive other browsers
+
+on:
+  schedule:
+    - cron: "30 21 * * 6"
+  workflow_dispatch:
+
+concurrency:
+  group: drive-other-browsers-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  PLAYWRIGHT_VERSION: "1.63.0"
+
+jobs:
+  drive:
+    name: drive in ${{ matrix.browser }} at ${{ matrix.width }} pixels
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { browser: firefox, width: 1440 }
+          - { browser: webkit, width: 1440 }
+          - { browser: chromium, width: 390 }
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: "10"
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: "pnpm"
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: apps/web
+        run: pnpm install --frozen-lockfile
+
+      # In this job only, as the nightly does: Playwright is not a dependency of the product.
+      - name: Add Playwright to THIS job
+        working-directory: apps/web
+        run: pnpm add --save-dev "@playwright/test@${PLAYWRIGHT_VERSION}" "playwright-core@${PLAYWRIGHT_VERSION}"
+
+      - name: Drop third-party apt sources
+        run: |
+          sudo grep -rlE 'dl\.google\.com' /etc/apt/sources.list.d/ 2>/dev/null \
+            | sudo xargs -r rm -f
+
+      - name: Install the browser
+        working-directory: apps/web
+        run: pnpm exec playwright install --with-deps ${{ matrix.browser }}
+
+      - name: Build the static export for the drive
+        id: build
+        working-directory: apps/web
+        run: pnpm smoke:build
+
+      # The groups the ledger line names: the typed dates, the same-tick double click, the keyboard and the dialogs. One zone of the three
+      # and one quarter of the date group a week (`--zone rotate`), as the nightly does, with the same deadline.
+      - name: Drive the money editors
+        if: steps.build.outcome == 'success'
+        working-directory: apps/web
+        run: >-
+          node scripts/driveMoneyEditors.mjs
+          --browser "${{ matrix.browser }}" --width "${{ matrix.width }}"
+          --only dates,double-dispatch,keyboard,journal-keys,bill-keys,dialogs
+          --zone rotate --stop-after 24 --report .smoke/drive-report.json --shots
+
+      - name: Keep the drive report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: drive-report-${{ matrix.browser }}-${{ matrix.width }}
+          path: apps/web/.smoke/drive-report.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Keep the screenshots of a failed drive
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: drive-screens-${{ matrix.browser }}-${{ matrix.width }}
+          path: apps/web/.smoke/
+          # `.smoke` is a hidden directory and upload-artifact leaves hidden files out by default, so a directory path here kept nothing and said
+          # nothing (`if-no-files-found: ignore`): the screenshots of a failed walk were never kept (found with POST-A-507, which met the same default).
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 14

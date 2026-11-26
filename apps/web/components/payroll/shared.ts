@@ -19,6 +19,8 @@
 export type Client = { id: string; client_name: string };
 
 export type Employee = {
+  /** The team sign-in (`users.id`) this employee of the firm's OWN payroll is linked to (POST-A-540); null or absent = none. */
+  staff_user_id?: string | null;
   // Set by the portal invite flow (migration 264); absent on older rows.
   portal_enabled?: boolean;
   id: string;
@@ -72,9 +74,12 @@ export type Employee = {
   // shipped will not carry them and `?? true` is the column's own default.
   eps_eligible?: boolean;
   gratuity_act_covered?: boolean;
+  // Fixed-term employment (POST-A-526, migration 770): gratuity on one year under the contract, not five. null / absent = never recorded.
+  fixed_term_employment?: boolean | null;
+  fixed_term_end_date?: string | null;
   // The employer's recorded ELECTION to contribute PF on actual wages above the
-  // ceiling (payroll-22, migration 477; EPF Scheme para 26(6), an unverified
-  // reading). null / absent = never recorded, which is the ceiling; true =
+  // ceiling (payroll-22, migration 477; paragraph 9(4) of the Employees' Provident
+  // Funds Scheme, 2026). null / absent = never recorded, which is the ceiling; true =
   // elected; false = recorded and withdrawn. The browser never decides whether
   // it applies to a month — the server does, and stamps the slip.
   pf_on_actual_wages?: boolean | null;

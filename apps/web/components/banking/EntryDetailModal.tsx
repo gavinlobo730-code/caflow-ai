@@ -30,6 +30,8 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ExternalLink, Paperclip, Search, Split } from "lucide-react";
 import { api } from "@/lib/api";
+import { UploadProgress } from "@/components/ui/upload-progress";
+import type { UploadProgress as BytesSent } from "@/lib/api/uploadWithProgress";
 import { AccountLookup } from "@/components/lookups/AccountLookup";
 import { SplitAcrossLedgersModal } from "@/components/banking/SplitAcrossLedgersModal";
 import { MultiInvoiceMatchModal, type SettlePrefill } from "@/components/banking/SettleDocumentsModal";
@@ -42,6 +44,7 @@ import type { Entry } from "@/components/banking/EntriesTab";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { formatDate } from "@/lib/dates/format";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 interface EntryDetail extends Entry {
   suggestions: MatchSuggestion[];
@@ -104,6 +107,7 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
   const [prefill, setPrefill] = useState<SettlePrefill | null>(null);
   const [finding, setFinding] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [sent, setSent] = useState<BytesSent | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const attachments = t?.attachments ?? [];
@@ -120,7 +124,7 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
       // The vocabulary the documents table allows; a receipt or a vendor bill
       // kept against a bank line is not one of the statutory kinds.
       form.append("document_type", "OTHER");
-      const up = (await api.documents.upload(form)) as
+      const up = (await api.documents.upload(form, setSent)) as
         { success: boolean; data: { document: { id: string } } };
       const documentId = up?.data?.document?.id;
       if (!documentId) throw new Error("The file uploaded but came back without an id.");
@@ -132,6 +136,7 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
       toast({ title: "Couldn't attach that file",
               description: e instanceof Error ? e.message : String(e), variant: "destructive" });
     } finally {
+      setSent(null);
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";   // the same file again must re-fire change
     }
@@ -249,7 +254,7 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
   }
   if (!t) {
     // Reached only when the modal was opened without the row (no `initial`).
-    return <Shell onClose={onClose} title="Entry"><p className="text-xs text-ps-hint">Loading…</p></Shell>;
+    return <Shell onClose={onClose} title="Entry"><LoadingRegion label="Loading the entry" className="text-xs text-ps-hint">Loading…</LoadingRegion></Shell>;
   }
 
   const passed = t.entry_state === "passed";
@@ -561,6 +566,7 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
             ) : null}
           </div>
         )}
+        {sent && <UploadProgress progress={sent} what="the file" />}
       </section>
 
       {/* ── what the bank sent ── */}

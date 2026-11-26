@@ -260,6 +260,14 @@ ALLOWED_JOURNAL_ENTRY_TYPES = {
 }
 
 
+#: Said by the server for a blank reference on an edit, and by the journal editor before anything is sent. One sentence, held equal
+#: to the screen's by tests/test_a_journal_reference_is_changed_and_never_removed.py.
+JOURNAL_REFERENCE_NOT_REMOVED = (
+    "A journal entry's reference can be changed but not removed: enter the new reference. "
+    "Every entry carries one (one is given when none is typed), and it is part of what stops the same voucher being posted twice."
+)
+
+
 class JournalEntryUpdateIn(BaseModel):
     """A correction to an existing entry. Every field optional — a CA fixing a
     narration should not have to resend the lines.
@@ -290,6 +298,23 @@ class JournalEntryUpdateIn(BaseModel):
     attachments: Optional[list[dict]] = None
 
     _check_entry_date = field_validator("entry_date")(_posting_date)
+
+    @field_validator("reference_no")
+    @classmethod
+    def a_reference_is_changed_and_never_removed(cls, v: Optional[str]) -> Optional[str]:
+        """A blank reference is refused, in a sentence (POST-A-399: the one field of this slice that is NOT cleared).
+
+        Every manual journal carries a reference: `manual_journal_service.create` gives one (`MJ-…`) when none is typed, and the
+        posting kernel's guard against posting the same voucher twice is keyed on it with the client and the date. So "no
+        reference" is not a state an entry can be in, and an edit that empties the box cannot mean "store nothing". It used to
+        mean nothing at all: the screen sent null, which reads "not sent", the old reference stayed and the screen said the entry
+        was corrected; a blank STRING sent by hand was worse, stored as "" on a draft and through the posted path's COALESCE.
+        None still reads "not sent", which is what every field of this model means; a blank string is refused here, and the
+        screen refuses an emptied box beside its button in the same words (`apps/web/lib/accounting/journalReference.ts`).
+        """
+        if v is not None and not v.strip():
+            raise ValueError(JOURNAL_REFERENCE_NOT_REMOVED)
+        return v.strip() if v is not None else None
 
     @field_validator("attachments")
     @classmethod

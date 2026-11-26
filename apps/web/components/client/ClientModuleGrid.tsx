@@ -7,7 +7,8 @@ import {
   RefreshCw, Network, Activity, BookMarked, ClipboardList, Banknote,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { CLIENT_SECTIONS } from "@/lib/workspace/ClientNavContext";
+import { sectionsOffered } from "@/lib/workspace/ClientNavContext";
+import { usePermissions } from "@/lib/auth/AuthContext";
 
 /**
  * The client workspace's front door AND its switcher — one grid, used twice.
@@ -41,7 +42,7 @@ import { CLIENT_SECTIONS } from "@/lib/workspace/ClientNavContext";
  * ONE VOCABULARY. `CLIENT_SECTIONS` already is the list of what a client
  * workspace holds, in the order it holds it, and this renders exactly it.
  */
-const SECTION_ICONS: Record<string, React.ElementType> = {
+export const SECTION_ICONS: Record<string, React.ElementType> = {
   overview:        LayoutGrid,
   accounting:      BookOpen,
   sales:           ShoppingCart,
@@ -79,6 +80,10 @@ export function ClientModuleGrid({
   onNavigate?: () => void;
 }) {
   const compact = variant === "overlay";
+  // Only the sections whose first read admits the person (POST-A-454): a Reviewer was offered Accounting, Bank, Inventory, Fixed
+  // Assets, Year End and Reports, each of which refused them on arrival.
+  const { can, resolved } = usePermissions();
+  const sections = sectionsOffered(can, resolved);
 
   return (
     <div
@@ -90,7 +95,7 @@ export function ClientModuleGrid({
           : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
       )}
     >
-      {CLIENT_SECTIONS.map((section) => {
+      {sections.map((section) => {
         const Icon = SECTION_ICONS[section.id] ?? FileText;
         const active = section.id === activeSection;
         return (

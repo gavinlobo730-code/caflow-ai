@@ -23,7 +23,8 @@ from services import compliance_obligation_service as obligations
 from services import named_row_ownership
 from core import db_provider
 from domain.compliance_record_service import (
-    MAX_REOPEN_REASON_CHARS, REOPEN_AFTERMATH, REOPENABLE_OBLIGATION_TYPES, REOPENED_STATUS, clean_filed_date,
+    MAX_REOPEN_REASON_CHARS, NOT_REQUIRABLE_OBLIGATION_TYPES, REOPEN_AFTERMATH, REOPENABLE_OBLIGATION_TYPES, REOPENED_STATUS,
+    REQUIRED_AGAIN_STATUS, clean_filed_date,
     compliance_record_service,
 )
 from models.fy import OptionalFYLabel
@@ -146,6 +147,7 @@ def list_obligations(client_id: Optional[str] = Query(None),
         firm_id=current_user["firm_id"], client_id=client_id,
         status=status, compliance_type=compliance_type)
     rows = filter_by_client(current_user, rows)   # M2/M5: assignment scope
+    rows = obligations.with_people_named(current_user["firm_id"], rows)   # POST-A-206: who prepares and reviews each
     return api_response(True, {"obligations": rows, "total": len(rows)})
 
 
@@ -185,13 +187,19 @@ def generate_obligations(client_id: Optional[str] = Query(None),
 def assign_obligation(record_id: str, body: AssignBody,
                       current_user: dict = Depends(rbac("compliance", "write"))):
     """Set preparer / reviewer / approver on an obligation (audited + timelined)."""
-    _assert_obligation_scope(current_user, record_id)
+    rec = _assert_obligation_scope(current_user, record_id)
     # Each person named is a member of the caller's firm. Only `assigned_to` (which this route sets to the preparer) is keyed, to `users`;
     # `preparer_id`, `reviewer_id` and `approver_id` are bare uuids (migration 108), so for them this check is the only one.
+    # And each can open the obligation's client (POST-A-451): the nightly run mails all three about it by name, and the work is done
+    # inside the client.
     _db = db_provider.request_db_or_none()
     named_row_ownership.member_is_the_firms(_db, current_user["firm_id"], body.preparer_id)
     named_row_ownership.member_is_the_firms(_db, current_user["firm_id"], body.reviewer_id)
     named_row_ownership.member_is_the_firms(_db, current_user["firm_id"], body.approver_id)
+    client_id = (rec or {}).get("client_id")
+    named_row_ownership.member_reaches_client(_db, current_user["firm_id"], body.preparer_id, client_id)
+    named_row_ownership.member_reaches_client(_db, current_user["firm_id"], body.reviewer_id, client_id)
+    named_row_ownership.member_reaches_client(_db, current_user["firm_id"], body.approver_id, client_id)
     return api_response(True, obligations.assign(
         current_user["firm_id"], record_id, preparer_id=body.preparer_id,
         reviewer_id=body.reviewer_id, approver_id=body.approver_id, actor=current_user))
@@ -272,11 +280,64 @@ def reopen_obligation(record_id: str, body: ReopenBody,
     })
 
 
+@router.post("/obligations/{record_id}/not-required")
+def obligation_not_required(record_id: str, body: ReopenBody,
+                            current_user: dict = Depends(rbac("compliance", "approve"))):
+    """Record, with a written reason, that an obligation the calendar carries is not owed by this client (POST-A-267, item 4).
+
+    Advance-tax instalments only (`NOT_REQUIRABLE_OBLIGATION_TYPES`): the calendar carries all four for every client with the
+    engagement, and a §44AD or §44ADA assessee owes only the 15 March one. The CA states why; the product decides nothing. It is
+    `compliance.approve`, like the reopen door, because it takes an obligation off every count of what is late. It records
+    nothing as filed and locks no period. CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT."""
+    _assert_obligation_scope(current_user, record_id)
+    try:
+        updated = compliance_record_service.mark_not_required(
+            record_id, body.reason, firm_id=current_user["firm_id"], actor=current_user)
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.message) from e
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail="Compliance obligation not found.") from e
+    return api_response(True, {
+        "obligation": updated,
+        "message": "Recorded as not required of this client, with your reason. It no longer counts as open or late anywhere, and it "
+                   "was not recorded as filed. If it is owed after all, mark it required again.",
+    })
+
+
+@router.post("/obligations/{record_id}/required-again")
+def obligation_required_again(record_id: str, body: ReopenBody,
+                              current_user: dict = Depends(rbac("compliance", "approve"))):
+    """Take back a "not required" record, with a written reason: the obligation goes back to Not Started (POST-A-267, item 4)."""
+    _assert_obligation_scope(current_user, record_id)
+    try:
+        updated = compliance_record_service.mark_required_again(
+            record_id, body.reason, firm_id=current_user["firm_id"], actor=current_user)
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.message) from e
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail="Compliance obligation not found.") from e
+    return api_response(True, {
+        "obligation": updated,
+        "message": f"Required again. It is back at {REQUIRED_AGAIN_STATUS}, and its due date says whether it is late.",
+    })
+
+
 @router.get("/reopenable-types")
 def reopenable_obligation_types(current_user: dict = Depends(rbac("compliance", "read"))):
-    """Which obligation types the reopen door accepts, so a screen offers it only on those and holds no list of its own."""
+    """Which obligation types the reopen door accepts, so a screen offers it only on those and holds no list of its own; and which
+    ones the not-required door accepts (`not_requirable_types`), for the same reason."""
     return api_response(True, {"obligation_types": sorted(REOPENABLE_OBLIGATION_TYPES),
+                               "not_requirable_types": sorted(NOT_REQUIRABLE_OBLIGATION_TYPES),
                                "max_reason_chars": MAX_REOPEN_REASON_CHARS})
+
+
+@router.get("/obligations/mine")
+def my_obligations(current_user: dict = Depends(rbac("compliance", "read"))):
+    """The caller's own open obligations, the ones they are named on as preparer, reviewer or approver (POST-A-206), for My Work.
+    Firm-scoped and narrowed to the caller's clients like the dashboard."""
+    return api_response(True, obligations.my_obligations(
+        current_user["firm_id"], current_user.get("id") or "",
+        allowed_client_ids=effective_client_ids(current_user)))
 
 
 @router.get("/dashboard")

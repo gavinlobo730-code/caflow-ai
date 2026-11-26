@@ -39,7 +39,7 @@ export function ReopenObligationModal({
   const trimmed = reason.trim();
 
   return (
-    <Modal title="Reopen this obligation" onClose={onClose} maxWidthClass="max-w-md" note={intro}>
+    <Modal title="Reopen this obligation" onClose={() => { if (!busy) (onClose)(); }} maxWidthClass="max-w-md" note={intro}>
       <div className="space-y-3">
         <p className="text-xs text-ps-body">
           This takes the filing back off the calendar: the obligation returns to Ready To File and its filing date and
@@ -70,7 +70,7 @@ export function ReopenObligationModal({
         )}
 
         <div className="flex justify-end gap-2 pt-1">
-          <button
+          <button disabled={busy}
             type="button"
             onClick={onClose}
             className="text-xs px-3 py-1.5 border border-ps-border rounded-md hover:bg-ps-muted bg-white"

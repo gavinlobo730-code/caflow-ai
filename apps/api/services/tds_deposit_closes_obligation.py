@@ -58,6 +58,7 @@ THE RULE (`decide_month`, a pure function, holds it)
 """
 from __future__ import annotations
 
+from domain.practice.compliance_overdue import is_settled
 from dataclasses import dataclass
 from datetime import date
 from typing import Any, Optional
@@ -181,7 +182,7 @@ def _record_what_closed_it(record: dict, *, firm_id: str, client_id: str, coveri
     if not covering:
         return
     try:
-        compliance_records_repo.stamp_closing_tds_challans(record["id"], firm_id, sorted(covering))
+        compliance_records_repo.stamp_closing_tds_challans(record["id"], firm_id, sorted(covering), client_id=record.get("client_id"))
     except Exception as exc:                                    # noqa: BLE001
         capture_soft_failure(exc, operation="tds_deposit_closes_obligation.record_challans", firm_id=firm_id, client_id=client_id)
 
@@ -239,7 +240,7 @@ def _close(
     out: list[dict[str, Any]] = []
     for year, mon in months:
         record = obligations.get(date(year, mon, 1).isoformat())
-        if record is None or record.get("status") in ("Filed", "Completed"):
+        if record is None or is_settled(record.get("status")):
             continue
         window = worksheet.month_window(year, mon)
         sheet, mapping, rows = worksheet.build_sheet(year, mon, window, quarter_rows, challans)

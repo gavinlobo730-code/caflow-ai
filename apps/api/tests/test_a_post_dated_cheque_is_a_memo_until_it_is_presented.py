@@ -931,7 +931,9 @@ def test_the_reconciling_of_receipts_is_unchanged_by_the_register():
     """The engines are not edited to know about a cheque: no module under services
     other than the register itself mentions the register's table."""
     offenders = [p.name for p in (API / "services").glob("*.py")
-                 if "post_dated_cheques" in p.read_text() and p.name != "post_dated_cheque_service.py"]
+                 if "post_dated_cheques" in p.read_text()
+                 # The books export (POST-A-205, slice 3) copies the register to CSV as rows and reconciles nothing.
+                 and p.name not in ("post_dated_cheque_service.py", "client_books_export_service.py")]
     assert offenders == []
 
 

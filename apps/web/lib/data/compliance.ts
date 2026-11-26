@@ -42,6 +42,12 @@ export interface ComplianceEntry {
    *  "Tax Audit FY 2025-26". Written by the engine that generated the row, so a
    *  screen that names an obligation reads this and keeps no table of its own. */
   period_label?: string;
+  /** Who prepares and who reviews it (POST-A-206): the internal user ids the obligation names (`preparer_id`, or `assigned_to` where
+   *  only that is set) and the names the server resolved for them. A name is null where the server could not resolve the id. */
+  preparer_id?: string | null;
+  preparer_name?: string | null;
+  reviewer_id?: string | null;
+  reviewer_name?: string | null;
 }
 
 interface RawObligation {
@@ -58,6 +64,11 @@ interface RawObligation {
   notes?: string | null;
   risk_score?: number;
   period_label?: string | null;
+  preparer_id?: string | null;
+  assigned_to?: string | null;
+  reviewer_id?: string | null;
+  preparer_name?: string | null;
+  reviewer_name?: string | null;
 }
 
 const STATUS_TO_FILING_STATUS: Record<string, string> = {
@@ -69,6 +80,8 @@ const STATUS_TO_FILING_STATUS: Record<string, string> = {
   "Filed": "filed",
   "Completed": "filed",
   "Overdue": "overdue",
+  // Recorded by the CA, with a reason, as not owed by this client (POST-A-267, item 4): settled, and not a filing.
+  "Not Required": "na",
 };
 
 // `compliance_record_service.escalate()` records escalation-tier bookkeeping
@@ -80,7 +93,7 @@ const STATUS_TO_FILING_STATUS: Record<string, string> = {
 // pages separately colour red by comparing against `today` themselves.
 // Deriving it here, once, is what keeps the badge and the due-date colour in
 // agreement everywhere ComplianceEntry is read from.
-const TERMINAL_FILING_STATUSES = new Set(["filed"]);
+const TERMINAL_FILING_STATUSES = new Set(["filed", "na"]);
 
 function toEntry(raw: RawObligation): ComplianceEntry {
   const mapped = STATUS_TO_FILING_STATUS[raw.status] ?? "pending";
@@ -99,6 +112,10 @@ function toEntry(raw: RawObligation): ComplianceEntry {
     notes: raw.notes ?? undefined,
     risk_score: raw.risk_score,
     period_label: raw.period_label ?? undefined,
+    preparer_id: raw.preparer_id ?? raw.assigned_to ?? null,
+    preparer_name: raw.preparer_name ?? null,
+    reviewer_id: raw.reviewer_id ?? null,
+    reviewer_name: raw.reviewer_name ?? null,
   };
 }
 
@@ -131,6 +148,53 @@ export async function getObligationCalendar(
   const d = objectOrNull<Record<string, unknown>>(res.data) ?? {};
   const rows = (v: unknown) => arrayOrEmpty<RawObligation>(v).map(toEntry);
   return { upcoming: rows(d.upcoming), overdue: rows(d.overdue), completed: rows(d.completed) };
+}
+
+/** One obligation on the caller's own list (`GET /api/compliance/obligations/mine`). */
+export interface MyObligation {
+  id: string;
+  clientId: string | null;
+  clientName: string | null;
+  label: string;
+  dueDate: string | null;
+  status: string | null;
+  roles: string[];
+  overdue: boolean;
+}
+
+export interface MyObligations {
+  obligations: MyObligation[];
+  total: number;
+  overdue: number;
+  /** Open obligations in the caller's reach with nobody named on them: nobody's list carries them. */
+  unassigned: number;
+}
+
+/** The open obligations the caller is named on as preparer, reviewer or approver, soonest due first (POST-A-206). Read from the
+ *  obligation store Deadlines shows. A refusal THROWS, so My Work can tell "none" from "could not be read". */
+export async function getMyObligations(): Promise<MyObligations> {
+  const res = await api.complianceOps.mine();
+  if (!res?.success) throw new Error(res?.error ?? "Your obligations could not be loaded.");
+  const d = objectOrNull<Record<string, unknown>>(res.data) ?? {};
+  const str = (v: unknown) => (typeof v === "string" && v ? v : null);
+  const obligations = arrayOrEmpty<Record<string, unknown>>(d.obligations).map((o) => ({
+    id: String(o.id ?? ""),
+    clientId: str(o.client_id),
+    clientName: str(o.client_name),
+    // The server's own name for the obligation and its period ("GSTR-3B Jun 2026"); the type code only where it wrote none.
+    label: str(o.period_label) ?? str(o.obligation_type) ?? str(o.compliance_type) ?? "Obligation",
+    dueDate: str(o.due_date)?.slice(0, 10) ?? null,
+    status: str(o.status),
+    roles: arrayOrEmpty<string>(o.my_roles).filter((r) => typeof r === "string"),
+    overdue: o.overdue === true,
+  }));
+  const num = (v: unknown, fallback: number) => (typeof v === "number" && Number.isFinite(v) ? v : fallback);
+  return {
+    obligations,
+    total: num(d.total, obligations.length),
+    overdue: num(d.overdue, obligations.filter((o) => o.overdue).length),
+    unassigned: num(d.unassigned_in_scope, 0),
+  };
 }
 
 /** Fetches compliance obligations (assignment-scoped server-side), optionally
@@ -207,7 +271,13 @@ export async function seedComplianceCalendar(clientId: string): Promise<void> {
 /** What the server says it will reopen. A rule that could not be read is "none": the screen then offers no Reopen, which is the
  *  cautious answer. The read is tried three times, because the first request after the API has been asleep can time out and a
  *  Manager would otherwise see no Reopen button on a screen that was open all day with nothing to say why. */
-export interface ReopenRule { types: string[]; maxReasonChars: number }
+export interface ReopenRule {
+  types: string[];
+  maxReasonChars: number;
+  /** The obligation types the server will record as NOT REQUIRED of the client (POST-A-267, item 4). Empty when it could not be read
+   *  or the server is older than the field, so the screen then offers no such button. */
+  notRequirableTypes: string[];
+}
 
 const REOPEN_RULE_ATTEMPTS = 3;
 const REOPEN_RULE_PAUSE_MS = 2500;
@@ -218,12 +288,26 @@ export async function getReopenRule(): Promise<ReopenRule> {
       const res = await api.complianceOps.reopenableTypes();
       const d = objectOrNull<Record<string, unknown>>(res?.data) ?? {};
       const max = typeof d.max_reason_chars === "number" ? d.max_reason_chars : 500;
-      return { types: arrayOrEmpty<string>(d.obligation_types).filter((t) => typeof t === "string"), maxReasonChars: max };
+      return {
+        types: arrayOrEmpty<string>(d.obligation_types).filter((t) => typeof t === "string"),
+        maxReasonChars: max,
+        notRequirableTypes: arrayOrEmpty<string>(d.not_requirable_types).filter((t) => typeof t === "string"),
+      };
     } catch {
       if (attempt < REOPEN_RULE_ATTEMPTS) await new Promise((resolve) => setTimeout(resolve, REOPEN_RULE_PAUSE_MS));
     }
   }
-  return { types: [], maxReasonChars: 500 };
+  return { types: [], maxReasonChars: 500, notRequirableTypes: [] };
+}
+
+/** Records, with the CA's written reason, that an obligation is not owed by this client (`POST /obligations/{id}/not-required`,
+ *  `compliance.approve`), or takes that back (`/required-again`). Returns the server's sentence; a refusal is thrown carrying it. */
+export async function setObligationRequired(id: string, required: boolean, reason: string): Promise<string> {
+  const res = required
+    ? await api.complianceOps.requiredAgain(id, reason)
+    : await api.complianceOps.notRequired(id, reason);
+  if (!res?.success) throw new Error(res?.error ?? "The obligation could not be changed.");
+  return typeof res.data?.message === "string" ? res.data.message : "Saved.";
 }
 
 /** Takes back a recorded filing on a statutory deposit (POST-A-267, item 3). Returns the server's sentence, which says what the

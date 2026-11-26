@@ -93,6 +93,7 @@ def _capital_goods(db, firm_id: str, client_id: str) -> list:
         try:
             inv = date.fromisoformat(str(raw)[:10]) if raw else None
         except ValueError:
+            # purchase_date is a DATE column; unreadable text is passed on as no invoice date, which rule_43 names as a gap for that asset.
             inv = None
         goods.append(rule_43.CapitalGood(
             asset_id=str(r.get("id")),

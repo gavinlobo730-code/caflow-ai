@@ -46,7 +46,9 @@ from domain.income_tax.itr_engine import (
 
 def test_nothing_here_claims_to_be_verified():
     assert c.VERIFIED is False
-    assert "pinned exactly by a test" in c.UNVERIFIED_NOTE
+    # The note is read by a CA on the working: it says the one fact and the one instruction, and nothing about how the code is tested.
+    assert "not been read off the Act" in c.UNVERIFIED_NOTE
+    assert "Check the figures against the Finance Act before filing" in c.UNVERIFIED_NOTE
 
 
 @pytest.mark.parametrize("name, expected", [

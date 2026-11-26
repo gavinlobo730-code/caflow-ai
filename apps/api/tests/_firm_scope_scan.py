@@ -29,12 +29,13 @@ WHAT IS A CHAIN
     The call site is read as the query it stands for (table `repo:client_repo.update`),
     keyed on the id it passes and scoped when it passes the firm. The same is done
     for a function whose firm filter is CONDITIONAL on an optional `firm_id`
-    argument (table `call:get_risk`): the filter is there when the caller asks for
-    it, so the caller is what is judged.
+    argument (table `call:<function>`; first written for `get_risk`, retired on 22-11-2026):
+    the filter is there when the caller asks for it, so the caller is what is judged.
 
 WHEN A CHAIN IS SCOPED  (`scoped_by`, in the order tried)
-    filter      .eq / .in_ / .filter("firm_id", ...), .match({"firm_id": ...}) or an
-                .or_("...firm_id...") string, on the chain or on a call made later on
+    filter      .eq / .in_ / .filter("firm_id", "eq" or "in", ...) with a value that names a firm,
+                .match({"firm_id": ...}), or an .or_() whose every alternative is the caller's
+                firm or a row every firm reads (`_or_confines_to_a_firm`), on the chain or on a call made later on
                 the name it was assigned to; or an `.eq("parent.firm_id", ...)` on an
                 embedded `parent!inner(...)`.
     payload     an INSERT or UPSERT whose payload carries a `firm_id` key: an inline
@@ -378,11 +379,23 @@ def clear_cache() -> None:
     _INDEX_CACHE.clear()
 
 
+def _names_a_table(call: ast.Call) -> bool:
+    """`.table("t")`, or `.from_("t")`, which supabase-py offers as the same thing (POST-A-019: a query written with the alias was
+    read as no query at all, so it could not be unscoped). A storage bucket is also reached by `.from_`, on `.storage`, and is a
+    folder of files and not a table: `core/storage_door` is its one door and has a guard of its own."""
+    if call.func.attr == "table":
+        return bool(call.args)
+    if call.func.attr != "from_" or not call.args:
+        return False
+    receiver = call.func.value
+    return not (isinstance(receiver, ast.Attribute) and receiver.attr == "storage")
+
+
 def _chain_ops(top: ast.Call):
     ops = []
     cur: ast.AST = top
     while isinstance(cur, ast.Call) and isinstance(cur.func, ast.Attribute):
-        if cur.func.attr == "table" and cur.args:
+        if _names_a_table(cur):
             ops.reverse()
             return cur, ops
         ops.append((cur.func.attr, cur))
@@ -493,6 +506,59 @@ def _root_of_chain(expr: ast.AST) -> str | None:
     return cur.id if isinstance(cur, ast.Name) else None
 
 
+def _is_nothing(expr: ast.AST | None) -> bool:
+    """A value that names no firm: absent, a literal None, an empty string or an empty list, tuple or set."""
+    if expr is None:
+        return True
+    if isinstance(expr, ast.Constant):
+        return expr.value is None or expr.value == ""
+    return isinstance(expr, (ast.List, ast.Tuple, ast.Set)) and not expr.elts
+
+
+def _keys_on_a_firm(method: str, call: ast.Call) -> bool:
+    """Does this `.eq / .in_ / .filter` on the firm column NARROW to a firm?
+
+    A filter that only MENTIONS the column is not a scope (POST-A-019, the smaller shapes): `.eq("firm_id", None)` and
+    `.in_("firm_id", [])` name no firm, and `.filter("firm_id", "neq", x)` (or any operator but `eq` and `in`, or an operator the
+    reader cannot see) keeps every OTHER firm's rows, which is the opposite of the rule. None of the three is in the tree today;
+    each is refused here so that the day one is written the chain is read by a person."""
+    if method == "filter":
+        if len(call.args) < 3:
+            return False
+        op = call.args[1]
+        return isinstance(op, ast.Constant) and op.value in ("eq", "in") and not _is_nothing(call.args[2])
+    return len(call.args) > 1 and not _is_nothing(call.args[1])
+
+
+# The alternatives an `.or_()` may hold and still be a firm scope: the caller's own firm, and the two ways this schema marks a row
+# every firm reads (a system workflow template, `is_system`; a stock task template, a NULL firm). Anything else in the OR is another
+# way INTO the answer, so the filter no longer confines the read to a firm.
+_OR_OWN_FIRM = re.compile(r"^firm_id\.eq\.(\{\}|[0-9a-fA-F-]{8,})$")
+_OR_SHARED_ROW = re.compile(r"^(firm_id\.is\.null|is_system\.eq\.true)$")
+
+
+def _or_text(expr: ast.AST) -> str | None:
+    """The text of an `.or_()` argument with each interpolated value as `{}`, or None when it is not a string the reader can see."""
+    if isinstance(expr, ast.Constant) and isinstance(expr.value, str):
+        return expr.value
+    if isinstance(expr, ast.JoinedStr):
+        return "".join(v.value if isinstance(v, ast.Constant) else "{}" for v in expr.values)
+    return None
+
+
+def _or_confines_to_a_firm(expr: ast.AST) -> bool:
+    """An `.or_()` is a firm scope only when EVERY alternative is the caller's firm or a row every firm reads, and one of them is
+    the caller's firm (POST-A-019). `firm_id.eq.{f},client_id.eq.{c}` mentions the column and confines nothing: a row of any firm
+    with that client id is in the answer. A nested `and(...)`/`or(...)`, or a string built somewhere else, is not read and does
+    not count; a chain that needs one says so on the frozen list."""
+    text = _or_text(expr)
+    if text is None or "(" in text or ")" in text:
+        return False
+    parts = [part.strip() for part in text.split(",")]
+    return (all(_OR_OWN_FIRM.match(part) or _OR_SHARED_ROW.match(part) for part in parts)
+            and any(_OR_OWN_FIRM.match(part) for part in parts))
+
+
 def _filters_of(ops) -> list[_Filter]:
     out: list[_Filter] = []
     for method, call in ops:
@@ -501,6 +567,8 @@ def _filters_of(ops) -> list[_Filter]:
             if isinstance(a, ast.Constant) and isinstance(a.value, str):
                 col = a.value
                 value = call.args[1] if len(call.args) > 1 else None
+                if (col == "firm_id" or col.endswith(".firm_id")) and not _keys_on_a_firm(method, call):
+                    continue
                 if col.endswith(".firm_id"):
                     out.append(_Filter(method, "firm_id", value, call, embedded=True))
                 else:
@@ -509,20 +577,19 @@ def _filters_of(ops) -> list[_Filter]:
                     and isinstance(a.values[-1], ast.Constant) \
                     and str(a.values[-1].value).endswith(".firm_id"):
                 # .eq(f"{parent_table}.firm_id", firm_id)
-                out.append(_Filter(method, "firm_id", call.args[1] if len(call.args) > 1 else None,
-                                   call, embedded=True))
+                if _keys_on_a_firm(method, call):
+                    out.append(_Filter(method, "firm_id", call.args[1] if len(call.args) > 1 else None,
+                                       call, embedded=True))
             elif not isinstance(a, ast.Constant) and len(call.args) > 1:
                 out.append(_Filter(method, "*", call.args[1], call))   # `.eq(col, value)`
         elif method == "match" and call.args and isinstance(call.args[0], ast.Dict):
             for k, v in zip(call.args[0].keys, call.args[0].values, strict=True):
                 if isinstance(k, ast.Constant) and isinstance(k.value, str):
+                    if k.value == "firm_id" and _is_nothing(v):
+                        continue
                     out.append(_Filter("eq", k.value, v, call))
         elif method == "or_" and call.args:
-            try:
-                text = ast.unparse(call.args[0])
-            except Exception:
-                text = ""
-            if "firm_id" in text:
+            if _or_confines_to_a_firm(call.args[0]):
                 out.append(_Filter("or_", "firm_id", None, call))
     return out
 

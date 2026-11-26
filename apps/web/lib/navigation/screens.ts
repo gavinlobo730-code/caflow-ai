@@ -109,8 +109,8 @@ export const SCREENS: Screen[] = [
   // that name sent the Sales hub tile here for a client's CUSTOMER
   // receivables, and a client owed ₹19.9 crore showed ₹0 (accounting-hub-2-05).
   // A CA typing "debtors" wants the Sales worklist below.
-  firm("/accounting/receivables", "Fee receivables (practice)", "Accounting",
-    ["unpaid fees", "fee invoices", "practice billing", "owed to the firm", "fee ageing"]),
+  firm("/accounting/receivables", "Earlier fee receivables", "Practice",
+    ["unpaid fees", "fee invoices", "fee receivables", "owed to the firm", "fee ageing"]),
   // The firm-level WORKLISTS (D22, G3) — which clients need work in a module
   // whose register lives only in the client workspace. Named with the words a
   // CA would type for the QUESTION, not for the module: somebody looking for
@@ -150,6 +150,7 @@ export const SCREENS: Screen[] = [
   // ── Income tax and TDS ────────────────────────────────────────────────────
   firm("/income-tax", "Income tax", "Income tax", ["it", "itr"]),
   firm("/income-tax/advance-tax", "Advance tax", "Income tax", ["234b", "234c", "instalments"]),
+  firm("/income-tax/season", "Filing season", "Income tax", ["itr season", "returns by stage", "bulk compute"]),
   firm("/income-tax/ais", "AIS", "Income tax", ["annual information statement", "tis"]),
   firm("/income-tax/book-to-tax", "Book to tax", "Income tax", ["reconciliation", "bridge"]),
   firm("/income-tax/capital-gains", "Capital gains", "Income tax", ["54", "54f", "112a", "111a", "ltcg", "stcg"]),
@@ -173,7 +174,7 @@ export const SCREENS: Screen[] = [
   firm("/mca", "MCA / ROC", "MCA", ["roc", "aoc-4", "mgt-7", "adt-1", "company filings"]),
 
   // ── Practice ──────────────────────────────────────────────────────────────
-  firm("/practice", "Practice", "Practice", ["firm"]),
+  firm("/practice", "My practice", "Practice", ["firm", "own books", "our books", "my firm", "practice home"]),
   firm("/practice/ar", "Practice receivables", "Practice", ["fee outstanding", "our debtors"]),
   firm("/practice/billing", "Practice billing", "Practice", ["fee bills", "invoicing"]),
   firm("/practice/collections", "Collections", "Practice", ["chasing", "reminders", "dunning"]),
@@ -192,7 +193,7 @@ export const SCREENS: Screen[] = [
   firm("/practice/benchmark", "Client benchmark", "Practice",
        ["effective tax rate", "ITC to purchases", "GST to turnover",
         "compare clients", "where does this client sit", "peer", "ratios"]),
-  firm("/billing", "Fee Billing", "Practice", ["fees", "client invoices"]),
+  firm("/billing", "Earlier fee bills", "Practice", ["fee billing", "old fee bills", "fees"]),
   firm("/team", "Team", "Practice", ["staff", "users", "permissions"]),
   firm("/team/assignments", "Client assignments", "Practice", ["who handles which client"]),
   firm("/team/login-history", "Login history", "Practice", ["sign ins", "access log"]),
@@ -220,10 +221,11 @@ export const SCREENS: Screen[] = [
   firm("/settings/branding", "Branding", "Settings", ["logo", "letterhead"]),
   firm("/settings/dsc-tracker", "DSC tracker", "Settings", ["digital signature", "dsc expiry", "token"]),
   firm("/settings/email-templates", "Email templates", "Settings", ["mail wording"]),
-  firm("/settings/ai", "AI status", "Settings", ["ai", "assistant", "groq", "gemini", "probe", "model"]),
+  firm("/settings/ai", "PracticeSync AI status", "Settings", ["ai", "assistant", "groq", "gemini", "probe", "model"]),
   firm("/settings/firm-hsn-library", "HSN library", "Settings", ["hsn", "sac", "rate master"]),
   firm("/settings/invoice-settings", "Invoice numbering", "Settings", ["series", "prefix", "rule 46(b)"]),
   firm("/settings/invoice-templates", "Invoice templates", "Settings", ["layout", "pdf design"]),
+  firm("/settings/journal-approval", "Journal approval", "Settings", ["manual journal", "maker checker", "approve journals"]),
   firm("/settings/multi-currency", "Multi-currency", "Settings", ["fx", "foreign currency", "as-11"]),
   firm("/settings/scheduled-reports", "Scheduled reports", "Settings", ["email reports", "subscriptions"]),
   firm("/settings/security", "Security", "Settings", ["2fa", "sessions", "password policy"]),
@@ -297,24 +299,20 @@ export const UNLISTED: Record<string, string> = {
   "/login": "signed-out — a palette is for somebody already inside the product",
   "/login/forgot-password": "signed-out",
   "/signup": "signed-out",
+  "/signup/continue": "signed-out — reached from a sign-up link (POST-A-485)",
   "/join": "signed-out — reached from an invitation link",
   "/sign": "signed-out — a client signs an engagement letter from an emailed link",
   "/auth/reset-password": "signed-out",
+  "/auth/account-closed": "signed-out — reached when the server says the account is closed (POST-A-482)",
   "/portal": "the CLIENT's portal, not staff navigation",
   "/portal/login": "signed-out, client portal",
   "/portal/activate": "reached from an invitation link",
   "/portal/dashboard": "the client's own screen, not staff navigation",
   "/portal/employee": "the EMPLOYEE portal — a different principal entirely",
   "/portal/employee/activate": "reached from an invitation link",
-  "/onboarding/checklist":
-    "a pure redirect to /clients/onboarding/ (sweep-auth-and-public-05) — kept " +
-    "for old bookmarks; naming it would give ONE destination two palette entries",
-  "/team/work-allocation":
-    "a pure redirect to /team/workload (practice_management-24) — Work Allocation " +
-    "was merged into it and its URL kept for old bookmarks and #unassigned-tasks " +
-    "links; naming it would give ONE destination two palette entries",
   "/clients/[id]":
-    "a pure redirect to /clients/:id/overview/ — naming it would give ONE\n     destination two palette entries, and \"Overview\" is the one a CA means",
+    "the client workspace's front door (its module grid), reached by opening a client — " +
+    "it needs a client, and every screen it leads to is named under its own section",
   "/health/[client_id]": "a RECORD, which is what entity search already finds",
   "/relationships/[entity_id]": "a RECORD",
   "/clients/[id]/accounting/journal/[entryId]/edit": "a RECORD — no such screen without a document id",

@@ -62,6 +62,26 @@
  *   typed in full that is on the wrong side is left as typed (the field gives it
  *   the `min`/`max` hint): nothing here refuses a date.
  *
+ * ── A DATE THAT IS NEAR ANOTHER, ON NO SIDE WE CAN CLAIM ────────────────────
+ *
+ *   Some dates sit beside ANOTHER date and may fall on either side of it: a
+ *   notice's response date (a notice can reach the firm after the date it
+ *   gives), a settlement paid before or after the last working day, and an
+ *   export's shipping bill and a Form 15CA beside the document (an order
+ *   nobody has read from a primary source). Claiming a side there would be
+ *   claiming a fact. `near` names the date and claims none: a day and month
+ *   typed with no year are read in whichever of near's own calendar year and
+ *   the years either side puts the day NEAREST to it (on a tie, the later), so
+ *   `15/6` beside a notice received on 01/03/2026 is 15/06/2026 and not
+ *   15/06/2025. Only within half a year (NEAR_REACH_DAYS): a 29/2 whose nearest
+ *   leap February is further off keeps the reading and the sentence it would
+ *   have had without `near`. A bare day stays in the anchor's month (a `28`
+ *   typed beside the 2nd is the 28th of that month, not of the last), and
+ *   `notBefore`/`notAfter` still apply after it (POST-A-126). An expiry or a
+ *   "needed by" beside TODAY does not take `near`: it is nearly always ahead,
+ *   and nearest-to-today would read `15/3` typed in June as the March gone,
+ *   so those keep the financial-year reading.
+ *
  * ── NOTHING IS GUESSED ──────────────────────────────────────────────────────
  *
  *   31/02/2026 is an error naming February 2026's 28 days. It is never March
@@ -95,6 +115,7 @@
  */
 import { MONTH_ABBREVIATIONS, formatDate, todayIstISO } from "./format.ts";
 import { financialYearOfMonth, fyRangeFor } from "./periods.ts";
+import { daysBetweenLocalISO } from "../dateMath.ts";
 
 /** The span a typed year may fall in: `lib/dates/periods` already treats
  *  1900-01-01 .. 2999-12-31 as "all time", and a year outside it is a typo for a
@@ -134,6 +155,9 @@ export interface TypedDateContext {
   /** `YYYY-MM-DD`: the date this one belongs on or before. Moves a SHORT form back
    *  to the last such day. */
   notAfter?: string | null;
+  /** `YYYY-MM-DD`: the date a day and month typed with no year is read nearest to, either side (see the header). Moves no bare day and no
+   *  typed year. */
+  near?: string | null;
   /** Injectable clock for tests, `YYYY-MM-DD`; defaults to today in IST. */
   today?: string;
 }
@@ -268,6 +292,30 @@ function stepMonth(y: number, m: number, step: 1 | -1): { y: number; m: number }
   return { y: Math.floor(n / 12), m: (n % 12) + 1 };
 }
 
+/** How far from `near` a day and month may be read before the reading is no longer "near": half a year. Every day and month has a date within it
+ *  of any `near` but 29 February, which outside it keeps the reading it would have had with no `near` (and its sentence when that February has
+ *  no 29th), rather than being moved silently to a leap year a year or more away. */
+const NEAR_REACH_DAYS = 183;
+
+/**
+ * The year a day and month typed with no year is read in when `near` is asked (see the header): of the calendar year of `near` itself and the
+ * years either side of it, the one whose day is nearest to `near`, the later on a tie. The candidates are taken from `near` and not from the
+ * financial-year reading `y`, which comes from the anchor and can be years away from `near` (a date already on file). A day that is real in none
+ * of them, or only further than NEAR_REACH_DAYS away (a 29 February), stays in `y` and gets the usual sentence.
+ */
+function nearestYear(ctx: TypedDateContext, y: number, m: number, d: number): number {
+  const near = readIso(ctx.near);
+  if (near === null) return y;
+  const nearIso = isoOf(near.y, near.m, near.d);
+  let best: { y: number; gap: number } | null = null;
+  for (const cy of [near.y - 1, near.y, near.y + 1]) {
+    if (cy < MIN_YEAR || cy > MAX_YEAR || !isRealDay(cy, m, d)) continue;
+    const gap = Math.abs(daysBetweenLocalISO(nearIso, isoOf(cy, m, d)) ?? Infinity);
+    if (best === null || gap <= best.gap) best = { y: cy, gap };
+  }
+  return best === null || best.gap > NEAR_REACH_DAYS ? y : best.y;
+}
+
 /**
  * Where a SHORT form lands once `notBefore` / `notAfter` are asked (see the header). `monthGiven` is whether the person typed a month: a day and a
  * month move by whole years (at most eight steps), a bare day by whole months (at most 24). A day that does not exist where it landed, or that no
@@ -388,6 +436,8 @@ export function parseTypedDate(raw: string | null | undefined, ctx: TypedDateCon
     return { kind: "error", problem: "no_such_month", message: `There is no month ${month}: months run from 1 to 12.` };
   }
   if (year === null) year = yearInFinancialYear(fy, month);
+  // A day and month with no year, beside a date it may fall either side of, is read in the year nearest to that date.
+  if (shape.year === null && shape.month !== null) year = nearestYear(ctx, year, month, day);
   // A short form is read in the financial year; a field that belongs after (or before) another date moves it to the right side of it.
   if (shape.year === null) ({ y: year, m: month } = rollToBound(ctx, year, month, day, shape.month !== null));
   if (year < MIN_YEAR || year > MAX_YEAR) {
@@ -417,10 +467,14 @@ export function parseTypedDate(raw: string | null | undefined, ctx: TypedDateCon
   const min = readIso(ctx.min) ? (ctx.min as string).trim() : null;
   const max = readIso(ctx.max) ? (ctx.max as string).trim() : null;
   const outOfRange = min !== null && iso < min ? "min" : max !== null && iso > max ? "max" : null;
+  // A bound that IS today's date in India is said as that (POST-A-392): "15 Oct 2026 is after 08 Oct 2026." did not say why 08 Oct, and
+  // a person in another zone may be a day either side of it. Any other bound (the day the year ends, another box's date) is said as a day.
+  const today = readIso(ctx.today) ? (ctx.today as string) : todayIstISO();
+  const bound = (day: string) => (day === today ? `today's date in India, ${formatDate(day)}` : formatDate(day));
   const message = outOfRange === "min"
-    ? `${formatDate(iso)} is before ${formatDate(min)}.`
+    ? `${formatDate(iso)} is before ${bound(min as string)}.`
     : outOfRange === "max"
-      ? `${formatDate(iso)} is after ${formatDate(max)}.`
+      ? `${formatDate(iso)} is after ${bound(max as string)}.`
       : null;
   return { kind: "date", iso, display: typedDateText(iso), outOfRange, message };
 }

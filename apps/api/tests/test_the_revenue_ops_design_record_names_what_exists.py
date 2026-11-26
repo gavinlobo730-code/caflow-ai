@@ -65,12 +65,12 @@ _RBAC = re.compile(r'rbac\("(\w+)",\s*"(\w+)"\)')
 #: Functions the record must keep naming, so deleting the sentence cannot be how a rename escapes this file.
 MUST_NAME = (
     "internal_client_service.assert_can_view_client", "internal_client_service.assert_partner_for_internal_id",
-    "internal_client_service.assert_not_internal_for_payroll", "internal_client_service.require_client_access",
+    "internal_client_service.assert_practice_payroll_is_the_partners", "internal_client_service.require_client_access",
     "internal_client_service.provision", "billing_service.ensure_customer_link",
     "billing_service.generate_for_schedule", "collections_service.assess_invoice",
     "collections_service.sweep_overdue", "collections_service.flag_overdue_for_internal_followup",
     "knowledge_service.restore_version", "knowledge_service.can_view_client_content",
-    "billing_service.mark_time_entries_billed",
+    "time_billing_service.create_draft", "time_billing_service.release_for_invoice",
 )
 #: Database objects the record names without `()` and which a migration must create.
 SQL_OBJECTS = ("unbilled_time_summary", "my_internal_client_id", "get_my_user_id", "provision_internal_client",
@@ -255,6 +255,10 @@ def test_every_sql_object_it_names_is_created_by_a_migration():
     for name in SQL_OBJECTS:
         assert name in _doc(), f"the record no longer names {name}; remove it from SQL_OBJECTS"
         assert name in sql, f"the record names {name} and no migration creates it"
+    # POST-A-169: the record says the SQL provisioner was dropped, and the migration it cites drops it.
+    assert "Migration 610 dropped it" in _doc()
+    assert "DROP FUNCTION IF EXISTS public.provision_internal_client" in _migrations()[
+        "610_the_sql_internal_client_provisioner_nothing_calls_is_dropped.sql"]
     for table in TABLES_FROM_073:
         assert re.search(rf"CREATE TABLE IF NOT EXISTS {table}\b", _migrations()["073_revenue_ops_foundation.sql"]), table
         assert table in _doc(), f"the record no longer names {table}"
@@ -376,11 +380,11 @@ def test_the_defects_observed_while_writing_the_record_are_still_there():
 
     When one fails: it was fixed. Delete its bullet from §9, delete its assertion, and say so in the commit.
     """
-    # 6. Nothing schedules draft generation, and nothing bills time.
-    for name in ("run_due", "mark_time_entries_billed"):
+    # 6. Nothing schedules draft generation. (Time IS billed since 21-11-2026, POST-B-194: `time_billing_service`.)
+    for name in ("run_due",):
         users = {rel for rel, text in _production().items()
                  if re.search(rf"billing_service\.{name}\b|from services\.billing_service import[^\n]*\b{name}\b", text)}
-        allowed = {"routers/billing.py"} if name == "run_due" else set()
+        allowed = {"routers/billing.py"}
         assert users == allowed, f"{name} is now reached from {sorted(users - allowed)}; fix §4/§6 and §9"
 
 

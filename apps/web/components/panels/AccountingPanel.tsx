@@ -8,11 +8,9 @@ import {
   Upload,
   Download,
   BookOpen,
-  Receipt,
   DatabaseZap,
   LayoutDashboard,
   Users,
-  Clock,
   Landmark,
   FileText,
   Target,
@@ -28,7 +26,8 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { cn, isExactPath } from "@/lib/utils";
-import { usePermissions, useAuth } from "@/lib/auth/AuthContext";
+import { usePermissions } from "@/lib/auth/AuthContext";
+import { useScreenAccess } from "@/lib/access/useScreenAccess";
 
 /**
  * The Accounting workspace's browse surface.
@@ -51,15 +50,21 @@ import { usePermissions, useAuth } from "@/lib/auth/AuthContext";
  *
  * `requires` names the backend permission the page's own data calls need, READ
  * OFF THE ENDPOINT rather than guessed — each one below was checked against the
- * `rbac(...)` on the route it calls. An absent `requires` means "no FastAPI
- * permission governs this page", never "nobody checked": the four Chart-of-
- * Accounts screens and Loans and Receivables query Supabase directly, so RLS
- * governs them and no entry in the rbac matrix applies.
+ * `rbac(...)` on the route it calls. An absent `requires` means "nothing the
+ * page needs to load is refused to any staff role", never "nobody checked".
+ * A screen that reads over PostgREST is gated on the permission its ROW-LEVEL
+ * POLICY asks, which is the same tier: Fee Receivables reads `fee_invoices`,
+ * which only someone with billing access may read (migration 495), and Import
+ * COA's whole purpose is an insert into `chart_of_accounts`, whose write policy
+ * is Manager and above (migration 260), the `accounting` `write` tier. Both
+ * were offered to everyone until POST-A-447 and refused the people they were
+ * not for. Account Groups and Export COA read the chart, which every member of
+ * the firm may, and Loans & FD reads `loans`, so those three have none.
  *
- * `partnerOnly` mirrors a page's OWN `RoleGuard allowed={["Partner"]}` and is
- * used once, on Lock Financial Year. It is not a second permission system —
- * `rbac()` remains the boundary — it stops the panel offering a link that can
- * only bounce.
+ * Lock Financial Year asks `accounting` `approve`, the pair the server asks to set
+ * the lock (a Partner's by default). It used to carry a `partnerOnly` flag that
+ * mirrored a role guard on the page; both went with POST-A-543, so somebody a
+ * Partner ticks for it is offered it and can open it.
  *
  * Fee Billing and Data Migration map to this workspace (see routeOwnership.ts),
  * so their screens are grouped here rather than left unreachable from the rail.
@@ -78,7 +83,6 @@ export type NavItem = {
   icon: typeof GitBranch;
   exact?: boolean;
   requires?: [resource: string, action: string];
-  partnerOnly?: boolean;
 };
 
 // Exported so app/accounting/page.tsx can build its own quick-access cards for
@@ -97,9 +101,14 @@ export const NAV_GROUPS: Array<{ heading: string | null; items: NavItem[] }> = [
   {
     heading: "Chart of accounts",
     items: [
-      { label: "Schedule III Mapping", href: "/accounting/schedule-iii-mapping", icon: GitBranch },
+      // accounting.py get_schedule_iii → rbac("accounting", "read"), the
+      // page's first call, so a Reviewer offered it was refused on arrival.
+      { label: "Schedule III Mapping", href: "/accounting/schedule-iii-mapping", icon: GitBranch,
+        requires: ["accounting", "read"] },
       { label: "Account Groups", href: "/accounting/account-groups", icon: Layers },
-      { label: "Import COA", href: "/accounting/coa-import", icon: Upload },
+      // An insert into chart_of_accounts (write policy: Manager and above, 260).
+      { label: "Import COA", href: "/accounting/coa-import", icon: Upload,
+        requires: ["accounting", "write"] },
       { label: "Export COA", href: "/accounting/coa-export", icon: Download },
     ],
   },
@@ -109,11 +118,9 @@ export const NAV_GROUPS: Array<{ heading: string | null; items: NavItem[] }> = [
       // vendors.py list_vendors → rbac("client", "read").
       { label: "Supplier Master", href: "/accounting/suppliers", icon: Users,
         requires: ["client", "read"] },
-      // The PRACTICE's own fee receivables (`fee_invoices`) — what clients owe
-      // the firm. Named so, because "Receivables Ageing" read as the clients'
-      // own customer receivables, and the Sales hub tile linked here for them
-      // (accounting-hub-2-05). Those are the Sales worklist below.
-      { label: "Fee Receivables", href: "/accounting/receivables", icon: Clock },
+      // "Fee Receivables" (`/accounting/receivables`, the ageing of the practice's EARLIER fee bills) left this menu on
+      // 21-11-2026 with Fee Billing (POST-B-193): the firm's own billing and what it is owed are in My practice, where the
+      // page is now listed as Earlier fee receivables.
       { label: "Loans & FD", href: "/accounting/loans", icon: Landmark },
       // income_tax.py msme_section_43bh → rbac("income_tax", "compute").
       { label: "MSME §43B(h)", href: "/accounting/msme-tracker", icon: FileText,
@@ -167,15 +174,16 @@ export const NAV_GROUPS: Array<{ heading: string | null; items: NavItem[] }> = [
       // a Reviewer offered this link could only fill the form in and be refused.
       { label: "Trial Balance Import", href: "/accounting/trial-balance-import", icon: Scale,
         requires: ["accounting", "write"] },
+      // accounting.py set_year_lock → rbac("accounting", "approve").
       { label: "Lock Financial Year", href: "/accounting/lock-year", icon: Lock,
-        partnerOnly: true },
+        requires: ["accounting", "approve"] },
     ],
   },
   {
     heading: "Firm",
     items: [
-      { label: "Fee Billing", href: "/billing", icon: Receipt,
-        requires: ["billing", "read"] },
+      // "Fee Billing" (`/billing`) left this menu on 21-11-2026 (POST-B-193, the owner's decision of 20-11-2026): the firm's own
+      // fee billing is in My practice, and the old screen is a read-only record there, called Earlier fee bills.
       // tally_migration.py list_jobs → rbac("accounting", "read"), which
       // excludes Reviewer; the page's first call is that list.
       { label: "Data Migration", href: "/migration", icon: DatabaseZap,
@@ -187,14 +195,14 @@ export const NAV_GROUPS: Array<{ heading: string | null; items: NavItem[] }> = [
 export function AccountingPanel() {
   const pathname = usePathname();
   const { can } = usePermissions();
-  const { userRole } = useAuth();
 
+  const { offered } = useScreenAccess();
   const groups = NAV_GROUPS.map((g) => ({
     ...g,
     items: g.items.filter(
       (i) =>
-        (!i.requires || can(i.requires[0], i.requires[1])) &&
-        (!i.partnerOnly || userRole === "Partner"),
+        offered(i.href) &&
+        (!i.requires || can(i.requires[0], i.requires[1])),
     ),
   })).filter((g) => g.items.length > 0);
 

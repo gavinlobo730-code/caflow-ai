@@ -3,6 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ClientModuleGrid } from "@/components/client/ClientModuleGrid";
+import { PracticeModuleGrid } from "@/components/client/PracticeModuleGrid";
+import { useClientNav } from "@/lib/workspace/ClientNavContext";
+import { StuckLoadingNotice } from "@/components/ui/stuck-loading-notice";
 
 /**
  * The client workspace's FRONT DOOR.
@@ -31,6 +34,7 @@ import { ClientModuleGrid } from "@/components/client/ClientModuleGrid";
  */
 export default function ClientRootPage() {
   const router = useRouter();
+  const { client } = useClientNav();
   const [clientId, setClientId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -49,10 +53,16 @@ export default function ClientRootPage() {
         <div className="flex flex-col items-center gap-3">
           <div className="w-6 h-6 border-2 border-brand border-t-transparent rounded-full animate-spin" />
           <p className="text-sm text-ps-label">Loading workspace…</p>
+          {/* After eight seconds it says so and offers Reload (POST-A-491): this page once sat here with no end. */}
+          <StuckLoadingNotice />
         </div>
       </div>
     );
   }
 
+  // The firm's own practice opens on its own grid: its books, and the screens about running it (POST-A-532).
+  if (client?.is_internal === true && client.id === clientId) {
+    return <PracticeModuleGrid practice={{ state: "ready", practiceId: clientId }} />;
+  }
   return <ClientModuleGrid clientId={clientId} />;
 }

@@ -75,12 +75,7 @@ const FROZEN: Record<string, { count: number; kind: "different-shell" | "print-o
   "app/login/page.tsx": {
     count: 1,
     kind: "different-shell",
-    reason: "the sign-in screen's marketing panel, white on a dark brand surface",
-  },
-  "app/join/page.tsx": {
-    count: 1,
-    kind: "different-shell",
-    reason: "the invitation landing page: a logo and a brand name on a gradient, no shell",
+    reason: "the sign-in screen's left half: white words on the front-door wash (components/FrontDoor.tsx)",
   },
   "app/onboarding/page.tsx": {
     count: 2,

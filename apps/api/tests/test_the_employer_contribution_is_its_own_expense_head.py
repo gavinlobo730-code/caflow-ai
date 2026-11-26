@@ -190,7 +190,9 @@ class _PostingQuery:
                 self.db.resolved.append(self.pattern)
                 acc = (None if self.pattern in self.db.missing
                        else _LEDGERS.get(self.pattern))
-                return type("R", (), {"data": [{"id": acc}] if acc else []})()
+                # The columns the payroll resolver asks for, as PostgREST would return them (POST-A-083).
+                return type("R", (), {"data": [{"id": acc, "client_id": None, "is_active": True, "system_account_key": None,
+                                                "account_name": self.pattern.strip("%")}] if acc else []})()
             return type("R", (), {"data": []})()
         if self.table_name == "payroll_slips":
             rows = self.db.slips

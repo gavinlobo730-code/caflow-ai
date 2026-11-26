@@ -63,6 +63,7 @@ def fy_label(on_date) -> Optional[str]:
     try:
         d = datetime.strptime(str(on_date)[:10], "%Y-%m-%d").date()
     except (ValueError, TypeError, KeyError):
+        # None where the date is unusable (docstring): the resident path then uses current law, as documented there.
         return None
     return ist_fy_label(d)
 
@@ -93,6 +94,11 @@ class Aggregate:
     tds_paise: int = 0
     unadjusted_advance_paise: int = 0
     base_in_window_paise: int = 0
+    #: The deductions TYPED on the TDS screen that this aggregate counted (POST-A-078): how many, what was paid and what was withheld.
+    #: Already inside `base_paise` and `tds_paise`; kept apart so a sentence can say a typed deduction moved the figure.
+    typed_count: int = 0
+    typed_base_paise: int = 0
+    typed_tds_paise: int = 0
 
 
 def aggregate_so_far(
@@ -100,6 +106,9 @@ def aggregate_so_far(
     exclude_bill_id: Optional[str] = None,
     exclude_payment_id: Optional[str] = None,
     window: Optional[tuple] = None,
+    client_id: Optional[str] = None,
+    vendor_pan: Optional[str] = None,
+    exclude_deduction_id: Optional[str] = None,
 ) -> Aggregate:
     """The year's aggregate credited or paid to this vendor under this section.
 
@@ -219,6 +228,19 @@ def aggregate_so_far(
         if _inside(p.get("payment_date")):
             in_window += charged
 
+    # A THIRD SOURCE: THE DEDUCTIONS TYPED ON THE TDS SCREEN FOR THIS SUPPLIER (POST-A-078). One payee's year is one year whichever door a
+    # payment came in by, so a typed Rs 30,000 professional fee counts toward the s.194J threshold a later bill is judged against, and the
+    # tax withheld on it is credited there (s.200), as a bill's is on the typed row. A typed row is its own payment event: it neither
+    # absorbs the advance pool nor is absorbed by it. Rows a bill or an advance wrote are NOT read here, because those documents are read
+    # above whole; the register's copy of them would count them twice (`manual_register.written_by_a_document`).
+    typed_count, typed_base, typed_tds, typed_in_window = _typed_in_year(
+        _typed_rows_for(db, firm_id=firm_id, vendor_id=vendor_id, client_id=client_id, vendor_pan=vendor_pan,
+                        fy_start=fy_start, fy_end=fy_end, exclude_deduction_id=exclude_deduction_id),
+        want_parent, label, _inside)
+    base += typed_base
+    withheld += typed_tds
+    in_window += typed_in_window
+
     # AN ADJUSTMENT WHOSE ADVANCE HAS SINCE GONE PUTS THE SUM BACK IN THE BASE.
     # A bill that absorbed ₹5,00,000 of advance took that ₹5,00,000 out of its
     # own charged base, because the advance had already carried the tax. If that
@@ -236,7 +258,83 @@ def aggregate_so_far(
         tds_paise=withheld,
         unadjusted_advance_paise=max(0, advance_charged - advance_absorbed),
         base_in_window_paise=in_window,
+        typed_count=typed_count,
+        typed_base_paise=typed_base,
+        typed_tds_paise=typed_tds,
     )
+
+
+def _typed_in_year(rows: list, want_parent: str, label: str, inside) -> tuple[int, int, int, int]:
+    """How many typed rows of the section's parent there are, what they paid, what they withheld and what of it falls in the window."""
+    from domain.tds.section_rates import parent_of
+
+    count = base = withheld = in_window = 0
+    for t in rows:
+        if parent_of(t.get("section") or "", label) != want_parent:
+            continue
+        paid = int(t.get("payment_amount_paise") or 0)
+        count += 1
+        base += paid
+        withheld += int(t.get("tds_paise") or 0)
+        if inside(t.get("transaction_date")):
+            in_window += paid
+    return count, base, withheld, in_window
+
+
+def sole_holder(holders: list) -> Optional[dict]:
+    """THE ONE SUPPLIER A PAN NAMES, OR NONE: the only supplier among `holders` (a client's suppliers holding one PAN) that is active and
+    not recorded as non-resident (POST-A-078). Two such suppliers are normal (a supplier registered in two states has a record per GSTIN),
+    and either answer would be a guess, so there is none; an inactive supplier is retired; and a payment to a non-resident is withheld
+    under s.195, which neither a typed deduction nor this year charges. One rule, asked by the typed door when it finds a supplier by the
+    PAN and by the supplier's year when it counts a typed row that names none, so the two never disagree about whose year a row is in."""
+    eligible = [h for h in holders if h.get("is_active") is not False and h.get("residential_status") != "non_resident"]
+    return eligible[0] if len(eligible) == 1 else None
+
+
+def _typed_rows_for(db, *, firm_id: str, vendor_id: str, client_id: Optional[str], vendor_pan: Optional[str],
+                    fy_start: str, fy_end: str, exclude_deduction_id: Optional[str]) -> list:
+    """The deductions typed on the TDS screen that belong to this supplier's year (POST-A-078).
+
+    Two kinds, and only these: a typed row that NAMES the supplier (`tds_deductions.vendor_id`, migration 594), and a typed row that names
+    NO supplier but carries the supplier's PAN, counted only while this supplier is the one its client's suppliers holding that PAN name
+    (`sole_holder`). The second is what a row typed before the supplier existed, or typed with no supplier picked, looks like. A row a
+    purchase bill or a vendor advance wrote is never one of them (`manual_register.written_by_a_document`).
+
+    ONE READ: the client's typed rows of the financial year, paged, naming the firm and the client, narrowed here; the supplier list is
+    asked only when a row with no supplier carries this supplier's PAN, so a bulk import of bills to one supplier does not read it per
+    bill (tests/test_purchase_bill_bulk_create.py). A supplier with no client (none is written without one) reads the rows that name it."""
+    if db is None or not vendor_id:
+        return []
+    from core.db_paging import fetch_all
+    from domain.tds import manual_register
+
+    if client_id:
+        rows = fetch_all(lambda: (db.table("tds_deductions")
+                                  .select("id, section, transaction_date, payment_amount_paise, tds_paise, vendor_id, deductee_pan, "
+                                          "purchase_bill_id, purchase_payment_id")
+                                  .eq("firm_id", firm_id).eq("client_id", client_id)
+                                  .gte("transaction_date", fy_start).lte("transaction_date", fy_end)),
+                         label="vendor_tds.typed_rows")
+    else:
+        rows = fetch_all(lambda: (db.table("tds_deductions")
+                                  .select("id, section, transaction_date, payment_amount_paise, tds_paise, vendor_id, deductee_pan, "
+                                          "purchase_bill_id, purchase_payment_id")
+                                  .eq("firm_id", firm_id).eq("vendor_id", vendor_id)
+                                  .gte("transaction_date", fy_start).lte("transaction_date", fy_end)),
+                         label="vendor_tds.typed_rows")
+    rows = [r for r in rows if not manual_register.written_by_a_document(r) and str(r.get("id")) != str(exclude_deduction_id)]
+    named = [r for r in rows if str(r.get("vendor_id") or "") == str(vendor_id)]
+
+    pan = manual_register.usable_pan_key(vendor_pan)
+    unnamed = [r for r in rows if not r.get("vendor_id") and pan and manual_register.usable_pan_key(r.get("deductee_pan")) == pan]
+    if unnamed and client_id:
+        holders = fetch_all(lambda: (db.table("vendors").select("id, is_active, residential_status")
+                                     .eq("firm_id", firm_id).eq("client_id", client_id).eq("pan", pan)),
+                            label="vendor_tds.pan_holders")
+        one = sole_holder(holders)
+        if one is not None and str(one.get("id")) == str(vendor_id):
+            named += unnamed
+    return named
 
 
 def _threshold_class_words(key: str) -> str:
@@ -259,6 +357,12 @@ class ResidentWithholding:
     #: them since it was written and nothing ever set them).
     is_lower_deduction: bool = False
     certificate_no: Optional[str] = None
+    #: What the resolver read, so a caller's explanation states the figures the charge was computed on rather than reading the year a
+    #: second time (a second read can disagree with the first, the certificate's window being one reason). `applies` is the engine's.
+    applies: bool = False
+    fy_prior_paise: int = 0
+    fy_prior_tds_paise: int = 0
+    typed_count: int = 0
 
 
 def certificates_for(db, *, firm_id: str, client_id: Optional[str],
@@ -297,6 +401,7 @@ def resolve_resident_tds(
     adjust_against_advances: bool = False,
     event_noun: str = "bill",
     client_id: Optional[str] = None,
+    exclude_deduction_id: Optional[str] = None,
 ) -> ResidentWithholding:
     """TDS on a sum credited or paid to a RESIDENT payee — the §194 series.
 
@@ -339,6 +444,10 @@ def resolve_resident_tds(
         db, firm_id=firm_id, vendor_id=vendor.get("id"), section=tds_section,
         on_date=on_date, exclude_bill_id=exclude_bill_id,
         exclude_payment_id=exclude_payment_id, window=window,
+        # The deductions typed on the TDS screen for this supplier count in its year too (POST-A-078); the client and the PAN are what a
+        # typed row naming no supplier is matched by, and the row being corrected is left out of its own year.
+        client_id=(client_id or vendor.get("client_id")), vendor_pan=vendor.get("pan"),
+        exclude_deduction_id=exclude_deduction_id,
     )
     fy_prior = agg.base_paise
     fy_prior_tds = agg.tds_paise
@@ -390,8 +499,11 @@ def resolve_resident_tds(
             certificate_rate_bps=(cert.rate_bps if cert is not None else None),
             # §194A(3)(i)'s class (TDS-30), a fact recorded on the supplier and
             # NULL on every supplier that existed before the column did — which
-            # is the section's own ₹10,000, exactly as it was.
-            threshold_class=(vendor.get("interest_threshold_class") or None),
+            # is the section's own ₹10,000, exactly as it was. Passed only for the
+            # supplier's OWN section: a deduction typed under another section
+            # (POST-A-078) carries a class the engine refuses for a section with
+            # one limit, and the class says nothing about that payment.
+            threshold_class=_class_for(vendor, tds_section, event_fy),
         )
     except ValueError as ve:
         # The ENGINE's ValueError is the backstop, not the message. A vendor
@@ -424,9 +536,11 @@ def resolve_resident_tds(
                     f"{_threshold_class_words(_tds.threshold_class)} "
                     f"(§194A(3)(i)).")
     elif fy_prior > 0:
+        earlier = ("earlier bills, advances and deductions typed on the TDS screen" if agg.typed_count
+                   else "earlier bills and advances")
         why = (f"§{tds_section} at {_tds.rate_pct:g}% on the year's aggregate of "
                f"{rupee_whole_text((fy_prior + own_base))}, less {rupee_whole_text(fy_prior_tds)} "
-               f"already withheld on earlier bills and advances (§200).")
+               f"already withheld on {earlier} (§200).")
     else:
         why = f"§{tds_section} at {_tds.rate_pct:g}% on {rupee_whole_text(own_base)}."
     if _tds.applies and _tds.threshold_class:
@@ -490,7 +604,23 @@ def resolve_resident_tds(
         advance_adjusted_paise=adjusted,
         is_lower_deduction=used_certificate,
         certificate_no=(cert.certificate_no if used_certificate and cert else None),
+        applies=bool(_tds.applies),
+        fy_prior_paise=fy_prior,
+        fy_prior_tds_paise=fy_prior_tds,
+        typed_count=agg.typed_count,
     )
+
+
+def _class_for(vendor: dict, section: Optional[str], fy: Optional[str]) -> Optional[str]:
+    """The supplier's §194A(3)(i) class, for a charge under the supplier's own section only (POST-A-078)."""
+    cls = vendor.get("interest_threshold_class") or None
+    if not cls or not section:
+        return None
+    from domain.tds.section_rates import parent_of
+    own = (vendor.get("tds_section") or "").upper().strip()
+    if not own or parent_of(own, fy) != parent_of(section, fy):
+        return None
+    return cls
 
 
 def resolve_non_resident_tds(vendor: dict, taxable_paise: int, on_date: str,

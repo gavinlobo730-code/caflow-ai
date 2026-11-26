@@ -40,7 +40,7 @@ export function EditNoticeReadingModal({
   const set = (key: keyof NoticeReadingForm) => (value: string) => setForm((f) => ({ ...f, [key]: value }));
 
   return (
-    <Modal title="Correct the reading" onClose={onClose} maxWidthClass="max-w-lg"
+    <Modal title="Correct the reading" onClose={() => { if (!busy) (onClose)(); }} maxWidthClass="max-w-lg"
       note="The model read these details from the notice. Correct anything it got wrong before you approve it; approving makes the response task from what is here. The model's own reading is kept alongside, and each correction is logged.">
       <div className="space-y-3">
         <div>
@@ -86,7 +86,7 @@ export function EditNoticeReadingModal({
         )}
 
         <div className="flex justify-end gap-2 pt-1">
-          <button type="button" onClick={onClose}
+          <button disabled={busy} type="button" onClick={onClose}
             className="text-xs px-3 py-1.5 border border-ps-border rounded-md hover:bg-ps-muted bg-white">Cancel</button>
           <button type="button" onClick={() => onSave(patch)} disabled={busy || unchanged || !!dates.first}
             className="text-xs px-3 py-1.5 bg-brand text-white rounded-md hover:bg-brand-dark disabled:opacity-50">

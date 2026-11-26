@@ -1,13 +1,14 @@
 """
 Pydantic request models for payroll endpoints.
-EPF Act §6: PF = 12% of (Basic + DA). ESI Act §2(9): employee 0.75%, employer 3.25%.
+Employees' Provident Funds Scheme, 2026 para 18: PF = 12% of the PF wage (Basic + DA before 21-11-2025, the Code on Social Security's
+s.2(88) base after). ESI: employee 0.75%, employer 3.25%.
 IT Act §192: TDS on salary (new regime slabs + 4% cess).
 All monetary amounts in integer paise.
 """
 from datetime import date as _date
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_core import PydanticCustomError
-from typing import Optional
+from typing import ClassVar, FrozenSet, Optional
 import re
 
 from core.validators import validate_pan
@@ -71,23 +72,23 @@ class EmployeeIn(BaseModel):
     bank_account_no: Optional[str] = None
     bank_ifsc: Optional[str] = None
     bank_name: Optional[str] = None
-    #: EPS 1995 membership. FALSE only where para 6 of the scheme, as amended
-    #: by GSR 609(E) w.e.f. 01-09-2014, excludes the member: they joined EPF on
-    #: or after that date with pay AT JOINING above the wage ceiling. Not
-    #: derivable — the master holds pay today, and the test is pay then.
+    #: Membership of the Employees' Pension Scheme, 2026. FALSE only where para 7(1) of the scheme excludes the member: they joined
+    #: EPF on or after 01-09-2014 with pay AT JOINING above the wage ceiling and were still above it on 17-09-2026 (sub-para (iii),
+    #: added by G.S.R. 847(E), brings in a member at or below the ceiling that day). Not derivable — the master holds pay today,
+    #: and the test is pay then.
     #:
     #: SETTABLE FROM NOWHERE UNTIL NOW (PAY-12 residual). Migration 295 added
     #: the column with `DEFAULT true` and `routers/payroll.py` reads it as
     #: `emp.get("eps_eligible", True)` at four sites — but it was on neither
     #: model, in no CSV column and on no form, so every employee was EPS-
-    #: eligible forever. For a member GSR 609(E) excludes, that diverts 8.33%
+    #: eligible forever. For a member the scheme excludes, that diverts 8.33%
     #: of the employer's contribution to EPS ON THE ECR, which is a statutory
     #: return, and nothing in the product could correct it.
     eps_eligible: bool = True
-    #: Whether the Payment of Gratuity Act 1972 reaches this employee's
-    #: establishment — §1(3), and §1(3A), which keeps it applying once it has.
-    #: Not derived from headcount: today's count is not the count on the
-    #: qualifying date.
+    #: Whether gratuity (section 53 of the Code on Social Security, 2020; until 21-11-2025 the Payment of Gratuity Act, 1972, which
+    #: reached an establishment by headcount: §1(3), and §1(3A), which kept it applying once it had) reaches this employee's
+    #: establishment. How the Code decides which establishments it reaches has not been read for this. Not derived from headcount:
+    #: today's count is not the count on the qualifying date.
     #:
     #: Same hole, same shape (migration 298). It decides WHICH limb of IT Act
     #: §10(10) computes the exemption — clause (ii) for a covered employee,
@@ -96,9 +97,8 @@ class EmployeeIn(BaseModel):
     #: leaver.
     gratuity_act_covered: bool = True
     #: THE EMPLOYER'S ELECTION TO CONTRIBUTE PF ON ACTUAL WAGES ABOVE THE
-    #: CEILING (payroll-22, migration 477) — EPF Scheme 1952 para 26(6), a joint
-    #: request of employee and employer, `[S]`: the reading is unverified and the
-    #: product never checks that the request exists. NULL (the default, and every
+    #: CEILING (payroll-22, migration 477) — paragraph 9(4) of the Employees' Provident Funds Scheme, 2026, a joint option in
+    #: writing of employee and employer: the product never checks that the option exists. NULL (the default, and every
     #: employee that exists today) is "never recorded" and computes on the
     #: ceiling, exactly as before; TRUE elects; FALSE withdraws. Per employee and
     #: never inferred from wages. The date is when the election takes effect (a
@@ -108,6 +108,17 @@ class EmployeeIn(BaseModel):
     pf_on_actual_wages: Optional[bool] = None
     pf_on_actual_wages_from: Optional[str] = None
     pf_on_actual_wages_reference: Optional[str] = None
+    #: FIXED-TERM EMPLOYMENT (POST-A-526, migration 770): an employee engaged on a fixed-term contract is eligible for gratuity on at
+    #: least ONE year of service under the contract, not five (the second proviso to section 53(1) of the Code on Social Security,
+    #: 2020; rule 33(1)(a) of the Social Security (Central) Rules, 2026). NULL (the default, and every employee that exists today) is
+    #: "not recorded" and is the ordinary five-year rule, exactly as before; TRUE records it; FALSE withdraws it. Never inferred from
+    #: an end date or a short service. The end date is the contract's, optional, and belongs only to a fixed-term employee.
+    fixed_term_employment: Optional[bool] = None
+    fixed_term_end_date: OptionalIsoDate = None
+    #: The team member (`users.id`) this employee IS, for an employee of the firm's OWN payroll only (POST-A-540, migration 776). A link,
+    #: never a merge: nothing of the member is copied here. The create door asks the three rules of a link before it writes
+    #: (`practice_staff_link_service.the_member_may_be_linked`). Absent on an edit on purpose: the link has a door of its own.
+    staff_user_id: Optional[str] = None
 
     @field_validator("name")
     @classmethod
@@ -115,6 +126,12 @@ class EmployeeIn(BaseModel):
         if not v.strip():
             raise ValueError("Employee name cannot be blank.")
         return v.strip()
+
+    @model_validator(mode="after")
+    def a_contract_end_date_belongs_to_a_fixed_term_employee(self):
+        if self.fixed_term_end_date and self.fixed_term_employment is not True:
+            raise ValueError("A contract end date belongs to a fixed-term employee: tick fixed-term employment, or leave the date out.")
+        return self
 
     @field_validator("pf_on_actual_wages_from")
     @classmethod
@@ -252,7 +269,22 @@ class EmployeeImportIn(BaseModel):
     dry_run: bool = False
 
 
+#: The particulars an employee's edit corrects and never removes (POST-A-399, third slice), with the words a person reads: the PAN is read by the salary
+#: TDS statement, the UAN and the ESI number by the PF and ESI returns, and the bank account and IFSC by the salary payment. The route refuses an edit
+#: that empties one that is on file, in one sentence. The BANK NAME is not one of them: it is free text a person typed, nothing statutory or the payment
+#: reads it (the employee portal shows it), and its column accepts NULL, so an emptied box clears it (an independent review of 17-11-2026 found the
+#: refusal's reason, "the statutory returns read it", false of it).
+EMPLOYEE_IDENTIFIERS = {"pan": "PAN", "uan": "UAN", "esi_number": "ESI number", "bank_account_no": "bank account number",
+                        "bank_ifsc": "IFSC"}
+EMPLOYEE_IDENTIFIER_WHY = ("The salary TDS statement, the PF and ESI returns and the salary payment read it, so an employee who has none any more is "
+                           "recorded as left or corrected, not left blank.")
+
+
 class EmployeeUpdateIn(BaseModel):
+    # POST-A-399, third slice. A designation, a department and a bank name are soft particulars a person typed, so an emptied box clears them
+    # (written NULL); every other field still reads a null as "not sent", and the identifiers above are refused when emptied over a stored value.
+    CLEARABLE: ClassVar[FrozenSet[str]] = frozenset({"designation", "department", "bank_name"})
+
     name: Optional[str] = None
     employee_code: Optional[str] = None
     date_of_birth: PatchIsoDate = None
@@ -278,23 +310,23 @@ class EmployeeUpdateIn(BaseModel):
     uan: Optional[str] = None
     esi_number: Optional[str] = None
     status: Optional[str] = None
-    #: EPS 1995 membership. FALSE only where para 6 of the scheme, as amended
-    #: by GSR 609(E) w.e.f. 01-09-2014, excludes the member: they joined EPF on
-    #: or after that date with pay AT JOINING above the wage ceiling. Not
-    #: derivable — the master holds pay today, and the test is pay then.
+    #: Membership of the Employees' Pension Scheme, 2026. FALSE only where para 7(1) of the scheme excludes the member: they joined
+    #: EPF on or after 01-09-2014 with pay AT JOINING above the wage ceiling and were still above it on 17-09-2026 (sub-para (iii),
+    #: added by G.S.R. 847(E), brings in a member at or below the ceiling that day). Not derivable — the master holds pay today,
+    #: and the test is pay then.
     #:
     #: SETTABLE FROM NOWHERE UNTIL NOW (PAY-12 residual). Migration 295 added
     #: the column with `DEFAULT true` and `routers/payroll.py` reads it as
     #: `emp.get("eps_eligible", True)` at four sites — but it was on neither
     #: model, in no CSV column and on no form, so every employee was EPS-
-    #: eligible forever. For a member GSR 609(E) excludes, that diverts 8.33%
+    #: eligible forever. For a member the scheme excludes, that diverts 8.33%
     #: of the employer's contribution to EPS ON THE ECR, which is a statutory
     #: return, and nothing in the product could correct it.
     eps_eligible: Optional[bool] = None
-    #: Whether the Payment of Gratuity Act 1972 reaches this employee's
-    #: establishment — §1(3), and §1(3A), which keeps it applying once it has.
-    #: Not derived from headcount: today's count is not the count on the
-    #: qualifying date.
+    #: Whether gratuity (section 53 of the Code on Social Security, 2020; until 21-11-2025 the Payment of Gratuity Act, 1972, which
+    #: reached an establishment by headcount: §1(3), and §1(3A), which kept it applying once it had) reaches this employee's
+    #: establishment. How the Code decides which establishments it reaches has not been read for this. Not derived from headcount:
+    #: today's count is not the count on the qualifying date.
     #:
     #: Same hole, same shape (migration 298). It decides WHICH limb of IT Act
     #: §10(10) computes the exemption — clause (ii) for a covered employee,
@@ -312,6 +344,11 @@ class EmployeeUpdateIn(BaseModel):
     pf_on_actual_wages: Optional[bool] = None
     pf_on_actual_wages_from: Optional[str] = None
     pf_on_actual_wages_reference: Optional[str] = None
+    #: Fixed-term employment, on the update door as on the create door (POST-A-526, migration 770; see EmployeeIn). Sending
+    #: `fixed_term_employment: false` withdraws it and clears the end date with it; whether an end date sent alone lands on an employee
+    #: who is on a fixed term is asked in the router, which reads the row.
+    fixed_term_employment: Optional[bool] = None
+    fixed_term_end_date: PatchIsoDate = None
     # THE DATE OF JOINING, which this model did not carry (PAY-12).
     #
     # components/payroll/AddEmployeeModal.tsx has always sent joining_date on
@@ -324,7 +361,7 @@ class EmployeeUpdateIn(BaseModel):
     # The router then wrote whatever survived and reported success. A wrong
     # joining date could therefore never be corrected — and it is not cosmetic:
     # it decides gratuity's five years of continuous service (Payment of
-    # Gratuity Act s.4(1)), the EPS eligibility test on first joining, and the
+    # section 53(1) of the Code, §4(1) of the repealed Gratuity Act), the EPS eligibility test on first joining, and the
     # proportion of the year a leaver is paid for.
     #
     # apps/web/scripts/employee-form-captures-what-filing-needs.test.ts asserts
@@ -832,9 +869,9 @@ class OneTimeEarningIn(BaseModel):
     different Act asking a different question, and the answers genuinely differ
     between two payments a payslip would print almost identically:
 
-      pf_wages   EPF Act s.2(b) excludes bonus and commission from basic wages;
-                 arrears of basic and DA are not excluded.
-      esi_wages  ESI Act s.2(22) includes additional remuneration paid at
+      pf_wages   EPF Act s.2(b) (repealed from 21-11-2025; the Code's s.2(88) defines wages once, POST-A-524) excludes bonus and
+                 commission from basic wages; arrears of basic and DA are not excluded.
+      esi_wages  ESI Act s.2(22) (likewise repealed) includes additional remuneration paid at
                  intervals not exceeding two months — an INTERVAL test, so the
                  same word means different things at two clients.
       taxable    IT Act s.17(1)(iv). False only for a genuine reimbursement.
@@ -908,9 +945,11 @@ class PTSlabBandIn(BaseModel):
     without adding a rule engine, which is on this design's
     deliberately-not-built list.
     """
-    from_paise: int = Field(..., ge=0)
-    to_paise: Optional[int] = Field(None, ge=1)
-    amount_paise: int = Field(..., ge=0)
+    # The bounds are judged on the SET (`PTSlabSetIn._each_band_says_what_is_wrong_with_it`), which knows which band it is: a
+    # `Field(ge=...)` here answered in pydantic's words ("Input should be greater than or equal to 0") naming no band (POST-A-392).
+    from_paise: int
+    to_paise: Optional[int] = None
+    amount_paise: int
     basis: str = "monthly"
     months: Optional[list[int]] = None
 
@@ -961,6 +1000,21 @@ class PTSlabSetIn(BaseModel):
             raise ValueError('State must be the two-letter code payroll_employees.pt_state '
                              'carries — "GJ", "TG", "KL".')
         return s
+
+    @field_validator("bands")
+    @classmethod
+    def _each_band_says_what_is_wrong_with_it(cls, bands):
+        """Each band's own bounds, refused in a sentence that names the band by its place in the set, as the screen numbers them
+        (POST-A-392). Whether the bands together cover every wage is the route's question (`bands_cover_every_wage`), asked after."""
+        for i, band in enumerate(bands, start=1):
+            if band.from_paise < 0:
+                raise ValueError(f"Band {i}: the wage it starts from cannot be below zero.")
+            if band.to_paise is not None and band.to_paise <= band.from_paise:
+                raise ValueError(f"Band {i}: the wage it runs up to must be more than the wage it starts from, or left blank "
+                                 f"for the top band.")
+            if band.amount_paise < 0:
+                raise ValueError(f"Band {i}: the tax cannot be negative.")
+        return bands
 
     @field_validator("effective_from", "notification_date")
     @classmethod
@@ -1029,3 +1083,37 @@ class ApplyStructureIn(BaseModel):
         except ValueError:
             raise ValueError(f"{s!r} is not a real date.")
         return s
+
+
+class OpeningPositionIn(BaseModel):
+    """What one employee had been paid and had deducted this financial year BEFORE the client's payroll ran on this product
+    (migration 641, POST-A-082). Every figure is required: a missing one is not a nil, and the screen has the CA say which."""
+    employee_id: str
+    first_month_here: str = Field(..., description='The first month this product runs payroll for the client, "YYYY-MM"')
+    months_paid: int
+    gross_paise: int
+    tds_paise: int
+    pf_employee_paise: int
+    pf_employer_paise: int
+    esi_employee_paise: int
+    esi_employer_paise: int
+    pt_paise: int
+    esi_contributed_earlier_in_period: Optional[bool] = Field(
+        None, description="Whether the employee contributed to ESI earlier in the contribution period the first month falls "
+                          "in. Null is not known, and is not read as no.")
+    source_note: Optional[str] = Field(None, description="Where the figures were read from (the old system's report, its date)")
+
+
+class OpeningPositionsIn(BaseModel):
+    """One or more positions for one client, refused whole if any is wrong. The financial year of each is the one its first
+    month falls in."""
+    client_id: str
+    rows: list[OpeningPositionIn] = Field(..., min_length=1, max_length=500)
+
+
+class OpeningPositionsImportIn(BaseModel):
+    """A spreadsheet of opening positions as the browser read its cells (POST-A-082, part 2): one dict of column -> text per row.
+    Read and refused whole by `domain/payroll/opening_position_import`."""
+    client_id: str
+    rows: list[dict] = Field(..., max_length=500)
+    dry_run: bool = False

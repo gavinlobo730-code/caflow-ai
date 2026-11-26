@@ -355,7 +355,7 @@ test("a line can carry its receipt, and a stored document is never held by an ex
   // when someone audits the coding, so what is stored is the document's id
   // and the link is minted at the moment it is opened.
   const m = modal();
-  assert.match(m, /api\.documents\.upload\(form\)/, "the modal must upload into the firm's document store");
+  assert.match(m, /api\.documents\.upload\(form(, setSent)?\)/, "the modal must upload into the firm's document store");
   assert.match(m, /attachments\.add\(txnId, \{ name: file\.name, document_id: documentId \}\)/,
     "and attach it BY ID — never by the signed url the upload returned");
   assert.doesNotMatch(m, /attachments\.add\([^)]*download_url/,

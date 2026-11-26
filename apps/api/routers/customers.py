@@ -13,7 +13,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ValidationError as PydanticValidationError
 from domain.party_duplicates import possible_duplicates, same_party_sentence
 from models.common import api_response
-from models.parties import CustomerIn, CustomerUpdateIn
+from models.clearable import drop_empty, patch_dict, removed_identifier_problem
+from models.parties import CUSTOMER_IDENTIFIERS, CustomerIn, CustomerUpdateIn
 from core.authz import assert_client_access, can_access_client
 from core.permissions import rbac
 from services import party_erasure
@@ -589,6 +590,30 @@ def bulk_create_customers(
         return api_response(False, None, "Unable to complete customer operation. Please try again.")
 
 
+@router.get("/recent")
+def recent_customers(
+    client_id: str = Query(..., description="CA client ID — required"),
+    limit: int = Query(8, ge=1, le=20),
+    current_user: dict = Depends(rbac("client", "read")),
+):
+    """The customers this client used most recently, newest first, for the top of the picker (POST-A-155).
+
+    Read off the client's own newest invoices (`domain/party_recent`): ids only, each once, carried-over and deleted
+    documents left out. The picker reorders its list with them and pre-selects nothing.
+    """
+    assert_client_access(current_user, client_id)
+    if _USE_MOCK:
+        return api_response(True, {"ids": [], "documents_read": 0, "window": 0})
+    from core.supabase_client import get_supabase
+    from domain.party_recent import read_recent
+    try:
+        return api_response(True, read_recent(get_supabase(), "customers",
+                                              current_user.get("firm_id"), client_id, limit))
+    except Exception as e:  # a failed read is said, never answered as "nobody used recently"
+        _logger.error("recent_customers: %s", e)
+        return api_response(False, None, "The recently used customers could not be read.")
+
+
 @router.get("/outstanding")
 def get_outstanding_summary(
     client_id: str = Query(...),
@@ -688,7 +713,11 @@ def update_customer(
     current_user: dict = Depends(rbac("client", "write")),
 ):
     try:
-        payload = data.model_dump(exclude_none=True)
+        # POST-A-399. What the model names in CLEARABLE and the request sent empty is a clear (written NULL), a customer's PAN and TAN among
+        # them; the GSTIN or the state code sent empty over nothing writes nothing (never a stored ""), and one sent empty over a stored value
+        # is refused below, once the row is read.
+        model = data
+        payload = drop_empty(patch_dict(data), CUSTOMER_IDENTIFIERS)
         payload["updated_at"] = datetime.now(timezone.utc).isoformat()
         # A validator only at the create door is one PATCH from being none
         # (GST-29). Editing a customer is a place a human types a GSTIN, and
@@ -704,6 +733,9 @@ def update_customer(
         # can post a real GL journal, so the refusal must land before that fetch even
         # decides whether anything changed, let alone before the update itself.
         prior = _load_customer_or_404(current_user, customer_id)
+        _removed = removed_identifier_problem(model, prior, CUSTOMER_IDENTIFIERS)
+        if _removed:
+            raise HTTPException(status_code=422, detail=_removed)
 
         if _USE_MOCK:
             for i, c in enumerate(MOCK_CUSTOMERS):

@@ -295,7 +295,7 @@ _READ_BACK = {
     "client_sales_invoices": "id, firm_id, client_id, outstanding_paise, status, deleted_at",
     "fixed_assets": "id, firm_id, client_id, depreciation_posted_through",
     "year_end_engagements": "id, firm_id, client_id, status",
-    "clients": "id, firm_id, client_name, legal_name, entity_type",
+    "clients": "id, firm_id, client_name, legal_name, entity_type, is_internal",
 }
 
 
@@ -316,6 +316,8 @@ def _double(dsn: str) -> Double:
                     row[k] = None
                 elif k.endswith("_paise"):
                     row[k] = int(v)
+                elif k == "is_internal":
+                    row[k] = v == "t"
                 else:
                     row[k] = v
             rows.append(row)

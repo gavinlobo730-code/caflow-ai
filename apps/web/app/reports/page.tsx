@@ -21,7 +21,8 @@ import {
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { getClients } from "@/lib/data/clients";
 import { getTransactions } from "@/lib/data/transactions";
-import { getGSTSummary } from "@/lib/data/transactions";
+import { getGSTSummary, getPartyTotals } from "@/lib/data/transactions";
+import type { ReportPartyLine, ReportPartyTotals } from "@/lib/api";
 import { getComplianceCalendar } from "@/lib/data/compliance";
 import { formatPaise, formatDate } from "@/lib/services/formatting";
 import type { Client } from "@/lib/types";
@@ -33,9 +34,12 @@ import { isOverdue } from "@/lib/compliance/overdue";
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
 import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { LoadingRegion } from "@/components/ui/skeleton";
+import { usePermissions } from "@/lib/auth/AuthContext";
+import { reportOffered, type ReportId } from "@/lib/reports/offered";
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type ReportId = "gst_summary" | "pl_statement" | "compliance_status" | "outstanding_invoices";
 
 interface GSTSummaryData {
   client: Client;
@@ -72,11 +76,8 @@ interface PLData {
   clientName: string;
   fromDate: string;
   toDate: string;
-  revenue: { account: string; total: number }[];
-  expenses: { account: string; total: number }[];
-  totalRevenue: number;
-  totalExpenses: number;
-  netPL: number;
+  /** The server's answer (GET /api/reports/party-totals), drawn as it comes: the screen adds nothing (POST-A-469). */
+  totals: ReportPartyTotals;
 }
 
 interface ComplianceRow {
@@ -299,8 +300,15 @@ function GSTSummaryReport({ data }: { data: GSTSummaryData }) {
   );
 }
 
+/** A party line's name, or what is true about it when there is none to show. */
+function partyLabel(line: ReportPartyLine, side: "customer" | "supplier"): string {
+  if (line.party_name) return line.party_name;
+  return line.party_id ? `A ${side} with no name on record` : `No ${side} named on the document`;
+}
+
 function PLStatementReport({ data }: { data: PLData }) {
-  const isProfit = data.netPL >= 0;
+  const t = data.totals;
+  const isProfit = t.net_paise >= 0;
 
   return (
     <div className="report-content space-y-6">
@@ -317,22 +325,22 @@ function PLStatementReport({ data }: { data: PLData }) {
         <table className="w-full text-sm border border-ps-border rounded-lg overflow-hidden">
           <thead className="bg-ps-bg text-xs text-ps-label uppercase">
             <tr>
-              <th className="px-4 py-2 text-left">Account / Party</th>
+              <th className="px-4 py-2 text-left">Party</th>
               <th className="px-4 py-2 text-right">Amount</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-ps-border">
-            {data.revenue.length === 0 ? (
+            {t.revenue.length === 0 ? (
               <tr>
                 <td colSpan={2} className="px-4 py-4 text-center text-ps-hint text-xs">
                   No revenue transactions in this period
                 </td>
               </tr>
             ) : (
-              data.revenue.map((r, i) => (
-                <tr key={i}>
-                  <td className="px-4 py-2.5 text-ps-label">{r.account}</td>
-                  <td className="px-4 py-2.5 text-right text-ps-ink">{formatPaise(r.total)}</td>
+              t.revenue.map((r, i) => (
+                <tr key={r.party_id ?? `none-${i}`}>
+                  <td className="px-4 py-2.5 text-ps-label">{partyLabel(r, "customer")}</td>
+                  <td className="px-4 py-2.5 text-right text-ps-ink">{formatPaise(r.total_paise)}</td>
                 </tr>
               ))
             )}
@@ -340,10 +348,15 @@ function PLStatementReport({ data }: { data: PLData }) {
           <tfoot>
             <tr className="bg-green-50 font-semibold text-green-900">
               <td className="px-4 py-2.5">Total Revenue</td>
-              <td className="px-4 py-2.5 text-right">{formatPaise(data.totalRevenue)}</td>
+              <td className="px-4 py-2.5 text-right">{formatPaise(t.revenue_total_paise)}</td>
             </tr>
           </tfoot>
         </table>
+        {typeof t.revenue_notes_paise === "number" && t.revenue_notes_paise !== 0 && (
+          <p className="mt-2 text-xs text-ps-label" data-notes-note="revenue">
+            Net of the credit and debit notes issued to customers in this period: {formatPaise(t.revenue_notes_paise)}.
+          </p>
+        )}
       </section>
 
       {/* Expenses */}
@@ -352,22 +365,22 @@ function PLStatementReport({ data }: { data: PLData }) {
         <table className="w-full text-sm border border-ps-border rounded-lg overflow-hidden">
           <thead className="bg-ps-bg text-xs text-ps-label uppercase">
             <tr>
-              <th className="px-4 py-2 text-left">Account / Party</th>
+              <th className="px-4 py-2 text-left">Party</th>
               <th className="px-4 py-2 text-right">Amount</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-ps-border">
-            {data.expenses.length === 0 ? (
+            {t.expenses.length === 0 ? (
               <tr>
                 <td colSpan={2} className="px-4 py-4 text-center text-ps-hint text-xs">
                   No expense transactions in this period
                 </td>
               </tr>
             ) : (
-              data.expenses.map((r, i) => (
-                <tr key={i}>
-                  <td className="px-4 py-2.5 text-ps-label">{r.account}</td>
-                  <td className="px-4 py-2.5 text-right text-ps-ink">{formatPaise(r.total)}</td>
+              t.expenses.map((r, i) => (
+                <tr key={r.party_id ?? `none-${i}`}>
+                  <td className="px-4 py-2.5 text-ps-label">{partyLabel(r, "supplier")}</td>
+                  <td className="px-4 py-2.5 text-right text-ps-ink">{formatPaise(r.total_paise)}</td>
                 </tr>
               ))
             )}
@@ -375,10 +388,15 @@ function PLStatementReport({ data }: { data: PLData }) {
           <tfoot>
             <tr className="bg-state-problem-surface font-semibold text-red-900">
               <td className="px-4 py-2.5">Total Expenses</td>
-              <td className="px-4 py-2.5 text-right">{formatPaise(data.totalExpenses)}</td>
+              <td className="px-4 py-2.5 text-right">{formatPaise(t.expense_total_paise)}</td>
             </tr>
           </tfoot>
         </table>
+        {typeof t.expense_notes_paise === "number" && t.expense_notes_paise !== 0 && (
+          <p className="mt-2 text-xs text-ps-label" data-notes-note="expenses">
+            Net of the debit and credit notes received from suppliers in this period: {formatPaise(t.expense_notes_paise)}.
+          </p>
+        )}
       </section>
 
       {/* Net P&L */}
@@ -390,8 +408,11 @@ function PLStatementReport({ data }: { data: PLData }) {
         }`}
       >
         <span>{isProfit ? "Net Profit" : "Net Loss"}</span>
-        <span>{formatPaise(Math.abs(data.netPL))}</span>
+        <span>{formatPaise(Math.abs(t.net_paise))}</span>
       </div>
+      {t.note_documents === 0 && (
+        <p className="text-xs text-ps-label" data-notes-note="none">No credit or debit notes were issued in this period.</p>
+      )}
     </div>
   );
 }
@@ -581,6 +602,11 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
   const [selectedMonth, setSelectedMonth] = useState(currentMonthStr());
   const [fromDate, setFromDate] = useState(currentFYStart());
   const [toDate, setToDate] = useState(todayIstISO());
+  // The P&L's window. Its rows used to be read whole and cut in the browser on `transaction_date >= from && <= to`, so text that is not a
+  // date (handed up as "") read as no lower bound and as an upper bound nothing passes: an unreadable To drew a P&L of nil revenue and nil
+  // expenses as if that were the figure. The window is now the server's (`date_from`/`date_to` on /api/reports/party-totals, which also does the sums, POST-A-469), and a box
+  // that is unreadable or blank is refused in its own sentence before anything is read (POST-A-386).
+  const dates = useDateProblems();
 
   // Load clients once
   const ensureClients = useCallback(async () => {
@@ -627,43 +653,22 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
         const summary = await getGSTSummary(selectedClientId, selectedMonth);
         setData({ client, month: selectedMonth, ...summary } as GSTSummaryData);
       } else if (reportId === "pl_statement") {
-        const txns = await getTransactions(
-          selectedClientId === "all" ? undefined : selectedClientId
-        );
-        const filtered = txns.filter(
-          (t) => t.transaction_date >= fromDate && t.transaction_date <= toDate
-        );
-        const sales = filtered.filter((t) => t.transaction_type === "sales_invoice");
-        const purchases = filtered.filter((t) => t.transaction_type === "purchase_invoice");
-
-        // Group revenue by party_name (account proxy)
-        const revenueMap = new Map<string, number>();
-        for (const t of sales) {
-          revenueMap.set(t.party_name, (revenueMap.get(t.party_name) ?? 0) + t.taxable_amount_paise);
+        if (dates.first) { dates.refuseWith(setError); setLoading(false); return; }
+        if (!fromDate || !toDate) {
+          setError("Choose the From and To dates the statement covers.");
+          setLoading(false);
+          return;
         }
-        const expenseMap = new Map<string, number>();
-        for (const t of purchases) {
-          expenseMap.set(t.party_name, (expenseMap.get(t.party_name) ?? 0) + t.taxable_amount_paise);
-        }
-
-        const totalRevenue = sales.reduce((s, t) => s + t.taxable_amount_paise, 0);
-        const totalExpenses = purchases.reduce((s, t) => s + t.taxable_amount_paise, 0);
+        const totals = await getPartyTotals(
+          selectedClientId === "all" ? undefined : selectedClientId, fromDate, toDate,
+        );
 
         const clientName =
           selectedClientId === "all"
             ? "All Clients"
             : clients.find((c) => c.id === selectedClientId)?.client_name ?? selectedClientId;
 
-        setData({
-          clientName,
-          fromDate,
-          toDate,
-          revenue: Array.from(revenueMap.entries()).map(([account, total]) => ({ account, total })),
-          expenses: Array.from(expenseMap.entries()).map(([account, total]) => ({ account, total })),
-          totalRevenue,
-          totalExpenses,
-          netPL: totalRevenue - totalExpenses,
-        } as PLData);
+        setData({ clientName, fromDate, toDate, totals } as PLData);
       } else if (reportId === "compliance_status") {
         const [entries, allClients] = await Promise.all([getComplianceCalendar(), getClients()]);
         const clientNameById = new Map(allClients.map((c) => [c.id, c.client_name]));
@@ -731,7 +736,7 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
     } finally {
       setLoading(false);
     }
-  }, [reportId, selectedClientId, selectedMonth, fromDate, toDate, clients]);
+  }, [reportId, selectedClientId, selectedMonth, fromDate, toDate, clients, dates]);
 
   const reportDef = REPORTS.find((r) => r.id === reportId)!;
   const Icon = reportDef.icon;
@@ -801,6 +806,7 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
                 <DateInput aria-label="Report from"
                   value={fromDate}
                   onChange={(v) => setFromDate(v)}
+                  onStateChange={dates.watch("from", "From")}
                   className="text-sm border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-white"
                 />
               </div>
@@ -810,6 +816,7 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
                   anchor={fromDate || null} notBefore={fromDate || null}
                   value={toDate}
                   onChange={(v) => setToDate(v)}
+                  onStateChange={dates.watch("to", "To")}
                   className="text-sm border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-white"
                 />
               </div>
@@ -848,10 +855,12 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
         )}
 
         {loading && (
-          <div className="flex items-center justify-center py-12 gap-3 text-ps-hint">
-            <Loader2 size={20} className="animate-spin" />
-            <span className="text-sm">Loading report data…</span>
-          </div>
+          <LoadingRegion label="Loading report data" noticeClassName="justify-center text-center">
+            <div className="flex items-center justify-center py-12 gap-3 text-ps-hint">
+              <Loader2 size={20} className="animate-spin" />
+              <span className="text-sm">Loading report data…</span>
+            </div>
+          </LoadingRegion>
         )}
 
         {data && reportId === "gst_summary" && (
@@ -875,6 +884,9 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
 
 export default function ReportsPage() {
   const [activeReport, setActiveReport] = useState<ReportId | null>(null);
+  const { can, resolved } = usePermissions();
+  // A report is offered only when the caller's permissions admit the route it reads (POST-A-447).
+  const offered = REPORTS.filter((r) => reportOffered(r.id, can, resolved));
 
   return (
     <>
@@ -920,7 +932,7 @@ export default function ReportsPage() {
         {/* Report cards grid */}
         {!activeReport && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 print:hidden">
-            {REPORTS.map((report) => {
+            {offered.map((report) => {
               const Icon = report.icon;
               return (
                 <button

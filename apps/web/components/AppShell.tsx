@@ -9,7 +9,14 @@ import { ClientShell } from "@/components/shell/ClientShell";
 import { SearchModal } from "@/components/SearchModal";
 import { SecureAccountBanner } from "@/components/shell/SecureAccountBanner";
 import { SkipToContent } from "@/components/shell/SkipToContent";
+import { NewVersionNotice } from "@/components/shell/NewVersionNotice";
 import { isClientWorkspacePath } from "@/lib/workspace/clientPath";
+import { wearsThePracticeFrame } from "@/lib/workspace/practiceWorkspace";
+import { rememberPracticeAccess, rememberedPracticeAccess } from "@/lib/workspace/practiceAccessMemory";
+import { useAuth } from "@/lib/auth/AuthContext";
+import { isPartnerOnlyAllowed } from "@/lib/auth/permissions";
+import ScreenAccessGate from "@/components/auth/ScreenAccessGate";
+import { WhereIsGuide } from "@/components/guide/WhereIsGuide";
 
 // usePathname() reflects the App Router's FlightRouterState, which under
 // `output: export` + Cloudflare's rewrite-to-_placeholder hosting is
@@ -56,9 +63,8 @@ function getRealPathname(): string {
 // as a PREFIX match this list had lost it the rail, the panel and ⌘K, so it
 // had no navigation at all and nothing in the product linked to it. It now
 // lives at /clients/onboarding, in the Clients workspace it belongs to (see
-// lib/workspace/routeOwnership.ts); /onboarding/checklist is a redirect stub
-// kept for bookmarks and needs no entry here, since it renders no content of
-// its own to strip a shell from.
+// lib/workspace/routeOwnership.ts); the forwarding page
+// left at /onboarding/checklist was deleted by POST-A-562.
 const NO_SHELL_PREFIXES = [
   "/login",
   "/signup",
@@ -76,6 +82,16 @@ function withoutTrailingSlash(path: string): string {
   return path.length > 1 && path.endsWith("/") ? path.slice(0, -1) : path;
 }
 
+/** Whether a page at `path` is drawn with no shell: a signed-out or non-staff page. The not-found page asks it too,
+ *  so an unknown address under one of these is drawn as a front door (POST-A-446) and one inside the product is
+ *  drawn inside the shell, beside the navigation. */
+export function isOutsideTheShell(path: string): boolean {
+  return (
+    NO_SHELL_PREFIXES.some((prefix) => path === prefix || path.startsWith(prefix + "/")) ||
+    NO_SHELL_EXACT.includes(withoutTrailingSlash(path))
+  );
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   // usePathname() is only a re-run trigger below — the real path always
   // comes from window.location (see the comment on getRealPathname above).
@@ -83,12 +99,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [realPathname, setRealPathname] = useState<string>(() => getRealPathname());
   useEffect(() => { setRealPathname(getRealPathname()); }, [pathname]);
   const [searchOpen, setSearchOpen] = useState(false);
+  // "Where is…?" (POST-A-538): one dialog, held here like the search box, opened from either shell's bar.
+  const [guideOpen, setGuideOpen] = useState(false);
 
-  const showShell =
-    !NO_SHELL_PREFIXES.some(
-      (prefix) => realPathname === prefix || realPathname.startsWith(prefix + "/")
-    ) && !NO_SHELL_EXACT.includes(withoutTrailingSlash(realPathname));
+  const showShell = !isOutsideTheShell(realPathname);
   const isClientWorkspace = isClientWorkspacePath(realPathname);
+  // My practice (POST-A-532): the firm's own screens at fixed addresses wear the client workspace's shell, because the
+  // practice IS a client of itself and its books are that workspace. A wrong answer here still draws a shell with search,
+  // Settings and sign-out, as the comment above getRealPathname requires.
+  //
+  // THE PEOPLE SCREENS FOLLOW THE PERSON (21-11-2026). Team, Assignments, Approvals, Workload and Login History are part of
+  // My practice for somebody who may open it and firm screens for everybody else (`practiceWorkspace.ts` has the account), so
+  // which shell they wear is asked of the role. Until the role has been read, the last answer this browser saw stands in
+  // (`practiceAccessMemory.ts`), so a Partner's reload of the Team screen does not start in one frame and change to the other.
+  const { userRole, roleLoading } = useAuth();
+  const [remembered] = useState<boolean>(() => rememberedPracticeAccess());
+  const mayOpenPractice = roleLoading ? remembered : isPartnerOnlyAllowed(userRole);
+  useEffect(() => {
+    if (!roleLoading) rememberPracticeAccess(isPartnerOnlyAllowed(userRole));
+  }, [roleLoading, userRole]);
+  const isPractice = wearsThePracticeFrame(realPathname, mayOpenPractice);
 
   // Global ⌘K / Ctrl+K listener — opens the command palette from anywhere
   useEffect(() => {
@@ -119,7 +149,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const content = (
     <>
       <SecureAccountBanner pathname={realPathname} />
-      {children}
+      {/* The one gate on every firm screen (POST-A-543): an address the person holds no tick for says so in words. */}
+      <ScreenAccessGate pathname={realPathname}>{children}</ScreenAccessGate>
     </>
   );
   return (
@@ -130,10 +161,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             above has no navigation to skip. */}
         <SkipToContent />
         <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
-        {isClientWorkspace ? (
-          <ClientShell onOpenSearch={() => setSearchOpen(true)}>{content}</ClientShell>
+        <WhereIsGuide open={guideOpen} onClose={() => setGuideOpen(false)} />
+        {/* A tab opened before the site was republished is told, and loads the new build at its next move (POST-A-529). */}
+        <NewVersionNotice pathname={realPathname} />
+        {isClientWorkspace || isPractice ? (
+          <ClientShell onOpenSearch={() => setSearchOpen(true)} onOpenGuide={() => setGuideOpen(true)} practicePath={isPractice}>{content}</ClientShell>
         ) : (
-          <WorkspaceShell onOpenSearch={() => setSearchOpen(true)}>{content}</WorkspaceShell>
+          <WorkspaceShell onOpenSearch={() => setSearchOpen(true)} onOpenGuide={() => setGuideOpen(true)}>{content}</WorkspaceShell>
         )}
       </WorkspaceProvider>
     </ClientNavProvider>

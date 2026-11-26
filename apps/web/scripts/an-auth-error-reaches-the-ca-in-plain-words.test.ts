@@ -44,10 +44,6 @@ const STILL_RAW = new Set<string>([
   "app/clients/[id]/portal/page.tsx otpErr.message",
   "app/platform/page.tsx cErr.message",
   "app/platform/page.tsx fErr.message",
-  "app/portal/activate/page.tsx upErr.message",
-  "app/portal/employee/activate/page.tsx err.message",
-  "app/settings/security/page.tsx upErr.message",
-  "components/payroll/PortalAccessModal.tsx otpErr.message",
 ]);
 
 // The screens a new CA passes through on the way in. These must be clean
@@ -296,11 +292,19 @@ test("the sign-up, sign-in and password screens render no raw Supabase Auth mess
 });
 
 test("the sign-up path imports the one helper that turns a code into words", () => {
-  for (const rel of ["app/signup/page.tsx", "app/onboarding/page.tsx", "app/login/page.tsx",
+  // The sign-up FORM is not on this list since POST-A-485: it asks the server, whose refusals are already sentences, and calls the
+  // sign-in service not at all (the next test holds that), so there is no code of the service's for it to turn into words.
+  for (const rel of ["app/onboarding/page.tsx", "app/login/page.tsx",
     "app/auth/reset-password/page.tsx", "lib/auth/AuthContext.tsx"]) {
     const src = stripComments(fs.readFileSync(path.join(WEB, rel), "utf8"));
     assert.match(src, /from\s+["']@\/lib\/auth\/authErrorMessage["']/, rel);
   }
+});
+
+test("the sign-up form takes no error from the sign-in service, so it needs no helper for one", () => {
+  const src = stripComments(fs.readFileSync(path.join(WEB, "app/signup/page.tsx"), "utf8"));
+  assert.doesNotMatch(src, /getSupabaseClient|supabase\.auth|signInWithOtp/);
+  assert.match(src, /err instanceof Error && err\.message \? err\.message :/, "the server's own sentence is what it shows");
 });
 
 test("no other screen renders a raw Supabase Auth message beyond the frozen list", () => {

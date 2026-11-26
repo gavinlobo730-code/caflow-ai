@@ -10,14 +10,16 @@ import { useEffect, useState, useCallback } from "react";
 import { CheckCircle, FileText, Download } from "lucide-react";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { api } from "@/lib/api";
-import { StatementSkeleton } from "@/components/ui/skeleton";
+import { StatementSkeleton, LoadingRegion } from "@/components/ui/skeleton";
 
 import { fmt } from "@/components/banking/shared";
-import { objectWithLists } from "@/lib/api/shape";
+import { objectOrNull, objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { formatDate } from "@/lib/dates/format";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { usePermissions } from "@/lib/auth/AuthContext";
 
 // ── Bank Reconciliation ────────────────────────────────────────────────────
 
@@ -187,6 +189,13 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
   const [openingLoading, setOpeningLoading] = useState(false);
   const [reopening, setReopening] = useState(false);
   const [reopenReason, setReopenReason] = useState("");
+  // Reopening a completed reconciliation asks `accounting` `approve`, a Partner's alone; the button was offered to everyone who
+  // can reconcile and answered a 403 (POST-A-455).
+  const { can: canDo, resolved: permissionsRead } = usePermissions();
+  const mayReopen = canDo("accounting", "approve");
+  // Setting an adjustment asks `banking` `approve`, a Manager's and above; the box and its Apply were drawn to an Executive and
+  // came back a 403 (POST-A-455).
+  const mayAdjust = canDo("banking", "approve");
   const [lineSearch, setLineSearch] = useState("");
   const [lineSort, setLineSort] = useState<"date" | "-date" | "amount" | "-amount">("date");
   // The tie-out AS IF the current selection were reconciled. Computed on the
@@ -199,6 +208,9 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
   const [adj, setAdj] = useState("");
   const [adjReason, setAdjReason] = useState("");
   const [brs, setBrs] = useState<Brs | null>(null);
+  // The statement that did not answer is not one that was never built: the server says "no ledger account is linked" inside a successful
+  // answer, so a request that failed is told apart and the panel says so instead of vanishing (POST-A-515 (d)).
+  const [brsFailed, setBrsFailed] = useState(false);
   const [showBrs, setShowBrs] = useState(false);
 
   const loadSessions = useCallback(async () => {
@@ -241,10 +253,17 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
           .catch(() => ({ success: false, data: null as unknown as Brs })),
       ]);
       if (!res.success) throw new Error("Couldn't load the reconciliation report.");
-      setReport(res.data);
-      setAdj(((res.data.reconciliation.adjustments_paise || 0) / 100).toFixed(2));
-      setAdjReason(res.data.reconciliation.adjustments_reason || "");
+      // The screen reads `report.reconciliation.status`, `report.summary.*` and `report.counts.*` (POST-A-360): a report without them is
+      // no report, and is said to be one this screen cannot read rather than thrown on at the first read.
+      const shaped = objectWithLists<ReconReport>(res.data, "reconciled", "unreconciled", "exceptions");
+      if (!shaped || !objectOrNull(shaped.reconciliation) || !objectOrNull(shaped.summary) || !objectOrNull(shaped.counts)) {
+        throw new Error("The reconciliation report came back in a shape this screen cannot read.");
+      }
+      setReport(shaped);
+      setAdj(((shaped.reconciliation.adjustments_paise || 0) / 100).toFixed(2));
+      setAdjReason(shaped.reconciliation.adjustments_reason || "");
       setBrs(b.success ? b.data : null);
+      setBrsFailed(!b.success);
     } catch (e) {
       setReport(null);
       setError(e instanceof Error ? e.message : "Couldn't load the reconciliation report.");
@@ -284,7 +303,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
 
   async function createSession() {
     setError(null);
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError); return; }
     if (!form.bank_account_id || !form.start || !form.end) { setError("Bank account and statement dates are required."); return; }
     // The end box only HINTS when it is before the start (a hint is not a problem), so the window came to the server reversed and was refused
     // there as "Value error, statement_end_date must not precede statement_start_date."
@@ -339,6 +358,9 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
   }, [selectedId]);
   useEffect(() => { if (showHistory) loadHistory(); }, [showHistory, loadHistory]);
   useEffect(() => { setShowHistory(false); setHistory(null); setLineSearch(""); }, [selectedId]);
+
+  /** Leave the Reopen dialog without reopening: what was typed and anything it was told go with it. */
+  function closeReopen() { setReopening(false); setReopenReason(""); setError(null); }
 
   async function doReopen() {
     setBusy(true); setError(null);
@@ -403,7 +425,11 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
       <div className="bg-white rounded-xl border border-ps-border p-4 flex items-end gap-3 flex-wrap">
         <div className="flex-1 min-w-[240px]">
           <label className="block text-xs font-medium text-ps-label mb-1.5">Reconciliation session</label>
-          {loading ? <div className="h-9 bg-ps-bg rounded animate-pulse" /> : (
+          {loading ? (
+            <LoadingRegion label="Loading reconciliation sessions">
+              <div className="h-9 bg-ps-bg rounded animate-pulse" />
+            </LoadingRegion>
+          ) : (
             <select aria-label="Reconciliation session" value={selectedId} onChange={(e) => setSelectedId(e.target.value)} className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand">
               <option value="">— Select a reconciliation —</option>
               {sessions.map((s) => <option key={s.id} value={s.id}>{formatDate(s.statement_start_date)} → {formatDate(s.statement_end_date)} · {s.account_no ?? "account"} · {s.status}</option>)}
@@ -518,6 +544,11 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
                 issued and entered but not yet presented finally has a row.
                 Collapsed by default because the tie-out is what the CA works
                 against day to day. */}
+            {brsFailed && (
+              <p role="status" className="text-2xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded px-3 py-2">
+                The Bank Reconciliation Statement could not be read, so it is not shown. It is not blank; open this reconciliation again to read it.
+              </p>
+            )}
             {brs && (
               <div className="border border-ps-border rounded-lg">
                 <button
@@ -560,12 +591,18 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
               </div>
             )}
 
-            {!completed && (
-              /* An adjustment is the one figure here that can force a period to
-                 tie out, and completing freezes a certified PDF. So it asks what
-                 it IS, refuses a non-zero figure without one (the server and a
-                 DB CHECK refuse it too), and needs a Manager — the server
-                 answers 403 to anyone below, and the message says so. */
+            {/* An adjustment is the one figure here that can force a period to
+                tie out, and completing freezes a certified PDF. So it asks what
+                it IS, refuses a non-zero figure without one (the server and a
+                DB CHECK refuse it too), and is offered only to someone who may
+                set one, because the server answers 403 to anyone else. */}
+            {!completed && permissionsRead && !mayAdjust && (
+              <p className="text-3xs text-ps-hint pt-1">
+                Recording an adjustment needs permission to approve bank reconciliations, so the box is not shown to you. An adjustment
+                already recorded is in the figures above, with its reason.
+              </p>
+            )}
+            {!completed && mayAdjust && (
               <div className="pt-1 space-y-1.5">
                 <div className="flex items-center gap-2">
                   <span className="text-2xs text-ps-label">Adjustment (₹)</span>
@@ -593,8 +630,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
                   >Apply</button>
                 </div>
                 <p className="text-3xs text-ps-hint">
-                  A Manager or Partner records an adjustment, and the reason is printed on the
-                  reconciliation. Set it to 0 to remove one.
+                  The reason is printed on the reconciliation. Set the figure to 0 to remove an adjustment.
                 </p>
               </div>
             )}
@@ -612,12 +648,13 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
               {completed && (
                 <>
                   <span className="text-2xs text-money-in ml-auto flex items-center gap-1"><CheckCircle size={12} /> Completed {report.reconciliation.completed_at ? formatDate(String(report.reconciliation.completed_at)) : ""} · locked</span>
-                  {/* The deliberate escape hatch. Partner-only server-side; a
-                      non-Partner gets a 403 and the message says so. */}
-                  <button onClick={() => setReopening(true)} disabled={busy}
-                    className="text-2xs px-2.5 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-label">
-                    Reopen…
-                  </button>
+                  {/* The deliberate escape hatch, and a Partner's alone: it is offered only to someone the route admits. */}
+                  {mayReopen && (
+                    <button onClick={() => setReopening(true)} disabled={busy}
+                      className="text-2xs px-2.5 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-label">
+                      Reopen…
+                    </button>
+                  )}
                 </>
               )}
             </div>
@@ -635,15 +672,18 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
           </div>
 
           {reopening && (
-            <div className="fixed inset-0 bg-ps-ink/60 z-50 flex items-center justify-center p-4">
-              <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-                <div className="px-5 py-4 border-b border-ps-border">
-                  <h3 className="text-sm font-semibold text-ps-ink">Reopen this reconciliation</h3>
-                  <p className="text-xs text-ps-label mt-0.5">
-                    {formatDate(report.reconciliation.statement_start_date)} → {formatDate(report.reconciliation.statement_end_date)}
-                  </p>
-                </div>
-                <div className="px-5 py-4 space-y-3">
+            // The shared dialog (POST-A-130): named, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it, its ×)
+            // and its Cancel are held while the reopening is being recorded.
+            <Modal title="Reopen this reconciliation" maxWidthClass="max-w-md" onClose={() => { if (!busy) closeReopen(); }}
+              note={<>{formatDate(report.reconciliation.statement_start_date)} → {formatDate(report.reconciliation.statement_end_date)}</>}
+              footer={<>
+                <button disabled={busy} onClick={closeReopen}
+                  className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-40">Cancel</button>
+                <Button variant="plain" size="none" onClick={doReopen} disabled={busy || reopenReason.trim().length < 10}
+                  className="text-xs px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-40">
+                  {busy ? "Reopening…" : "Reopen"}
+                </Button>
+              </>}>
                   <p className="text-2xs text-ps-label">
                     This undoes a completed period so it can be corrected. The report as it was
                     certified is kept, the change is recorded against your name, and the period must
@@ -658,17 +698,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
                     <span className="text-3xs text-ps-hint">At least 10 characters — this goes into the audit trail.</span>
                   </label>
                   {error && <p role="alert" className="text-xs text-state-problem bg-state-problem-surface rounded px-3 py-2">{error}</p>}
-                </div>
-                <div className="flex gap-2 justify-end px-5 py-4 border-t border-ps-border">
-                  <button onClick={() => { setReopening(false); setReopenReason(""); setError(null); }}
-                    className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
-                  <Button variant="plain" size="none" onClick={doReopen} disabled={busy || reopenReason.trim().length < 10}
-                    className="text-xs px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-40">
-                    {busy ? "Reopening…" : "Reopen"}
-                  </Button>
-                </div>
-              </div>
-            </div>
+            </Modal>
           )}
 
           {/* Prior certifications (Tier 2.7). A session can be completed,
@@ -678,7 +708,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
             <div className="bg-white rounded-xl border border-ps-border p-4 space-y-2">
               <p className="text-xs font-semibold text-ps-body">Certification history</p>
               {!history ? (
-                <p className="text-2xs text-ps-hint">Loading…</p>
+                <LoadingRegion label="Loading the certification history" className="text-2xs text-ps-hint">Loading…</LoadingRegion>
               ) : !history.current && history.superseded.length === 0 ? (
                 <p className="text-2xs text-ps-hint">
                   This reconciliation has never been completed, so there is nothing certified yet.
@@ -773,7 +803,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
                         <span className="text-ps-hint"> (now {fmt(Math.abs(projection.current.difference_paise))})</span></>}
                 </span>
               )}
-              {projection && projection.ineligible_ids.length > 0 && (
+              {projection && (projection.ineligible_ids ?? []).length > 0 && (
                 <span className="text-3xs text-state-attention">
                   {projection.ineligible_ids.length} selected line(s) can&apos;t be reconciled here.
                 </span>

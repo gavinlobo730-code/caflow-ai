@@ -4,11 +4,13 @@ Extracted from the sales-invoice logic in routers/sales_invoices.py
 (_resolve_credit_terms/_apply_credit_days_due_date/_apply_due_date_credit_days)
 so purchase bills can apply the identical rule against a vendor's credit_days
 instead of a customer's, without copy-pasting the date arithmetic a second
-time. sales_invoices.py keeps its own already-tested private copies; only new
-callers (purchase_bills.py) use this module.
+time. The two draft-edit rules are this module's alone: sales_invoices.py's private names delegate here (POST-A-021, so the copy
+whose unparseable date was swallowed in silence is gone).
 """
 from datetime import date, timedelta
 from typing import Optional
+
+from core.observability import capture_soft_failure
 
 DEFAULT_CREDIT_DAYS = 30  # fallback when neither the document nor the party sets terms
 
@@ -33,6 +35,7 @@ def resolve_credit_terms(
     try:
         doc_d: Optional[date] = date.fromisoformat(str(doc_date)[:10])
     except (ValueError, TypeError):
+        # 'Never raises on malformed input' (docstring): with no readable document date, no due date or credit days are derived from it.
         doc_d = None
 
     if due_date:
@@ -41,6 +44,7 @@ def resolve_credit_terms(
             try:
                 cd = (date.fromisoformat(str(due_date)[:10]) - doc_d).days
             except (ValueError, TypeError):
+                # The due date given is not a date: it is passed through as given and no credit days are derived from it.
                 cd = None
         return str(due_date)[:10], (int(cd) if cd is not None else None)
 
@@ -67,8 +71,10 @@ def apply_credit_days_due_date(data: dict, base_doc_date: Optional[str]) -> None
             date.fromisoformat(str(base_doc_date)[:10])
             + timedelta(days=max(0, int(data["credit_days"])))
         ).isoformat()
-    except (ValueError, TypeError):
-        pass
+    except (ValueError, TypeError) as unreadable:
+        # The stored date is a DATE column and the credit days an integer, so this is damage, not a typing slip: the due date is
+        # left as it was, and that is said in the log rather than nowhere.
+        capture_soft_failure(unreadable, operation="credit_terms.due_date_from_credit_days", base_date=str(base_doc_date)[:40])
 
 
 def apply_due_date_credit_days(data: dict, base_doc_date: Optional[str]) -> None:
@@ -85,5 +91,6 @@ def apply_due_date_credit_days(data: dict, base_doc_date: Optional[str]) -> None
             date.fromisoformat(str(data["due_date"])[:10])
             - date.fromisoformat(str(base_doc_date)[:10])
         ).days
-    except (ValueError, TypeError):
-        pass
+    except (ValueError, TypeError) as unreadable:
+        # As above: the credit days are left as they were, and the log says why.
+        capture_soft_failure(unreadable, operation="credit_terms.credit_days_from_due_date", base_date=str(base_doc_date)[:40])

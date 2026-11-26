@@ -14,18 +14,23 @@ import { getFirmId } from "@/lib/data/getFirmId";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { deleteRowAndConfirm, ROW_NOT_DELETED } from "@/lib/data/deleteRowAndConfirm";
 import { api } from "@/lib/api";
+import { usePermissions } from "@/lib/auth/AuthContext";
+import { UploadProgress } from "@/components/ui/upload-progress";
+import type { UploadProgress as BytesSent } from "@/lib/api/uploadWithProgress";
 import type { ClientDocumentList, ClientNotice, PortalUnreadSummary } from "@/lib/api";
 import { arrayOrEmpty, objectOrNull, objectWithLists } from "@/lib/api/shape";
 import type { Client } from "@/lib/types";
 import type { ComplianceEntry } from "@/lib/data/compliance";
 import { formatDate } from "@/lib/services/formatting";
 import { formatPaise } from "@/lib/services/formatting";
-import { ListSkeleton, TransactionListSkeleton } from "@/components/ui/skeleton";
+import { ListSkeleton, TransactionListSkeleton, LoadingRegion, Skeleton } from "@/components/ui/skeleton";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "@/components/ui/use-toast";
 import { PageHeader } from "@/components/ui/page-header";
 
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
+import { EmptyState } from "@/components/ui/states";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 type PortalTab = "requests" | "shared" | "reports" | "filings" | "dues" | "messages";
@@ -157,6 +162,18 @@ function formatFileSize(bytes: number | null): string {
 }
 
 export default function ClientPortalPage() {
+  // A shared report is the client's P&L, Balance Sheet or Trial Balance, and its link is made only for someone the books
+  // are open to (POST-A-467). Offered while permissions are still loading, because the server is the one that refuses.
+  const { can, resolved: permissionsResolved } = usePermissions();
+  const booksOpen = !permissionsResolved || can("accounting", "read");
+  // Every other write on this screen is offered only to someone its route admits (POST-A-447, the portal half): a
+  // Reviewer reads the portal and may not ask for papers, withdraw a request or write to the client; only an Executive
+  // and above stores a file; only a Partner deletes one; and a shared report is removed by the reports' write tier
+  // (Manager and above, the policy of migration 261). Offered while permissions load, because the server refuses.
+  const mayWritePortal = !permissionsResolved || can("portal", "write");
+  const mayStoreFile = !permissionsResolved || can("document", "write");
+  const mayDeleteFile = !permissionsResolved || can("document", "delete");
+  const mayRemoveReport = !permissionsResolved || can("report", "write");
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClientId, setSelectedClientId] = useState<string>("");
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
@@ -193,6 +210,7 @@ export default function ClientPortalPage() {
   // Distinguishes "fetch failed" from "nothing shared yet."
   const [sharedFailed, setSharedFailed] = useState(false);
   const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [sent, setSent] = useState<BytesSent | null>(null);
   const [uploadLabel, setUploadLabel] = useState("");
   const sharedUploadRef = useRef<HTMLInputElement | null>(null);
 
@@ -349,7 +367,8 @@ export default function ClientPortalPage() {
   // they have loaded, and only when there is something unread, so an empty
   // thread makes no write.
   useEffect(() => {
-    if (activeTab !== "messages" || !selectedClientId || messagesLoading || messagesFailed) return;
+    // Marking read is a portal write (the route asks Portal write): a Reviewer reads the thread and leaves it unread.
+    if (!mayWritePortal || activeTab !== "messages" || !selectedClientId || messagesLoading || messagesFailed) return;
     if (!portalMessages.some((m) => !m.from_ca && m.is_read === false)) return;
     let live = true;
     (async () => {
@@ -361,7 +380,7 @@ export default function ClientPortalPage() {
       } catch { /* the thread stays unread, which is the honest answer */ }
     })();
     return () => { live = false; };
-  }, [activeTab, selectedClientId, messagesLoading, messagesFailed, portalMessages, loadUnread]);
+  }, [mayWritePortal, activeTab, selectedClientId, messagesLoading, messagesFailed, portalMessages, loadUnread]);
 
   async function loadPortalMessages(clientId: string) {
     setMessagesLoading(true);
@@ -487,15 +506,22 @@ export default function ClientPortalPage() {
       form.append("file", file);
       form.append("client_id", selectedClientId);
       form.append("description", label);
-      await api.clientDocuments.upload(form);
+      await api.clientDocuments.upload(form, setSent);
 
       setUploadLabel("");
       await loadSharedDocs(selectedClientId);
     } catch (e) {
       toast({ title: e instanceof Error ? e.message : "Upload failed", variant: "destructive" });
     } finally {
+      setSent(null);
       setUploadingDoc(false);
     }
+  }
+
+  function onSharedFilePicked(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (f) handleSharedDocUpload(f);
+    e.target.value = "";
   }
 
   async function handleDeleteSharedDoc(doc: SharedDocument) {
@@ -605,14 +631,17 @@ export default function ClientPortalPage() {
                 Select a client to manage their portal
               </label>
               <div className="w-full max-w-sm">
-                <ClientLookup
-                  clients={clients}
-                  value={selectedClientId}
-                  onChange={setSelectedClientId}
-                  ariaLabel="Client"
-                  placeholder={clientsLoading ? "Loading clients…" : "— Choose a client —"}
-                  disabled={clientsLoading}
-                />
+                {clientsLoading ? (
+                  <LoadingRegion label="Loading clients"><Skeleton className="h-9 w-full rounded-lg" /></LoadingRegion>
+                ) : (
+                  <ClientLookup
+                    clients={clients}
+                    value={selectedClientId}
+                    onChange={setSelectedClientId}
+                    ariaLabel="Client"
+                    placeholder="— Choose a client —"
+                  />
+                )}
               </div>
             </div>
           </div>
@@ -685,7 +714,7 @@ export default function ClientPortalPage() {
                 <tab.icon size={14} />
                 {tab.label}
                 {tab.id === "messages" && (() => {
-                  const mine = unread?.clients.find((c) => c.client_id === selectedClientId)?.unread ?? 0;
+                  const mine = (unread?.clients ?? []).find((c) => c.client_id === selectedClientId)?.unread ?? 0;
                   return mine > 0 ? (
                     <span className="ml-1 rounded-full bg-brand px-1.5 text-3xs font-semibold text-white">{mine}</span>
                   ) : null;
@@ -695,9 +724,11 @@ export default function ClientPortalPage() {
           </div>
 
           {loading && (
-            <div className="text-center py-8 text-sm text-ps-hint animate-pulse">
-              Loading client data…
-            </div>
+            <LoadingRegion label="Loading client data" noticeClassName="justify-center text-center">
+              <div className="text-center py-8 text-sm text-ps-hint animate-pulse">
+                Loading client data…
+              </div>
+            </LoadingRegion>
           )}
 
           {!loading && (
@@ -709,12 +740,14 @@ export default function ClientPortalPage() {
                     <CardTitle className="text-sm flex items-center gap-2">
                       <FileText size={15} /> Document Requests
                     </CardTitle>
+                    {mayWritePortal && (
                     <button
                       onClick={() => setShowNewRequestModal(true)}
                       className="flex items-center gap-1.5 px-3 py-1.5 bg-brand text-white text-xs font-medium rounded-lg hover:bg-brand-dark transition-colors"
                     >
                       <Plus size={13} /> New Request
                     </button>
+                    )}
                   </CardHeader>
                   <CardContent>
                     {requestsLoading ? (
@@ -725,12 +758,12 @@ export default function ClientPortalPage() {
                         <button onClick={() => loadDocRequests(selectedClientId)} disabled={requestsLoading} className="text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body disabled:opacity-50">Retry</button>
                       </div>
                     ) : docRequests.length === 0 ? (
-                      <div className="text-center py-10 space-y-2">
-                        <FileText size={32} className="text-gray-200 mx-auto" />
-                        <p className="text-sm text-ps-hint">
-                          No document requests yet — click New Request to ask your client for files
-                        </p>
-                      </div>
+                      <EmptyState
+                        className="py-10"
+                        icon={<FileText size={32} />}
+                        title="No document requests yet"
+                        description="Press New Request at the top of this card to ask your client for files."
+                      />
                     ) : (
                       <div className="space-y-2">
                         {docRequests.map((req) => (
@@ -766,14 +799,16 @@ export default function ClientPortalPage() {
                               >
                                 {req.status === "fulfilled" ? "Fulfilled" : "Pending"}
                               </Badge>
-                              <button
+                              {mayWritePortal && (
+                              <Button variant="plain" size="none" spinner={false}
                                 onClick={() => handleDeleteRequest(req.id)}
                                 disabled={actionInFlight}
                                 className="p-1.5 text-ps-hint hover:text-state-problem hover:bg-state-problem-hover rounded transition-colors disabled:opacity-50"
                                 title="Delete request"
                               >
                                 <Trash2 size={13} />
-                              </button>
+                              </Button>
+                              )}
                             </div>
                           </div>
                         ))}
@@ -791,6 +826,7 @@ export default function ClientPortalPage() {
                       <FolderOpen size={15} /> Shared Documents
                       <span className="text-xs text-ps-hint font-normal ml-1">(CA → Client)</span>
                     </CardTitle>
+                    {mayStoreFile && (
                     <div className="flex items-center gap-2">
                       <input aria-label="Label for the shared document (optional)"
                         type="text"
@@ -803,11 +839,7 @@ export default function ClientPortalPage() {
                         type="file"
                         className="hidden"
                         ref={sharedUploadRef}
-                        onChange={(e) => {
-                          const f = e.target.files?.[0];
-                          if (f) handleSharedDocUpload(f);
-                          e.target.value = "";
-                        }}
+                        onChange={onSharedFilePicked}
                       />
                       <button
                         onClick={() => sharedUploadRef.current?.click()}
@@ -818,8 +850,10 @@ export default function ClientPortalPage() {
                         {uploadingDoc ? "Uploading…" : "Upload"}
                       </button>
                     </div>
+                    )}
                   </CardHeader>
                   <CardContent>
+                    {sent && <div className="mb-3"><UploadProgress progress={sent} what="the document" /></div>}
                     {sharedLoading ? (
                       <ListSkeleton rows={3} />
                     ) : sharedFailed ? (
@@ -828,12 +862,12 @@ export default function ClientPortalPage() {
                         <button onClick={() => loadSharedDocs(selectedClientId)} disabled={sharedLoading} className="text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body disabled:opacity-50">Retry</button>
                       </div>
                     ) : sharedDocs.length === 0 ? (
-                      <div className="text-center py-10 space-y-2">
-                        <FolderOpen size={32} className="text-gray-200 mx-auto" />
-                        <p className="text-sm text-ps-hint">
-                          No documents shared yet — upload returns, notices, and certificates for this client
-                        </p>
-                      </div>
+                      <EmptyState
+                        className="py-10"
+                        icon={<FolderOpen size={32} />}
+                        title="No documents shared yet"
+                        description="Press Upload at the top of this card to share a return, notice or certificate with this client."
+                      />
                     ) : (
                       <div className="space-y-2">
                         {sharedDocs.map((doc) => (
@@ -863,14 +897,16 @@ export default function ClientPortalPage() {
                               >
                                 <Download size={13} />
                               </button>
-                              <button
+                              {mayDeleteFile && (
+                              <Button variant="plain" size="none" spinner={false}
                                 onClick={() => handleDeleteSharedDoc(doc)}
                                 disabled={actionInFlight}
                                 className="p-1.5 text-ps-hint hover:text-state-problem hover:bg-state-problem-hover rounded transition-colors disabled:opacity-50"
                                 title="Delete"
                               >
                                 <Trash2 size={13} />
-                              </button>
+                              </Button>
+                              )}
                             </div>
                           </div>
                         ))}
@@ -891,11 +927,12 @@ export default function ClientPortalPage() {
                   </CardHeader>
                   <CardContent className="p-0">
                     {sharedReports.length === 0 ? (
-                      <div className="px-6 py-10 text-center text-sm text-ps-hint">
-                        <BarChart3 size={28} className="mx-auto mb-2 opacity-20" />
-                        <p>No reports shared yet.</p>
-                        <p className="text-xs mt-1 text-ps-hint">Go to Reports → Financial Statements → Generate → Share with Client</p>
-                      </div>
+                      <EmptyState
+                        className="py-10"
+                        icon={<BarChart3 size={28} />}
+                        title="No reports shared yet"
+                        description="Go to Reports → Financial Statements → Generate → Share with Client."
+                      />
                     ) : (
                       <div className="divide-y divide-ps-border">
                         {sharedReports.map((r) => (
@@ -909,6 +946,7 @@ export default function ClientPortalPage() {
                               </p>
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
+                              {booksOpen ? (
                               <button
                                 disabled={actionInFlight}
                                 onClick={async () => {
@@ -927,7 +965,12 @@ export default function ClientPortalPage() {
                               >
                                 <Download size={12} /> Download
                               </button>
+                              ) : (
+                                <span className="text-xs text-ps-hint">Opens for someone with access to the books</span>
+                              )}
+                              {mayRemoveReport && (
                               <Button variant="plain" size="none"
+                                title="Remove this shared report" aria-label="Remove this shared report"
                                 onClick={async () => {
                                   if (!(await confirmDialog({ message: "Remove this shared report?", danger: true, confirmLabel: "Remove" }))) return;
                                   const out = await deleteRowAndConfirm(getSupabaseClient(), "shared_reports", r.id);
@@ -938,6 +981,7 @@ export default function ClientPortalPage() {
                               >
                                 <Trash2 size={12} />
                               </Button>
+                              )}
                             </div>
                           </div>
                         ))}
@@ -1094,10 +1138,12 @@ export default function ClientPortalPage() {
                         <button disabled={messagesLoading} onClick={() => loadPortalMessages(selectedClientId)} className="disabled:opacity-40 text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
                       </div>
                     ) : portalMessages.length === 0 ? (
-                      <div className="text-center py-10 space-y-2">
-                        <MessageSquare size={32} className="text-gray-200 mx-auto" />
-                        <p className="text-sm text-ps-hint">No messages yet — send a message to your client below</p>
-                      </div>
+                      <EmptyState
+                        className="py-10"
+                        icon={<MessageSquare size={32} />}
+                        title="No messages yet"
+                        description="Send a message to your client with the box below."
+                      />
                     ) : (
                       portalMessages.map((msg) => (
                         <div key={msg.id} className="flex gap-3">
@@ -1111,6 +1157,10 @@ export default function ClientPortalPage() {
                         </div>
                       ))
                     )}
+                    {!mayWritePortal && (
+                      <p className="pt-2 border-t border-ps-border text-xs text-ps-label">Writing to the client needs the Portal write permission, which a Reviewer does not hold.</p>
+                    )}
+                    {mayWritePortal && (
                     <div className="pt-2 border-t border-ps-border space-y-2">
                       <textarea aria-label="Message to this client"
                         rows={2}
@@ -1120,16 +1170,17 @@ export default function ClientPortalPage() {
                         className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand resize-none"
                       />
                       <div className="flex justify-end">
-                        <button
+                        <Button variant="plain" size="none" spinner={false}
                           onClick={handleSendMessage}
                           disabled={actionInFlight || !newMessageText.trim()}
                           className="flex items-center gap-1.5 px-3 py-1.5 bg-brand text-white text-xs font-medium rounded-lg hover:bg-brand-dark disabled:opacity-50 transition-colors"
                         >
                           <MessageSquare size={12} />
                           {sendingMessage ? "Sending…" : "Send Message"}
-                        </button>
+                        </Button>
                       </div>
                     </div>
+                    )}
                   </CardContent>
                 </Card>
               )}
@@ -1140,72 +1191,71 @@ export default function ClientPortalPage() {
 
       {/* New Request Modal */}
       {showNewRequestModal && (
-        <div className="fixed inset-0 bg-brand-dark/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
-            <h3 className="text-base font-semibold text-ps-ink">New Document Request</h3>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-medium text-ps-label mb-1">Title *</label>
-                <input aria-label="Title"
-                  type="text"
-                  placeholder="e.g. Upload Q4 Bank Statement"
-                  value={newRequest.title}
-                  onChange={(e) => setNewRequest((p) => ({ ...p, title: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
-                  autoFocus
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-ps-label mb-1">Description</label>
-                <textarea aria-label="Description"
-                  placeholder="e.g. For the period Jan–Mar 2026"
-                  value={newRequest.description}
-                  onChange={(e) => setNewRequest((p) => ({ ...p, description: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand resize-none"
-                  rows={3}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-ps-label mb-1">Needed by</label>
-                <DateInput
-                  aria-label="Needed by"
-                  value={newRequest.due_date}
-                  onChange={(v) => setNewRequest((p) => ({ ...p, due_date: v }))}
-                  onStateChange={requestDates.watch("needed", "Needed by")}
-                  className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
-                />
-              </div>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={newRequest.is_urgent}
-                  onChange={(e) => setNewRequest((p) => ({ ...p, is_urgent: e.target.checked }))}
-                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-brand"
-                />
-                <span className="text-sm text-ps-body">Mark as Urgent</span>
-                <AlertTriangle size={14} className="text-amber-500" />
-              </label>
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                onClick={() => {
-                  setShowNewRequestModal(false);
-                  setNewRequest({ title: "", description: "", is_urgent: false, due_date: "" });
-                }}
-                className="px-4 py-2 text-sm text-ps-label border border-ps-border rounded-lg hover:bg-ps-bg"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleCreateRequest}
-                disabled={actionInFlight || !newRequest.title.trim()}
-                className="px-4 py-2 text-sm bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 font-medium"
-              >
-                {savingRequest ? "Creating…" : "Create Request"}
-              </button>
-            </div>
+        // The shared dialog (POST-A-130): named, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it, its ×) and its
+        // Cancel are held while its own request is out.
+        <Modal title="New Document Request" maxWidthClass="max-w-md" onClose={() => { if (!savingRequest) { setShowNewRequestModal(false); setNewRequest({ title: "", description: "", is_urgent: false, due_date: "" }); } }}
+          footer={<>
+            <button disabled={savingRequest}
+              onClick={() => {
+                setShowNewRequestModal(false);
+                setNewRequest({ title: "", description: "", is_urgent: false, due_date: "" });
+              }}
+              className="px-4 py-2 text-sm text-ps-label border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <Button variant="plain" size="none" spinner={false}
+              onClick={handleCreateRequest}
+              disabled={actionInFlight || !newRequest.title.trim()}
+              className="px-4 py-2 text-sm bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 font-medium"
+            >
+              {savingRequest ? "Creating…" : "Create Request"}
+            </Button>
+          </>}>
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-ps-label mb-1">Title *</label>
+            <input aria-label="Title"
+              type="text"
+              placeholder="e.g. Upload Q4 Bank Statement"
+              value={newRequest.title}
+              onChange={(e) => setNewRequest((p) => ({ ...p, title: e.target.value }))}
+              className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
+              autoFocus
+            />
           </div>
+          <div>
+            <label className="block text-xs font-medium text-ps-label mb-1">Description</label>
+            <textarea aria-label="Description"
+              placeholder="e.g. For the period Jan–Mar 2026"
+              value={newRequest.description}
+              onChange={(e) => setNewRequest((p) => ({ ...p, description: e.target.value }))}
+              className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand resize-none"
+              rows={3}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-ps-label mb-1">Needed by</label>
+            <DateInput
+              aria-label="Needed by"
+              value={newRequest.due_date}
+              onChange={(v) => setNewRequest((p) => ({ ...p, due_date: v }))}
+              onStateChange={requestDates.watch("needed", "Needed by")}
+              className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
+            />
+          </div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={newRequest.is_urgent}
+              onChange={(e) => setNewRequest((p) => ({ ...p, is_urgent: e.target.checked }))}
+              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-brand"
+            />
+            <span className="text-sm text-ps-body">Mark as Urgent</span>
+            <AlertTriangle size={14} className="text-amber-500" />
+          </label>
         </div>
+        </Modal>
       )}
     </div>
   );

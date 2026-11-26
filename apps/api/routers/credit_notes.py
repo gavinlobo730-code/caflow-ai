@@ -12,11 +12,12 @@ from typing import ClassVar, FrozenSet, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, field_validator
 from models.iso_date import IsoDate, PatchIsoDate
-from models.clearable import patch_dict
+from models.clearable import draft_only_clears, patch_dict, put_back_on_a_draft, without
 from models.common import api_response
 from models.invoices import InvoiceLineIn
 from core import db_provider
 from core.authz import assert_client_access, can_access_client
+from domain.gst import compensation_cess
 from domain.inventory import note_goods
 from domain.inventory import stock_effect as stock_effects
 from services import named_row_ownership
@@ -69,6 +70,9 @@ class CreditNoteUpdateIn(BaseModel):
     """The note can be cleared (POST-A-399): `notes` is typed by the person, is not a Rule 46 / s.34 particular and is a NULL-able column, so a
     request that sends it as null (or blank) takes it away (`models.clearable.patch_dict`). Everything else reads null as "not sent"."""
     CLEARABLE: ClassVar[FrozenSet[str]] = frozenset({"notes"})
+    #: What a DRAFT may take away and an issued note may not (POST-A-399, the sixth slice): the document it is raised against and its reason.
+    #: A create takes neither, so a draft may be without them; on an issued note both are frozen and a null still reads "not sent".
+    CLEARABLE_ON_A_DRAFT: ClassVar[FrozenSet[str]] = frozenset({"sales_invoice_id", "reason"})
     customer_id: str | None = None
     credit_note_date: PatchIsoDate = None
     sales_invoice_id: str | None = None
@@ -186,6 +190,7 @@ def _section_34_2_warning(db, firm_id: str, client_id: str, note_date: str,
         supply = date.fromisoformat(str(raw_supply)[:10])
         note = date.fromisoformat(str(note_date)[:10])
     except (TypeError, ValueError):
+        # Without two readable dates the s.34(2) window cannot be measured: no warning is invented.
         return None
     filed_on = None
     if db is not None:
@@ -222,12 +227,16 @@ def _compute_lines(lines_data: list, is_interstate: bool, owner: Optional[ItemOw
             gst_rate_bps = int(round(float(ln.get("gst_rate_percent")) * 100))
         taxable = int(Decimal(str(qty)) * rate_paise)
         cgst, sgst, igst = _compute_line_gst(taxable, gst_rate_bps, is_interstate)
+        # Compensation cess on the SAME value of supply the three heads are charged on, by the one derivation every line table
+        # that carries it uses (migration 615): a note adjusts a document whose lines were charged that way.
+        cess = compensation_cess.line_columns(ln, taxable_paise=taxable, quantity=qty)
         total_taxable += taxable; total_cgst += cgst; total_sgst += sgst; total_igst += igst
         computed.append({
             "description": ln.get("description", ""), "hsn_sac": ln.get("hsn_sac", ""),
             "quantity": qty, "unit": ln.get("unit") or "NOS", "rate_paise": rate_paise, "gst_rate_bps": gst_rate_bps,
             "taxable_amount_paise": taxable, "cgst_paise": cgst, "sgst_paise": sgst,
-            "igst_paise": igst, "line_total_paise": taxable + cgst + sgst + igst,
+            "igst_paise": igst, **cess,
+            "line_total_paise": taxable + cgst + sgst + igst + cess["cess_paise"],
             # Which Product/Service (goods only, in practice) this return
             # restocks — migration 189. Optional: a line with no pick just
             # never moves stock (domain.inventory_service.apply_credit_note_to_inventory).
@@ -297,16 +306,14 @@ def create_credit_note(
         if _USE_MOCK:
             # Mock: if sales_invoice_id given, look it up
             if data.get("sales_invoice_id"):
-                try:
-                    from routers.sales_invoices import MOCK_SALES_INVOICES  # mock store, table is client_sales_invoices in DB
-                    original_invoice = next(
-                        (i for i in MOCK_SALES_INVOICES if i["id"] == data["sales_invoice_id"]),
-                        None
-                    )
-                    if original_invoice:
-                        is_interstate = original_invoice.get("is_interstate", False)
-                except ImportError:
-                    pass
+                # The mock store is a module of this package: it is always importable, so there is no failure to swallow (POST-A-021).
+                from routers.sales_invoices import MOCK_SALES_INVOICES  # mock store, table is client_sales_invoices in DB
+                original_invoice = next(
+                    (i for i in MOCK_SALES_INVOICES if i["id"] == data["sales_invoice_id"]),
+                    None
+                )
+                if original_invoice:
+                    is_interstate = original_invoice.get("is_interstate", False)
         else:
             from core.supabase_client import get_supabase
             db = get_supabase()
@@ -354,6 +361,9 @@ def create_credit_note(
                     raise HTTPException(
                         status_code=422,
                         detail="The invoice this credit note refers to is not part of this client's books.")
+                # ...AND IT IS THIS CUSTOMER'S (POST-A-553): the read above is scoped to the client and no further, so a note for one
+                # customer could name another customer's invoice. Asked after the refusal above, which keeps its own sentence.
+                named_row_ownership.note_invoice_is_its_customers(db, firm_id, client_id, data)
                 original_invoice = inv_resp.data[0]
                 if _opening.carried_over(original_invoice):
                     raise HTTPException(
@@ -371,7 +381,8 @@ def create_credit_note(
         # Compute lines (shared with the PATCH endpoint — see _compute_lines)
         computed_lines, total_taxable, total_cgst, total_sgst, total_igst = _compute_lines(
             lines_data, is_interstate, owner=None if _USE_MOCK else ItemOwner.live(firm_id or "", client_id))
-        total_paise = total_taxable + total_cgst + total_sgst + total_igst
+        total_cess = compensation_cess.lines_cess(computed_lines)
+        total_paise = total_taxable + total_cgst + total_sgst + total_igst + total_cess
         if total_paise <= 0:
             raise HTTPException(status_code=422, detail="Credit note total must be positive.")
 
@@ -435,6 +446,7 @@ def create_credit_note(
                 "cgst_paise":           total_cgst,
                 "sgst_paise":           total_sgst,
                 "igst_paise":           total_igst,
+                "cess_paise":           total_cess,
                 "total_paise":          total_paise,
                 "total_gst_paise":      total_cgst + total_sgst + total_igst,
                 "status":               "draft",
@@ -464,6 +476,7 @@ def create_credit_note(
             "cgst_paise":           total_cgst,
             "sgst_paise":           total_sgst,
             "igst_paise":           total_igst,
+            "cess_paise":           total_cess,
             "total_paise":          total_paise,
             "total_gst_paise":      total_cgst + total_sgst + total_igst,
             "status":               "draft",
@@ -558,7 +571,9 @@ def update_credit_note(cn_id: str, data: CreditNoteUpdateIn, current_user: dict 
     baseline, which has none either)."""
     _assert_cn_scope(current_user, cn_id)
     try:
-        data = patch_dict(data)
+        # What only a draft may take away (the document it is raised against, the reason): held aside until the stored note is read.
+        draft_clears = draft_only_clears(data)
+        data = without(patch_dict(data), draft_clears)
         lines_data = data.pop("lines", None)
         soft_fields = {"notes"}
 
@@ -567,17 +582,19 @@ def update_credit_note(cn_id: str, data: CreditNoteUpdateIn, current_user: dict 
                 if c["id"] == cn_id and not c.get("deleted_at"):
                     if c.get("status") != "draft" and (set(data.keys()) - soft_fields or lines_data is not None):
                         raise HTTPException(status_code=422, detail="Only a draft credit note can be edited — issue a new credit note to correct an issued one (CGST Act §34).")
+                    put_back_on_a_draft(data, draft_clears, c.get("status"))
                     computed = []
                     if lines_data is not None:
                         is_interstate = data.get("is_interstate", c.get("is_interstate", False))
                         computed, total_taxable, total_cgst, total_sgst, total_igst = _compute_lines(
                             lines_data, is_interstate, owner=None)   # mock mode has no catalogue
-                        total_paise = total_taxable + total_cgst + total_sgst + total_igst
+                        total_cess = compensation_cess.lines_cess(computed)
+                        total_paise = total_taxable + total_cgst + total_sgst + total_igst + total_cess
                         if total_paise <= 0:
                             raise HTTPException(status_code=422, detail="Credit note total must be positive.")
                         data.update({
                             "taxable_amount_paise": total_taxable, "cgst_paise": total_cgst,
-                            "sgst_paise": total_sgst, "igst_paise": total_igst, "total_paise": total_paise,
+                            "sgst_paise": total_sgst, "igst_paise": total_igst, "cess_paise": total_cess, "total_paise": total_paise,
                             "total_gst_paise": total_cgst + total_sgst + total_igst,
                         })
                         MOCK_CREDIT_NOTE_LINES[:] = [l for l in MOCK_CREDIT_NOTE_LINES if l.get("credit_note_id") != cn_id]
@@ -596,13 +613,14 @@ def update_credit_note(cn_id: str, data: CreditNoteUpdateIn, current_user: dict 
             raise HTTPException(status_code=404, detail=f"Credit note {cn_id} not found")
         c = resp.data[0]
         named_row_ownership.customer_is_the_clients(db, firm_id, c.get("client_id"), data.get("customer_id"))
-        named_row_ownership.sales_invoice_is_the_clients(db, firm_id, c.get("client_id"), data.get("sales_invoice_id"))
+        named_row_ownership.note_invoice_is_its_customers(db, firm_id, c.get("client_id"), data, c, cleared="sales_invoice_id" in draft_clears)
         status = c.get("status")
         if status != "draft" and (set(data.keys()) - soft_fields or lines_data is not None):
             raise HTTPException(
                 status_code=422,
                 detail="Only a draft credit note can be edited — issue a new credit note to correct an issued one (CGST Act §34).",
             )
+        put_back_on_a_draft(data, draft_clears, status)
         if data.get("credit_note_date"):
             period_validation_service.validate_posting_date(firm_id or "", data["credit_note_date"])
             if not _USE_MOCK:
@@ -619,12 +637,13 @@ def update_credit_note(cn_id: str, data: CreditNoteUpdateIn, current_user: dict 
             computed, total_taxable, total_cgst, total_sgst, total_igst = _compute_lines(
                 lines_data, is_interstate,
                 owner=ItemOwner.live(current_user.get("firm_id") or "", c.get("client_id") or ""))
-            total_paise = total_taxable + total_cgst + total_sgst + total_igst
+            total_cess = compensation_cess.lines_cess(computed)
+            total_paise = total_taxable + total_cgst + total_sgst + total_igst + total_cess
             if total_paise <= 0:
                 raise HTTPException(status_code=422, detail="Credit note total must be positive.")
             data.update({
                 "taxable_amount_paise": total_taxable, "cgst_paise": total_cgst,
-                "sgst_paise": total_sgst, "igst_paise": total_igst, "total_paise": total_paise,
+                "sgst_paise": total_sgst, "igst_paise": total_igst, "cess_paise": total_cess, "total_paise": total_paise,
                 "total_gst_paise": total_cgst + total_sgst + total_igst,
             })
             draft_document_lines.replace_draft_lines(db, "credit_note", cn_id, firm_id or "", computed, edited_by=current_user)

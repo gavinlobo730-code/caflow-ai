@@ -11,11 +11,13 @@ WHAT WAS WRONG
        has not reached it either".
 
 WHAT IS HELD HERE
-    The statement names the typed deductions it leaves out (count, payment, tax, each row) and does not add them; the keying sheet names them too; a PAN is a key
-    only if it is one; and the answer says whether the year was added up against the section's yearly limit (`aggregate_tested`).
+    A PAN is a key only if it is one; the answer says whether the year was added up against the section's yearly limit (`aggregate_tested`); and the statement NAMES the
+    typed deductions it carries (`typed_on_statement`: count, payment, tax, each row) and the ones it leaves out (`excluded_typed`: rows recorded for another
+    statement), and the keying sheet names both.
 
-WHAT IS NOT DONE, and is still ledger line POST-A-078: the typed row's tax is not resolved the way a bill's is (certificate, section 194A class), the two paths do
-not share one payee key, and a typed deduction is still not ON the statement.
+SINCE POST-A-078'S LAST PART the statement CARRIES the typed deductions as deductee rows (they were named and never added until then); how they are carried is held in
+`test_a_typed_deduction_is_a_deductee_row_on_the_statement_built_from_the_books.py`. What is still not done, and is still ledger line POST-A-078: a payee with no supplier
+and no usable PAN is keyed by nothing, and a shape-valid dummy PAN is still a key.
 """
 from __future__ import annotations
 
@@ -29,7 +31,7 @@ from fastapi.testclient import TestClient
 from core.auth import get_current_user
 from domain.tds import manual_register
 from domain.tds.manual_register import (
-    GAP_AGGREGATE_NOT_READ_WITHOUT_A_PAN, GAP_MESSAGES, GAP_REGISTERS_NOT_UNIFIED, usable_pan_key,
+    GAP_AGGREGATE_NOT_READ_WITHOUT_A_PAN, GAP_MESSAGES, GAP_NO_SUPPLIER, usable_pan_key,
 )
 from tests.e2e_harness import FakeDB
 
@@ -135,7 +137,8 @@ def test_the_answer_says_the_year_was_not_looked_at(app_db, pan):
     assert d["aggregate_tested"] is False
     assert GAP_AGGREGATE_NOT_READ_WITHOUT_A_PAN in d["gaps"]
     assert GAP_MESSAGES[GAP_AGGREGATE_NOT_READ_WITHOUT_A_PAN] in d["gap_messages"]
-    assert GAP_REGISTERS_NOT_UNIFIED in d["gaps"], "the standing gap is still said on every row"
+    # Not both: "its year is added up with the other deductions typed for this PAN" is false where nothing was added up (POST-A-078).
+    assert GAP_NO_SUPPLIER not in d["gaps"], "a payee with no usable PAN was told its year was added up by its PAN"
 
 
 def test_the_answer_for_a_real_pan_says_the_year_was_looked_at(app_db):
@@ -182,15 +185,16 @@ def _books(db, *, bill=True, fy="2025-26", quarter="Q3"):
 
 def test_a_statement_with_no_typed_deduction_says_none():
     out = _books(FakeDB())
-    typed = out["excluded_typed"]
-    assert typed["count"] == 0 and typed["tds_paise"] == 0 and typed["payment_paise"] == 0 and typed["deductions"] == []
+    for key in ("typed_on_statement", "excluded_typed"):
+        typed = out[key]
+        assert typed["count"] == 0 and typed["tds_paise"] == 0 and typed["payment_paise"] == 0 and typed["deductions"] == [], key
 
 
 def test_the_quarters_typed_deductions_are_counted_summed_and_listed_in_order():
     db = FakeDB()
     db.seed("tds_deductions", _typed("t2", day="2025-12-05", section="194H", payment=40_000_00, tds=80_000, name="Late Co"))
     db.seed("tds_deductions", _typed("t1"))
-    typed = _books(db)["excluded_typed"]
+    typed = _books(db)["typed_on_statement"]
     assert typed["count"] == 2
     assert typed["payment_paise"] == 1_00_000_00 + 40_000_00
     assert typed["tds_paise"] == 10_000_00 + 80_000
@@ -198,9 +202,9 @@ def test_the_quarters_typed_deductions_are_counted_summed_and_listed_in_order():
     assert typed["deductions"][0] == {
         "id": "t1", "deductee_name": "Acme Services", "deductee_pan": "AAACA1234A", "section": "194J", "section_1961": "194J",
         "transaction_date": "2025-10-12", "payment_amount_paise": 1_00_000_00, "tds_paise": 10_000_00}
-    from services.tds_return_service import EXCLUDED_TYPED_REASON
-    assert typed["reason"] == EXCLUDED_TYPED_REASON
-    assert "not in its totals" in typed["reason"]
+    from services.tds_return_service import TYPED_ON_STATEMENT_REASON
+    assert typed["reason"].startswith(TYPED_ON_STATEMENT_REASON), "the note says what is different about these rows"
+    assert "outside it" in typed["reason"]
 
 
 def test_a_2025_act_statement_labels_a_typed_row_by_its_own_act_and_keeps_the_routing_key_beside_it():
@@ -210,7 +214,7 @@ def test_a_2025_act_statement_labels_a_typed_row_by_its_own_act_and_keeps_the_ro
     db.seed("tds_deductions", _typed("a", day="2026-05-12", section="194J"))
     db.seed("tds_deductions", _typed("b", day="2026-05-20", section="193"))
     out = _books(db, bill=False, fy="2026-27", quarter="Q1")
-    rows = {d["id"]: d for d in out["excluded_typed"]["deductions"]}
+    rows = {d["id"]: d for d in out["typed_on_statement"]["deductions"]}
     assert (rows["a"]["section"], rows["a"]["section_1961"]) == ("393(1)", "194J")
     assert (rows["b"]["section"], rows["b"]["section_1961"]) == ("193", "193")
     assert len([g for g in out["statutory_gaps"] if "recorded for 193" in g]) == 1
@@ -226,7 +230,7 @@ def test_a_section_missing_from_both_the_deductees_and_the_typed_rows_is_named_o
                                "status": "received", "taxable_amount_paise": 18_000_00, "tds_paise": 360_00, "tds_rate_bps": 200,
                                "tds_section": "193", "journal_entry_id": None})
     out = _books(db, bill=False, fy="2026-27", quarter="Q1")
-    assert out["deductee_count"] == 1 and out["deductees"][0]["section_1961"] == "193"
+    assert out["deductee_count"] == 2 and {d["section_1961"] for d in out["deductees"]} == {"193"}
     assert len([g for g in out["statutory_gaps"] if "recorded for 193" in g]) == 1
 
 
@@ -236,28 +240,32 @@ def test_the_listing_is_in_date_order_when_the_ids_run_the_other_way():
     db.seed("tds_deductions", _typed("a", day="2025-12-05"))
     db.seed("tds_deductions", _typed("b", day="2025-10-12"))
     db.seed("tds_deductions", _typed("c", day="2025-10-12"))
-    assert [d["id"] for d in _books(db)["excluded_typed"]["deductions"]] == ["b", "c", "a"]
+    assert [d["id"] for d in _books(db)["typed_on_statement"]["deductions"]] == ["b", "c", "a"]
 
 
-def test_a_typed_deduction_is_named_and_never_added():
-    """The statement's own figures are the books' and stay the books': naming the register's rows does not move a total, a count or the tie-out."""
+def test_a_typed_deduction_is_on_the_statement_and_outside_the_tie_out():
+    """The statement's totals now hold the typed tax (it is a deduction the deductor made), and the tie-out with the TDS Payable account compares the documents' tax
+    alone, because no journal stands behind a typed deduction: the typed tax is reported beside it."""
     db = FakeDB()
     db.seed("tds_deductions", _typed("t1"))
     out = _books(db)
-    assert out["excluded_typed"]["count"] == 1
-    assert out["deductee_count"] == 1
-    assert [d["deductee_name"] for d in out["deductees"]] == ["Pinnacle Engineering"]
-    assert out["total_tds_deducted_paise"] == 360_00
-    assert out["total_payment_paise"] == 18_000_00
-    assert out["reconciliation"]["books_paise"] == 360_00
+    assert out["typed_on_statement"]["count"] == 1 and out["excluded_typed"]["count"] == 0
+    assert out["deductee_count"] == 2
+    assert sorted(d["deductee_name"] for d in out["deductees"]) == ["Acme Services", "Pinnacle Engineering"]
+    assert out["total_tds_deducted_paise"] == 360_00 + 10_000_00
+    assert out["total_payment_paise"] == 18_000_00 + 1_00_000_00
+    assert out["reconciliation"]["books_paise"] == 360_00, "the documents' tax, which is what a journal holds"
+    assert out["reconciliation"]["typed_paise"] == 10_000_00
 
 
-def test_a_statement_with_only_typed_deductions_is_still_an_empty_statement_that_says_so():
+def test_a_statement_with_only_typed_deductions_carries_them_and_ties_out_at_nothing():
     db = FakeDB()
     db.seed("tds_deductions", _typed("t1"))
     out = _books(db, bill=False)
-    assert out["deductee_count"] == 0 and out["total_tds_deducted_paise"] == 0
-    assert out["excluded_typed"]["count"] == 1 and out["excluded_typed"]["tds_paise"] == 10_000_00
+    assert out["deductee_count"] == 1 and out["total_tds_deducted_paise"] == 10_000_00
+    assert out["typed_on_statement"]["count"] == 1 and out["typed_on_statement"]["tds_paise"] == 10_000_00
+    assert out["reconciliation"]["books_paise"] == 0 and out["reconciliation"]["ledger_paise"] == 0
+    assert out["reconciliation"]["typed_paise"] == 10_000_00
 
 
 @pytest.mark.parametrize("label, row", [
@@ -271,14 +279,15 @@ def test_a_statement_with_only_typed_deductions_is_still_an_empty_statement_that
 def test_what_the_quarter_does_not_hold_is_not_counted(label, row):
     db = FakeDB()
     db.seed("tds_deductions", row)
-    assert _books(db)["excluded_typed"]["count"] == 0, label
+    out = _books(db)
+    assert out["typed_on_statement"]["count"] == 0 and out["excluded_typed"]["count"] == 0, label
 
 
 def test_the_first_and_last_day_of_the_quarter_are_in():
     db = FakeDB()
     db.seed("tds_deductions", _typed("a", day="2025-10-01"))
     db.seed("tds_deductions", _typed("b", day="2025-12-31"))
-    assert _books(db)["excluded_typed"]["count"] == 2
+    assert _books(db)["typed_on_statement"]["count"] == 2
 
 
 # ── a row a document wrote is not a typed one (the first review of this change) ──────────────
@@ -300,7 +309,8 @@ def test_a_vendor_advance_is_on_the_statement_and_is_not_called_a_deduction_it_l
     db.seed("tds_deductions", _advance_register_row())
     out = _books(db, bill=False)
     assert out["deductee_count"] == 1 and out["total_tds_deducted_paise"] == 10_000_00, "the advance is on the statement"
-    assert out["excluded_typed"]["count"] == 0 and out["excluded_typed"]["tds_paise"] == 0
+    assert out["typed_on_statement"]["count"] == 0 and out["typed_on_statement"]["tds_paise"] == 0
+    assert out["excluded_typed"]["count"] == 0
     assert not [g for g in out["keying_sheet"]["gaps"] if "typed on the TDS screen" in g]
 
 
@@ -309,7 +319,7 @@ def test_a_non_residents_nil_advance_row_is_not_a_typed_deduction_either():
     db = FakeDB()
     db.seed("tds_deductions", _advance_register_row("r-nil", tds=0, payment_id="p2", section="195", payment=5_00_000_00))
     db.seed("tds_deductions", _advance_register_row("r-adv", tds=10_000_00, payment_id="p1"))
-    assert _books(db, bill=False)["excluded_typed"]["count"] == 0
+    assert _books(db, bill=False)["typed_on_statement"]["count"] == 0
 
 
 def test_the_document_that_wrote_a_row_decides_not_the_bill_alone():
@@ -326,10 +336,10 @@ def test_a_payment_recorded_at_nothing_is_not_a_deduction_left_out():
     db = FakeDB()
     db.seed("tds_deductions", _typed("t0", tds=0, payment=10_000_00, section="194H"))
     out = _books(db, bill=False)
-    assert out["excluded_typed"]["count"] == 0
+    assert out["typed_on_statement"]["count"] == 0 and out["deductee_count"] == 0
     assert not [g for g in out["keying_sheet"]["gaps"] if "typed on the TDS screen" in g]
     db.seed("tds_deductions", _typed("t1"))
-    assert _books(db, bill=False)["excluded_typed"]["count"] == 1, "a row that withheld tax is still named beside it"
+    assert _books(db, bill=False)["typed_on_statement"]["count"] == 1, "a row that withheld tax is still on the statement beside it"
 
 
 def _register_row(rid, **over):
@@ -542,14 +552,21 @@ def test_the_year_is_said_to_be_looked_at_only_when_the_register_was_asked(monke
 
 # ── and the sheet the CA keys from says so too ───────────────────────────────
 
-def test_the_keying_sheet_names_the_typed_deductions_it_does_not_hold():
+def test_the_keying_sheet_says_which_typed_deductions_it_holds_and_which_it_does_not():
     db = FakeDB()
     db.seed("tds_deductions", _typed("t1"))
     db.seed("tds_deductions", _typed("t2", day="2025-12-05", payment=40_000_00, tds=80_000))
+    db.seed("tds_deductions", {**_typed("t3", day="2025-11-05", payment=10_000_00, tds=2_000_00), "return_type": "27Q"})
     gaps = _books(db)["keying_sheet"]["gaps"]
     named = [g for g in gaps if "typed on the TDS screen" in g]
-    assert len(named) == 1
-    assert named[0].startswith("2 deduction(s) typed on the TDS screen for this quarter, with ₹10,800.00 of tax withheld, are not on this sheet")
+    assert len(named) == 2
+    held = next(g for g in named if "are on this sheet" in g)
+    assert held.startswith("2 deduction(s) typed on the TDS screen for this quarter, with ₹10,800.00 of tax withheld, are on this sheet")
+    assert "Nothing records which journal, if any, carries a typed deduction" in held
+    assert "No journal stands behind" not in held, "the sheet says a journal cannot stand behind a typed row, which a hand-passed one can"
+    left = next(g for g in named if "are not on this sheet" in g)
+    assert left.startswith("1 deduction(s) typed on the TDS screen for this quarter, with ₹2,000.00 of tax withheld, are not on this sheet")
+    assert "another statement" in left
     assert gaps[-1].startswith("This is a keying sheet"), "the standing sentence stays last"
 
 
@@ -577,9 +594,10 @@ def test_the_read_is_scoped_to_the_firm_and_the_client_and_pages():
 def test_only_the_26q_builder_carries_the_key():
     import inspect
     from services import tds_return_service as m
-    assert "excluded_typed" in inspect.getsource(m.tds_26q_from_books)
-    assert "excluded_typed" not in inspect.getsource(m.tds_27q_from_books)
-    assert "excluded_typed" not in inspect.getsource(m.tds_24q_from_books)
+    for key in ("excluded_typed", "typed_on_statement"):
+        assert key in inspect.getsource(m.tds_26q_from_books)
+        assert key not in inspect.getsource(m.tds_27q_from_books)
+        assert key not in inspect.getsource(m.tds_24q_from_books)
 
 
 # ── the browser drive speaks the server's sentences ──────────────────────────
@@ -601,4 +619,16 @@ def test_the_drives_copy_of_the_note_sentence_is_the_servers():
 
 def test_the_drives_copies_of_the_two_gap_sentences_are_the_servers():
     assert _drive_literal("GAP_NO_PAN") == GAP_MESSAGES[GAP_AGGREGATE_NOT_READ_WITHOUT_A_PAN]
-    assert _drive_literal("GAP_NOT_UNIFIED") == GAP_MESSAGES[GAP_REGISTERS_NOT_UNIFIED]
+    assert _drive_literal("GAP_NO_SUPPLIER") == GAP_MESSAGES[GAP_NO_SUPPLIER]
+
+
+def test_the_carried_rows_sentence_does_not_say_no_journal_can_stand_behind_a_typed_row():
+    """The review of PRE-A-004: the demo's partnership passes a journal behind each section 194T row it types, so "No journal
+    stands behind a deduction typed on the TDS screen" was contradicted by the seeded books. What the product knows is that
+    nothing records WHICH journal, if any, carries one, so the tie-out leaves the typed rows out, hand-passed journals included."""
+    from services.tds_return_service import TYPED_ON_STATEMENT_REASON
+    from domain.tds.keying_sheet import TYPED_DEDUCTIONS_ON_THIS_SHEET
+    for sentence in (TYPED_ON_STATEMENT_REASON, TYPED_DEDUCTIONS_ON_THIS_SHEET):
+        assert "No journal stands behind" not in sentence
+        assert "Nothing records which journal, if any, carries" in sentence
+        assert "passed by hand" in sentence

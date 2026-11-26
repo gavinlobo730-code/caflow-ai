@@ -16,10 +16,12 @@
  * that actually runs.
  */
 
-import { useCallback, useEffect, useState } from "react";
-import { Plus, RefreshCw, Clock, X, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { recentFirst, useRecentPartyIds } from "@/lib/lookups/recentParties";
+import { api } from "@/lib/api";
+import { Plus, RefreshCw, Clock, Trash2 } from "lucide-react";
 
-import { apiCall, apiGet, getAuthToken } from "@/lib/invoices/shared";
+import { apiCall, apiGet, getAuthToken, HELD_DIALOG_MS } from "@/lib/invoices/shared";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput";
@@ -32,11 +34,16 @@ import { EntityLookup } from "@/components/lookups/EntityLookup";
 
 import { Callout } from "@/components/ui/callout";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
+import { Drawer } from "@/components/ui/drawer";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { formatDate, todayIstISO } from "@/lib/dates/format";
 import { DateInput } from "@/components/ui/date-input";
-import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { useDateProblems, useTakenBackWhenFixed } from "@/lib/dates/useDateProblems";
+
+/** Said by Save over a window that ends before it starts, and taken back once it does not. */
+const END_BEFORE_START = "The end date cannot be before the start date.";
 
 const FREQUENCIES = ["weekly", "monthly", "quarterly", "half_yearly", "yearly"] as const;
 type Frequency = (typeof FREQUENCIES)[number];
@@ -167,7 +174,7 @@ export function RecurringBills({ clientId }: { clientId: string }) {
     setBusy(t.id);
     try {
       const token = await getAuthToken();
-      const res = await apiCall(`/api/recurring-purchase-bills/${t.id}/run`, "POST", undefined, token);
+      const res = await apiCall(`/api/recurring-purchase-bills/${t.id}/run`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
       if (!res.success) throw new Error(res.error ?? "Run failed");
       const d = res.data as { generated_count: number; skipped_count: number; failed_count: number };
       const parts = [`${d.generated_count} draft${d.generated_count === 1 ? "" : "s"} generated`];
@@ -221,7 +228,7 @@ export function RecurringBills({ clientId }: { clientId: string }) {
         action === "pause" ? `/api/recurring-purchase-bills/${t.id}/pause`
         : action === "resume" ? `/api/recurring-purchase-bills/${t.id}/resume`
         : `/api/recurring-purchase-bills/${t.id}/archive`;
-      const res = await apiCall(url, "POST", undefined, token);
+      const res = await apiCall(url, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
       if (!res.success) throw new Error(res.error ?? "Update failed");
       say("ok", `Template ${action === "resume" ? "resumed" : `${action}d`}`);
       load();
@@ -455,6 +462,9 @@ function RecurringBillEditor({
   onSaved: (msg: string) => void;
 }) {
   const [vendorId, setVendorId] = useState(existing?.vendor_id ?? "");
+  // The suppliers this client billed against most recently go to the top of the picker (POST-A-155); nothing is pre-selected.
+  const recentVendorIds = useRecentPartyIds(api.vendors.recent, clientId, !existing);
+  const recentVendors = useMemo(() => recentFirst(recentVendorIds, vendors), [recentVendorIds, vendors]);
   const [title, setTitle] = useState(existing?.title ?? "");
   const [description, setDescription] = useState(existing?.description ?? "");
   const [frequency, setFrequency] = useState<Frequency>(existing?.frequency ?? "monthly");
@@ -485,6 +495,7 @@ function RecurringBillEditor({
   );
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  useTakenBackWhenFixed(setErr, END_BEFORE_START, !!endDate && endDate < startDate);
 
   function setLine(i: number, patch: Partial<DraftLine>) {
     setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
@@ -492,13 +503,13 @@ function RecurringBillEditor({
 
   async function save() {
     setErr(null);
-    if (dates.first) { setErr(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setErr); return; }
     // "First bill on *" is marked required and a cleared box reports no problem, so "" went to the server as the template's start date and
     // came back as a 500 (the date parser cannot read it).
     if (!startDate) { setErr("First bill on: enter the date of the first bill."); return; }
     if (!vendorId) { setErr("Choose the vendor this bill comes from."); return; }
     if (!title.trim()) { setErr("Give the template a name — you will pick it out of a list."); return; }
-    if (endDate && endDate < startDate) { setErr("The end date cannot be before the start date."); return; }
+    if (endDate && endDate < startDate) { setErr(END_BEFORE_START); return; }
 
     const payloadLines = [];
     // Indexed loop rather than `.entries()`: the tsconfig target predates
@@ -558,8 +569,8 @@ function RecurringBillEditor({
         lines: payloadLines,
       };
       const res = existing
-        ? await apiCall(`/api/recurring-purchase-bills/${existing.id}`, "PUT", body, token)
-        : await apiCall(`/api/recurring-purchase-bills`, "POST", body, token);
+        ? await apiCall(`/api/recurring-purchase-bills/${existing.id}`, "PUT", body, token, { timeoutMs: HELD_DIALOG_MS })
+        : await apiCall(`/api/recurring-purchase-bills`, "POST", body, token, { timeoutMs: HELD_DIALOG_MS });
       if (!res.success) throw new Error(res.error ?? "Save failed");
       onSaved(existing ? "Template updated" : "Template created");
     } catch (e) {
@@ -570,22 +581,24 @@ function RecurringBillEditor({
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/30 flex items-start justify-center overflow-y-auto p-4">
-      <div className="bg-white rounded-xl w-full max-w-4xl my-8 shadow-xl">
-        <div className="flex items-center justify-between px-5 py-3 border-b border-ps-border">
-          <h3 className="text-sm font-semibold text-ps-ink">
-            {existing ? "Edit recurring bill" : "New recurring bill"}
-          </h3>
-          <button onClick={onClose} aria-label="Close"><X size={16} className="text-ps-hint" /></button>
-        </div>
-
-        <div className="p-5 space-y-4">
+    // POST-A-130: the shared dialog (named, Escape, Tab kept inside, focus given back), with its buttons kept in view. It stays open while saving.
+    <Modal title={existing ? "Edit recurring bill" : "New recurring bill"} maxWidthClass="max-w-4xl" onClose={() => { if (!saving) onClose(); }}
+      footer={<>
+        <button disabled={saving} onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">
+          Cancel
+        </button>
+        <Button variant="plain" size="none" onClick={save} disabled={saving}
+          className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
+          {saving ? "Saving…" : existing ? "Save changes" : "Create template"}
+        </Button>
+      </>}>
+        <div className="space-y-4">
           {err && <Callout tone="problem">{err}</Callout>}
 
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
             <div className="col-span-2 lg:col-span-1">
               <label className="block text-xs font-medium text-ps-label mb-1">Vendor *</label>
-              <VendorLookup vendors={vendors} value={vendorId} onChange={setVendorId} ariaLabel="Vendor" />
+              <VendorLookup vendors={vendors} recent={recentVendors} value={vendorId} onChange={setVendorId} ariaLabel="Vendor" />
             </div>
             <div className="col-span-2 lg:col-span-2">
               <label className="block text-xs font-medium text-ps-label mb-1">Name *</label>
@@ -740,18 +753,7 @@ function RecurringBillEditor({
             the journal, withholds the TDS and claims the credit.
           </p>
         </div>
-
-        <div className="flex gap-3 justify-end px-5 py-3 border-t border-ps-border">
-          <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">
-            Cancel
-          </button>
-          <Button variant="plain" size="none" onClick={save} disabled={saving}
-            className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
-            {saving ? "Saving…" : existing ? "Save changes" : "Create template"}
-          </Button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -795,17 +797,10 @@ function RecurringBillHistory({
   }, [template.id]);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/30 flex items-start justify-end">
-      <div className="bg-white h-full w-full max-w-lg shadow-xl overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-3 border-b border-ps-border sticky top-0 bg-white">
-          <div>
-            <h3 className="text-sm font-semibold text-ps-ink">{template.title}</h3>
-            <p className="text-2xs text-ps-hint">{vendorName}</p>
-          </div>
-          <button onClick={onClose} aria-label="Close"><X size={16} className="text-ps-hint" /></button>
-        </div>
-
+    // POST-A-130: the shared side panel (named, Escape, Tab kept inside, focus given back).
+    <Drawer open onClose={onClose} title={<span className="font-sans">{template.title}</span>} ariaLabel={`History of ${template.title}`} widthClass="sm:max-w-lg">
         <div className="p-5 space-y-5">
+          <p className="text-2xs text-ps-hint">{vendorName}</p>
           <div>
             <p className="text-xs font-semibold text-ps-body mb-2">Next dates</p>
             {upcoming.length === 0 ? (
@@ -858,7 +853,6 @@ function RecurringBillHistory({
             )}
           </div>
         </div>
-      </div>
-    </div>
+    </Drawer>
   );
 }

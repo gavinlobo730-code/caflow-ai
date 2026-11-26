@@ -219,7 +219,10 @@ export function WordReveal({
   const inView = inViewProp ?? selfInView;
   const words = text.split(" ");
   return (
-    <span ref={ref} className={className} aria-label={text}>
+    // The words are drawn one by one and hidden from assistive technology, and the whole headline is said once, in text only they read: an
+    // `aria-label` on a span has no role to name, which axe's `aria-prohibited-attr` refuses (found by the marketing quality pass, POST-A-507).
+    <span ref={ref} className={className}>
+      <span className="sr-only">{text}</span>
       {words.map((word, i) => {
         const clean = word.toLowerCase().replace(/[^a-z0-9]/g, "");
         const isAccent = accent.includes(clean);

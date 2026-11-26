@@ -256,4 +256,9 @@ def test_the_liveness_rule_mirrors_the_two_tests_core_auth_makes():
     assert "ELSE FALSE" in sql                                  # fails closed on an unreadable iat
     auth = (API_ROOT / "core" / "auth.py").read_text(encoding="utf-8")
     assert 'user_data.get("is_active") is False' in auth
-    assert 'float(payload["iat"]) < revoked_epoch' in auth
+    # The `iat` half of the revocation lives in core/auth_time.py now, beside the half the database does NOT yet
+    # mirror: a renewed token is also refused when the person last proved who they are before the revocation
+    # (POST-A-482). The SQL reads `iat` alone; bringing it to the API's rule is POST-A-494.
+    auth_time = (API_ROOT / "core" / "auth_time.py").read_text(encoding="utf-8")
+    assert 'float(payload["iat"]) < revoked_epoch' in auth_time
+    assert "auth_time.issued_before_revocation" in auth

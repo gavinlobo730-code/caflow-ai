@@ -32,8 +32,11 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { api, type ApiResp } from "@/lib/api";
 import { setPasswordWithReauthNonce, isInvalidNonceError } from "@/lib/auth/reauth";
 import { ArrowRight, Eye, EyeOff, ShieldCheck, AlertCircle } from "lucide-react";
+import { FrontDoor } from "@/components/FrontDoor";
+import { passwordProblem } from "@/lib/auth/passwordRules";
+import { PasswordRules } from "@/components/auth/PasswordRules";
+import { authErrorMessage } from "@/lib/auth/authErrorMessage";
 
-const MIN_LENGTH = 10;
 const SESSION_WAIT_ATTEMPTS = 10;
 const SESSION_WAIT_INTERVAL_MS = 500;
 
@@ -99,7 +102,9 @@ export default function PortalActivatePage() {
   }, []);
 
   function validate(): string | null {
-    if (pw.length < MIN_LENGTH) return `Use at least ${MIN_LENGTH} characters.`;
+    // Every rule the sign-in service enforces, before anything is sent (POST-A-477).
+    const rulesProblem = passwordProblem(pw);
+    if (rulesProblem) return rulesProblem;
     if (pw !== pw2) return "Passwords do not match.";
     return null;
   }
@@ -120,13 +125,13 @@ export default function PortalActivatePage() {
           setStage("reauth");
           return;
         }
-        throw new Error(upErr.message);
+        throw new Error(authErrorMessage(upErr));
       }
       setStage("done");
       setPw(""); setPw2("");
       setTimeout(() => router.push("/portal/dashboard"), 1200);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not set your password. Please try again.");
+      setError(authErrorMessage(err, "Could not set your password. Please try again."));
     } finally {
       setSaving(false);
     }
@@ -142,162 +147,156 @@ export default function PortalActivatePage() {
         throw new Error(
           isInvalidNonceError(upErr)
             ? "That code is incorrect or has expired. Request a new invite link and try again."
-            : upErr.message,
+            : authErrorMessage(upErr),
         );
       }
       setStage("done");
       setPw(""); setPw2(""); setReauthOtp("");
       setTimeout(() => router.push("/portal/dashboard"), 1200);
     } catch (err) {
-      setReauthError(err instanceof Error ? err.message : "Verification failed. Please try again.");
+      setReauthError(authErrorMessage(err, "Verification failed. Please try again."));
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-6 py-12 bg-ps-bg">
-      <div className="w-full max-w-[380px]">
-        <div className="flex items-center gap-2.5 justify-center mb-8">
-          <div className="w-8 h-8 rounded-xl bg-brand flex items-center justify-center text-sm font-bold text-white">P</div>
-          <span className="text-base font-bold text-ps-ink">PracticeSync</span>
+    <FrontDoor name="PracticeSync">
+      {stage === "verifying" && (
+        <div className="text-center py-8">
+          <span className="inline-block w-6 h-6 border-2 border-ps-border border-t-brand-dark rounded-full animate-spin" />
+          <p className="text-sm text-ps-label mt-4">Verifying your invite…</p>
         </div>
+      )}
 
-        {stage === "verifying" && (
-          <div className="text-center py-8">
-            <span className="inline-block w-6 h-6 border-2 border-ps-border border-t-brand-dark rounded-full animate-spin" />
-            <p className="text-sm text-ps-label mt-4">Verifying your invite…</p>
+      {stage === "invalid" && (
+        <div className="text-center">
+          <div className="w-12 h-12 rounded-full bg-state-problem-surface flex items-center justify-center mx-auto mb-4">
+            <AlertCircle size={22} className="text-state-problem" />
           </div>
-        )}
+          <h2 className="text-xl font-bold text-ps-ink tracking-tight">Invite invalid or expired</h2>
+          <p className="text-sm text-ps-label mt-2 leading-relaxed">
+            This invite link no longer works. Ask your accountant to send you a new one.
+          </p>
+          <Link
+            href="/portal/login"
+            className="inline-flex items-center gap-1.5 text-sm text-brand-dark hover:text-brand font-medium mt-6"
+          >
+            Already have a password? Sign in <ArrowRight size={14} />
+          </Link>
+        </div>
+      )}
 
-        {stage === "invalid" && (
-          <div className="text-center">
-            <div className="w-12 h-12 rounded-full bg-state-problem-surface flex items-center justify-center mx-auto mb-4">
-              <AlertCircle size={22} className="text-state-problem" />
-            </div>
-            <h2 className="text-xl font-bold text-ps-ink tracking-tight">Invite invalid or expired</h2>
-            <p className="text-sm text-ps-label mt-2 leading-relaxed">
-              This invite link no longer works. Ask your accountant to send you a new one.
+      {stage === "form" && (
+        <>
+          <div className="mb-8">
+            <h2 className="text-2xl font-bold text-ps-ink tracking-tight">Set your password</h2>
+            <p className="text-sm text-ps-label mt-1">
+              Choose a password so you can sign in to your portal any time, without needing a new email link.
             </p>
-            <Link
-              href="/portal/login"
-              className="inline-flex items-center gap-1.5 text-sm text-brand-dark hover:text-brand font-medium mt-6"
+          </div>
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <PasswordRules password={pw} id="activate-password-rules" />
+            <div className="space-y-1.5">
+              <label htmlFor="activate-password" className="block text-sm font-semibold text-ps-ink">Password</label>
+              <div className="relative">
+                <input
+                  id="activate-password" name="new-password" aria-describedby="activate-password-rules"
+                  autoFocus type={showPw ? "text" : "password"} required value={pw}
+                  onChange={(e) => setPw(e.target.value)} autoComplete="new-password"
+                  placeholder="Create a password"
+                  className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 pr-11 text-sm text-ps-ink placeholder:text-ps-hint outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
+                />
+                <button type="button" onClick={() => setShowPw((s) => !s)} aria-label={showPw ? "Hide password" : "Show password"}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-ps-hint hover:text-ps-label">
+                  {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <label htmlFor="activate-confirm-password" className="block text-sm font-semibold text-ps-ink">Confirm password</label>
+              <input
+                id="activate-confirm-password" name="confirm-password"
+                type={showPw ? "text" : "password"} required value={pw2}
+                onChange={(e) => setPw2(e.target.value)} autoComplete="new-password"
+                placeholder="Re-enter your password"
+                className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-hint outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
+              />
+            </div>
+
+            {error && (
+              <div role="alert" className="flex items-start gap-2.5 p-3.5 rounded-lg bg-state-problem-surface border border-state-problem-border">
+                <div className="w-4 h-4 rounded-full bg-state-problem-surface flex items-center justify-center shrink-0 mt-0.5">
+                  <span className="text-state-problem text-3xs font-bold leading-none">!</span>
+                </div>
+                <p className="text-sm text-state-problem leading-snug">{error}</p>
+              </div>
+            )}
+
+            <button
+              type="submit" disabled={saving}
+              className="w-full flex items-center justify-center gap-2 bg-brand hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold px-4 py-3 rounded-lg transition-colors shadow-sm"
             >
-              Already have a password? Sign in <ArrowRight size={14} />
-            </Link>
-          </div>
-        )}
-
-        {stage === "form" && (
-          <>
-            <div className="mb-8">
-              <h2 className="text-2xl font-bold text-ps-ink tracking-tight">Set your password</h2>
-              <p className="text-sm text-ps-label mt-1">
-                Choose a password so you can sign in to your portal any time, without needing a new email link.
-              </p>
-            </div>
-            <form onSubmit={handleSubmit} className="space-y-5">
-              <div className="space-y-1.5">
-                <label htmlFor="activate-password" className="block text-sm font-semibold text-ps-ink">Password</label>
-                <div className="relative">
-                  <input
-                    id="activate-password" name="new-password"
-                    autoFocus type={showPw ? "text" : "password"} required value={pw}
-                    onChange={(e) => setPw(e.target.value)} autoComplete="new-password"
-                    placeholder={`At least ${MIN_LENGTH} characters`}
-                    className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 pr-11 text-sm text-ps-ink placeholder:text-ps-hint outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
-                  />
-                  <button type="button" onClick={() => setShowPw((s) => !s)} aria-label={showPw ? "Hide password" : "Show password"}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-ps-hint hover:text-ps-label">
-                    {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </button>
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <label htmlFor="activate-confirm-password" className="block text-sm font-semibold text-ps-ink">Confirm password</label>
-                <input
-                  id="activate-confirm-password" name="confirm-password"
-                  type={showPw ? "text" : "password"} required value={pw2}
-                  onChange={(e) => setPw2(e.target.value)} autoComplete="new-password"
-                  placeholder="Re-enter your password"
-                  className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-hint outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
-                />
-              </div>
-
-              {error && (
-                <div role="alert" className="flex items-start gap-2.5 p-3.5 rounded-lg bg-state-problem-surface border border-state-problem-border">
-                  <div className="w-4 h-4 rounded-full bg-state-problem-surface flex items-center justify-center shrink-0 mt-0.5">
-                    <span className="text-state-problem text-3xs font-bold leading-none">!</span>
-                  </div>
-                  <p className="text-sm text-state-problem leading-snug">{error}</p>
-                </div>
+              {saving ? (
+                <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Setting up…</>
+              ) : (
+                <>Continue <ArrowRight size={15} /></>
               )}
+            </button>
+          </form>
+        </>
+      )}
 
-              <button
-                type="submit" disabled={saving}
-                className="w-full flex items-center justify-center gap-2 bg-brand hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold px-4 py-3 rounded-lg transition-colors shadow-sm"
-              >
-                {saving ? (
-                  <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Setting up…</>
-                ) : (
-                  <>Continue <ArrowRight size={15} /></>
-                )}
-              </button>
-            </form>
-          </>
-        )}
-
-        {stage === "reauth" && (
-          <>
-            <div className="mb-8">
-              <h2 className="text-2xl font-bold text-ps-ink tracking-tight">Confirm it&apos;s you</h2>
-              <p className="text-sm text-ps-label mt-1">
-                For your security, we sent a verification code to your email. Enter it below to finish setting up your password.
-              </p>
-            </div>
-            <form onSubmit={verifyReauth} className="space-y-5">
-              <div className="space-y-1.5">
-                <label htmlFor="activate-verification-code" className="block text-sm font-semibold text-ps-ink">Verification code</label>
-                <input
-                  id="activate-verification-code" name="verification-code" autoComplete="one-time-code"
-                  autoFocus inputMode="numeric" value={reauthOtp} maxLength={8}
-                  onChange={(e) => setReauthOtp(e.target.value.replace(/\D/g, "").slice(0, 8))}
-                  placeholder="123456"
-                  className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-lg tracking-[0.3em] text-center font-mono text-ps-ink placeholder:text-ps-hint outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
-                />
-              </div>
-              {reauthError && (
-                <div role="alert" className="flex items-start gap-2.5 p-3.5 rounded-lg bg-state-problem-surface border border-state-problem-border">
-                  <div className="w-4 h-4 rounded-full bg-state-problem-surface flex items-center justify-center shrink-0 mt-0.5">
-                    <span className="text-state-problem text-3xs font-bold leading-none">!</span>
-                  </div>
-                  <p className="text-sm text-state-problem leading-snug">{reauthError}</p>
-                </div>
-              )}
-              <button
-                type="submit" disabled={saving || reauthOtp.length < 6}
-                className="w-full flex items-center justify-center gap-2 bg-brand hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold px-4 py-3 rounded-lg transition-colors shadow-sm"
-              >
-                {saving ? (
-                  <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Verifying…</>
-                ) : (
-                  <>Verify <ArrowRight size={15} /></>
-                )}
-              </button>
-            </form>
-          </>
-        )}
-
-        {stage === "done" && (
-          <div className="text-center">
-            <div className="w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-4">
-              <ShieldCheck size={22} className="text-emerald-600" />
-            </div>
-            <h2 className="text-xl font-bold text-ps-ink tracking-tight">You&apos;re all set</h2>
-            <p className="text-sm text-ps-label mt-2">Taking you to your portal…</p>
+      {stage === "reauth" && (
+        <>
+          <div className="mb-8">
+            <h2 className="text-2xl font-bold text-ps-ink tracking-tight">Confirm it&apos;s you</h2>
+            <p className="text-sm text-ps-label mt-1">
+              For your security, we sent a verification code to your email. Enter it below to finish setting up your password.
+            </p>
           </div>
-        )}
-      </div>
-    </div>
+          <form onSubmit={verifyReauth} className="space-y-5">
+            <div className="space-y-1.5">
+              <label htmlFor="activate-verification-code" className="block text-sm font-semibold text-ps-ink">Verification code</label>
+              <input
+                id="activate-verification-code" name="verification-code" autoComplete="one-time-code"
+                autoFocus inputMode="numeric" value={reauthOtp} maxLength={8}
+                onChange={(e) => setReauthOtp(e.target.value.replace(/\D/g, "").slice(0, 8))}
+                placeholder="123456"
+                className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-lg tracking-[0.3em] text-center font-mono text-ps-ink placeholder:text-ps-hint outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
+              />
+            </div>
+            {reauthError && (
+              <div role="alert" className="flex items-start gap-2.5 p-3.5 rounded-lg bg-state-problem-surface border border-state-problem-border">
+                <div className="w-4 h-4 rounded-full bg-state-problem-surface flex items-center justify-center shrink-0 mt-0.5">
+                  <span className="text-state-problem text-3xs font-bold leading-none">!</span>
+                </div>
+                <p className="text-sm text-state-problem leading-snug">{reauthError}</p>
+              </div>
+            )}
+            <button
+              type="submit" disabled={saving || reauthOtp.length < 6}
+              className="w-full flex items-center justify-center gap-2 bg-brand hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold px-4 py-3 rounded-lg transition-colors shadow-sm"
+            >
+              {saving ? (
+                <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Verifying…</>
+              ) : (
+                <>Verify <ArrowRight size={15} /></>
+              )}
+            </button>
+          </form>
+        </>
+      )}
+
+      {stage === "done" && (
+        <div className="text-center">
+          <div className="w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-4">
+            <ShieldCheck size={22} className="text-emerald-600" />
+          </div>
+          <h2 className="text-xl font-bold text-ps-ink tracking-tight">You&apos;re all set</h2>
+          <p className="text-sm text-ps-label mt-2">Taking you to your portal…</p>
+        </div>
+      )}
+    </FrontDoor>
   );
 }

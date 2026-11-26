@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Library, FileText, Building, Search, Tag, Clock } from "lucide-react";
 import { cn, isExactPath } from "@/lib/utils";
+import { useScreenAccess } from "@/lib/access/useScreenAccess";
 
 // Amendment v1.1 — Knowledge workspace (all staff). Firm/department articles.
 const NAV_ITEMS = [
@@ -17,6 +18,9 @@ const NAV_ITEMS = [
 
 export function KnowledgePanel() {
   const pathname = usePathname();
+  // Each entry is offered by the one table the menu and the page gate ask (POST-A-543).
+  const { offered } = useScreenAccess();
+  const items = NAV_ITEMS.filter((i) => offered(i.href));
   const params = useSearchParams();
   return (
     <div className="flex flex-col h-full text-brand">
@@ -30,7 +34,7 @@ export function KnowledgePanel() {
         </div>
       </div>
       <nav className="flex-1 overflow-y-auto py-2 px-2">
-        {NAV_ITEMS.map(({ label, href, icon: Icon }) => {
+        {items.map(({ label, href, icon: Icon }) => {
           const [hrefPath, hrefQuery = ""] = href.split("?");
           const isActive = isExactPath(pathname, hrefPath) && params.toString() === hrefQuery;
           return (

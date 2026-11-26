@@ -102,32 +102,19 @@ test("the detector finds each way a screen used to say a list was empty, and onl
 type Kind = "nothing-to-do-here" | "not-yet-migrated";
 type Frozen = { count: number; kind: Kind; reason: string };
 const ntd = (count: number, reason: string): Frozen => ({ count, kind: "nothing-to-do-here", reason });
-const nym = (count: number, reason: string): Frozen => ({ count, kind: "not-yet-migrated", reason });
 
 const FROZEN_BARE: Record<string, Frozen> = {
-  "app/accounting/loans/page.tsx": nym(2, "writes straight over PostgREST under migration 346's Executive-tier rule; no backend [resource, action] pair expresses that tier, so a gate here would be invented rather than read"),
   "app/accounting/receivables/page.tsx": ntd(1, "an ageing list with nothing owed is the good state of a report"),
-  "app/client-portal/page.tsx": nym(4, "the CA-facing portal screen: the add control (New Request, upload, the message box) is on the same card and is not wired to the shared action"),
-  "app/clients/[id]/accounting/page.tsx": nym(3, "a balance sheet with nothing posted, a books check not yet run (Verify Books sits beside it) and a shared-reports history; the first two need their next step chosen"),
   "app/clients/[id]/ai-insights/page.tsx": ntd(1, "rule-based insights derived from the books; nothing to add"),
   "app/clients/[id]/compliance/gst/page.tsx": ntd(2, "a working panel's own 'not available' note, and the history of returns filed (made by Mark Filed on a return, not here)"),
-  "app/clients/[id]/compliance/page.tsx": nym(1, "notices are extracted from an uploaded document and the upload control is elsewhere on the page"),
-  "app/clients/[id]/compliance/tds/page.tsx": nym(1, "the deductions register has no add control on this screen: rows come from purchase bills, so the next step is a product decision"),
   "app/clients/[id]/fixed-assets/page.tsx": ntd(1, "a disposal picker with no active asset; the register behind it is where assets are added"),
-  "app/clients/[id]/health/page.tsx": nym(1, "a Calculate control sits beside it"),
-  "app/clients/[id]/relationships/page.tsx": nym(3, "the next step is the firm's entity registry, an existing route, and is not wired"),
   "app/clients/[id]/sales/page.tsx": ntd(4, "four sub-lists inside a document drawer: histories of what happened to one document, and a pointer at a control in the same drawer"),
-  "app/clients/[id]/tax/computation/page.tsx": nym(2, "worksheet panels with their own add form directly above"),
   "app/clients/[id]/tax/filing/page.tsx": ntd(1, "an explanation that a figure has no mapped field in the offline utility; not a list"),
-  "app/clients/[id]/year-end/[engagementId]/exports/_page.tsx": nym(1, "'Click Generate above': the Generate control is in the same panel"),
-  "app/clients/[id]/year-end/[engagementId]/financial-statements/_page.tsx": nym(2, "'Refresh from ledger': the refresh control is in the same panel"),
   "app/clients/[id]/year-end/[engagementId]/notes/_page.tsx": ntd(1, "one note with no generated content; the editor above it is the action"),
   "app/copilot/page.tsx": ntd(1, "a sidebar of past conversations; the composer beside it is the action"),
   "app/health/[client_id]/HealthDetailClient.tsx": ntd(1, "a history of overrides"),
-  "app/knowledge/page.tsx": nym(1, "article authoring (knowledge:write) is the form on the same page"),
   "app/memory/page.tsx": ntd(1, "client profiles are derived by the product"),
   "app/notifications/whatsapp/page.tsx": ntd(2, "a client picker's no-result and a log of messages sent"),
-  "app/payroll/reports/page.tsx": nym(2, "the month review needs a client's run and a run is created in that client's workspace, so the next step depends on choosing a client first"),
   "app/portal/employee/page.tsx": ntd(2, "the employee portal is read-only by owner decision (14-09-2026); there is nothing an employee can add"),
   "app/relationships/[entity_id]/EntityDetailClient.tsx": ntd(2, "derived graph views of one entity"),
   "app/relationships/cross-client/page.tsx": ntd(1, "matches the product derives from the registry; nothing to add"),
@@ -137,27 +124,18 @@ const FROZEN_BARE: Record<string, Frozen> = {
   "app/reports/cash-flow/page.tsx": ntd(1, "a report's own result"),
   "app/reports/page.tsx": ntd(1, "a report's own result"),
   "app/settings/audit-log/page.tsx": ntd(1, "an append-only log; nothing a person can add"),
-  "app/settings/scheduled-reports/page.tsx": nym(1, "no role rule on the table (migrations 260 and 261 name it): which role may create a schedule is undecided, so a gate here would be invented"),
-  "app/tds/page.tsx": nym(1, "'Generate a draft from the client's Compliance → TDS tab': the target is a per-client screen, so a client has to be chosen first"),
   "app/team/login-history/page.tsx": ntd(1, "an append-only log; nothing a person can add"),
-  "app/time/page.tsx": nym(1, "the log form is the card directly above"),
   "app/work/page.tsx": ntd(1, "a personal history of completed work"),
   "app/workflows/page.tsx": ntd(2, "no workflow can be created from the product yet and the sentence says so, and a run history"),
-  "components/accounting/OpeningBalancesTab.tsx": nym(1, "the opening-document entry control is on the same tab"),
   "components/banking/AccountsPanel.tsx": ntd(1, "the transactions of one imported statement; the statement is the record"),
   "components/gst/Gstr4AnnualPanel.tsx": ntd(1, "rows derived from the books"),
   "components/gst/Gstr8Panel.tsx": ntd(1, "rows derived from the books"),
   "components/gst/MissingIrnPanel.tsx": ntd(1, "a note on one invoice row that no aggregate turnover is recorded, so the IRN clock is assumed; a caveat on a row, not an empty list"),
-  "components/gst/RegistrationPicker.tsx": nym(1, "a one-line note beside a Compute button; the GSTIN is recorded by editing the client on the Clients list, which opens as a modal from a row and has no address of its own to link to (the same reason as RegistrationsTab)"),
-  "components/gst/RegistrationsTab.tsx": nym(1, "the GSTIN is recorded on the client record, which is a per-client screen"),
   "components/inventory/LocationsAndBatches.tsx": ntd(1, "a stock movement history, written by documents"),
   "components/inventory/ReorderPanel.tsx": ntd(1, "a cell label: no reorder level is recorded for an item"),
-  "components/knowledge/ClientInstructions.tsx": nym(1, "the add control is the form directly above"),
   "components/notifications/EmailPreferencesPanel.tsx": ntd(1, "an unavailable-settings notice, not an empty list"),
-  "components/payroll/EmployeeDrawer.tsx": nym(2, "salary revisions and loans: each has its add form in the same drawer"),
   "components/payroll/RecordedSettlement.tsx": ntd(1, "a settlement as it was recorded: a stored document, read-only, with nothing a person can add to it"),
   "components/payroll/StatutoryHandoff.tsx": ntd(1, "explains why a liability has no matched bank payment"),
-  "components/sales/PriceListsPanel.tsx": nym(1, "no item priced on a list: the picker and Set price are the form directly above (its customers paragraph is an EmptyState with Add Customer)"),
 };
 
 test("a list says what to do next, or its file is in the frozen set with a reason", () => {
@@ -179,14 +157,17 @@ test("a list says what to do next, or its file is in the frozen set with a reaso
     "the count in a frozen file changed: lower it if one was migrated, and a new one must not be added");
 });
 
-test("every frozen entry says which kind it is and why, and the two kinds are both real", () => {
-  const kinds = new Set<string>();
+test("every frozen entry says why, and none of them is a list a person fills (the debt is paid)", () => {
+  // POST-A-152 (16-11-2026) migrated the last 33 `not-yet-migrated` paragraphs in 21 files.
+  // A list a person fills says what to do next; it is not frozen. What may still be frozen
+  // is an absence that is the finished state or is made elsewhere.
   for (const [f, v] of Object.entries(FROZEN_BARE)) {
     assert.ok(v.reason.length >= 20, `${f}: a reason is a sentence, not a word`);
     assert.ok(v.count >= 1, `${f}: a zero count is a migrated file`);
-    kinds.add(v.kind);
+    assert.equal(v.kind, "nothing-to-do-here",
+      `${f}: a list a person fills is migrated to EmptyState with its next step, not frozen as debt`);
   }
-  assert.deepEqual([...kinds].sort(), ["not-yet-migrated", "nothing-to-do-here"]);
+  assert.ok(Object.keys(FROZEN_BARE).length >= 20, "the frozen set was not read");
 });
 
 // ── rule 2: a table that names its empty state offers a next step ───────────
@@ -247,7 +228,7 @@ const FROZEN_RAW_ACTIONS: Record<string, string> = {
 function propValue(tag: string, name: string): string | null {
   const m = new RegExp(`\\s${name}=`).exec(tag);
   if (!m) return null;
-  let i = m.index + m[0].length;
+  const i = m.index + m[0].length;
   if (tag[i] !== "{") return "<literal>";
   let depth = 0;
   let quote: string | null = null;

@@ -19,6 +19,7 @@ import { Callout } from "@/components/ui/callout";
 import { objectOrNull, objectWithLists } from "@/lib/api/shape";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
+import { SectionPlaceholder } from "@/components/ui/page-frame";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -255,16 +256,17 @@ export default function OnboardingChecklistPage() {
     fetchWorkflows();
   }, [fetchWorkflows]);
 
-  async function refreshSelected(workflowId: string) {
+  /** Reads the checklist again; true when the screen now shows what the server holds, false when the read did not give it. */
+  async function refreshSelected(workflowId: string): Promise<boolean> {
     try {
       const res = await api.onboarding.get(workflowId) as ApiResponse<OnboardingWorkflow>;
-      if (res.success) {
-        const refreshed = objectOrNull<OnboardingWorkflow>(res.data);
-        setSelected(objectWithLists<OnboardingWorkflow>(res.data, "steps"));
-        if (refreshed) setWorkflows((prev) => prev.map((w) => w.id === workflowId ? refreshed : w));
-      }
+      if (!res.success) return false;
+      const refreshed = objectOrNull<OnboardingWorkflow>(res.data);
+      setSelected(objectWithLists<OnboardingWorkflow>(res.data, "steps"));
+      if (refreshed) setWorkflows((prev) => prev.map((w) => w.id === workflowId ? refreshed : w));
+      return true;
     } catch {
-      // Non-fatal refresh failure
+      return false;
     }
   }
 
@@ -275,7 +277,11 @@ export default function OnboardingChecklistPage() {
     try {
       const res = await api.onboarding.updateStep(selected.id, stepNumber, { status }) as ApiResponse<ChecklistStep>;
       if (!res.success) throw new Error(res.error ?? "Update failed");
-      await refreshSelected(selected.id);
+      // The change is saved; if the checklist could not be read again, what is on screen is the old state and the person is told so
+      // (POST-A-515 (d): the refresh used to fail without a word and the step looked unchanged).
+      if (!(await refreshSelected(selected.id))) {
+        setGoLiveError("The step was saved, but the checklist could not be read again, so what is shown may be out of date. Reload this page to see it as saved.");
+      }
     } catch (e) {
       setGoLiveError(e instanceof Error ? e.message : "Step update failed");
     } finally {
@@ -410,10 +416,7 @@ export default function OnboardingChecklistPage() {
         /* ── List View ────────────────────────────────────────────────── */
         <div className="space-y-3">
           {loading && (
-            <div className="flex items-center justify-center py-16 text-ps-hint">
-              <Loader2 size={24} className="animate-spin mr-2" />
-              Loading onboardings…
-            </div>
+            <SectionPlaceholder label="Loading onboardings" shape="list" rows={4} />
           )}
           {error && <Callout tone="problem">{error}</Callout>}
           {!loading && !error && workflows.length === 0 && (

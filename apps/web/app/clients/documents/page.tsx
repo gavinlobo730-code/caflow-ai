@@ -7,8 +7,12 @@
  * Expiry alerts for certificates expiring within 60 days
  */
 
+import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
+import { UploadProgress } from "@/components/ui/upload-progress";
+import type { UploadProgress as BytesSent } from "@/lib/api/uploadWithProgress";
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Upload, Download, Trash2, AlertTriangle, X, RefreshCw } from "lucide-react";
+import { Upload, Download, Trash2, AlertTriangle, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
 import { objectWithLists } from "@/lib/api/shape";
 import type { ClientDocumentList } from "@/lib/api";
@@ -82,6 +86,7 @@ function UploadModal({ onClose, onUploaded, clientId }: UploadModalProps) {
   const [expiryDate, setExpiryDate] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [sent, setSent] = useState<BytesSent | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   // The expiry date is optional and decides whether the document is flagged as expiring: text that is not a date read as blank, so a
@@ -90,7 +95,7 @@ function UploadModal({ onClose, onUploaded, clientId }: UploadModalProps) {
 
   async function handleUpload() {
     if (!file || !docName) { setError("Enter document name and select a file"); return; }
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError); return; }
     setUploading(true);
     try {
       // The server bounds the file, checks its bytes against its type, names and stores it under the firm and client,
@@ -101,70 +106,68 @@ function UploadModal({ onClose, onUploaded, clientId }: UploadModalProps) {
       form.append("description", docName);
       form.append("doc_type", category);
       if (expiryDate) form.append("expiry_date", expiryDate);
-      await api.clientDocuments.upload(form);
+      await api.clientDocuments.upload(form, setSent);
       onUploaded();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed");
     } finally {
       setUploading(false);
+      setSent(null);
     }
   }
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-ps-ink">Upload Document</h3>
-          <button aria-label="Close" onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
+    // The shared dialog (POST-A-130): named, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it, its ×) and its
+    // Cancel are held while its own request is out.
+    <Modal title="Upload Document" maxWidthClass="max-w-md" onClose={() => { if (!uploading) onClose(); }}
+      footer={<>
+        <button disabled={uploading} onClick={onClose}
+          className="flex-1 border border-ps-border text-ps-body rounded-lg py-2 text-sm hover:bg-ps-bg disabled:opacity-60">
+          Cancel
+        </button>
+        <Button variant="plain" size="none" spinner={false} onClick={handleUpload} disabled={uploading}
+          className="flex-1 bg-brand text-white rounded-lg py-2 text-sm hover:bg-brand-dark disabled:opacity-60">
+          {uploading ? "Uploading…" : "Upload"}
+        </Button>
+      </>}>
+    {error && <Callout tone="problem">{error}</Callout>}
+    <div className="space-y-3">
+      <div>
+        <label className="text-xs font-medium text-ps-body block mb-1">Document Name</label>
+        <input aria-label="Document Name" type="text" value={docName} onChange={e => setDocName(e.target.value)}
+          placeholder="e.g. PAN Card"
+          className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand" />
+      </div>
+      <div>
+        <label className="text-xs font-medium text-ps-body block mb-1">Category</label>
+        <select aria-label="Category" value={category} onChange={e => setCategory(e.target.value as DocCategory)}
+          className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand">
+          {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+      </div>
+      <div>
+        <label className="text-xs font-medium text-ps-body block mb-1">Expiry Date (optional)</label>
+        <DateInput aria-label="Expiry date (optional)" value={expiryDate} onChange={setExpiryDate}
+          onStateChange={dates.watch("expiry", "Expiry date")}
+          className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand" />
+      </div>
+      <div>
+        <label className="text-xs font-medium text-ps-body block mb-1">File</label>
+        <div onClick={() => fileRef.current?.click()}
+          className="border-2 border-dashed border-ps-border rounded-lg px-4 py-6 text-center cursor-pointer hover:border-blue-400 transition-colors">
+          {file ? (
+            <p className="text-sm text-ps-body">{file.name} ({formatBytes(file.size)})</p>
+          ) : (
+            <p className="text-sm text-ps-hint">Click to select file</p>
+          )}
         </div>
-        {error && <Callout tone="problem">{error}</Callout>}
-        <div className="space-y-3">
-          <div>
-            <label className="text-xs font-medium text-ps-body block mb-1">Document Name</label>
-            <input aria-label="Document Name" type="text" value={docName} onChange={e => setDocName(e.target.value)}
-              placeholder="e.g. PAN Card"
-              className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand" />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-ps-body block mb-1">Category</label>
-            <select aria-label="Category" value={category} onChange={e => setCategory(e.target.value as DocCategory)}
-              className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand">
-              {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-ps-body block mb-1">Expiry Date (optional)</label>
-            <DateInput aria-label="Expiry date (optional)" value={expiryDate} onChange={setExpiryDate}
-              onStateChange={dates.watch("expiry", "Expiry date")}
-              className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand" />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-ps-body block mb-1">File</label>
-            <div onClick={() => fileRef.current?.click()}
-              className="border-2 border-dashed border-ps-border rounded-lg px-4 py-6 text-center cursor-pointer hover:border-blue-400 transition-colors">
-              {file ? (
-                <p className="text-sm text-ps-body">{file.name} ({formatBytes(file.size)})</p>
-              ) : (
-                <p className="text-sm text-ps-hint">Click to select file</p>
-              )}
-            </div>
-            <input aria-label="File" ref={fileRef} type="file" className="hidden"
-              accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.csv,.doc,.docx,.txt,.zip"
-              onChange={e => { if (e.target.files?.[0]) setFile(e.target.files[0]); }} />
-          </div>
-        </div>
-        <div className="flex gap-2 pt-1">
-          <button onClick={onClose}
-            className="flex-1 border border-ps-border text-ps-body rounded-lg py-2 text-sm hover:bg-ps-bg">
-            Cancel
-          </button>
-          <button onClick={handleUpload} disabled={uploading}
-            className="flex-1 bg-brand text-white rounded-lg py-2 text-sm hover:bg-brand-dark disabled:opacity-60">
-            {uploading ? "Uploading…" : "Upload"}
-          </button>
-        </div>
+        <input aria-label="File" ref={fileRef} type="file" className="hidden"
+          accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.csv,.doc,.docx,.txt,.zip"
+          onChange={e => { if (e.target.files?.[0]) setFile(e.target.files[0]); }} />
       </div>
     </div>
+    <UploadProgress progress={sent} what="the document" />
+    </Modal>
   );
 }
 
@@ -350,10 +353,10 @@ export default function ClientDocumentsPage() {
                     <Download size={12} /> Download
                   </a>
                 )}
-                <button onClick={() => handleDelete(doc)} disabled={deleting}
+                <Button variant="plain" size="none" spinner={false} onClick={() => handleDelete(doc)} disabled={deleting}
                   className="flex items-center justify-center gap-1 px-3 py-1.5 border border-red-100 rounded-lg text-xs text-red-600 hover:bg-state-problem-hover disabled:opacity-50">
                   <Trash2 size={12} /> Delete
-                </button>
+                </Button>
               </div>
             </div>
           );

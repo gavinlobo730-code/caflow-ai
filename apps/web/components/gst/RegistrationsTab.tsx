@@ -21,9 +21,12 @@
  * `domain/gst/registrations.py`'s answers, served by
  * /api/client-gst-registrations.
  */
+import { Button } from "@/components/ui/button";
+import { Drawer } from "@/components/ui/drawer";
+import { EmptyState } from "@/components/ui/states";
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
-import { Plus, AlertTriangle, X, Info } from "lucide-react";
+import { Plus, AlertTriangle, Info } from "lucide-react";
 import { api, type ClientGstRegistration, type GstRegistrationKinds,
          type ClientGstTurnover } from "@/lib/api";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
@@ -35,6 +38,7 @@ import { formatPaise } from "@/lib/money/format";
 import { Cmp08Panel } from "@/components/gst/Cmp08Panel";
 import { Gstr8Panel } from "@/components/gst/Gstr8Panel";
 import { Gstr4AnnualPanel } from "@/components/gst/Gstr4AnnualPanel";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 type Msg = { type: "ok" | "err"; text: string } | null;
 
@@ -191,7 +195,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
 
   async function handleClose(r: ClientGstRegistration, on: string) {
     if (closeDates.first) {
-      setMsg({ type: "err", text: closeDates.first });
+      closeDates.refuseWith(setMsg, (text) => ({ type: "err" as const, text }));
       return;
     }
     if (!on) {
@@ -299,7 +303,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
           </div>
         )}
 
-        {turnover && turnover.years.length > 0 && (
+        {turnover && (turnover.years ?? []).length > 0 && (
           <table className="w-full text-xs">
             <thead>
               <tr className="text-left text-ps-hint border-b border-ps-border">
@@ -344,10 +348,10 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
               placeholder="GSTR-9 Table 5N, audited accounts, …"
               className="w-full px-2.5 py-1.5 border border-ps-border rounded-lg" />
           </label>
-          <button onClick={saveTurnover} disabled={busy || !tvForm.fy || !tvForm.amount.trim()}
+          <Button variant="plain" size="none" spinner={false} onClick={saveTurnover} disabled={busy || !tvForm.fy || !tvForm.amount.trim()}
             className="px-3 py-1.5 text-xs bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">
             {tvSaving ? "Saving…" : "Record"}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -370,12 +374,13 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
           the read succeeded. It used to render on a failed read too, telling
           the CA to go and record a GSTIN the client already had. */}
       {loading ? (
-        <p className="text-xs text-ps-hint">Loading…</p>
+        <LoadingRegion label="Loading the registrations" className="text-xs text-ps-hint">Loading…</LoadingRegion>
       ) : loadFailed ? null : rows.length === 0 ? (
-        <p className="text-xs text-ps-hint">
-          No GSTIN is recorded for this client. Record it on the client record first —
-          a GST return cannot be prepared without one.
-        </p>
+        <EmptyState
+          className="py-6"
+          title="No GSTIN is recorded for this client"
+          description="A GST return cannot be prepared without one. Record it by editing the client from the Clients list."
+        />
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
@@ -448,21 +453,21 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
                               onChange={(v) => setClosing({ id: r.id as string, on: v })}
                               onStateChange={closeDates.watch("closing", "Date cancelled or surrendered")}
                               className="px-1.5 py-1 text-2xs border border-ps-border rounded" />
-                            <button onClick={() => handleClose(r, closing.on)}
+                            <Button variant="plain" size="none" spinner={false} onClick={() => handleClose(r, closing.on)}
                               disabled={busy}
                               className="px-2 py-1 text-2xs bg-brand text-white rounded hover:bg-brand-dark disabled:opacity-40">
                               Record
-                            </button>
+                            </Button>
                             <button onClick={() => setClosing(null)} disabled={busy}
                               className="px-1.5 py-1 text-2xs text-ps-hint hover:text-ps-body">
                               Cancel
                             </button>
                           </span>
                         )}
-                        <button onClick={() => handleWithdraw(r)} disabled={busy}
+                        <Button variant="plain" size="none" spinner={false} onClick={() => handleWithdraw(r)} disabled={busy}
                           className="ml-1 px-2 py-1 text-2xs text-ps-hint hover:text-red-600 disabled:opacity-40">
                           Remove
-                        </button>
+                        </Button>
                       </>
                     )}
                   </td>
@@ -506,15 +511,12 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
       )}
 
       {showForm && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-black/20">
-          <div className="w-full max-w-md h-full bg-white shadow-xl flex flex-col">
-            <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between">
-              <p className="text-sm font-semibold text-ps-ink">Add a GST registration</p>
-              <button onClick={() => setShowForm(false)} aria-label="Close"
-                className="p-1 rounded hover:bg-ps-muted text-ps-label"><X size={16} /></button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+        // The shared side sheet (POST-A-130): named, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it, its ×)
+        // is held while the registration is being added.
+        <Drawer open title={<span className="font-sans">Add a GST registration</span>} ariaLabel="Add a GST registration" widthClass="sm:max-w-md"
+          onClose={() => { if (!busy) setShowForm(false); }}>
+          <div className="flex min-h-[calc(100%-3rem)] flex-col">
+            <div className="flex-1 px-5 py-4 space-y-4">
               <label className="text-xs block">
                 <span className="block text-ps-body font-medium mb-1">GSTIN *</span>
                 <input value={form.gstin} maxLength={15}
@@ -578,8 +580,8 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
                     (CGST Act s.10). Leaving this unrecorded still lets its
                     return be prepared — it names the gap instead of a figure.
                     {kinds && !kinds.composition_rates_verified && (
-                      <> Rates shown are not independently verified against
-                      Rule 7 in this environment.</>
+                      <> Rates shown have not been checked against Rule 7
+                      itself.</>
                     )}
                   </span>
                 </label>
@@ -619,18 +621,18 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
               )}
             </div>
 
-            <div className="px-5 py-3 border-t border-ps-border flex justify-end gap-2">
-              <button onClick={() => setShowForm(false)}
-                className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg">
+            <div className="sticky bottom-0 bg-white px-5 py-3 border-t border-ps-border flex justify-end gap-2">
+              <button disabled={busy} onClick={() => setShowForm(false)}
+                className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50">
                 Cancel
               </button>
-              <button onClick={handleSave} disabled={busy || !form.gstin.trim()}
+              <Button variant="plain" size="none" spinner={false} onClick={handleSave} disabled={busy || !form.gstin.trim()}
                 className="px-3 py-1.5 text-xs bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">
                 {saving ? "Adding…" : "Add"}
-              </button>
+              </Button>
             </div>
           </div>
-        </div>
+        </Drawer>
       )}
     </div>
   );

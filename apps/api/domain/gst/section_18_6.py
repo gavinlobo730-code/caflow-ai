@@ -215,6 +215,8 @@ def _iso(value) -> Optional[date]:
     try:
         return date.fromisoformat(str(value)[:10])
     except (TypeError, ValueError):
+        # Not a date. A DATE or timestamp column always reads back as ISO text, so a stored one never lands here: this is an absent value or text that
+        # was never a date, and None says there is none.
         return None
 
 
@@ -236,8 +238,8 @@ _TWO_RULES = (
     "Rule 40(2) reduces the credit by five percentage points a quarter or part "
     "quarter; Rule 44(6), through Rule 44(1)(b), pro-rates it over the "
     "remaining useful life in months out of sixty. Both readings are shown "
-    "because they give different figures and neither could be read against the "
-    "Rules from this environment."
+    "because they give different figures and neither has been read against the "
+    "Rules themselves."
 )
 
 

@@ -9,7 +9,8 @@
  * matches the backend's own _compute_line_gst exactly); the backend remains
  * authoritative and recomputes everything on save.
  */
-import { useState, useRef, useEffect } from "react";
+import { fitForExtraction, reducedSentence } from "@/lib/images/fitUpload";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { Trash2, Plus, Loader2, AlertCircle, AlertTriangle, Upload } from "lucide-react";
 import { InvoiceWorkspaceLayout } from "@/components/invoices/InvoiceWorkspaceLayout";
 import { VendorLookup, type VendorLike } from "@/components/lookups/VendorLookup";
@@ -18,7 +19,9 @@ import { HsnLookup } from "@/components/lookups/HsnLookup";
 import { ServiceCataloguePicker } from "@/components/lookups/ServiceCataloguePicker";
 import { purchaseServiceToLine, type ServiceCatalogueItem } from "@/lib/catalogue/service";
 import { UQC_CODES } from "@/lib/constants/uqc";
-import { estimateBaseMinor } from "@/lib/services/currencyPreview";
+import { baseTotalOfHeads } from "@/lib/services/currencyPreview";
+import { recentFirst, useRecentPartyIds } from "@/lib/lookups/recentParties";
+import { api } from "@/lib/api";
 import { useServerTdsPreview } from "@/lib/purchases/serverTdsPreview";
 import { formatMoney } from "@/lib/services/formatting";
 import { hasChanges, useUnsavedChanges } from "@/lib/invoices/dirtyState";
@@ -30,7 +33,9 @@ import {
   validateBillDraft, withoutDocument, type BillDraftFields,
 } from "@/lib/purchases/billDraft";
 import { apiCall, apiGet, getAuthToken, fmt, gstRateOptions, gstRateToPercent, type CurrencyOption } from "@/lib/invoices/shared";
-import { fetchPlain, jsonPlain, PlainFailure, type UntypedJson } from "@/lib/api/failureSentence";
+import { jsonPlain, PlainFailure, type UntypedJson, LONG_REQUEST_BOUND_MS } from "@/lib/api/failureSentence";
+import { fetchUpload, type UploadProgress as BytesSent } from "@/lib/api/uploadWithProgress";
+import { UploadProgress } from "@/components/ui/upload-progress";
 import { getSupabaseClient } from "@/lib/supabase/client";
 
 import {
@@ -55,6 +60,7 @@ import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { removedDateProblem } from "@/lib/dates/removedDate";
+import { removedEvidenceProblem } from "@/lib/forms/removedEvidence";
 import { todayIstISO } from "@/lib/dates/format";
 import { editedText } from "@/lib/forms/editedValue";
 import { AiDisclosure } from "@/components/ai/AiDisclosure";
@@ -274,9 +280,15 @@ export function PurchaseBillEditor({
 }) {
   const today = todayISO();
   const isEdit = !!existing;
+  // The suppliers this client billed against most recently go to the top of the picker (POST-A-155); nothing is pre-selected.
+  const recentVendorIds = useRecentPartyIds(api.vendors.recent, clientId, !isEdit);
+  const recentVendors = useMemo(() => recentFirst(recentVendorIds, vendors), [recentVendorIds, vendors]);
+  // ...and the expense accounts on its newest bills to the top of each line's account picker, again choosing nothing.
+  const recentAccountIds = useRecentPartyIds(api.accounting.recentBillAccounts, clientId, true);
+  const recentAccounts = useMemo(() => recentFirst(recentAccountIds, accounts), [recentAccountIds, accounts]);
   const initialLines: EditorLine[] =
-    existing && existing.lines.length > 0 ? detailLinesToEditorLines(existing.lines)
-    : duplicateSeed && duplicateSeed.lines.length > 0 ? detailLinesToEditorLines(duplicateSeed.lines)
+    existing && (existing.lines ?? []).length > 0 ? detailLinesToEditorLines(existing.lines)
+    : duplicateSeed && (duplicateSeed.lines ?? []).length > 0 ? detailLinesToEditorLines(duplicateSeed.lines)
     : [{ ...EMPTY_LINE, _k: 0 }];
 
   const [vendorId, setVendorId] = useState(existing?.vendor_id ?? duplicateSeed?.vendor_id ?? "");
@@ -342,11 +354,14 @@ export function PurchaseBillEditor({
   // AI Upload (Extract) — create-only; re-extracting into an already-saved
   // draft would silently overwrite manually-corrected fields.
   const [uploadFile, setUploadFile] = useState<File | null>(null);
+  /** Said when the photograph was reduced to fit the upload limit (lib/images/fitUpload). */
+  const [photoNote, setPhotoNote] = useState<string | null>(null);
   // POST-A-131: on a phone the bill is a photograph, so a second control opens the camera (`capture`) and feeds the same file the Extract
   // button reads. It is shown on a TOUCH device (`pointer: coarse`: a phone in either orientation, a tablet), not by width, and never on a
   // desktop, because `capture` means nothing there. The camera input itself is hidden, so the visible button carries the name and the AI disclosure.
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [extracting, setExtracting] = useState(false);
+  const [sent, setSent] = useState<BytesSent | null>(null);
   const [aiExtracted, setAiExtracted] = useState<Record<string, unknown> | null>(null);
   // The server's arithmetic check on the extraction's own five header figures
   // (PUR-21). Computed in apps/api — domain/extraction_totals.py — because the
@@ -433,7 +448,6 @@ export function PurchaseBillEditor({
   }, [isEdit, existing?.id, clientId]);
 
   const isForeign = currency !== "" && currency !== "INR";
-  const rateNum = parseFloat(exchangeRate);
   function fmtAmt(paise: number): string {
     return isForeign ? formatMoney(paise, currency, currencies.find((c) => c.code === currency)?.minor_unit) : fmt(paise);
   }
@@ -632,7 +646,15 @@ export function PurchaseBillEditor({
   }, [historyKey]);
 
   const validation = validateBillEditor({ vendorId, billDate, lines, isForeign, exchangeRate });
-  const estBaseTotal = isForeign && rateNum > 0 ? estimateBaseMinor(vendorTotalPaise, rateNum) : vendorTotalPaise;
+  // What the save stores as the bill's INR total: each head converted at the typed rate and added, and under reverse charge
+  // the taxable value alone (routers/purchase_bills.py), through the save's own rule (lib/services/currencyPreview).
+  const baseTotal = isForeign
+    ? baseTotalOfHeads(
+        isReverseCharge
+          ? [totals.taxable_paise]
+          : [totals.taxable_paise, totals.cgst_paise, totals.sgst_paise, totals.igst_paise, totals.cess_paise],
+        exchangeRate, currencies.find((c) => c.code === currency)?.minor_unit)
+    : vendorTotalPaise;
 
   // TDS COMES FROM THE SERVER, because only the server can compute it. This was
   // `estimateForeignTds(estBaseTaxable, vendor.tds_rate_bps)` — a bare rate x
@@ -685,6 +707,22 @@ export function PurchaseBillEditor({
   useEffect(() => {
     if (form15caRefusal.shown) form15caRefusalRef.current?.scrollIntoView?.({ block: "nearest" });
   }, [form15caRefusal.shown]);
+
+  // The supplier's own invoice number and the two Form 15CA / 15CB references are the bill's evidence in TEXT, and were the same defect as the Form 15CA date (POST-A-399, the remainder): an
+  // emptied box sent nothing, the stored value stayed and the screen said the bill was updated. They are corrected and not removed, said the same way; one sentence at a time. The number's
+  // box is closed on a received bill and the Form 15CA block is drawn only for a remittance abroad, and a box the person cannot reach is not one they can empty. (The attached copy of the
+  // supplier's invoice has no control that takes it away, so there is nothing to refuse for it.)
+  const billEvidenceCleared =
+    (!isLocked ? removedEvidenceProblem("The vendor invoice number", initialSnapshot.current.billNo, billNo, "number") : null)
+    ?? (form15Drawn
+      ? removedEvidenceProblem("The Form 15CA acknowledgement number", initialSnapshot.current.form15caAckNo, form15caAckNo, "number")
+        ?? removedEvidenceProblem("The Form 15CB UDIN", initialSnapshot.current.form15cbUdin, form15cbUdin, "UDIN")
+      : null);
+  const billEvidenceRefusal = useDateRefusal(billEvidenceCleared);
+  const billEvidenceRefusalRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (billEvidenceRefusal.shown) billEvidenceRefusalRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [billEvidenceRefusal.shown]);
 
   // A due date on file is corrected and not emptied either (POST-A-399), for a different reason than Form 15CA's. Every bill carries a due date (a create that names none resolves one from the
   // supplier's terms, or thirty days), the payables ageing and the payment run read it, and the PATCH route reads an omitted or null date as "not sent": a box the person emptied would leave the
@@ -856,16 +894,16 @@ export function PurchaseBillEditor({
     setAiSupplier(null);
     setError(null);
     try {
+      // A photograph over the 10 MB limit is reduced to fit; one that fits goes exactly as it was taken (it is kept as the supplier's invoice).
+      const fitted = await fitForExtraction(uploadFile);
+      setPhotoNote(fitted.reduced ? reducedSentence(fitted.fromBytes, fitted.toBytes) : null);
       const formData = new FormData();
-      formData.append("file", uploadFile);
+      formData.append("file", fitted.file);
       formData.append("client_id", clientId);
       const token = await getAuthToken();
       // A reading is a proposal, not a record of a bill: what a dropped connection costs is the result, so it is told as one that did not come back.
-      const res = await fetchPlain(`${API}/api/document-intelligence-v1/extract-invoice`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: formData,
-      }, "read");
+      // Sent through the one upload door, so the screen can say how much of the file has left (POST-A-158).
+      const res = await fetchUpload(`${API}/api/document-intelligence-v1/extract-invoice`, { headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData, timeoutMs: LONG_REQUEST_BOUND_MS }, "read", setSent);
       const json = await jsonPlain<UntypedJson>(res, "read");
       // The uploaded file is retained server-side as ITC/audit evidence
       // regardless of whether AI extraction itself succeeded.
@@ -924,6 +962,7 @@ export function PurchaseBillEditor({
       // is not a message for a person: it says the fixed sentence, as it did. (The request keeps the uploaded file as evidence either way, so a second try keeps a second copy: harmless.)
       setError(e instanceof PlainFailure ? e.message : "AI extraction failed. Please enter the bill details manually.");
     } finally {
+      setSent(null);
       setExtracting(false);
     }
   }
@@ -931,9 +970,10 @@ export function PurchaseBillEditor({
   // ── Save ─────────────────────────────────────────────────────────────────
   async function save() {
     setAttempted(true);
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError); return; }
     // The date on file cannot be emptied (above). Said beside the button as a derived sentence; a server answer left over from an earlier press is not shown next to it.
     if (form15caCleared) { setError(null); form15caRefusal.refuse(); return; }
+    if (billEvidenceCleared) { setError(null); billEvidenceRefusal.refuse(); return; }
     if (dueDateCleared) { setError(null); dueDateRefusal.refuse(); return; }
     // A received bill's save sends the due date, the reference, the note, the attached copy and the Form 15CA references and nothing the check reads (the vendor, the date, the lines and the exchange rate are frozen), so the create-time check is not asked of it, as the invoice editor does not ask it of an issued invoice.
     if (!isLocked && !validation.ok) {
@@ -955,8 +995,8 @@ export function PurchaseBillEditor({
         // received-bill edit never fails on fields the CA never touched.
         // Our reference and the note are SOFT particulars the person may take away: an emptied box is sent as null so the server clears it (POST-A-399); `x.trim() || undefined` sent
         // nothing, the stored value stayed and the screen said the bill was updated. What was on file is the snapshot the form opened with (the editor closes after an edit). The due date
-        // is not cleared this way: an emptied one was refused above, so what is sent is a date or nothing. The bill number, the attached copy of the supplier's invoice and the Form
-        // 15CA / 15CB references are the EVIDENCE of the bill and are neither cleared nor refused here yet (POST-A-399 remainder; the dates are POST-A-388's).
+        // is not cleared this way: an emptied one was refused above, so what is sent is a date or nothing. The bill number and the Form 15CA / 15CB references are the EVIDENCE of the
+        // bill: an emptied one was refused above too (`billEvidenceCleared`), so what is sent is the text or nothing. The attached copy has no control that removes it.
         const softOnFile = initialSnapshot.current;
         const patchPayload = isLocked
           ? {
@@ -1105,7 +1145,7 @@ export function PurchaseBillEditor({
         <span>{isReverseCharge ? "Payable to Vendor" : "Grand Total"}{isForeign ? ` (${currency})` : ""}</span>
         <span className="font-mono">{fmtAmt(vendorTotalPaise)}</span>
       </div>
-      {isForeign && rateNum > 0 && <Row label="≈ INR total" value={fmt(estBaseTotal)} muted />}
+      {isForeign && baseTotal !== null && <Row label="INR total at this rate" value={fmt(baseTotal)} muted />}
       {selectedVendor?.tds_applicable && (
         <div className="border-t border-ps-border pt-2 mt-1 space-y-1.5">
           {/* The SECTION and the RATE come back with the figure. Neither is the
@@ -1212,9 +1252,11 @@ export function PurchaseBillEditor({
                 {extracting ? "Extracting…" : "Extract"}
               </Button>
             </div>
+            <UploadProgress progress={sent} what="the invoice" />
             {/* WHO RECEIVES THE FILE, said before the button is pressed (PRE-A-006).
                 Colour is the sibling notes' own on this tinted box. */}
             <AiDisclosure id="ai-disclosure-invoice-extraction" surface="invoice_extraction" className="text-state-attention" />
+            {photoNote && <p role="status" className="text-3xs text-state-attention">{photoNote}</p>}
             {aiExtracted && (
               <div className="mt-1 text-3xs text-state-attention bg-state-attention-surface rounded px-2 py-1.5">
                 ✓ AI extracted data pre-filled below. <strong>Review before saving.</strong>
@@ -1318,7 +1360,7 @@ export function PurchaseBillEditor({
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="col-span-2">
               <label className="block text-xs font-medium text-ps-label mb-1">Vendor *</label>
-              <VendorLookup vendors={vendors} value={vendorId} onChange={onVendorChange} ariaLabel="Vendor" disabled={isEdit} />
+              <VendorLookup vendors={vendors} recent={recentVendors} value={vendorId} onChange={onVendorChange} ariaLabel="Vendor" disabled={isEdit} />
               {isEdit && <p className="mt-1 text-3xs text-ps-hint">Vendor can&apos;t be changed once a bill exists — it&apos;s locked to the TDS section resolved at creation.</p>}
               {fieldErr(validation.errors.vendor)}
             </div>
@@ -1429,7 +1471,7 @@ export function PurchaseBillEditor({
                 </label>
                 <DateInput id="bill-15ca-date" value={form15caFiledOn} notAfter={todayIstISO()}
                   onChange={setForm15caFiledOn} onStateChange={dates.watch("form15caFiledOn", "Form 15CA filed on", { afterMax: true })}
-                  anchor={form15caFiledOn || billDate}
+                  anchor={form15caFiledOn || billDate} near={billDate || null}
                   className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
               </div>
               <div>
@@ -1644,7 +1686,7 @@ export function PurchaseBillEditor({
                           size="sm" chrome="plain" placeholder="Set HSN/SAC" ariaLabel="HSN or SAC code" />
                       </td>
                       <td className="py-1.5 px-1">
-                        <AccountLookup accounts={accounts} value={line.expense_account_id} onChange={(id) => setLine(idx, { expense_account_id: id })} size="sm" placeholder="— Account —" ariaLabel="Expense account" />
+                        <AccountLookup accounts={accounts} recent={recentAccounts} value={line.expense_account_id} onChange={(id) => setLine(idx, { expense_account_id: id })} size="sm" placeholder="— Account —" ariaLabel="Expense account" />
                         {/* ai-23. A PROPOSAL from this supplier's earlier bills,
                             with its evidence, shown only while the account is
                             blank. The field is NOT filled in: a click is what
@@ -1801,6 +1843,7 @@ export function PurchaseBillEditor({
         )}
         {error && <Callout tone="problem">{error}</Callout>}
         {form15caRefusal.shown && <div ref={form15caRefusalRef}><Callout tone="problem">{form15caRefusal.shown}</Callout></div>}
+        {billEvidenceRefusal.shown && <div ref={billEvidenceRefusalRef} data-removed-evidence><Callout tone="problem">{billEvidenceRefusal.shown}</Callout></div>}
         {dueDateRefusal.shown && <div ref={dueDateRefusalRef}><Callout tone="problem">{dueDateRefusal.shown}</Callout></div>}
       </div>
     </InvoiceWorkspaceLayout>

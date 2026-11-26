@@ -26,8 +26,10 @@ WORKFLOW = Path(__file__).resolve().parents[3] / ".github" / "workflows" / "back
 def _rule() -> re.Pattern:
     """The pattern the detect step hands to `grep -qvE`: a changed file NOT matching it means the backend suite runs."""
     text = WORKFLOW.read_text(encoding="utf-8")
-    found = re.findall(r"grep -qvE '([^']+)'", text)
-    assert len(found) == 1, f"the detect step has {len(found)} 'grep -qvE' rules, expected exactly one: {found}"
+    # The `if grep -qvE '<rule>'` that decides whether the suite runs. The docs lane's own `&& ! grep -qvE '<rule>'` is a different
+    # question (is this a docs-only change) and is tested in test_a_docs_only_change_runs_every_test_that_reads_the_docs.py.
+    found = re.findall(r"if grep -qvE '([^']+)'", text)
+    assert len(found) == 1, f"the detect step has {len(found)} 'if grep -qvE' rules, expected exactly one: {found}"
     return re.compile(found[0])
 
 
@@ -128,11 +130,16 @@ def _outputs_for(tmp_path: Path, before: dict[str, str], change) -> dict[str, st
 def test_the_step_skips_a_frontend_only_diff_and_runs_for_a_document(tmp_path):
     base = {"apps/web/a.ts": "1", "apps/api/x.py": "1", "CLAUDE.md": "1"}
     got = _outputs_for(tmp_path / "web", base, lambda r: (r / "apps/web/a.ts").write_text("2"))
-    assert got == {"api": "false", "web": "true"}
+    assert got == {"api": "false", "web": "true", "docs_lane": "false"}
     got = _outputs_for(tmp_path / "doc", base, lambda r: (r / "CLAUDE.md").write_text("2"))
-    assert got == {"api": "true", "web": "false"}
+    assert got == {"api": "true", "web": "false", "docs_lane": "true"}      # a document runs the suite: the docs lane's, not the whole
+    # A screen change with its notes: the lane, and `web` says the lane must add the modules that read a frontend (22-11-2026).
     got = _outputs_for(tmp_path / "both", base, lambda r: ((r / "CLAUDE.md").write_text("2"), (r / "apps/web/a.ts").write_text("2")))
-    assert got == {"api": "true", "web": "true"}
+    assert got == {"api": "true", "web": "true", "docs_lane": "true"}
+    # ... and with a line of code in it, the whole suite.
+    got = _outputs_for(tmp_path / "all", base, lambda r: ((r / "CLAUDE.md").write_text("2"), (r / "apps/web/a.ts").write_text("2"),
+                                                          (r / "apps/api/x.py").write_text("2")))
+    assert got == {"api": "true", "web": "true", "docs_lane": "false"}
 
 
 def test_a_backend_file_moved_into_a_frontend_still_runs_the_suite(tmp_path):

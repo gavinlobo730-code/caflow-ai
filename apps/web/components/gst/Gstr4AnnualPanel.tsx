@@ -27,9 +27,11 @@ import { Callout, GapList, type GapLike } from "@/components/ui/callout";
 import { formatPaise } from "@/lib/money/format";
 import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput";
 import { objectOrNull, arrayOrEmpty } from "@/lib/api/shape";
+import { failureSentence } from "@/lib/api/failureSentence";
 import { INDIAN_STATES } from "@/lib/constants/indianStates";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { Button } from "@/components/ui/button";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 const B2B_RUPEE_FIELDS = [
   ["taxable_value", "Taxable value"],
@@ -89,6 +91,7 @@ export function Gstr4AnnualPanel({ clientId, gstin }: { clientId: string; gstin:
   const [imps, setImps] = useState<Gstr4AnnualImportOfService[]>([]);
   const [loadingRows, setLoadingRows] = useState(false);
   const [rowsError, setRowsError] = useState<string | null>(null);
+  const [removeError, setRemoveError] = useState<string | null>(null);
 
   const [b2bForm, setB2bForm] = useState(emptyB2BForm());
   const [b2bRcForm, setB2bRcForm] = useState(emptyB2BForm());
@@ -134,6 +137,24 @@ export function Gstr4AnnualPanel({ clientId, gstin }: { clientId: string; gstin:
     loadRows();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [financialYear]);
+
+  // A REFUSED OR FAILED DELETE IS SAID, NEVER IGNORED (POST-A-515). The Remove buttons called the delete with no catch and no look at the
+  // answer, so a locked period or a dropped connection left the row where it was and said nothing. The API client throws on a failed
+  // request and answers `success: false` for a refusal it chose to word, and both are told here, in the words the server gave.
+  const removeRow = useCallback(async (remove: () => Promise<{ success: boolean; error?: string | null }>) => {
+    setStatement(null);
+    setRemoveError(null);
+    try {
+      const res = await remove();
+      if (!res.success) {
+        setRemoveError(res.error ?? "Couldn't remove that row.");
+        return;
+      }
+      await loadRows();
+    } catch (e) {
+      setRemoveError(failureSentence(e, "Couldn't remove that row.", "write"));
+    }
+  }, [loadRows]);
 
   const parseB2BBody = (form: ReturnType<typeof emptyB2BForm>): Record<string, unknown> | null => {
     const supplierGstin = form.supplier_gstin.trim().toUpperCase();
@@ -301,18 +322,27 @@ export function Gstr4AnnualPanel({ clientId, gstin }: { clientId: string; gstin:
       </label>
 
       {rowsError && <Callout tone="problem" title="Couldn't load recorded supplies">{rowsError}</Callout>}
+      {removeError && <Callout tone="problem" title="That row was not removed">{removeError}</Callout>}
       {formError && <Callout tone="problem">{formError}</Callout>}
 
       <Section title="Table 4A — registered supplier, no reverse charge" subtitle="Informational only: the supplier already charged and remitted this tax.">
-        {loadingRows ? <p className="text-2xs text-ps-hint inline-flex items-center gap-1"><Loader2 size={11} className="animate-spin" /> Loading…</p> : (
-          <B2BTable rows={b2b} onRemove={async (id) => { setStatement(null); await api.gstr4Annual.deleteB2BSupply(id, clientId); await loadRows(); }} />
+        {loadingRows ? (
+          <LoadingRegion label="Loading the purchases">
+            <p className="text-2xs text-ps-hint inline-flex items-center gap-1"><Loader2 size={11} className="animate-spin" /> Loading…</p>
+          </LoadingRegion>
+        ) : (
+          <B2BTable rows={b2b} onRemove={(id) => removeRow(() => api.gstr4Annual.deleteB2BSupply(id, clientId))} />
         )}
         <B2BForm form={b2bForm} setForm={setB2bForm} onAdd={addB2B} saving={saving} />
       </Section>
 
       <Section title="Table 4B — registered supplier, reverse charge" subtitle="s.9(3)/(4): the dealer self-assesses this tax, and it feeds the return's liability.">
-        {loadingRows ? <p className="text-2xs text-ps-hint inline-flex items-center gap-1"><Loader2 size={11} className="animate-spin" /> Loading…</p> : (
-          <B2BTable rows={b2bRc} onRemove={async (id) => { setStatement(null); await api.gstr4Annual.deleteB2BRcSupply(id, clientId); await loadRows(); }} />
+        {loadingRows ? (
+          <LoadingRegion label="Loading the purchases">
+            <p className="text-2xs text-ps-hint inline-flex items-center gap-1"><Loader2 size={11} className="animate-spin" /> Loading…</p>
+          </LoadingRegion>
+        ) : (
+          <B2BTable rows={b2bRc} onRemove={(id) => removeRow(() => api.gstr4Annual.deleteB2BRcSupply(id, clientId))} />
         )}
         <B2BForm form={b2bRcForm} setForm={setB2bRcForm} onAdd={addB2BRc} saving={saving} />
       </Section>
@@ -338,7 +368,7 @@ export function Gstr4AnnualPanel({ clientId, gstin }: { clientId: string; gstin:
                     <td className="py-1.5 pr-2 text-right font-mono">{formatPaise(r.taxable_value_paise)}</td>
                     <td className="py-1.5 pr-2 text-right font-mono">{formatPaise(r.igst_paise + r.cgst_paise + r.sgst_paise + r.cess_paise)}</td>
                     <td className="py-1.5 text-right">
-                      <Button variant="plain" size="none" onClick={async () => { setStatement(null); await api.gstr4Annual.deleteUrpSupply(r.id, clientId); await loadRows(); }} title="Remove" className="text-state-problem hover:opacity-70">
+                      <Button variant="plain" size="none" onClick={() => removeRow(() => api.gstr4Annual.deleteUrpSupply(r.id, clientId))} title="Remove" className="text-state-problem hover:opacity-70">
                         <Trash2 size={12} />
                       </Button>
                     </td>
@@ -431,7 +461,7 @@ export function Gstr4AnnualPanel({ clientId, gstin }: { clientId: string; gstin:
                     <td className="py-1.5 pr-2 text-right font-mono">{formatPaise(r.igst_paise)}</td>
                     <td className="py-1.5 pr-2 text-right font-mono">{formatPaise(r.cess_paise)}</td>
                     <td className="py-1.5 text-right">
-                      <Button variant="plain" size="none" onClick={async () => { setStatement(null); await api.gstr4Annual.deleteImportOfService(r.id, clientId); await loadRows(); }} title="Remove" className="text-state-problem hover:opacity-70">
+                      <Button variant="plain" size="none" onClick={() => removeRow(() => api.gstr4Annual.deleteImportOfService(r.id, clientId))} title="Remove" className="text-state-problem hover:opacity-70">
                         <Trash2 size={12} />
                       </Button>
                     </td>

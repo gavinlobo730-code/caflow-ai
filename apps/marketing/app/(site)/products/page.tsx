@@ -208,7 +208,7 @@ export default function ProductsPage() {
               <Reveal variant={flip ? "right" : "left"} className={flip ? "lg:order-2" : ""}>
                 <span
                   className={`block text-[12px] font-semibold uppercase tracking-[0.18em] ${
-                    theme === "dark" ? "text-white/50" : "text-brand-dark/50"
+                    theme === "dark" ? "text-white/60" : "text-brand-dark/65"
                   }`}
                 >
                   {m.eyebrow}
@@ -221,7 +221,7 @@ export default function ProductsPage() {
                 </p>
               </Reveal>
               <Reveal variant={flip ? "left" : "right"} delay={120} className={flip ? "lg:order-1" : ""}>
-                <p className={`mb-1 text-[12px] font-semibold uppercase tracking-[0.14em] ${theme === "dark" ? "text-white/40" : "text-slate-400"}`}>
+                <p className={`mb-1 text-[12px] font-semibold uppercase tracking-[0.14em] ${theme === "dark" ? "text-white/55" : "text-slate-500"}`}>
                   What&apos;s included
                 </p>
                 <Checklist points={m.points} theme={theme} />

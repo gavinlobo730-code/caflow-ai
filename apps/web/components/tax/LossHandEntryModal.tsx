@@ -66,7 +66,7 @@ export function LossHandEntryModal({
   return (
     <Modal
       title={recording ? "Record a year's use by hand" : "Take this use off the loss"}
-      onClose={onClose}
+      onClose={() => { if (!busy) (onClose)(); }}
       maxWidthClass="max-w-md"
       note={mode.lossName}
     >
@@ -112,7 +112,7 @@ export function LossHandEntryModal({
         )}
 
         <div className="flex justify-end gap-2 pt-1">
-          <button type="button" onClick={onClose} className="text-xs px-3 py-1.5 border border-ps-border rounded-md hover:bg-ps-muted bg-white">
+          <button disabled={busy} type="button" onClick={onClose} className="text-xs px-3 py-1.5 border border-ps-border rounded-md hover:bg-ps-muted bg-white">
             Cancel
           </button>
           {/* The shared button holds a synchronous guard from the click until the promise settles, so a second click in the same moment is

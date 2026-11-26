@@ -20,7 +20,7 @@ from core.permissions import rbac
 from models.common import api_response
 from models.fy import FYLabel
 from models.sales_cycle import (
-    ChallanReturnIn, DeliveryChallanIn, DeliveryChallanUpdateIn, QuotationIn, QuotationUpdateIn,
+    ChallanLotRetractIn, ChallanReturnIn, DeliveryChallanIn, DeliveryChallanUpdateIn, QuotationIn, QuotationUpdateIn,
     SalesOrderIn, SalesOrderUpdateIn,
 )
 from domain.gst import delivery_challan as dc
@@ -344,6 +344,33 @@ def record_challan_return(
     log_event(firm_id or "", "delivery_challan_return", str(row.get("id") or ""),
               "create", actor_id=current_user.get("auth_user_id"),
               actor_email=current_user.get("email"), new_data=row)
+    return api_response(True, row)
+
+
+@router.post("/challans/{challan_id}/returns/{lot_id}/retract")
+def retract_challan_return(
+    challan_id: str,
+    lot_id: str,
+    payload: ChallanLotRetractIn,
+    current_user: dict = Depends(rbac("invoice", "write")),
+):
+    """Take back a lot recorded on FORM GST ITC-04 by mistake (POST-A-418).
+
+    A soft delete: the row stays, with the day, the person and the reason. The lot stops counting everywhere (the statement, the room a line has left, the challan's received-back day, the order),
+    a challan the lots had marked received back goes back to issued with its s.143 clock running, and a challan whose every lot is retracted can be cancelled. It is not refused once the period's
+    ITC-04 is filed, because the product records no ITC-04 filing: the statement is prepared here and furnished on the portal by the principal, so a retraction after furnishing must be
+    followed by a correction on the portal, and the screen says so. # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    assert_client_access(current_user, payload.client_id)
+    if _mock():
+        return api_response(True, {"id": lot_id, "challan_id": challan_id})
+    from services import itc_04_service
+    from services.audit_service import log_event
+    firm_id = current_user.get("firm_id")
+    svc.row_of_client(_db(), "delivery_challans", firm_id, challan_id, payload.client_id, "delivery challan")
+    row = itc_04_service.retract_lot(_db(), firm_id, payload.client_id, challan_id, lot_id, payload.reason, current_user.get("id"))
+    log_event(firm_id or "", "delivery_challan_return", lot_id, "update", actor_id=current_user.get("auth_user_id"),
+              actor_email=current_user.get("email"), new_data={"id": lot_id, "challan_id": challan_id, "retracted": True, "reason": payload.reason})
     return api_response(True, row)
 
 

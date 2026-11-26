@@ -98,7 +98,7 @@ test("the action is offered only on an approved return", () => {
   // server refuses the transition. A control that exists to be told no is the
   // dead-control fault this codebase keeps removing.
   const marks = [...ui.matchAll(
-    /\{r\.status === "ca_approved" && \([^]{0,400}?setFilingRow\(\{/g)];
+    /\{r\.status === "ca_approved" && mayApprove && \([^]{0,400}?setFilingRow\(\{/g)];
   assert.equal(marks.length, 2, "both tabs must gate it on ca_approved");
   // And never offered on a draft or a return already recorded as filed.
   assert.doesNotMatch(ui, /\{r\.status === "draft"[^]{0,400}?setFilingRow\(\{/);

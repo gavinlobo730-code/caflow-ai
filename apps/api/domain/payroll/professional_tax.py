@@ -95,8 +95,9 @@ def classify_for_employee(pt_applicable, state: str | None) -> PTResult:
     It is the wrong answer once the CA has ticked `pt_applicable` (PAY-05).
     That tick says this employee owes professional tax; leaving the state blank
     then means nothing is withheld, month after month, with no gap raised and
-    nothing on the payslip to show it — and Article 276 makes the EMPLOYER
-    liable for what was not deducted. A blank state beside a tick is the same
+    nothing on the payslip to show it (who is liable for what was not deducted
+    is each state's own Act, not read here: the owner's list, S9). A blank state
+    beside a tick is the same
     class of silence the module was written to end: a zero that means "not
     computed" wearing the face of a zero that means "nothing due".
 
@@ -114,8 +115,8 @@ def classify_for_employee(pt_applicable, state: str | None) -> PTResult:
             0, modelled=False,
             note=("Professional tax is marked as applying to this employee, but no "
                   "state is recorded — so nothing is withheld and nothing can be. "
-                  "Professional tax is levied by the STATE (Article 276), so which "
-                  "one decides both the slab and whether anything is due at all. "
+                  "Professional tax is set by each STATE, so which one decides both "
+                  "the slab and whether anything is due at all. "
                   "Set the employee's professional tax state, or untick it."))
     return classify_state(state)
 
@@ -143,11 +144,11 @@ def classify_state(state: str | None) -> PTResult:
 
     if code in LEVYING_STATES:
         return PTResult(0, modelled=False, note=(
-            f"{LEVYING_STATES[code]} levies professional tax and its slabs are not "
-            f"modelled here, so NOTHING has been deducted. Article 276 makes the "
-            f"employer liable to deduct and deposit it, so this is a shortfall to "
-            f"settle, not an absence of liability. Verify the current slabs against "
-            f"the state notification and add them."))
+            f"{LEVYING_STATES[code]} is listed here as levying professional tax and "
+            f"its slabs are not built in, so NOTHING has been deducted. That is a gap "
+            f"in this run, not a finding that nothing is due. Check the state's "
+            f"current notification and record its slabs in Settings, under Tax and "
+            f"statutory values."))
 
     return PTResult(0, modelled=False, note=(
         f"State code {code!r} is not recognised, so it cannot be told apart from a "

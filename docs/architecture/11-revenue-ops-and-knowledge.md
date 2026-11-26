@@ -41,8 +41,10 @@ Recorded as decisions, because they were the owner's and the code follows them.
   sales engine in the practice's own books (`client_sales_invoices`, `receipts`, the
   general ledger). The legacy `fee_engagements`, `fee_invoices` and `fee_receipts` stay
   readable and unmigrated, and **no new feature extends them**
-  (the rule at the foot of `docs/REVENUE_OPS_BRIDGE.md`). Which engine finally survives is
-  a separate, open decision (POST-B-193).
+  (the rule at the foot of `docs/REVENUE_OPS_BRIDGE.md`). Which engine finally survives was
+  a separate decision (POST-B-193), **taken by the owner on 20 November 2026: the sales
+  engine in the practice's own books.** The earlier screens are a read-only record since
+  POST-A-532 (§2, "The earlier fee bills are a record").
 - **Option A: the practice client stays Partner-only.** The accounting, reporting and
   banking engines are client-agnostic and never branch on `is_internal`; the restriction
   is an access overlay. The guiding sentence is "the practice is just another client to
@@ -56,7 +58,8 @@ Recorded as decisions, because they were the owner's and the code follows them.
 - **Navigation (Batch 7).** The Practice rail entry is Partner-only and **absent, not
   greyed**, for everybody else; the Knowledge rail entry is for all staff; a client's
   articles and instructions live in the client workspace; the legacy `/billing` screen
-  is kept as it was and is titled Fee Billing.
+  is kept as it was and is titled Fee Billing. (Since POST-A-532 it is titled "Earlier fee
+  bills", takes no write, and is on the My practice menu and not on Accounting's.)
 
 ## 2. The internal practice client
 
@@ -76,16 +79,133 @@ type is recorded as `Partnership` because sign-up does not ask. The practice cli
 client list, so no client screen reaches it, and the Partner sets the firm's real legal form on the Practice
 screen through `PATCH /api/practice/identity` (which `GET /api/practice` serves the stored value and the
 accepted list for). Sign-up still does not ask.
-There is also a SQL function `provision_internal_client()` (migration 073) that the
-application does not call; migration 086 revoked it from every role but the service
-role. It duplicates the Python path and the two must be kept in step.
+There used to be a SQL function `provision_internal_client()` (migration 073) that the
+application never called; migration 086 revoked it from every role but the service
+role, and by 16 November 2026 it had drifted from the Python path (no state, no state
+code, no race handling). Migration 610 dropped it (POST-A-169), so the Python path is
+the only provisioner, and `tests/test_610_the_sql_internal_client_provisioner_nothing_calls_is_dropped_pg.py`
+fails a caller added later.
 
 **It includes** the practice's own books: accounting, GST, TDS, documents, reports and
-billing. The firm-wide chart of accounts is shared, so the practice posts through the
+billing, and since 21 November 2026 the payroll of the firm's own staff (G4). The firm-wide chart of accounts is shared, so the practice posts through the
 same kernel and the same chart as everybody.
 
-**It excludes** payroll and HR (G4), every client population (G2), every non-Partner
+**It excludes** every client population (G2), every non-Partner
 (G1), and staff assignment: `apps/api/routers/assignments.py` refuses to assign it.
+
+### My practice: one workspace, on addresses that already existed (POST-A-532, first part)
+
+The owner, walking the live Test Firm on 20 November 2026, could not find where a firm keeps
+its own books. They were one small button ("Practice books") on the Accounting overview, and
+the practice's other screens sat on a separate menu in the firm's navy frame, as though they
+were about something else. The owner asked for one place, with everything a client's
+workspace has and more.
+
+**It is a frame, and no address is new.** The live site has 99 of its 100 dynamic address
+rules in use, so My practice is the client workspace's own shell drawn over two sets of
+addresses that existed: the practice's own client workspace (`/clients/<its id>/...`, which a
+Partner could always open) and the fixed `/practice/...` screens.
+`apps/web/lib/workspace/practiceWorkspace.ts` is what both halves ask: which fixed addresses
+are My practice (`isPracticePath`), which screens are about running the practice
+(`PRACTICE_SECTIONS`, held equal to the pages under `/practice` so a screen added there is not
+left without a tile), and which client sections are NOT offered for the practice, each with
+its reason (`NOT_FOR_THE_PRACTICE`: the client portal, lifecycle, health because of G2, and a
+client's knowledge and instructions).
+
+- **The bar has two faces and is one component** (`apps/web/components/shell/ClientTopBar.tsx`).
+  Inside `/clients/<id>/...` the open client's own row says it is the practice (`is_internal`,
+  which only a Partner can read at all, G1); on a fixed `/practice/...` address the shell is
+  told by the address. Either way the bar reads "My practice", leads out to the dashboard and
+  not to the client list, and offers no client switcher and no health badge (the practice is
+  in neither population, G2). It is not a second bar because the menu's backdrop is a
+  hand-built full-window layer, and the overlay guard refuses a second copy of one.
+- **The grid is three groups** (`apps/web/components/client/PracticeModuleGrid.tsx`): "Your
+  firm's books", the client workspace's sections opened on the practice's own client;
+  "Running the practice", the fixed screens; and "People". On a fixed address the practice's
+  client id is the server's to give (`GET /api/practice`, read by
+  `apps/web/lib/workspace/usePracticeClient.ts`), and four answers are kept apart: ready, not
+  set up (only the server's own "not provisioned"), unavailable (a read that failed or was
+  refused) and still reading. A practice that is not set up is pointed at Practice home; a
+  failed read says so; neither draws a tile that leads nowhere.
+- **People is one list of screens with two doors** (the owner's decision of 21-11-2026;
+  `apps/web/lib/workspace/practiceWorkspace.ts`). Team, Assignments, Approvals, Workload and
+  Login History keep their addresses. Somebody who may open My practice (a Partner) finds
+  them in its People group and is drawn them in the My practice frame, and has no separate
+  Team entry on the firm menu (`apps/web/lib/workspace/outerMenu.ts`); a Manager, who runs
+  the team day to day and has no My practice, reaches the same screens from the firm menu's
+  Team entry, in the firm's frame. The first build pointed a Partner out to the firm's menus
+  instead, which the owner met as being thrown out of My practice. Time Tracking is in Work,
+  where every member of staff records hours, and is not listed here.
+- **The firm menu says "My practice"** where it said "Practice" (same entry, same route, a
+  Partner alone), and its panel opens with "Your firm's books".
+- **Driven in a browser** (`apps/web/scripts/drive/weekly/myPractice.mjs`, four scenarios in
+  the weekly set): a fixed practice screen in the frame with its grid; the practice's own
+  workspace; not set up and unread; an ordinary client untouched.
+
+**The earlier fee bills are a record (POST-A-532, third part; POST-B-193 decided).** The
+owner decided on 20 November 2026 that the firm's fee billing lives in My practice on the
+sales engine, that the old Fee Billing screen leaves the menu and that its rows stay
+readable (the live database held ten fee invoices and two receipts, all in one test firm,
+and nothing was moved).
+
+- `apps/web/app/billing/page.tsx` is titled "Earlier fee bills" and offers no write: one
+  constant at the top of the file turns every control that creates, issues, cancels or
+  records a receipt off, whatever the caller's permission, and a notice at the head of the
+  screen says where fees are billed now (Billing Schedules) and that these rows are kept as
+  they were. `apps/web/app/accounting/receivables/page.tsx` is "Earlier fee receivables".
+- Both left the Accounting menu and the Accounting overview and are the last two entries
+  of the My practice menu and of its grid (`apps/web/components/panels/PracticePanel.tsx`,
+  `apps/web/lib/workspace/practiceWorkspace.ts`), and both addresses wear the My practice
+  frame. `apps/web/lib/workspace/routeOwnership.ts` says they belong to the practice.
+- **What is not done, and it is the rest of POST-B-193.** The server's earlier fee routes
+  still accept a Partner's write made by hand; nothing in the product reaches them. Lead
+  conversion still creates a `fee_engagements` row and offers no billing schedule, and the
+  time-rate and compliance readers of `fee_engagements` are as they were. Which screen reads
+  which engine is §9's table.
+
+**Profitability counts the fees billed from the firm's own books (POST-B-193, the readers'
+first repoint, 21 November 2026).** Profitability, fee concentration and realization (one
+screen, `apps/web/app/practice/profitability/page.tsx`) read the earlier fee tables alone, so
+a fee billed from My practice was income in the firm's ledger and nothing on the screen that
+judges which client pays.
+
+- `apps/api/services/practice_fee_revenue_service.py` reads both places for a window: the
+  earlier fee bills by the read every revenue figure already used, and the practice's own
+  books as ONE answer per customer from `public.report_party_totals` (migrations 745 and
+  766), asked for the practice's own client. That is the firm Reports page's own function, so
+  "what was billed, before GST, net of credit and debit notes" has one definition, and what
+  crosses the wire is a line per customer and not a row per invoice.
+- `apps/api/domain/practice/fee_sources.py` is the rule. A customer in the practice's books
+  is a client only through its link (G3, `client_firm_customer_links`); a customer with no
+  link is not a client of the firm, so its total is in no client's revenue and is NAMED
+  beside the figures. A client's net can be below nil in a window that holds a credit note
+  and not its invoice, and is carried as it is: profitability draws no margin on it and
+  concentration leaves it out of the shares.
+- Each of the three answers says where its revenue was read from, in the server's words at
+  the end of the sentences the screen already draws, and as figures in `revenue_sources`.
+  The rupee split is made from the rows AFTER the caller's own narrowing, so a member
+  assigned to some clients is told the split of their own book; the unlinked figure belongs
+  to no client and is told to a firm-wide caller only. A firm with no practice client is
+  told that only the earlier bills are counted.
+- A fee bill in the firm's own books names no engagement (a billing schedule is not a fee
+  engagement), so realization, which is judged per engagement, names those fees beside its
+  ratio and leaves them out of it, as it always did for an invoice that names no engagement.
+- **G1 is not widened.** The three routes were already gated on the practice's fee economics
+  (a Partner's permission) and nothing of the practice's books leaves the service but a
+  total per client; the books themselves stay the Partner's alone.
+- Held by `test_the_practices_fee_revenue_is_read_from_both_places.py`, including the rule
+  that no analytics route reads the earlier fee tables directly any more.
+
+**What it does not do.** A fee entered in BOTH places would be counted twice, and the screen
+says so; nothing reconciles the two. Revenue from the practice's books is the window's net
+per client, so the engagement view and realization cannot attribute it to an engagement.
+
+**What the first part does not do.** Payroll for the firm's own staff came with the second part
+(G4 below). A non-Partner who types a `/practice/...` address is drawn the frame for
+the moment before the page's own guard sends them away, with a books group that says it
+could not be read; nothing of the practice is disclosed, because the server refuses the read.
+The first paint of the practice's own workspace shows the client bar until the client row
+has been read, then the My practice bar.
 
 ## 3. The four guardrails
 
@@ -112,10 +232,12 @@ non-Partner is told 404, never 403, so its existence is not disclosed.*
 - **The id-keyed routes** are therefore outside that guard and carry their own check.
   `POST /api/sales-invoices/{invoice_id}/issue` resolves the invoice's client and calls
   `assert_client_access`; the internal client cannot be assigned, so a non-Partner is
-  refused there (a Manager by the 404 of that scope check). That is the whole gate: the
-  route holds no explicit Partner assertion, unlike
-  `POST /api/sales-invoices/{invoice_id}/repost-journal`, which does. The database layer
-  below holds either way.
+  refused there (a Manager by the 404 of that scope check). The route holds no explicit
+  Partner assertion, unlike `POST /api/sales-invoices/{invoice_id}/repost-journal`, which
+  does. Since POST-A-433 the scope check asks G1 itself: `core/authz.assigned_client_ids`
+  and `is_client_assigned` drop an assignment that names the practice, so even a row the
+  service role wrote grants a non-Partner nothing, on every route that asks
+  `can_access_client` or `effective_client_ids`. The database layer below holds either way.
 - **Resources.** `practice` and `billing` are Partner-only in
   `apps/api/core/permissions.py`. `rbac("billing", "read")` or `rbac("billing", "write")`
   guards every `/api/billing` route, and `rbac("practice", "read")` or
@@ -159,8 +281,12 @@ non-Partner is told 404, never 403, so its existence is not disclosed.*
   `apps/web/scripts/a-client-picker-leaves-out-the-internal-client.test.ts`.
 - The view `clients_external` (migration 073, `security_invoker`) was meant to be the
   single source. **Nothing reads it**; the repository default and the per-query filters
-  are what enforce G2, and `docs/REVENUE_OPS_BRIDGE.md` B2-2 is right that a new direct
-  `clients` query has to remember the filter.
+  are what enforce G2. `docs/REVENUE_OPS_BRIDGE.md` B2-2 said a new direct `clients`
+  query has to remember the filter; since 16 November 2026 (POST-A-169)
+  `apps/api/tests/test_a_read_of_the_clients_table_leaves_the_practice_out_or_says_why.py`
+  makes it: every API read of `clients` that is not a lookup by id asks `is_internal` or is
+  listed with why the practice is in its answer, and two reads that count or list it among
+  the clients (the hub worklist's count and rows, the risk register) are listed as open.
 
 ### G3 — One linked customer per practice client
 
@@ -182,14 +308,105 @@ non-Partner is told 404, never 403, so its existence is not disclosed.*
   invoices: `portal_data_service.resolve_fee_scope()`, with the policy repair of
   migration 442 (`test_r442_portal_client_reads_own_fee_scope_pg.py`).
 
-### G4 — Module cap: no payroll or HR
+### G4 — The practice's own payroll is the Partner's alone
 
-*The practice gets accounting, GST, TDS, documents, reports and billing, and no payroll.*
+*The firm runs its own staff's payroll on the practice client, and only a Partner may.*
 
-- `internal_client_service.assert_not_internal_for_payroll()` is called at the payroll
-  write doors that take a client id (`apps/api/routers/payroll.py`); the answer is 403
-  with a sentence. Migration 074 also puts the Partner-only policy on the payroll tables
-  that carry a `client_id`. Held by `test_batch2_internal_client.py`.
+**This guardrail was a module cap until 21 November 2026**: "accounting, GST, TDS, documents,
+reports and billing, and no payroll", held by a function that refused payroll for the
+practice to everybody, the Partner included, with a 403. On 20 November the owner decided
+the firm's own staff payroll runs in My practice, with everything else a client's workspace
+has (POST-A-532). The cap is lifted, and what stands at the payroll doors is G1.
+
+- `internal_client_service.assert_practice_payroll_is_the_partners()` is called at every
+  payroll door that asks whether payroll is switched on for a client, and at the door that
+  switches it on (`apps/api/routers/payroll.py`), BEFORE the switch is asked, so a
+  non-Partner is not told whether the practice runs a payroll. The answer is G1's: 404, in
+  the words used for a client that does not exist.
+- It is the third of three layers, and it is asked by name because of what is behind these
+  doors. Payroll's own permission is Manager and above, and the rows say what each colleague
+  is paid. The router guard (`require_client_access`) asks G1 of any request that names a
+  client; the assignment scope refuses a non-Partner the practice on every id-keyed route
+  (a run, a payslip, an employee by id), because the practice cannot be assigned and an
+  assignment row that names it grants nothing (G1, POST-A-433). Before this change nothing
+  of the practice was ever stored behind these doors, so nothing had tried them against it.
+- The database: migration 074 put the Partner-only policy on the payroll tables that carry
+  a `client_id`, and since POST-A-339 a signed-in session holds no privilege on any payroll
+  table at all, so the API is the control and the three layers above are what it is.
+- A member of the firm's own staff reads their own payslip through the employee portal, as
+  an employee of any client does. That door is keyed on the person's own employee row
+  (`apps/api/routers/portal_employee.py`), not on the client, so G1 does not stand in it
+  and does not need to: it shows a person their own pay and nobody else's.
+- **A payroll list across clients leaves the practice's own staff out, for everybody (G2).**
+  The roster with no client named, the runs, the attendance and declaration boards, the hub
+  and the exceptions answered "every employee the caller may see", which for a Partner is
+  the whole firm. Once the practice could have employees, that put a Partner's own
+  colleagues among their clients' employees, under a client name the screens cannot show
+  (every client picker leaves the practice out). Each of those lists now goes through one
+  helper in `apps/api/routers/payroll.py`, the assignment narrowing and then G2, and a test
+  fails a list that narrows by assignment alone. The practice's payroll is reached by NAMING
+  the practice, from My practice.
+- **Three lists have a door for the practice, and only for a Partner who names it.** Each is
+  the only place one thing about the firm's own staff can be read: the attendance sheet
+  (`GET /api/payroll/attendance-board`, the one editor of attendance), the leave ledger
+  (`GET /api/payroll/leave-ledger`, the only list the Leave tab draws) and the line a
+  client's Payroll page reads to say whether payroll is switched on
+  (`GET /api/payroll/client-states`). Each takes the client its screen was opened for and
+  adds that one client's rows when it is the practice, after the scope check and the
+  practice check; the attendance sheet says so in `practice_client_id`, so the screen can
+  name it "My practice". Any OTHER id is ignored there and never refused: on these lists it
+  only preselects a picker, and a stale id in a bookmarked address must not turn the whole
+  sheet into a 404.
+- **What an independent review of this change found, all fixed in the same pull request.**
+  (1) `GET /api/payroll/reports/year-end` with no client named was not narrowed AT ALL: its
+  service reads every run of the firm with the privileged client, so anybody with payroll
+  read (a Manager assigned to nothing) was sent the name, PAN, gross, net and TDS of every
+  employee of every client. The hole was older than this change; this change would have put
+  the firm's own salaries behind it. The service now cannot be called without being told
+  which runs may be answered for, and the route passes the same narrowing as every other
+  list. (2) The practice's own Payroll page said "Payroll is off" while payroll was on,
+  because the list it reads leaves the practice out. (3) The Leave tab could not show the
+  firm's own staff. (4) The firm hub's Payroll tile counted the practice's runs, which its
+  own list leaves out. (5) The first test of "every list across clients" failed only a call
+  spelled one way, so a list with no narrowing passed it; the rule is now over the ROUTE: a
+  payroll route that can be called without naming a client, a run or an employee must go
+  through the narrowing helper, or be on a short named list with the reason it lists nobody.
+- **A member of staff is two records, and one column says they are one person (POST-A-540,
+  22-11-2026).** A sign-in on Team is a row of `users`; an employee the firm pays here is a
+  row of `payroll_employees` on the practice client. `payroll_employees.staff_user_id`
+  (migration 776) links them. A LINK, NEVER A MERGE: neither record is written from the
+  other, a name may be spelt differently on each (the list says so and changes neither),
+  and removing the link removes neither. The column is on the payroll side on purpose: the
+  Team list is a Manager's too and never carries it, so only somebody who may read the
+  firm's own payroll can read who is on it. Three rules, each said in a sentence by
+  `apps/api/services/practice_staff_link_service.py` before anything is written and each
+  also held by the database: the member is this firm's, the employee is in the firm's OWN
+  payroll (a client's employee is nobody on the Team screen), and one member is at most one
+  employee. Two routes: `GET /api/payroll/practice-staff` (the roster with its links and
+  nothing of pay, a Partner's alone and 404 to anybody else) and
+  `PUT /api/payroll/employees/{employee_id}/staff-link` (write or clear one link). An
+  employee can also be created linked (`POST /api/payroll/employees` with the member named).
+  One panel shows both records side by side, on Team and on the practice's Payroll page, and
+  offers each from the other. It is NOT the employee portal's sign-in
+  (`payroll_employees.auth_user_id`, a different principal with no `users` row); whether one
+  sign-in may be both is open (POST-A-549). Held by
+  `test_a_team_member_and_their_payroll_record_are_linked_and_never_merged.py` and
+  `test_776_an_employee_of_the_firms_own_payroll_names_the_team_member_they_are_pg.py`.
+- Held by `test_the_practices_own_payroll_is_the_partners_alone.py` (the rule over every
+  door; a door driven as a Manager and as a Partner with the other two layers taken away;
+  the lists across clients; the attendance sheet named and not named) and
+  `test_batch2_internal_client.py`.
+
+**Not done, and worth knowing before a firm relies on it.** The practice is left out of
+every client population (G2), and the compliance calendar is one: the monthly deposit and
+quarterly return dates of the firm's OWN payroll are not put on the calendar. The firm-level
+Payroll screens are about the firm's clients, so the firm's own payroll is opened from My
+practice and not from them; of those screens only Attendance has been given a way to show
+the practice (when opened from the practice's own Payroll page, its Leave tab included), and
+the firm-level Statutory, Declarations and Reports screens do not list it. The year-end
+report and the list of years read their runs without paging, as they did before. Whether an invitation to the employee portal accepts the email
+of a colleague who also signs in as staff was not tried. None of this was run against the
+live site.
 
 ## 4. The billing lifecycle: schedule, draft, issue, receipt
 
@@ -303,8 +520,24 @@ not zero**. The answer is stored on the entry so a later rate change does not re
 logged work. `GET /api/billing/unbilled-work` aggregates in SQL (`unbilled_time_summary`)
 and lists work with no rate apart from work worth a stated amount.
 
-**Nothing bills time yet.** `billing_service.mark_time_entries_billed()` is the intended
-way to set the link and has no production caller; a schedule bills a fixed fee (POST-B-194).
+**Time is billed through the sales engine** (POST-B-194, 21-11-2026). A Partner picks a
+client's unbilled entries (`GET /api/billing/unbilled-work/entries`), sees the lines a draft
+would carry (`POST /api/billing/time-invoices/preview`) and makes ONE draft sales invoice in
+the practice's own books (`POST /api/billing/time-invoices`). `time_billing_service.create_draft()`
+resolves the client's customer the way a schedule does (`billing_service.ensure_customer_link()`),
+creates the draft with the sales engine's own create function under SAC 998211, and then marks
+the entries in a claim that takes only entries still unbilled; if the claim took fewer than
+were asked for, the draft is deleted (which releases what was taken: the link is `ON DELETE
+SET NULL`) and the request is refused, so an hour is billed once. A line is the SUM of its
+entries' worths at a quantity of one, with the hours in its words, so the draft adds up to
+what the Unbilled Work panel showed; a line written as hours times a rate would not (a
+quantity holds three decimals). The rate of GST and the practice's service are stated on the
+request; the route holds no default. Deleting the draft releases its time (the database does
+it), cancelling an issued time invoice releases it too (`time_billing_service.release_for_invoice()`,
+called by the cancel route), and time on an invoice cannot be deleted or re-priced. The legacy
+`from-time` route on the earlier fee tables, which no screen called, is removed. **Not done:**
+a signed-in session can still write the link column straight to the database (the table's
+grants are the firm's; POST-A-546).
 
 ## 7. The knowledge base
 
@@ -395,14 +628,14 @@ None of these is decided here.
 | Global search may include articles | it does not | POST-B-287 |
 | Versions inherit the article's visibility, immutable | the same, by migration 501 | closed |
 | `POST /collections/send-reminders` | gone; `flag-followups` sends nothing (§5) | POST-B-196 |
-| Practice context-switches into the internal client's shell | Practice is its own shell | closed |
+| Practice context-switches into the internal client's shell | it does, since POST-A-532: My practice is the client workspace's shell, on the practice's own client and on the fixed `/practice/...` screens (§2) | closed |
 | Frontend roles Partner, Manager, Article, Staff | the five canonical roles (Module 9.0) | closed |
 | Rupee-to-paise conversion in the schedule form | goes through `lib/money/rupeeInput.ts` | closed |
 | `billing_schedules.service_id` has no foreign key | mandatory and keyed (migration 206) | closed |
 | Practice Billing and AR link to the invoices | they do not yet | PRE-A-018 |
-| Fee billing: one engine | two live: `fee_*` and the sales engine | POST-B-193 |
+| Fee billing: one engine | decided 20-11-2026: the sales engine survives. The `fee_*` screens are a read-only record on My practice (§2); profitability, concentration and realization read both places (§2); the server's `fee_*` routes and the readers of `fee_engagements` remain | POST-B-193 |
 | Time is billed | nothing bills it | POST-B-194 |
-| Bridge residue: two rate columns, two provisioners | both remain | POST-A-169 |
+| Bridge residue: two rate columns, two provisioners | both columns remain, read by one rule (`time_rate.entry_rate`); one provisioner (migration 610) | closed (POST-A-169) |
 
 **Observed on 8 October 2026 while writing this, in no ledger line.** Four of the six were fixed on 18 October 2026
 (POST-A-215, POST-A-216): `billing_service.generate_for_schedule()` now advances a due schedule whose period already

@@ -12,6 +12,7 @@ import { MarkFiledModal } from "@/components/compliance/MarkFiledModal";
 import { describeFilingOutcome } from "@/lib/compliance/filingOutcome";
 import { PageHeader } from "@/components/ui/page-header";
 import { formatDate, todayIstISO } from "@/lib/dates/format";
+import { PagePlaceholder, pageFrameClass } from "@/components/ui/page-frame";
 // Compliance lifecycle (mirrors the server-side VALID_TRANSITIONS — presentation
 // only; the backend is the source of truth and rejects invalid transitions).
 const NEXT_STATUS: Record<string, string[]> = {
@@ -23,6 +24,8 @@ const NEXT_STATUS: Record<string, string[]> = {
   "Filed": ["Completed"],
   "Completed": [],
   "Overdue": ["In Progress", "Awaiting Documents"],
+  // Reached and left only with a written reason, from Deadlines or the client's Compliance tab (POST-A-267, item 4).
+  "Not Required": [],
 };
 const STATUS_BADGE: Record<string, string> = {
   "Not Started": "bg-gray-100 text-gray-600",
@@ -33,6 +36,7 @@ const STATUS_BADGE: Record<string, string> = {
   "Filed": "bg-state-ready-surface text-state-ready",
   "Completed": "bg-state-ready-surface text-state-ready",
   "Overdue": "bg-state-problem-surface text-state-problem",
+  "Not Required": "bg-ps-muted text-ps-label",
 };
 
 interface Obligation {
@@ -78,7 +82,7 @@ interface Dashboard {
 /** Whether a queue row is late: the server's flag, with the old reading only for the window where this page is deployed ahead of the
  *  backend that sends it. */
 function isLate(o: Obligation, today: string): boolean {
-  return o.overdue ?? (o.status !== "Filed" && o.status !== "Completed" && o.due_date < today);
+  return o.overdue ?? (o.status !== "Filed" && o.status !== "Completed" && o.status !== "Not Required" && o.due_date < today);
 }
 
 function ComplianceDashboard() {
@@ -152,12 +156,12 @@ function ComplianceDashboard() {
     [dash]
   );
 
-  if (loading) return <div className="p-8 text-sm text-gray-500">Loading compliance…</div>;
-  if (error) return <div className="p-8 text-sm text-red-600">{error}</div>;
+  if (loading) return <PagePlaceholder label="Loading the compliance workload" shape="dashboard" action={false} />;
+  if (error) return <div role="alert" className={pageFrameClass("data", "text-sm text-state-problem")}>{error}</div>;
 
   const s = dash?.summary;
   return (
-    <div className="p-6 max-w-6xl">
+    <div className={pageFrameClass("data")}>
       <PageHeader
         icon={<ShieldCheck size={18} className="text-brand" />}
         title="Compliance"

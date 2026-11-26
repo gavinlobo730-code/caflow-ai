@@ -1,5 +1,7 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { useState, useEffect } from "react";
 import {
@@ -17,7 +19,7 @@ import {
   Loader2,
 } from "lucide-react";
 import Link from "next/link";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton, LoadingRegion } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 import { formatDate, todayIstISO } from "@/lib/dates/format";
@@ -31,7 +33,7 @@ import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { readWindow } from "@/lib/lists/readWindow";
 import { LEAD_REGISTER_WINDOW_MAX } from "@/lib/lists/window";
-import { doingOf, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, fetchBounded, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 import { errorMessage } from "@/lib/api";
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -39,7 +41,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
   const { data: { session } } = await getSupabaseClient().auth.getSession();
   const token = session?.access_token ?? "";
   const doing = doingOf(opts?.method);
-  const res = await fetchPlain(`${API}${path}`, {
+  const res = await fetchBounded(`${API}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
@@ -360,7 +362,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (saving) return; // guard against duplicate submissions (double-click / Enter)
-    if (dates.first) { setErr(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setErr); return; }
     const feePaise = rupeesToPaise(form.estimatedMonthlyFeeRupees);
     if (feePaise === null) {
       setErr("Estimated monthly fee isn't an amount — enter rupees, like 15000 or 15000.50.");
@@ -400,21 +402,9 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand/60 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-ps-border">
-          <h2 className="text-base font-semibold text-ps-ink">
-            {initial ? "Edit Lead" : "Add Lead"}
-          </h2>
-          <button aria-label="Close"
-            onClick={onClose}
-            className="text-ps-hint hover:text-ps-label"
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+    // The shared dialog (POST-A-130): named, modal, Tab kept inside, focus given back. Its close is held while the lead is being saved.
+    <Modal title={initial ? "Edit Lead" : "Add Lead"} maxWidthClass="max-w-lg" onClose={() => { if (!saving) onClose(); }}>
+        <form onSubmit={handleSubmit} className="space-y-4">
           {/* Inline error — shown in-place so the user sees it without the modal closing */}
           {err && (
             <div
@@ -616,8 +606,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -810,18 +799,10 @@ function ConvertModal({ lead, onClose, onConverted }: ConvertModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand/60 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
-            <UserCheck size={18} className="text-green-700" />
-          </div>
-          <div>
-            <h2 className="text-base font-semibold text-ps-ink">Convert to Client</h2>
-            <p className="text-xs text-ps-label">{lead.name} · {lead.businessName}</p>
-          </div>
-        </div>
-
+    // The shared dialog (POST-A-130). Its close (Escape, a click beside it, its ×, Cancel) is held while the conversion is out: the
+    // hand-built one could be closed over it, and the client was then created with nothing on the screen to say so.
+    <Modal title="Convert to Client" maxWidthClass="max-w-md" note={<>{lead.name} · {lead.businessName}</>}
+      onClose={() => { if (!converting) onClose(); }}>
         {done ? (
           <div className="space-y-4">
             <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm text-green-700">
@@ -879,22 +860,22 @@ function ConvertModal({ lead, onClose, onConverted }: ConvertModalProps) {
             <div className="flex gap-3 pt-1">
               <button
                 onClick={onClose}
-                className="flex-1 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg transition-colors"
+                disabled={converting}
+                className="flex-1 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
-              <button
+              <Button variant="plain" size="none" spinner={false}
                 onClick={handleConvert}
                 disabled={converting}
                 className="flex-1 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50 transition-colors"
               >
                 {converting ? "Converting…" : "Convert to Client"}
-              </button>
+              </Button>
             </div>
           </>
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -1093,18 +1074,20 @@ export default function PipelinePage() {
 
       {/* Kanban board — skeleton columns while loading, real board otherwise */}
       {loading ? (
-        <div className="flex gap-4 overflow-x-auto pb-4">
-          {STAGES.map((stage) => (
-            <div key={stage} className="min-w-[280px] flex-none">
-              <Skeleton className="h-11 w-full rounded-xl" />
-              <div className="mt-3 space-y-3">
-                {[0, 1, 2].map((i) => (
-                  <Skeleton key={i} className="h-28 w-full rounded-xl" />
-                ))}
+        <LoadingRegion label="Loading the pipeline">
+          <div className="flex gap-4 overflow-x-auto pb-4">
+            {STAGES.map((stage) => (
+              <div key={stage} className="min-w-[280px] flex-none">
+                <Skeleton className="h-11 w-full rounded-xl" />
+                <div className="mt-3 space-y-3">
+                  {[0, 1, 2].map((i) => (
+                    <Skeleton key={i} className="h-28 w-full rounded-xl" />
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </LoadingRegion>
       ) : (
       <div role="region" aria-label="Sales pipeline by stage" tabIndex={0} className="flex gap-4 overflow-x-auto pb-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand">
         {STAGES.map((stage) => {

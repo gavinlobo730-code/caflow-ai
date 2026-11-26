@@ -32,6 +32,9 @@ import { ChevronDown, ChevronRight, History } from "lucide-react";
 import { api, type AuditEntry } from "@/lib/api";
 import { describeChanges } from "@/components/accounting/entryHistoryFields";
 import { formatIstLabelled } from "@/lib/dates/formatIst";
+import { LoadingRegion } from "@/components/ui/skeleton";
+import { usePermissions } from "@/lib/auth/AuthContext";
+import RequestAccess from "@/components/auth/RequestAccess";
 
 /** A line's audit row is keyed to its parent entry, so one request covers both. */
 export const JOURNAL_HISTORY_TYPES = "journal_entry,journal_line";
@@ -56,6 +59,12 @@ export default function EntryHistory({ entryId }: { entryId: string }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  // The history of one entry is the audit log asked about one row, and it is read on the audit log's own permission
+  // (`audit` `read`, POST-A-550). A person who does not hold it is told so, with a way to ask, and nothing is requested:
+  // this panel used to send the request for everybody and print the server's refusal in red on a page the person was
+  // otherwise allowed to use. Until the permissions are known nothing is withheld, as every gate here does.
+  const { can, resolved } = usePermissions();
+  const mayRead = !resolved || can("audit", "read");
 
   const load = useCallback(async (next?: string) => {
     setLoading(true);
@@ -69,8 +78,7 @@ export default function EntryHistory({ entryId }: { entryId: string }) {
       setCursor(res.data?.next_cursor ?? null);
       setLoaded(true);
     } catch (e) {
-      // Partner-only: anyone else gets a 403, and that is not an error to
-      // shout about on a page they are otherwise allowed to use.
+      // Reached only by a person the screen believes may read the log; a refusal here is the server disagreeing, and is said.
       setError(e instanceof Error ? e.message : "Could not read the history");
     } finally {
       setLoading(false);
@@ -80,8 +88,8 @@ export default function EntryHistory({ entryId }: { entryId: string }) {
   // Fetched only when opened. A history panel nobody expands should cost
   // nothing — the entry page's own load is what a CA is waiting for.
   useEffect(() => {
-    if (open && !loaded && !loading) void load();
-  }, [open, loaded, loading, load]);
+    if (open && mayRead && !loaded && !loading) void load();
+  }, [open, mayRead, loaded, loading, load]);
 
   return (
     <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
@@ -94,26 +102,35 @@ export default function EntryHistory({ entryId }: { entryId: string }) {
         <History className="w-4 h-4 text-ps-label" />
         <span className="text-sm font-semibold text-ps-ink">History</span>
         <span className="text-xs text-ps-hint">
-          every change to this entry and its lines — Partner only
+          every change to this entry and its lines
         </span>
       </button>
 
       {open && (
         <div className="border-t border-ps-border">
-          {loading && entries.length === 0 && (
-            <p className="px-5 py-6 text-xs text-ps-hint">Reading the log…</p>
+          {!mayRead && (
+            <div role="status" data-history-not-in-access className="px-5 py-4">
+              <p className="text-xs text-ps-body">
+                The history of changes is part of the audit log, which is not part of your access. Your Partner decides who can
+                read it; if you need to, ask below.
+              </p>
+              <RequestAccess resource="audit" action="read" askedFrom="The history of a journal entry" />
+            </div>
           )}
-          {error && (
-            <p className="px-5 py-6 text-xs text-red-600">{error}</p>
+          {mayRead && loading && entries.length === 0 && (
+            <LoadingRegion label="Reading the edit log" className="px-5 py-6 text-xs text-ps-hint">Reading the log…</LoadingRegion>
           )}
-          {!loading && !error && loaded && entries.length === 0 && (
+          {mayRead && error && (
+            <p role="alert" className="px-5 py-6 text-xs text-state-problem">{error}</p>
+          )}
+          {mayRead && !loading && !error && loaded && entries.length === 0 && (
             <p className="px-5 py-6 text-xs text-ps-hint">
               Nothing has changed since this entry was posted. A posted entry is
               immutable in this system — a correction is an append-only reversal,
               which appears as its own entry rather than as a change to this one.
             </p>
           )}
-          {entries.length > 0 && (
+          {mayRead && entries.length > 0 && (
             <ul className="divide-y divide-ps-border">
               {entries.map((e) => {
                 const changes = describeChanges(e);

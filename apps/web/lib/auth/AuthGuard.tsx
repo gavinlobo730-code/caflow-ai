@@ -7,7 +7,7 @@ import { LogoIcon } from "@/components/LogoIcon";
 import { isPublicPath } from "./public-paths";
 import { isPortalClientAccount } from "@/lib/portal/clientAccess";
 import {
-  mayRenderProtected, shouldBounceFromSignup, shouldBounceFromLogin,
+  mayRenderProtected, shouldBounceFromSignup, shouldBounceFromLogin, isSignupFormPath,
   noFirmRedirectTarget, type MfaPending,
 } from "./guardDecision";
 
@@ -76,7 +76,8 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const onLogin = pathname === "/login" || pathname.startsWith("/login/");
-  const onSignup = pathname === "/signup" || pathname.startsWith("/signup/");
+  // The sign-up FORM, not the page a sign-up link opens: that one tells a signed-in member what the link is for (POST-A-485).
+  const onSignup = isSignupFormPath(pathname);
 
   useEffect(() => {
     if (loading) return;

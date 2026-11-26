@@ -38,12 +38,17 @@
 #     runs under three zones, and 157 of the others); the tree this was written on has 1,048 (891 and 157). On this
 #     runner a date run costs about 4.9 s and any other run about 1.7 s (read off the step times of the nights of
 #     4 and 5 November: 216 runs took 9 min 18 s and 342 took 19 min 38 s), so the whole drive is about 77 minutes.
-#     THE ALLOWANCE IS THE OWNER'S MONEY AND IS NOT RAISED. A NIGHT drives ONE zone of the three and ONE third of
-#     the date group, taken in turn by the INDIAN day (`--zone rotate`), so over nine nights every zone sees every
+#     THE ALLOWANCE IS THE OWNER'S MONEY AND IS NOT RAISED. A NIGHT drives ONE zone of the three and ONE quarter of
+#     the date group, taken in turn by the INDIAN day (`--zone rotate`), so over twelve nights every zone sees every
 #     date scenario once and none is left out; the other groups run in full. That was 315 or 320 runs and about 18
 #     minutes of drive when the group was cut in two. On 7 November 2026 (POST-A-399) the drive held 583 scenarios and the
 #     worst night was estimated at 21.1 minutes against the 21 that its deadline leaves, so the group is cut in three and the
-#     worst night is about 16.5 (the allowance is still not raised). The rotation is keyed on the Indian day because GitHub runs this job hours after its 02:00
+#     worst night is about 16.5 (the allowance is still not raised). On 17 November 2026 (POST-A-386) 25 more date rows put the worst night at 21.3, so the
+#     group is cut in four (the allowance is still not raised), and the whole matrix asked for by name has a deadline of 100 minutes, inside its unchanged cap of 120.
+#     On 22 November 2026 a night was STOPPED AT ITS DEADLINE with 490 of 499 runs driven and none failed (run 44967231176), while the estimate still passed: it priced a run of the other
+#     groups at 1.7 s and by then one took 2.59 s (390 of them in 1,011 s, by the runner's own lines; a date run took 4.30 s). At the real figures the other groups alone are 17 minutes of a
+#     night, which no finer cut of the date group answers, so THE OTHER GROUPS ARE CUT IN TWO HALVES, on alternate nights (the allowance is still not raised): each of their scenarios is
+#     driven every second night, a night is about 16 minutes of drive, and the estimate now uses that night's seconds. The whole matrix on request still drives everything. The rotation is keyed on the Indian day because GitHub runs this job hours after its 02:00
 #     IST schedule (its drive step began between 05:10 and 08:08 IST in the eight nights before this was written),
 #     which straddles UTC midnight (05:30 IST): keyed on the UTC day those eight nights drove one zone twice
 #     running and left another undriven for five.
@@ -56,8 +61,8 @@
 #     uploads the report and ends inside its allowance. For a night that is 24 minutes: the part before the drive
 #     took 8 min 8 s on the 5th and 16 min 26 s on the 6th (17 is used), a scenario in flight may take up to 90
 #     seconds more, and the steps after the drive took 4 seconds (1 minute is kept): 17 + 24 + 1.5 + 1 = 43.5 of 45.
-#     The whole matrix is an on-demand choice (Run workflow > zones: all): about 85 minutes of drive (77 when this was
-#     written; 85 on 7 November 2026, by the guard's own constants), a deadline of 98 minutes and a cap of 120; it runs only when a person asks for it, and the default of that choice is the
+#     The whole matrix is an on-demand choice (Run workflow > zones: all): about 92 minutes of drive (77 when this was
+#     written; 85 on 7 November 2026 and 96 on 17 November 2026, by the guard's constants of those days; 92 at the seconds read off the night of 22 November 2026), a deadline of 100 minutes and a cap of 120; it runs only when a person asks for it, and the default of that choice is the
 #     night's. `the-nightly-drive-fits-its-allowance-and-visits-each-zone-in-turn.test.ts` holds the rotation (over
 #     three years, and over the real start instants of those eight nights), the runner's own use of it (through
 #     `--list`), the deadline arithmetic above, and the estimate of a night as a budget that FAILS ONE RUN when the
@@ -65,10 +70,10 @@
 #     longer allowance).
 #
 # WHEN IT RUNS, AND WHY NOT ON EVERY PULL REQUEST
-#     * every night, at 02:00 IST (20:30 UTC), against main, the drive's date scenarios under one zone and one third
+#     * every night, at 02:00 IST (20:30 UTC), against main, the drive's date scenarios under one zone and one quarter
 #       of the group (see above);
 #     * on demand (Actions > Smoke walk > Run workflow), against any branch, the drive under the night's zone and
-#       third (the default) or under all three zones and the whole group;
+#       quarter (the default) or under all three zones and the whole group;
 #     * on a pull request that carries the label `smoke-walk`, for a change that touches many screens (a
 #       redesign, a shared component) and wants the walk before merge. Adding any other label skips the job.
 #     It needs a build of the static export (several minutes) and a ~40 MB browser, which is the cost the
@@ -112,6 +117,8 @@
 #       visible before it fails;
 #     * `smoke-walk-screens`: the screenshots and contact sheet, only when the walk (or the drive) FAILED, 14
 #       days. A scenario of the drive that failed leaves its picture in .smoke/drive/;
+#     * `smoke-walk-client-report` on every run (30 days) and `smoke-walk-client-screens` when that pass failed (14
+#       days): the same two for the client-workspace pass, which runs last and keeps its pictures in .smoke/client/;
 #     * the run's summary page: a table of the broken routes, the accessibility table and the slow-server
 #       verdict, and one error annotation per broken route or axe failure (the first ten of each) naming it.
 name: Smoke walk
@@ -122,7 +129,7 @@ on:
   workflow_dispatch:
     inputs:
       zones:
-        description: "Which part of the drive's date scenarios to run: the night's zone and third of the group (about 17 minutes of drive), or every zone and the whole group (about 85 minutes of drive, a cap of 120 minutes)"
+        description: "Which part of the drive's date scenarios to run: the night's zone and quarter of the group, with the night's half of the other scenarios (about 16 minutes of drive), or every zone and every scenario (about 92 minutes of drive, a cap of 120 minutes)"
         type: choice
         options: ["rotate", "all"]
         default: "rotate"
@@ -154,7 +161,7 @@ jobs:
     name: walk every screen in Chromium
     runs-on: ubuntu-latest
     # The allowance is 45 minutes and stays: about 8 minutes before the drive starts (checkout, install, build and the walk; 16 min 26 s on 6 November), then 17 of drive, which stops itself at its
-    # deadline (`--stop-after` below) so that the steps after it run. Only the whole matrix, which a person must ask for by name, is given more, because it is about 85 minutes of drive and
+    # deadline (`--stop-after` below) so that the steps after it run. Only the whole matrix, which a person must ask for by name, is given more, because it is about 96 minutes of drive and
     # could not fit any cap near the night's.
     timeout-minutes: ${{ (github.event_name == 'workflow_dispatch' && inputs.zones == 'all') && 120 || 45 }}
     # A pull request runs it only for the one label; every other trigger always runs.
@@ -237,15 +244,15 @@ jobs:
       # it is not in the required checks. `--shots` keeps a picture of a scenario that failed, in the .smoke/
       # folder the failed-run artifact below uploads.
       #
-      # THE PART OF THE DRIVE AND ITS DEADLINE (POST-A-397). `rotate` is the night's choice and the label's: ONE of the three zones and ONE third of the date group, by the Indian day, with a
-      # deadline of 24 minutes. An on-demand run takes what it is asked for: `rotate`, or `all` (every zone, the whole group, a deadline of 98 minutes under the job's 120). The runner STOPS
+      # THE PART OF THE DRIVE AND ITS DEADLINE (POST-A-397). `rotate` is the night's choice and the label's: ONE of the three zones, ONE quarter of the date group and ONE half of the other groups, by the Indian day, with a
+      # deadline of 24 minutes. An on-demand run takes what it is asked for: `rotate`, or `all` (every zone, the whole group, a deadline of 100 minutes under the job's 120). The runner STOPS
       # ITSELF at the deadline and exits 1 (its report says what it did not drive), because a job that times out is cancelled and the steps after this one never run.
       - name: Drive the money editors
         if: always() && steps.build.outcome == 'success'
         working-directory: apps/web
         env:
           DRIVE_ZONES: ${{ (github.event_name == 'workflow_dispatch' && inputs.zones) || 'rotate' }}
-          DRIVE_STOP_AFTER: ${{ (github.event_name == 'workflow_dispatch' && inputs.zones == 'all') && 98 || 24 }}
+          DRIVE_STOP_AFTER: ${{ (github.event_name == 'workflow_dispatch' && inputs.zones == 'all') && 100 || 24 }}
         run: node scripts/driveMoneyEditors.mjs --zone "$DRIVE_ZONES" --stop-after "$DRIVE_STOP_AFTER" --report .smoke/drive-report.json --shots
 
       - name: Keep the money-editor drive report
@@ -263,5 +270,54 @@ jobs:
         with:
           name: smoke-walk-screens
           path: apps/web/.smoke/
+          # `.smoke` is a hidden directory and upload-artifact leaves hidden files out by default, so a directory path here kept nothing and said
+          # nothing (`if-no-files-found: ignore`): the screenshots of a failed walk were never kept (found with POST-A-507, which met the same default).
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 14
+
+      # THE CLIENT WORKSPACE, AS A CA SEES IT (POST-A-036). The walk above puts `_placeholder` in /clients/:id, which
+      # `isClientWorkspacePath` deliberately refuses, so every client screen it photographs wears the FIRM chrome; and
+      # since D28's `ClientResolutionGate` a real client id that resolves to nothing renders only "no such client".
+      # `--real-client` puts a UUID in the address and the stub answers the one lookup keyed on that client
+      # (`scripts/walkStub.mjs`), so the gate lets the screens through and the client shell is the chrome. It walks only
+      # /clients (the rest of the product is the walk above), keeps MAX_ROUTES_PER_DIGEST at 5, and runs even when the
+      # first walk found a broken screen. The accessibility scan runs on this pass too: a client screen is judged and
+      # baselined as `/clients/{client}/…` (scripts/axeAudit.mjs `axeRouteKey`), and the six named screens are left to the
+      # walk above, which scans them with the same stub client. Like the walk it is no check anything waits on.
+      #
+      # IT RUNS LAST, AND IS BOUNDED (review of POST-A-036). The drive's deadline above is sized on what ran before the
+      # drive when it was measured (17 minutes, the slowest night seen) and on what runs after it (a minute of uploads):
+      # 17 + 24 + 1.5 + 1 = 43.5 of 45. This pass is about two minutes (44 routes at the walk's 1.7 s a route, plus the
+      # pictures; the scan of its 43 routes added about 20 seconds when it was first run with the scan (83 s against 64 s), since the named
+      # screens are not scanned again), so before the drive it would have spent the slack that keeps the drive's report from being lost to a
+      # cancelled job. After the drive's report and the walk's pictures are kept, a slow night can cut only this pass and
+      # what it leaves. `timeout-minutes` bounds a client screen that never goes quiet (the walk waits up to 30 s a
+      # route). Its pictures and contact sheet go to .smoke/client/, so they never overwrite the first walk's.
+      - name: Walk the client workspace
+        id: client_walk
+        if: always() && steps.build.outcome == 'success'
+        timeout-minutes: 5
+        working-directory: apps/web
+        run: node scripts/smoke-walk.mjs --only /clients --real-client --no-slow-server --report .smoke/client-report.json --shots
+
+      - name: Keep the client-workspace report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: smoke-walk-client-report
+          path: apps/web/.smoke/client-report.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Keep the screenshots of a failed client-workspace walk
+        if: failure() && steps.client_walk.outcome == 'failure'
+        uses: actions/upload-artifact@v7
+        with:
+          name: smoke-walk-client-screens
+          path: apps/web/.smoke/client/
+          # `.smoke` is a hidden directory and upload-artifact leaves hidden files out by default, so a directory path here kept nothing and said
+          # nothing (`if-no-files-found: ignore`): the screenshots of a failed walk were never kept (found with POST-A-507, which met the same default).
+          include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 14

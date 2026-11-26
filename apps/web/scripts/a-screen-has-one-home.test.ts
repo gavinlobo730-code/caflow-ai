@@ -39,6 +39,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { SCREENS } from "../lib/navigation/screens.ts";
 import { stripComments } from "./stripComments.ts";
+import { settingsPanelAddresses } from "./settingsLinks.ts";
 
 const WEB = join(import.meta.dirname, "..");
 const PANELS = join(WEB, "components/panels");
@@ -51,18 +52,13 @@ const LISTED_TWICE: Record<string, string> = {
   "/deadlines":
     "owned by DeadlinesPanel; HomePanel lists it because Home is the " +
     "launchpad and the deadline list is one of the two things due today. " +
-    "⚠️ It is also in STAFF_HIDDEN_HREFS, and HomePanel had no role filter " +
-    "at all until this guard found it — so an Executive, a Reviewer and a " +
-    "Client were offered from Home a workspace the rail deliberately hides " +
-    "from them. HomePanel now filters on canAccessHref",
+    "HomePanel offers it by the one table the menu and the page gate ask " +
+    "(lib/access/screenAccess.ts), so it is listed only for somebody whose " +
+    "own menu has Deadlines",
   "/work":
     "owned by WorkPanel; HomePanel lists it for the same reason as " +
-    "/deadlines — the work queue is the other of the two. ⚠️ Worth knowing: " +
-    "the `work` WORKSPACE is in STAFF_HIDDEN_WORKSPACES and the `/work` HREF " +
-    "is not in STAFF_HIDDEN_HREFS, so `canAccessWorkspace` and " +
-    "`canAccessHref` give opposite answers about one destination. Left as it " +
-    "is rather than picked by me: which is right is a product decision, and " +
-    "the href rule is the one the panels apply",
+    "/deadlines, the work queue being the other of the two, and offers it " +
+    "by the same table",
   "/clients":
     "owned by ClientsPanel; the second occurrence is not a sidebar entry at " +
     "all — DeadlinesPanel's triage note says 'To file, open a client' with " +
@@ -81,6 +77,21 @@ const LISTED_TWICE: Record<string, string> = {
     "this codebase records at /accounting/retainer and /gst/reconciliation. " +
     "PayrollPanel draws it with an outbound mark so the rail icon changing " +
     "is not a surprise",
+  // THE PEOPLE SCREENS: ONE LIST, TWO DOORS, AND A PERSON SEES ONLY ONE OF THEM (the owner's decision of 21-11-2026).
+  // TeamPanel owns all five and is the door of somebody with no My practice (a Manager, who runs the team). PracticePanel
+  // lists the same five under "People" for somebody who has My practice (a Partner), who is given no Team entry on the
+  // outer menu (`lib/workspace/outerMenu.ts`), so no one person is shown the screen under two headings, which is the defect
+  // this rule exists for. `practiceWorkspace.test.ts` holds the two panels to one list, word for word.
+  "/team":
+    "owned by TeamPanel; PracticePanel lists it under People for whoever has My practice, who has no Team entry",
+  "/team/assignments":
+    "owned by TeamPanel; PracticePanel lists it under People for whoever has My practice, who has no Team entry",
+  "/approvals":
+    "owned by TeamPanel; PracticePanel lists it under People for whoever has My practice, who has no Team entry",
+  "/team/workload":
+    "owned by TeamPanel; PracticePanel lists it under People for whoever has My practice, who has no Team entry",
+  "/team/login-history":
+    "owned by TeamPanel; PracticePanel lists it under People for whoever has My practice, who has no Team entry",
 };
 
 /**
@@ -96,10 +107,15 @@ const LISTED_TWICE: Record<string, string> = {
 function panelSources(): Array<{ name: string; src: string }> {
   return readdirSync(PANELS)
     .filter((f) => f.endsWith("Panel.tsx"))
-    .map((f) => ({
-      name: f.replace(/\.tsx$/, ""),
-      src: stripComments(readFileSync(join(PANELS, f), "utf8")),
-    }));
+    .map((f) => {
+      const src = stripComments(readFileSync(join(PANELS, f), "utf8"));
+      // The Settings panel renders lib/settings/groups.ts, the one list of Settings links (PRE-A-023), keeping
+      // only the links under /settings, so those addresses are read from the list with it.
+      const listed = f === "SettingsPanel.tsx" && src.includes('from "@/lib/settings/groups"')
+        ? src + "\n" + settingsPanelAddresses()
+        : src;
+      return { name: f.replace(/\.tsx$/, ""), src: listed };
+    });
 }
 
 /** Which panels declare this href. Quoted, so `/gst` is not satisfied by

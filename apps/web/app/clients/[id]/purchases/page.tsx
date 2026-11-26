@@ -1,7 +1,9 @@
 "use client";
 
+import { rowMenuAt, type RowMenuPlace } from "@/lib/ui/rowMenuPosition";
 import { PAYMENT_MODES } from "@/lib/payments/modes";
 import { arrayOrEmpty } from "@/lib/api/shape";
+import { usePermissions } from "@/lib/auth/AuthContext";
 import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Plus, Upload, AlertCircle, AlertTriangle, CheckCircle, Trash2, X, Loader2, Paperclip, MoreHorizontal, Ban, RotateCcw, Pencil } from "lucide-react";
@@ -14,6 +16,7 @@ import PurchaseCycleTab from "@/components/purchases/PurchaseCycleTab";
 import PostDatedChequesPanel from "@/components/banking/PostDatedChequesPanel";
 import { openedAt } from "@/lib/accounting/sourceDocument";
 import { api } from "@/lib/api";
+import { recentFirst, useRecentPartyIds } from "@/lib/lookups/recentParties";
 import type { PurchaseBillDetail } from "@/components/purchases/PurchaseBillEditor";
 import { writePurchaseBillDuplicateSeed } from "@/lib/purchases/duplicateSeed";
 import { registerNotesFrom, topLevelNotesFrom, dedupeRegisterNotes, type RegisterNote } from "@/lib/purchases/registerNotes";
@@ -30,7 +33,10 @@ import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNav
 import FinancialYearPicker from "@/components/FinancialYearPicker";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
+import { readAtText } from "@/lib/cache/readCache";
+import { forgetVendorLists, readVendorList } from "@/lib/data/partyLists";
 import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput";
+import { editedChoice, removedIdentifierProblem } from "@/lib/forms/editedValue";
 import { formatPaise, formatMoney } from "@/lib/services/formatting";
 import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
 import AllocatePaymentModal from "@/components/purchases/AllocatePaymentModal";
@@ -53,7 +59,7 @@ import {
 import PeriodPicker from "@/components/PeriodPicker";
 import { resolvePeriodRange, periodOptionLabel, type PeriodMode } from "@/lib/dates/periods";
 import { mapWithConcurrency } from "@/lib/table/concurrency";
-import { TableSkeleton } from "@/components/ui/skeleton";
+import { TableSkeleton, LoadingRegion } from "@/components/ui/skeleton";
 import { RecurringBills } from "@/components/purchases/RecurringBills";
 import { PaymentAccountPicker } from "@/components/banking/PaymentAccountPicker";
 import { postingAccountNotice } from "@/lib/accounting/postingAccountNotice";
@@ -61,6 +67,8 @@ import { postingAccountNotice } from "@/lib/accounting/postingAccountNotice";
 
 import { PossibleDuplicatesNotice, type PossibleDuplicate } from "@/components/parties/PossibleDuplicatesNotice";
 import { Callout } from "@/components/ui/callout";
+import { RowMenu } from "@/components/ui/row-menu";
+import { Modal } from "@/components/ui/modal";
 import { gstinProblem } from "@/lib/gst/gstin";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
@@ -69,7 +77,8 @@ import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { removedDateProblem } from "@/lib/dates/removedDate";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { formatDate, todayIstISO } from "@/lib/dates/format";
-import { apiCall, apiGet, getAuthToken } from "@/lib/invoices/shared";
+import { apiCall, apiGet, getAuthToken, HELD_DIALOG_MS } from "@/lib/invoices/shared";
+import { failureSentence } from "@/lib/api/failureSentence";
 // The page's request helpers are the invoice screens' (lib/invoices/shared): one place reads a refusal, and a request that gets no answer says the product's sentence
 // (POST-A-410). This page held a copy that read a failed status its own way and called `fetch` itself.
 
@@ -346,6 +355,9 @@ interface PurchaseBillRow {
 }
 
 function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void; openDoc?: string | null }) {
+  // Cancelling a received bill asks `accounting` `approve`, a Partner's alone (POST-A-455): the row menu and the drawer
+  // offer it only to someone who may.
+  const mayCancelBill = usePermissions().can("accounting", "approve");
   const [bills, setBills] = useState<PurchaseBillRow[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   // What GSTR-2B says about each bill, keyed by bill id. Empty until the CA
@@ -490,7 +502,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
     try {
       const token = await getAuthToken();
       // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
-      const result = await apiCall(`/api/purchase-bills/${billId}/receive`, "POST", undefined, token);
+      const result = await apiCall(`/api/purchase-bills/${billId}/receive`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
       if (!result.success) throw new Error(result.error ?? "Failed to receive purchase bill");
       setMsg({ type: "ok", text: "Purchase bill received" });
       // PUR-14. Receiving a bill writes its TDS deduction into the register,
@@ -516,7 +528,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
   // the Sales Invoices tab's own menu pattern. Anchored to the viewport since
   // the table scrolls/clips an in-flow dropdown.
   const [detailId, setDetailId] = useState<string | null>(null);
-  const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null);
+  const [menu, setMenu] = useState<({ id: string } & RowMenuPlace) | null>(null);
   // The s.31(3)(f) / s.31(3)(g) panel. One piece of state for both kinds,
   // because the panel takes the kind and the server decides everything else.
   const [rcmDoc, setRcmDoc] = useState<
@@ -528,13 +540,12 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
   const [landedCostBillId, setLandedCostBillId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<PurchaseBillRow | PurchaseBillDetail | null>(null);
   function openMenuFor(e: React.MouseEvent, bill: PurchaseBillRow) {
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    setMenu({ id: bill.id, top: r.bottom + 4, left: Math.max(8, r.right - 176) });
+    setMenu({ id: bill.id, ...rowMenuAt(e, 176) });
   }
 
   async function deleteBill(bill: PurchaseBillRow | PurchaseBillDetail) {
     const token = await getAuthToken();
-    const result = await apiCall(`/api/purchase-bills/${bill.id}`, "DELETE", undefined, token);
+    const result = await apiCall(`/api/purchase-bills/${bill.id}`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
     if (!result.success) throw new Error(result.error ?? "Failed to delete purchase bill");
     setMsg({ type: "ok", text: `${bill.bill_no || "Purchase bill"} deleted` });
     setDeleteTarget(null);
@@ -566,7 +577,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
     setDetailId(null);
     try {
       const token = await getAuthToken();
-      const result = await apiCall(`/api/purchase-bills/${bill.id}/cancel`, "POST", undefined, token);
+      const result = await apiCall(`/api/purchase-bills/${bill.id}/cancel`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
       if (!result.success) throw new Error(result.error ?? "Failed to cancel purchase bill");
       setMsg({ type: "ok", text: `${bill.bill_no || "Purchase bill"} cancelled — journal and stock reversed` });
       load();
@@ -910,8 +921,9 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
   ], [vendors, recon2B, reconciledPeriods]);
 
   // ── DataTable bulk actions — receive is draft-only (non-draft rows are
-  // skipped client-side); export just CSV-dumps the checked rows. ─────────
-  const bulkActions: BulkAction<PurchaseBillRow>[] = useMemo(() => [
+  // skipped client-side); export just CSV-dumps the checked rows. "Cancel received" asks the bill's cancel route, which asks
+  // `accounting` `approve` (a Partner's), so it is in the list only for someone it admits (POST-A-455). ─────────
+  const bulkActions: BulkAction<PurchaseBillRow>[] = useMemo(() => ([
     {
       id: "receive",
       label: "Receive draft(s)",
@@ -936,7 +948,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
       run: handleBulkCancel,
     },
     exportSelectedAction("purchase-bills-selected.csv", billColumns),
-  ], [handleBulkReceive, handleBulkDelete, handleBulkCancel, billColumns]);
+  ] satisfies BulkAction<PurchaseBillRow>[]).filter((a) => a.id !== "cancel" || mayCancelBill), [handleBulkReceive, handleBulkDelete, handleBulkCancel, billColumns, mayCancelBill]);
 
   // "Resolve missing references" step for the product_service import column —
   // mirrors the Sales Invoices tab's own importResolvers exactly. Reads
@@ -1111,6 +1123,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
             )}
             <button
               onClick={(e) => openMenuFor(e, b)}
+              aria-haspopup="true" aria-expanded={menu?.id === b.id}
               aria-label={`Actions for bill ${b.bill_no || b.id}`}
               className="p-1 rounded hover:bg-ps-muted text-ps-label"
             >
@@ -1128,12 +1141,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
         const b = bills.find((x) => x.id === menu.id);
         if (!b) return null;
         return (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
-            <div
-              className="fixed z-50 w-44 bg-white rounded-lg border border-ps-border shadow-lg py-1 text-xs"
-              style={{ top: menu.top, left: menu.left }}
-            >
+          <RowMenu place={menu} widthClass="w-44" onClose={() => setMenu(null)}>
               <button onClick={() => { setMenu(null); setDetailId(b.id); }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                 View details
@@ -1170,7 +1178,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
                   </button>
                 </>
               )}
-              {b.status === "received" && (
+              {b.status === "received" && mayCancelBill && (
                 <>
                   <div className="my-1 border-t border-ps-border" />
                   <Button variant="plain" size="none" onClick={() => { setMenu(null); return cancelBill(b); }}
@@ -1179,8 +1187,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
                   </Button>
                 </>
               )}
-            </div>
-          </>
+          </RowMenu>
         );
       })()}
 
@@ -1198,7 +1205,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
           onReceive={(id) => { setDetailId(null); return handleReceive(id); }}
           onDelete={(bill) => { setDetailId(null); setDeleteTarget(bill); }}
           onDuplicate={duplicateBill}
-          onCancelBill={cancelBill}
+          onCancelBill={mayCancelBill ? cancelBill : undefined}
           onChanged={load}
           // A toast above the drawer: the page's message line (setMsg) is drawn BEHIND the drawer's backdrop, so a refusal said there (a date, an amount,
           // the server's sentence) was away from the dialog it was about, and out of sight when the page was scrolled.
@@ -1264,12 +1271,10 @@ function DeleteBillModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl border border-ps-border p-6 w-full max-w-md shadow-xl">
+    <Modal title="Delete draft purchase bill?" maxWidthClass="max-w-md" onClose={() => { if (!deleting) onClose(); }}>
         <div className="flex items-start gap-3 mb-4">
           <div className="p-2 rounded-full bg-state-problem-surface text-red-600 flex-shrink-0"><AlertTriangle size={16} /></div>
           <div>
-            <h3 className="text-sm font-semibold text-ps-ink">Delete draft purchase bill?</h3>
             <p className="text-xs text-ps-label mt-1">
               <span className="font-mono">{bill.bill_no || "This bill"}</span> will be removed from your purchase
               bill list. Only drafts can be deleted — received, partially-paid, paid and cancelled bills are
@@ -1279,7 +1284,7 @@ function DeleteBillModal({
         </div>
         {error && <Callout tone="problem">{error}</Callout>}
         <div className="flex gap-3 justify-end">
-          <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
+          <button disabled={deleting} onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
           {/* A Button, not a raw <button>: `handle` AWAITS the caller's delete, which the same-file analysis
               cannot see, so a second click in the same tick sent a second DELETE. */}
           <Button
@@ -1291,8 +1296,7 @@ function DeleteBillModal({
             {deleting ? "Deleting…" : <><Trash2 size={12} /> Delete Draft</>}
           </Button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -1348,12 +1352,19 @@ interface VendorDependencies {
 }
 
 function Vendors({ clientId }: { clientId: string }) {
+  // Adding, importing, editing and reactivating a vendor ask `client` `write` (a Manager or a Partner); deactivating and
+  // deleting one ask `client` `delete` (a Partner). Each was offered to every member and came back refused (POST-A-455).
+  const { can: canDo } = usePermissions();
+  const mayEditParty = canDo("client", "write");
+  const mayRemoveParty = canDo("client", "delete");
   const [vendors, setVendors] = useState<VendorRow[]>([]);
   const [loading, setLoading] = useState(true);
   // See PurchaseBills.loadFailed (audit M17): a failed fetch must not render as
   // "no vendors yet", which on this tab reads as an invitation to re-create
   // vendors that already exist.
   const [loadFailed, setLoadFailed] = useState(false);
+  /** When the list on screen was read, while it is the last answer painted ahead of the real read (POST-A-124); null once the real one lands. */
+  const [paintedFrom, setPaintedFrom] = useState<number | null>(null);
   // PUR-32 — active vendors of this client whose name the new one resembles.
   const [resemblances, setResemblances] = useState<PossibleDuplicate[]>([]);
   const [showForm, setShowForm] = useState(false);
@@ -1438,7 +1449,7 @@ function Vendors({ clientId }: { clientId: string }) {
   // accounting records).
   const [deactivateTarget, setDeactivateTarget] = useState<VendorRow | null>(null);
   const [deactivating, setDeactivating] = useState(false);
-  const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null);
+  const [menu, setMenu] = useState<({ id: string } & RowMenuPlace) | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<VendorRow | null>(null);
   const [deleteDeps, setDeleteDeps] = useState<VendorDependencies | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -1450,23 +1461,29 @@ function Vendors({ clientId }: { clientId: string }) {
   const load = useCallback(async () => {
     setLoading(true);
     const supabase = getSupabaseClient();
+    let painted = false;
     try {
       // Fetch active AND inactive vendors — active/inactive scoping is a
       // client-side DataTable filter (mirrors Customers) so a deactivated
-      // vendor stays visible (and reactivatable) instead of vanishing.
-      const { data, error } = await selectAll(() => supabase
-        .from("vendors")
-        .select("*")
-        .eq("client_id", clientId)
-        .order("name")
-        .order("id"));
-      if (error) throw error;
-      setVendors((data as VendorRow[]) ?? []);
+      // vendor stays visible (and reactivatable) instead of vanishing. The last answer is painted at once from the shared read cache and
+      // the real read always follows (POST-A-124); a failed read throws, so it is never stored.
+      const data = await readVendorList<VendorRow>(clientId, async () => {
+        const { data, error } = await selectAll(() => supabase
+          .from("vendors")
+          .select("*")
+          .eq("client_id", clientId)
+          .order("name")
+          .order("id"));
+        if (error) throw error;
+        return (data as VendorRow[]) ?? [];
+      }, (last, readAt) => { painted = true; setVendors(last); setPaintedFrom(readAt); setLoading(false); });
+      setVendors(data);
+      setPaintedFrom(null);
       setLoadFailed(false);
     } catch {
       // Was swallowed entirely: a failed fetch rendered as "no vendors yet",
-      // which on this tab is an invitation to re-create vendors that exist.
-      setVendors([]);
+      // which on this tab is an invitation to re-create vendors that exist. A list painted from the last read stays up and says so.
+      if (!painted) setVendors([]);
       setLoadFailed(true);
     } finally {
       setLoading(false);
@@ -1509,6 +1526,7 @@ function Vendors({ clientId }: { clientId: string }) {
     let imported = 0;
     const skippedDetail: string[] = [];
     const result = await apiCall("/api/vendors/bulk", "POST", { vendors: records }, token);
+    forgetVendorLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
     if (result.success) {
       const data = result.data as {
         created: unknown[];
@@ -1536,6 +1554,8 @@ function Vendors({ clientId }: { clientId: string }) {
    * would be the exact second-write-path CLAUDE.md's PUR-16 already warns
    * against. */
   function openEdit(v: VendorRow) {
+    // While a Save is out the form is not swapped for another vendor: the first save's success would close the form just opened (POST-A-395).
+    if (saving) return;
     setEditOpened((n) => n + 1);
     setEditingVendor(v);
     setDeclarant(null);
@@ -1609,6 +1629,16 @@ function Vendors({ clientId }: { clientId: string }) {
       return;
     }
     if (noPeDates.first ?? noPeCleared) { noPeRefusal.refuse(); return; }
+    // POST-A-399. A tax identifier on file is corrected and not removed: every return not yet filed reads it for the documents already issued to this
+    // supplier. The server refuses the same edit in the same words; this says it beside the button before anything is sent.
+    if (editingVendor) {
+      const removed = removedIdentifierProblem("GSTIN", editingVendor.gstin, gstin)
+        ?? removedIdentifierProblem("PAN", editingVendor.pan, pan)
+        ?? (residentialStatus === "non_resident"
+          ? removedIdentifierProblem("tax identification number", editingVendor.tax_identification_number, taxIdentificationNumber)
+          : null);
+      if (removed) { setFormError(removed); return; }
+    }
     if (residentialStatus === "non_resident" && natureOfIncome === "business_profits_no_pe" && !noPeDeclaration) {
       setFormError("Withholding nil on business profits rests on the payee having no permanent establishment in India — tick the no-PE declaration, or choose a different nature of income.");
       return;
@@ -1625,13 +1655,18 @@ function Vendors({ clientId }: { clientId: string }) {
       // accepted shape is models.parties.VendorUpdateIn, which is this same
       // set of optional fields). One payload shape means Edit can never drift
       // from what New Vendor already saves.
+      // POST-A-399. On an EDIT, a box that held a value and was emptied is sent as null and the route clears it (`edited`); an empty box over nothing
+      // is not sent. On a create there is nothing on file, so `edited` sends what a create always sent.
+      const was = editingVendor;
+      const edited = <T,>(now: T | null | undefined, onFile: T | null | undefined) => editedChoice(now, was ? onFile : null);
+      const nonResident = residentialStatus === "non_resident";
       const fields = {
         name: name.trim(),
         gstin: cleanGstin,
         state_code: stateCode,
         pan: pan.trim().toUpperCase() || undefined,
-        email: email.trim() || undefined,
-        phone: phone.trim() || undefined,
+        email: edited(email, was?.email),
+        phone: edited(phone, was?.phone),
         tds_applicable: tdsApplicable,
         tds_section: tdsApplicable ? tdsSection : undefined,
         // TDS-30. PATCH drops a null, so taking a recorded class back is done
@@ -1643,17 +1678,18 @@ function Vendors({ clientId }: { clientId: string }) {
           || (editingVendor?.interest_threshold_class
               && editingVendor.interest_threshold_class !== "ordinary"
               ? "ordinary" : undefined),
-        residential_status: residentialStatus || undefined,
-        gst_registration_status: gstRegistrationStatus || undefined,
-        // Only meaningful for a non-resident; 26Q has no field for either.
+        residential_status: edited(residentialStatus, was?.residential_status),
+        gst_registration_status: edited(gstRegistrationStatus, was?.gst_registration_status),
+        // Only meaningful for a non-resident; 26Q has no field for either. A box not drawn is not one the person emptied, so it is not sent.
         country_of_residence:
-          residentialStatus === "non_resident" ? countryOfResidence.trim().toUpperCase() || undefined : undefined,
+          nonResident ? edited(countryOfResidence.trim().toUpperCase(), was?.country_of_residence) : undefined,
+        // The foreign tax number is an identifier: corrected, never emptied (refused above), so an empty box is not sent.
         tax_identification_number:
-          residentialStatus === "non_resident" ? taxIdentificationNumber.trim() || undefined : undefined,
+          nonResident ? taxIdentificationNumber.trim() || undefined : undefined,
         section_195_nature_of_income:
-          residentialStatus === "non_resident" ? natureOfIncome || undefined : undefined,
+          nonResident ? edited(natureOfIncome, was?.section_195_nature_of_income) : undefined,
         non_resident_payee_class:
-          residentialStatus === "non_resident" ? payeeClass || undefined : undefined,
+          nonResident ? edited(payeeClass, was?.non_resident_payee_class) : undefined,
         trc_on_file: residentialStatus === "non_resident" ? trcOnFile : false,
         form_10f_on_file: residentialStatus === "non_resident" ? form10fOnFile : false,
         no_pe_declaration_on_file: residentialStatus === "non_resident" ? noPeDeclaration : false,
@@ -1665,8 +1701,8 @@ function Vendors({ clientId }: { clientId: string }) {
         // this form — "10" is 1000 bps and a blank field is genuinely unset,
         // which is what makes the backend refuse rather than assume zero.
         treaty_rate_bps:
-          residentialStatus === "non_resident" && treatyRate.trim()
-            ? bpsFromPercentInput(treatyRate) ?? undefined
+          nonResident
+            ? edited(treatyRate.trim() ? bpsFromPercentInput(treatyRate) : null, was?.treaty_rate_bps)
             : undefined,
         // tds_rate_bps is deliberately NOT written any more — see the form.
         // The column stays for now so the reads elsewhere keep type-checking;
@@ -1676,8 +1712,9 @@ function Vendors({ clientId }: { clientId: string }) {
       };
 
       const result = editingVendor
-        ? await apiCall(`/api/vendors/${editingVendor.id}`, "PATCH", fields, token)
-        : await apiCall("/api/vendors/", "POST", { client_id: clientId, ...fields }, token);
+        ? await apiCall(`/api/vendors/${editingVendor.id}`, "PATCH", fields, token, { timeoutMs: HELD_DIALOG_MS })
+        : await apiCall("/api/vendors/", "POST", { client_id: clientId, ...fields }, token, { timeoutMs: HELD_DIALOG_MS });
+      forgetVendorLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
       if (!result.success) throw new Error(result.error ?? (editingVendor ? "Failed to save vendor" : "Failed to add vendor"));
       if (!editingVendor) {
         // A vendor already holding this GSTIN (or, with no GSTIN, this PAN)
@@ -1723,22 +1760,32 @@ function Vendors({ clientId }: { clientId: string }) {
   async function confirmDeactivate() {
     if (!deactivateTarget) return;
     setDeactivating(true);
-    const token = await getAuthToken();
-    const result = await apiCall(`/api/vendors/${deactivateTarget.id}`, "DELETE", undefined, token);
-    setDeactivating(false);
-    if (!result.success) {
-      setMsg({ type: "err", text: result.error ?? "Failed to deactivate vendor" });
+    // The request is bounded and so may throw (no answer in 45 seconds, a dropped connection): the dialog is let go in the finally, and the
+    // thrown sentence says it is not known whether the vendor was deactivated (POST-A-395, the second review).
+    try {
+      const token = await getAuthToken();
+      const result = await apiCall(`/api/vendors/${deactivateTarget.id}`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+      forgetVendorLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
+      if (!result.success) {
+        setMsg({ type: "err", text: result.error ?? "Failed to deactivate vendor" });
+        setDeactivateTarget(null);
+        return;
+      }
+      setMsg({ type: "ok", text: "Vendor deactivated." });
       setDeactivateTarget(null);
-      return;
+      load();
+    } catch (e) {
+      setMsg({ type: "err", text: failureSentence(e, "Failed to deactivate vendor", "write") });
+      setDeactivateTarget(null);
+    } finally {
+      setDeactivating(false);
     }
-    setMsg({ type: "ok", text: "Vendor deactivated." });
-    setDeactivateTarget(null);
-    load();
   }
 
   async function reactivateVendor(v: VendorRow) {
     const token = await getAuthToken();
-    const result = await apiCall(`/api/vendors/${v.id}`, "PATCH", { is_active: true }, token);
+    const result = await apiCall(`/api/vendors/${v.id}`, "PATCH", { is_active: true }, token, { timeoutMs: HELD_DIALOG_MS });
+    forgetVendorLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
     if (!result.success) { setMsg({ type: "err", text: result.error ?? "Failed to reactivate vendor" }); return; }
     setMsg({ type: "ok", text: "Vendor reactivated." });
     load();
@@ -1762,7 +1809,8 @@ function Vendors({ clientId }: { clientId: string }) {
     setDeleteBusy(true);
     try {
       const token = await getAuthToken();
-      const res = await apiCall(`/api/vendors/${deleteTarget.id}?permanent=true`, "DELETE", undefined, token);
+      const res = await apiCall(`/api/vendors/${deleteTarget.id}?permanent=true`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+      forgetVendorLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
       if (!res.success) {
         setMsg({ type: "err", text: res.error ?? "Failed to delete vendor" });
         return;
@@ -1779,10 +1827,9 @@ function Vendors({ clientId }: { clientId: string }) {
   }
 
   // Anchor the overflow menu to the viewport (the table scrolls/clips, so an
-  // in-flow dropdown would be cut off). Right-align a 176px menu under the button.
+  // in-flow dropdown would be cut off). Right-align a 176px menu under the button, or above it near the foot of the window (lib/ui/rowMenuPosition).
   function openMenuFor(e: React.MouseEvent, v: VendorRow) {
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    setMenu({ id: v.id, top: r.bottom + 4, left: Math.max(8, r.right - 176) });
+    setMenu({ id: v.id, ...rowMenuAt(e, 176) });
   }
 
   const bulkDeactivateVendors = useCallback(async (rows: VendorRow[]): Promise<boolean> => {
@@ -1793,6 +1840,7 @@ function Vendors({ clientId }: { clientId: string }) {
     await Promise.all(targets.map(async (v) => {
       try {
         const result = await apiCall(`/api/vendors/${v.id}`, "DELETE", undefined, token);
+        forgetVendorLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
         if (!result.success) throw new Error(result.error ?? "failed");
         deactivated++;
       } catch (e) {
@@ -1819,6 +1867,7 @@ function Vendors({ clientId }: { clientId: string }) {
     await Promise.all(rows.map(async (v) => {
       try {
         const result = await apiCall(`/api/vendors/${v.id}?permanent=true`, "DELETE", undefined, token);
+        forgetVendorLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
         if (!result.success) throw new Error(result.error ?? "failed");
         deleted++;
       } catch (e) {
@@ -1884,7 +1933,7 @@ function Vendors({ clientId }: { clientId: string }) {
     ] },
   ], []);
 
-  const vendorBulkActions: BulkAction<VendorRow>[] = useMemo(() => [
+  const vendorBulkActions: BulkAction<VendorRow>[] = useMemo(() => ([
     {
       id: "deactivate",
       label: "Deactivate",
@@ -1901,7 +1950,8 @@ function Vendors({ clientId }: { clientId: string }) {
       run: bulkDeletePermanentVendors,
     },
     exportSelectedAction("vendors-selected.csv", vendorColumns),
-  ], [bulkDeactivateVendors, bulkDeletePermanentVendors, vendorColumns]);
+  ] satisfies BulkAction<VendorRow>[]).filter((a) => mayRemoveParty || (a.id !== "deactivate" && a.id !== "delete-permanent")),
+  [bulkDeactivateVendors, bulkDeletePermanentVendors, vendorColumns, mayRemoveParty]);
 
   return (
     <div className="space-y-4 max-w-ps-data mx-auto">
@@ -1918,12 +1968,8 @@ function Vendors({ clientId }: { clientId: string }) {
         onDismiss={() => setResemblances([])} />
 
       {deactivateTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
-            <div className="px-6 py-5 border-b border-ps-border">
-              <h2 className="text-base font-semibold text-ps-ink">Deactivate Vendor?</h2>
-            </div>
-            <div className="px-6 py-5 space-y-2">
+        <Modal title="Deactivate Vendor?" maxWidthClass="max-w-md" onClose={() => { if (!deactivating) setDeactivateTarget(null); }}>
+            <div className="space-y-2">
               <p className="text-sm text-ps-label">
                 <span className="font-medium text-ps-ink">{deactivateTarget.name}</span> will no
                 longer be available for new bills.
@@ -1933,10 +1979,10 @@ function Vendors({ clientId }: { clientId: string }) {
                 this vendor later.
               </p>
             </div>
-            <div className="px-6 py-4 border-t border-ps-border flex justify-end gap-2">
+            <div className="flex justify-end gap-2">
               <button
                 onClick={() => setDeactivateTarget(null)}
-                disabled={deactivating}
+                disabled={(deactivating) || actionInFlight}
                 className="px-4 py-2 text-sm text-ps-label rounded-lg border border-ps-border hover:bg-ps-bg disabled:opacity-50"
               >
                 Cancel
@@ -1949,24 +1995,22 @@ function Vendors({ clientId }: { clientId: string }) {
                 {deactivating ? "Deactivating…" : "Deactivate"}
               </Button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* Permanent-delete flow: checking → blocked (has records) → confirm (clean) */}
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+        <Modal title={deleteDeps === null ? "Delete vendor" : deleteDeps.can_delete ? "Delete Vendor?" : "Can't delete this vendor"} maxWidthClass="max-w-md"
+          onClose={() => { if (!deleteBusy) { setDeleteTarget(null); setDeleteDeps(null); } }}>
             {deleteDeps === null ? (
-              <div className="px-6 py-10 flex items-center justify-center gap-2 text-sm text-ps-label">
-                <Loader2 size={16} className="animate-spin" /> Checking for linked records…
-              </div>
+              <LoadingRegion label="Checking for linked records" noticeClassName="px-6 justify-center text-center">
+                <div className="py-6 flex items-center justify-center gap-2 text-sm text-ps-label">
+                  <Loader2 size={16} className="animate-spin" /> Checking for linked records…
+                </div>
+              </LoadingRegion>
             ) : deleteDeps.can_delete ? (
               <>
-                <div className="px-6 py-5 border-b border-ps-border">
-                  <h2 className="text-base font-semibold text-ps-ink">Delete Vendor?</h2>
-                </div>
-                <div className="px-6 py-5 space-y-2">
+                <div className="space-y-2">
                   <p className="text-sm text-ps-label">
                     <span className="font-medium text-ps-ink">{deleteTarget.name}</span> has no
                     linked bills, payments, debit notes, credit notes or opening balance.
@@ -1975,7 +2019,7 @@ function Vendors({ clientId }: { clientId: string }) {
                     This permanently removes the vendor and cannot be undone.
                   </p>
                 </div>
-                <div className="px-6 py-4 border-t border-ps-border flex justify-end gap-2">
+                <div className="flex justify-end gap-2">
                   <button
                     onClick={() => { setDeleteTarget(null); setDeleteDeps(null); }}
                     disabled={deleteBusy}
@@ -1994,11 +2038,7 @@ function Vendors({ clientId }: { clientId: string }) {
               </>
             ) : (
               <>
-                <div className="px-6 py-5 border-b border-ps-border flex items-center gap-2">
-                  <AlertTriangle size={18} className="text-amber-500" />
-                  <h2 className="text-base font-semibold text-ps-ink">Can&apos;t delete this vendor</h2>
-                </div>
-                <div className="px-6 py-5 space-y-3">
+                <div className="space-y-3">
                   <p className="text-sm text-ps-label">
                     <span className="font-medium text-ps-ink">{deleteTarget.name}</span> has linked
                     accounting records, so it can&apos;t be permanently deleted:
@@ -2012,6 +2052,7 @@ function Vendors({ clientId }: { clientId: string }) {
                       ["recurring_templates", "Recurring templates"],
                       ["cheques", "Post-dated cheques"],
                       ["certificates", "Lower-deduction certificates"],
+                      ["tds_register", "TDS deductions typed on the TDS screen"],
                       ["opening_balance", "Opening balance"],
                     ] as const)
                       .filter(([k]) => (deleteDeps.dependencies?.[k] ?? 0) > 0)
@@ -2029,8 +2070,8 @@ function Vendors({ clientId }: { clientId: string }) {
                     bills.
                   </p>
                 </div>
-                <div className="px-6 py-4 border-t border-ps-border flex justify-end gap-2">
-                  <button
+                <div className="flex justify-end gap-2">
+                  <button disabled={actionInFlight}
                     onClick={() => { setDeleteTarget(null); setDeleteDeps(null); }}
                     className="px-4 py-2 text-sm text-ps-label rounded-lg border border-ps-border hover:bg-ps-bg"
                   >
@@ -2047,8 +2088,7 @@ function Vendors({ clientId }: { clientId: string }) {
                 </div>
               </>
             )}
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* Row actions overflow menu (viewport-anchored to dodge table clipping) */}
@@ -2056,37 +2096,35 @@ function Vendors({ clientId }: { clientId: string }) {
         const v = vendors.find((x) => x.id === menu.id);
         if (!v) return null;
         return (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
-            <div
-              className="fixed z-50 w-44 bg-white rounded-lg border border-ps-border shadow-lg py-1 text-xs"
-              style={{ top: menu.top, left: menu.left }}
-            >
+          <RowMenu place={menu} widthClass="w-44" onClose={() => setMenu(null)}>
               {/* apex-sales-purchases-05: the only way back into a vendor's
                   own record — the create form was drop-only, so a GSTIN
                   typo, a §195 residency status or a TDS section could never
                   be corrected from this tab. */}
-              <button onClick={() => { setMenu(null); openEdit(v); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
-                <Pencil size={13} /> Edit
-              </button>
-              {v.is_active ? (
+              {mayEditParty && (
+                <button onClick={() => { setMenu(null); openEdit(v); }} disabled={saving}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body disabled:opacity-50">
+                  <Pencil size={13} /> Edit
+                </button>
+              )}
+              {v.is_active && mayRemoveParty ? (
                 <button onClick={() => { setMenu(null); setDeactivateTarget(v); }}
                   className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                   <Ban size={13} /> Deactivate
                 </button>
-              ) : (
+              ) : !v.is_active && mayEditParty ? (
                 <Button variant="plain" size="none" onClick={() => { setMenu(null); return reactivateVendor(v); }}
                   className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-green-700">
                   <RotateCcw size={13} /> Reactivate
                 </Button>
+              ) : null}
+              {mayRemoveParty && (
+                <button onClick={() => { setMenu(null); startDelete(v); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-hover text-red-600">
+                  <Trash2 size={13} /> Delete
+                </button>
               )}
-              <button onClick={() => { setMenu(null); startDelete(v); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-hover text-red-600">
-                <Trash2 size={13} /> Delete
-              </button>
-            </div>
-          </>
+          </RowMenu>
         );
       })()}
 
@@ -2108,7 +2146,7 @@ function Vendors({ clientId }: { clientId: string }) {
         <div className="bg-white rounded-xl border border-ps-border p-5 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-ps-ink">{editingVendor ? `Edit ${editingVendor.name}` : "New Vendor"}</h3>
-            <button onClick={() => { setShowForm(false); setEditingVendor(null); }}><X size={16} className="text-ps-hint" /></button>
+            <button onClick={() => { setShowForm(false); setEditingVendor(null); }} disabled={saving} aria-label="Close" className="disabled:opacity-50"><X size={16} className="text-ps-hint" /></button>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
@@ -2428,7 +2466,7 @@ function Vendors({ clientId }: { clientId: string }) {
           {/* The answer to the last press of Save, beside it. What the last press said wins over the sentence about a box: it is the newer. */}
           {(formError || noPeRefusal.shown) && <p role="alert" className="text-xs text-state-problem text-right">{formError || noPeRefusal.shown}</p>}
           <div className="flex gap-3 justify-end">
-            <button onClick={() => { setShowForm(false); setEditingVendor(null); }} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
+            <button onClick={() => { setShowForm(false); setEditingVendor(null); }} disabled={saving} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50">Cancel</button>
             <Button variant="plain" size="none" onClick={handleSave} disabled={actionInFlight} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
               {saving ? "Saving…" : editingVendor ? "Save Changes" : "Add Vendor"}
             </Button>
@@ -2436,6 +2474,14 @@ function Vendors({ clientId }: { clientId: string }) {
         </div>
       )}
 
+      {/* A list painted ahead of the real read says when it was read, and says so again if the real read failed (POST-A-124). */}
+      {paintedFrom !== null && (
+        <p role="status" className="text-xs text-ps-hint">
+          {loadFailed
+            ? `Showing the list as it was read at ${readAtText(paintedFrom)}. It could not be refreshed, so it may not be current.`
+            : `Showing the list as it was read at ${readAtText(paintedFrom)} while the current one loads…`}
+        </p>
+      )}
       {/* Vendors table — shared DataTable (search, sort, filters, pagination, export, prefs) */}
       <DataTable
         data={vendors}
@@ -2465,6 +2511,7 @@ function Vendors({ clientId }: { clientId: string }) {
         rowActions={(v) => (
           <button
             onClick={(e) => openMenuFor(e, v)}
+            aria-haspopup="true" aria-expanded={menu?.id === v.id}
             aria-label={`Actions for ${v.name}`}
             className="p-1 rounded hover:bg-ps-muted text-ps-label"
           >
@@ -2472,7 +2519,7 @@ function Vendors({ clientId }: { clientId: string }) {
           </button>
         )}
         toolbarExtra={
-          <>
+          mayEditParty && <>
             <button onClick={() => setShowImport(true)} className="flex items-center gap-1.5 text-xs border border-ps-border text-ps-label px-3 py-1.5 rounded-lg hover:bg-ps-bg"><Upload size={12} /> Import</button>
             <button
               onClick={() => setShowForm((s) => {
@@ -2482,7 +2529,8 @@ function Vendors({ clientId }: { clientId: string }) {
                 if (!s) setEditingVendor(null);
                 return !s;
               })}
-              className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark"
+              disabled={saving}
+              className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark disabled:opacity-50"
             >
               <Plus size={12} /> Add Vendor
             </button>
@@ -2527,6 +2575,12 @@ interface PaymentRow {
 }
 
 function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void; openDoc?: string | null }) {
+  // Reversing a payment asks `accounting` `approve`, a Partner's alone (POST-A-455).
+  const { can: canDo } = usePermissions();
+  const mayReverse = canDo("accounting", "approve");
+  // Recording a payment and applying one to bills ask `accounting` `write` (a Manager or a Partner); both were drawn to an
+  // Executive, whose `accounting` is read only (POST-A-455).
+  const mayWriteBooks = canDo("accounting", "write");
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   // CGST Act s.31(3)(g). Offered on every payment and never gated here: the
   // section carries no "unregistered" limb, and whether it reaches this
@@ -2539,6 +2593,9 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
    *  Singapore-to-Mumbai round trip this codebase keeps removing. */
   const [allocateFor, setAllocateFor] = useState<PaymentRow | null>(null);
   const [vendors, setVendors] = useState<{ id: string; name: string }[]>([]);
+  // The suppliers this client billed against most recently go to the top of the picker (POST-A-155); nothing is pre-selected.
+  const recentVendorIds = useRecentPartyIds(api.vendors.recent, clientId, true);
+  const recentVendors = useMemo(() => recentFirst(recentVendorIds, vendors), [recentVendorIds, vendors]);
   const [openBills, setOpenBills] = useState<{
     id: string; our_reference: string; bill_no: string | null; net_payable_paise: number;
     // What is STILL PAYABLE — migration 278's generated column, read rather
@@ -2549,6 +2606,8 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
     bill_date?: string | null;
     txn_currency?: string | null; exchange_rate?: string | null; txn_net_payable?: number | null;
   }[]>([]);
+  // A read of the vendor's open bills that did not come is not a vendor with none (POST-A-527): the settle panel says it instead of "no open bills".
+  const [openBillsUnread, setOpenBillsUnread] = useState(false);
   const [loading, setLoading] = useState(true);
   // See PurchaseBills.loadFailed (audit M17): a failed payments fetch must show a
   // retryable error, not the same ₹0 "Total Paid (FY)" + "No payments" empty state.
@@ -2714,7 +2773,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
 
   async function loadOpenBills(vId: string) {
     const supabase = getSupabaseClient();
-    const { data } = await selectAll(() => supabase
+    const { data, error } = await selectAll(() => supabase
       .from("purchase_bills")
       .select("id, our_reference, bill_no, net_payable_paise, outstanding_paise, bill_date, txn_currency, exchange_rate, txn_net_payable")
       .eq("client_id", clientId)
@@ -2722,7 +2781,9 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
       .in("status", ["received", "partially_paid"])
       .order("bill_date", { ascending: false })
       .order("id"));
-    setOpenBills(data ?? []);
+    // The pager hands a failure back as `error` and does not throw.
+    setOpenBillsUnread(!!error);
+    setOpenBills(error ? [] : data ?? []);
     setBillId("");
     setAlloc({});
   }
@@ -2733,7 +2794,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
   function closePaymentForm() { setMsg(null); setShowForm(false); }
 
   async function handleSave() {
-    if (dates.first) { setMsg({ type: "err", text: dates.first }); return; }
+    if (dates.first) { dates.refuseWith(setMsg, (text) => ({ type: "err" as const, text })); return; }
     // The box is marked "Date *" and a cleared box reports no problem, so "" went to the server as the payment's date, where the period
     // check raises on text that is not a date and the person got a failure with no sentence, for a payment that posts to the books.
     if (!payDate) { setMsg({ type: "err", text: "Date: enter the date the payment was made." }); return; }
@@ -2791,7 +2852,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
           exchange_rate: isForeign ? exchangeRate : undefined,
         },
         token
-      );
+      , { timeoutMs: HELD_DIALOG_MS });
       if (!result.success) throw new Error(result.error ?? "Failed to record payment");
 
       // SAY WHAT WAS WITHHELD, IN THE ENGINE'S OWN WORDS. The server decides
@@ -2840,7 +2901,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
     try {
       const token = await getAuthToken();
       const result = await apiCall(`/api/purchase-payments/${p.id}/reverse`, "POST",
-        { reversal_date: toDate() }, token);
+        { reversal_date: toDate() }, token, { timeoutMs: HELD_DIALOG_MS });
       if (!result.success) throw new Error(result.error ?? "Failed to reverse payment");
       setMsg({ type: "ok", text: `${p.payment_no} reversed — journal and bill outstanding rolled back` });
       load();
@@ -2957,6 +3018,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
               <label className="block text-xs font-medium text-ps-label mb-1">Vendor *</label>
               <VendorLookup
                 vendors={vendors}
+                recent={recentVendors}
                 value={vendorId}
                 onChange={(id) => { setVendorId(id); if (id) loadOpenBills(id); }}
                 ariaLabel="Vendor"
@@ -3071,7 +3133,12 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
                   </button>
                 </div>
               </div>
-              {allocatableBills.length === 0 ? (
+              {openBillsUnread ? (
+                <p role="alert" className="px-3 py-3 text-2xs text-state-problem">
+                  This vendor&apos;s open bills could not be read, so none are listed. That is not a vendor with none: pick the vendor again
+                  to read them before you record the payment, or the whole payment is recorded as an advance.
+                </p>
+              ) : allocatableBills.length === 0 ? (
                 <p className="px-3 py-3 text-2xs text-ps-hint">
                   This vendor has no open bills. The whole payment is recorded as an advance.
                 </p>
@@ -3168,7 +3235,9 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
         toolbarExtra={
           <>
             <FinancialYearPicker value={financialYear} onChange={onFinancialYearChange} />
-            <button onClick={() => (showForm ? closePaymentForm() : openPaymentForm())} className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark"><Plus size={12} /> Record Payment</button>
+            {mayWriteBooks && (
+              <button onClick={() => (showForm ? closePaymentForm() : openPaymentForm())} className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark"><Plus size={12} /> Record Payment</button>
+            )}
           </>
         }
         rowActions={(p) => !p.is_reversed && (
@@ -3177,16 +3246,18 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
               className="text-2xs text-blue-600 hover:text-blue-800 hover:underline whitespace-nowrap">
               Payment voucher
             </button>
-            {unallocatedOf(p) > 0 && (
+            {unallocatedOf(p) > 0 && mayWriteBooks && (
               <button onClick={() => setAllocateFor(p)}
                 className="text-2xs text-blue-600 hover:text-blue-800 hover:underline whitespace-nowrap">
                 Apply
               </button>
             )}
-            <Button variant="plain" size="none" onClick={() => reversePayment(p)}
-              className="text-2xs text-red-600 hover:text-red-800 hover:underline">
-              Reverse
-            </Button>
+            {mayReverse && (
+              <Button variant="plain" size="none" onClick={() => reversePayment(p)}
+                className="text-2xs text-red-600 hover:text-red-800 hover:underline">
+                Reverse
+              </Button>
+            )}
           </div>
         )}
       />
@@ -3263,7 +3334,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
   // A sentence names a document of the client it was shown for: switching client clears them.
   useEffect(() => { setStockNotes([]); }, [clientId]);
   const [issuingId, setIssuingId] = useState<string | null>(null);
-  const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null);
+  const [menu, setMenu] = useState<({ id: string } & RowMenuPlace) | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -3345,8 +3416,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
   }
 
   function openMenuFor(e: React.MouseEvent, dn: DebitNoteRow) {
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    setMenu({ id: dn.id, top: r.bottom + 4, left: Math.max(8, r.right - 176) });
+    setMenu({ id: dn.id, ...rowMenuAt(e, 176) });
   }
 
   async function issueDebitNote(id: string) {
@@ -3354,7 +3424,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
     setIssuingId(id);
     try {
       const token = await getAuthToken();
-      const result = await apiCall(`/api/debit-notes/${id}/issue`, "POST", undefined, token);
+      const result = await apiCall(`/api/debit-notes/${id}/issue`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
       if (!result.success) throw new Error(result.error ?? "Failed to issue debit note");
       // POST-A-378: the server's own sentence when the CA said no goods went back to the supplier, so stock was left alone on purpose.
       const left = stockNotMovedSentence(result.data);
@@ -3385,7 +3455,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
     setDetailId(null);
     try {
       const token = await getAuthToken();
-      const result = await apiCall(`/api/debit-notes/${dn.id}`, "DELETE", undefined, token);
+      const result = await apiCall(`/api/debit-notes/${dn.id}`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
       if (!result.success) throw new Error(result.error ?? "Failed to delete debit note");
       setMsg({ type: "ok", text: `${dn.debit_note_no || "Debit note"} deleted` });
       load();
@@ -3591,12 +3661,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
         const d = debitNotes.find((x) => x.id === menu.id);
         if (!d) return null;
         return (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
-            <div
-              className="fixed z-50 w-44 bg-white rounded-lg border border-ps-border shadow-lg py-1 text-xs"
-              style={{ top: menu.top, left: menu.left }}
-            >
+          <RowMenu place={menu} widthClass="w-44" onClose={() => setMenu(null)}>
               <button onClick={() => { setMenu(null); setDetailId(d.id); }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                 View details
@@ -3614,8 +3679,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
                   </Button>
                 </>
               )}
-            </div>
-          </>
+          </RowMenu>
         );
       })()}
 
@@ -3703,6 +3767,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
             )}
             <button
               onClick={(e) => openMenuFor(e, d)}
+              aria-haspopup="true" aria-expanded={menu?.id === d.id}
               aria-label={`Actions for debit note ${d.debit_note_no || d.id}`}
               className="p-1 rounded hover:bg-ps-muted text-ps-label"
             >
@@ -3752,7 +3817,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [registerNotes, setRegisterNotes] = useState<RegisterNote[]>([]);
   const [issuingId, setIssuingId] = useState<string | null>(null);
-  const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null);
+  const [menu, setMenu] = useState<({ id: string } & RowMenuPlace) | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -3831,8 +3896,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
   }
 
   function openMenuFor(e: React.MouseEvent, pcn: PurchaseCreditNoteRow) {
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    setMenu({ id: pcn.id, top: r.bottom + 4, left: Math.max(8, r.right - 176) });
+    setMenu({ id: pcn.id, ...rowMenuAt(e, 176) });
   }
 
   async function issueCreditNote(id: string) {
@@ -3840,7 +3904,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
     setIssuingId(id);
     try {
       const token = await getAuthToken();
-      const result = await apiCall(`/api/purchase-credit-notes/${id}/issue`, "POST", undefined, token);
+      const result = await apiCall(`/api/purchase-credit-notes/${id}/issue`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
       if (!result.success) throw new Error(result.error ?? "Failed to issue credit note");
       setMsg({ type: "ok", text: "Credit note issued." });
       // The mirror of the debit-note path. A §34(3) note INCREASES what was
@@ -3865,7 +3929,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
     setDetailId(null);
     try {
       const token = await getAuthToken();
-      const result = await apiCall(`/api/purchase-credit-notes/${pcn.id}`, "DELETE", undefined, token);
+      const result = await apiCall(`/api/purchase-credit-notes/${pcn.id}`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
       if (!result.success) throw new Error(result.error ?? "Failed to delete credit note");
       setMsg({ type: "ok", text: `${pcn.credit_note_no || "Credit note"} deleted` });
       load();
@@ -4056,12 +4120,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
         const d = creditNotes.find((x) => x.id === menu.id);
         if (!d) return null;
         return (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
-            <div
-              className="fixed z-50 w-44 bg-white rounded-lg border border-ps-border shadow-lg py-1 text-xs"
-              style={{ top: menu.top, left: menu.left }}
-            >
+          <RowMenu place={menu} widthClass="w-44" onClose={() => setMenu(null)}>
               <button onClick={() => { setMenu(null); setDetailId(d.id); }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                 View details
@@ -4079,8 +4138,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
                   </Button>
                 </>
               )}
-            </div>
-          </>
+          </RowMenu>
         );
       })()}
 
@@ -4168,6 +4226,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
             )}
             <button
               onClick={(e) => openMenuFor(e, d)}
+              aria-haspopup="true" aria-expanded={menu?.id === d.id}
               aria-label={`Actions for credit note ${d.credit_note_no || d.id}`}
               className="p-1 rounded hover:bg-ps-muted text-ps-label"
             >

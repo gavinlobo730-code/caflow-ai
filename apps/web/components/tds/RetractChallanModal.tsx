@@ -40,7 +40,7 @@ export function RetractChallanModal({
   const trimmed = reason.trim();
 
   return (
-    <Modal title="Retract this challan" onClose={onClose} maxWidthClass="max-w-md" note={intro}>
+    <Modal title="Retract this challan" onClose={() => { if (!busy) (onClose)(); }} maxWidthClass="max-w-md" note={intro}>
       <div className="space-y-3">
         <p className="text-xs text-ps-body">
           This takes the challan out of the register: it no longer counts toward what has been deposited, the deposit worksheet or
@@ -71,7 +71,7 @@ export function RetractChallanModal({
         )}
 
         <div className="flex justify-end gap-2 pt-1">
-          <button
+          <button disabled={busy}
             type="button"
             onClick={onClose}
             className="text-xs px-3 py-1.5 border border-ps-border rounded-md hover:bg-ps-muted bg-white"

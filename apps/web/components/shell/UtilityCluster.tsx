@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Search, Settings, LogOut } from "lucide-react";
+import { Compass, Search, Settings, LogOut, Receipt } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useMenuDismiss } from "@/lib/ui/useMenuDismiss";
 import { useAuth } from "@/lib/auth/AuthContext";
+import { hasEmployeePortalAccess } from "@/lib/portal/employeeAccess";
 
 /**
  * Search, Settings and the account menu — the three things a signed-in CA must
@@ -42,12 +44,32 @@ export type UtilityOrientation = "rail" | "bar" | "bar-dark";
 export function UtilityCluster({
   orientation,
   onOpenSearch,
+  onOpenGuide,
 }: {
   orientation: UtilityOrientation;
   onOpenSearch: () => void;
+  /** Opens "Where is…?" (POST-A-538). The dialog is AppShell's, one instance, like the search box. */
+  onOpenGuide: () => void;
 }) {
   const { user, userRole, signOut, fullName } = useAuth();
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
+  // The account menu has no layer over the window behind it (POST-A-130): Escape closes it with focus back on the Account button, and a
+  // click anywhere else closes it without being swallowed, so the thing clicked still acts.
+  const accountButtonRef = useRef<HTMLButtonElement | null>(null);
+  const accountMenuRef = useRef<HTMLDivElement | null>(null);
+  useMenuDismiss(avatarMenuOpen, () => setAvatarMenuOpen(false), { opener: accountButtonRef, menu: accountMenuRef }, { outsideClick: true });
+  // "My payslips" (POST-A-549): a member of staff whom the practice also pays here, and who accepted the payslip portal's
+  // invitation with the address they sign in with, reaches their own payslips from this menu. Asked of the server the first
+  // time the menu is opened, never on every screen: most members are not on the practice's own payroll, and the answer for
+  // them is "no" (the link is then simply not drawn). null is "not asked yet".
+  const [ownPayslips, setOwnPayslips] = useState<boolean | null>(null);
+  function toggleAvatarMenu() {
+    setAvatarMenuOpen((v) => !v);
+    if (ownPayslips === null) {
+      setOwnPayslips(false);
+      void hasEmployeePortalAccess().then(setOwnPayslips);
+    }
+  }
   const pathname = usePathname();
   const isSettingsRoute = pathname.startsWith("/settings");
   const isRail = orientation === "rail";
@@ -77,6 +99,19 @@ export function UtilityCluster({
           : "flex items-center gap-1 shrink-0"
       )}
     >
+      {/* "Where is…?" comes first and carries its words on a wide bar: it is what a new CA is told to use in place of the
+          guided tips, so it must be findable without knowing what the icon means (POST-A-538). */}
+      <button
+        onClick={onOpenGuide}
+        title="Where is…? Ask where to find something"
+        aria-label="Where is…? Ask where to find something"
+        data-guide-open
+        className={cn(button, !isRail && "w-auto gap-1.5 px-2")}
+      >
+        <Compass size={15} className="shrink-0" />
+        {!isRail && <span className="hidden text-xs font-medium lg:inline">Where is…?</span>}
+      </button>
+
       <button onClick={onOpenSearch} title="Search (⌘K)" aria-label="Search" className={button}>
         <Search size={15} />
       </button>
@@ -95,9 +130,12 @@ export function UtilityCluster({
 
       <div className="relative">
         <button
-          onClick={() => setAvatarMenuOpen((v) => !v)}
+          ref={accountButtonRef}
+          onClick={toggleAvatarMenu}
           title={user?.email ?? "Account"}
           aria-label="Account"
+          aria-haspopup="true"
+          aria-expanded={avatarMenuOpen}
           className={cn(
             "w-7 h-7 rounded-full flex items-center justify-center text-3xs font-bold hover:opacity-80 transition-opacity shrink-0",
             isDark ? "bg-white/15 text-white" : "bg-brand text-white"
@@ -106,9 +144,10 @@ export function UtilityCluster({
           {initials}
         </button>
         {avatarMenuOpen && (
-          <>
-            <div className="fixed inset-0 z-20" onClick={() => setAvatarMenuOpen(false)} />
             <div
+              ref={accountMenuRef}
+              role="group"
+              aria-label="Account menu"
               className={cn(
                 "absolute z-30 w-48 rounded-xl p-1.5",
                 isRail ? "left-full bottom-0 ml-2" : "right-0 top-full mt-2",
@@ -121,13 +160,31 @@ export function UtilityCluster({
               )}
             >
               <div className={cn("px-3 py-2 mb-1 border-b", isDark ? "border-white/10" : "border-ps-border")}>
+                {/* What is not known is not drawn. This used to fall back to "user@firm.com" and to "Partner", an address nobody has and a
+                    role the person may not hold. */}
                 <p className={cn("text-xs font-semibold truncate", isDark ? "text-white" : "text-ps-ink")}>
-                  {user?.email ?? "user@firm.com"}
+                  {user?.email ?? "Signed in"}
                 </p>
-                <p className={cn("text-3xs truncate mt-0.5", isDark ? "text-slate-500" : "text-ps-hint")}>
-                  {userRole ?? "Partner"}
-                </p>
+                {userRole && (
+                  <p className={cn("text-3xs truncate mt-0.5", isDark ? "text-slate-500" : "text-ps-hint")}>
+                    {userRole}
+                  </p>
+                )}
               </div>
+              {ownPayslips && (
+                <Link
+                  href="/portal/employee"
+                  data-my-payslips
+                  onClick={() => setAvatarMenuOpen(false)}
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-colors",
+                    isDark ? "text-white/70 hover:text-white hover:bg-white/10" : "text-ps-label hover:text-ps-ink hover:bg-ps-bg"
+                  )}
+                >
+                  <Receipt size={13} />
+                  My payslips
+                </Link>
+              )}
               <button
                 onClick={() => {
                   setAvatarMenuOpen(false);
@@ -144,7 +201,6 @@ export function UtilityCluster({
                 Sign out
               </button>
             </div>
-          </>
         )}
       </div>
     </div>

@@ -29,13 +29,16 @@ import { LocationsAndBatches } from "@/components/inventory/LocationsAndBatches"
 import { StockAgeingPanel } from "@/components/inventory/StockAgeing";
 import { ReorderPanel } from "@/components/inventory/ReorderPanel";
 import { UnrecordedStockPanel } from "@/components/inventory/UnrecordedStockPanel";
+import { NrvReviewPanel } from "@/components/inventory/NrvReviewPanel";
 
 import { daysBetweenLocalISO } from "@/lib/dateMath";
 import { Callout } from "@/components/ui/callout";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { formatDate, todayIstISO } from "@/lib/dates/format";
+import { usePermissions } from "@/lib/auth/AuthContext";
 interface StockItem {
   id: string;
   name: string;
@@ -173,6 +176,9 @@ function fmtQty(v: number | string | null | undefined): string {
 
 export default function InventoryPage() {
   const { clientId } = useClientNav();
+  // Adjusting stock, writing it down to its realisable value and opening a physical count ask `accounting` `write`, a
+  // Manager's or a Partner's; they were drawn to an Executive, whose `accounting` is read only, and came back refused (POST-A-455).
+  const mayWriteBooks = usePermissions().can("accounting", "write");
   const [items, setItems] = useState<StockItem[]>([]);
   const [loading, setLoading] = useState(false);
   // True when the LAST load attempt failed (thrown/PostgREST error) rather than
@@ -201,6 +207,7 @@ export default function InventoryPage() {
   // constraint rather than duplicating — but the CA would see a failure for a
   // click that worked.
   const [openingCount, setOpeningCount] = useState(false);
+  const [nrvReviewOpen, setNrvReviewOpen] = useState(false);
   // apex-bank-assets-inventory-06. `load` fires again on every `asAt` change
   // with no request-sequencing at all, so switching the as-at date quickly —
   // click, click, click — let an earlier, SLOWER response land after a later,
@@ -349,7 +356,7 @@ export default function InventoryPage() {
     // that opened a modal AND a panel behind it is a click that did two things.
     { key: "actions", header: "", accessor: () => "", hideable: false, align: "right",
       render: (i) => (
-        <span className="flex items-center justify-end gap-2 whitespace-nowrap">
+        mayWriteBooks && <span className="flex items-center justify-end gap-2 whitespace-nowrap">
           <button
             onClick={(e) => { e.stopPropagation(); setRowAction({ item: i, kind: "adjust" }); }}
             className="text-2xs text-blue-600 hover:underline">Adjust</button>
@@ -430,11 +437,19 @@ export default function InventoryPage() {
               Show today
             </button>
           ) : null}
-          <Button variant="plain" size="none" onClick={startCount} disabled={openingCount}
+          {mayWriteBooks && <Button variant="plain" size="none" onClick={startCount} disabled={openingCount}
                   className="px-3 py-[7px] text-xs border border-emerald-200 text-emerald-700 rounded-lg hover:bg-emerald-50 whitespace-nowrap disabled:opacity-50">
             {openingCount ? "Opening…" : "Physical count"}
-          </Button>
-          <button onClick={load} className="p-1.5 mb-0.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label">
+          </Button>}
+          {/* The review measures each item on the stock held now, so it is offered only on the current register, as the row actions are. */}
+          {/* POST-A-111: the review's Post is `rbac("accounting", "write")`, the pair `mayWriteBooks` asks. */}
+          {!asAt && mayWriteBooks && (
+            <Button variant="plain" size="none" onClick={() => setNrvReviewOpen(true)}
+                    className="px-3 py-[7px] text-xs border border-ps-border text-ps-body rounded-lg hover:bg-ps-bg whitespace-nowrap">
+              <TrendingDown size={12} className="inline mr-1" />NRV review
+            </Button>
+          )}
+          <button onClick={load} aria-label="Reload" title="Reload" className="p-1.5 mb-0.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label">
             <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
           </button>
         </div>
@@ -518,6 +533,10 @@ export default function InventoryPage() {
         />
       )}
 
+      {nrvReviewOpen && (
+        <NrvReviewPanel clientId={clientId} onClose={() => setNrvReviewOpen(false)} onPosted={load} />
+      )}
+
       {drillDown && (
         <StockLedgerDrillDown clientId={clientId} item={drillDown} onClose={() => setDrillDown(null)} onAdjusted={load} />
       )}
@@ -550,6 +569,9 @@ function StockLedgerDrillDown({
   onClose: () => void;
   onAdjusted: () => void;
 }) {
+  // Adjusting stock, writing it down to its realisable value and opening a physical count ask `accounting` `write`, a
+  // Manager's or a Partner's; they were drawn to an Executive, whose `accounting` is read only, and came back refused (POST-A-455).
+  const mayWriteBooks = usePermissions().can("accounting", "write");
   // The financial year here only SEEDS the from/to dates below, which the user
   // then edits freely — the date pair is the filter, and it is already on this
   // panel. So the seed is the year we are actually in, rather than one carried
@@ -618,21 +640,13 @@ function StockLedgerDrillDown({
 
   useEffect(() => { load(); }, [load]);
 
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose(); }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
+  // The ledger is the shared dialog (POST-A-130), and the two dialogs it opens are shared dialogs drawn over it: the shared dialogs keep a
+  // stack, so Escape and a click outside reach only the top one, and a dialog over a posting still in flight holds its own close. The key
+  // listener the hand-built ledger kept for this (and the one its dialogs kept) is gone with the layers it worked round.
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-[100] flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[88vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-        <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between shrink-0">
-          <div>
-            <p className="text-sm font-semibold text-ps-ink">{item.name}</p>
-            <p className="text-2xs text-ps-hint mt-0.5">Stock movement ledger</p>
-          </div>
-          <div className="flex items-center gap-3">
+    <Modal title={item.name} note="Stock movement ledger" maxWidthClass="max-w-4xl" onClose={onClose}>
+        {mayWriteBooks && (
+          <div className="flex items-center justify-end gap-3">
             <button onClick={() => setAdjustOpen(true)}
               className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-label">
               <ClipboardEdit size={13} /> Adjust Stock
@@ -641,11 +655,10 @@ function StockLedgerDrillDown({
               className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-label">
               <TrendingDown size={13} /> Write Down to NRV
             </button>
-            <button onClick={onClose} className="text-ps-hint hover:text-ps-body text-xl leading-none" aria-label="Back">×</button>
           </div>
-        </div>
+        )}
 
-        <div className="px-5 py-3 border-b border-ps-border flex items-end gap-3 flex-wrap shrink-0">
+        <div className="pb-3 border-b border-ps-border flex items-end gap-3 flex-wrap">
           <div>
             <label className="block text-3xs font-medium text-ps-hint mb-1">From</label>
             <DateInput aria-label="Stock ledger from" value={startDate} onChange={(v) => setStartDate(v)}
@@ -662,7 +675,7 @@ function StockLedgerDrillDown({
           {loading && <RefreshCw size={13} className="animate-spin text-ps-hint mb-1.5" />}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-5">
+        <div>
           {loading ? (
             <TableSkeleton cols={7} rows={4} />
           ) : windowReversed ? (
@@ -744,7 +757,6 @@ function StockLedgerDrillDown({
             </table>
           )}
         </div>
-      </div>
 
       {adjustOpen && (
         <AdjustStockModal
@@ -763,7 +775,7 @@ function StockLedgerDrillDown({
           onSaved={() => { setWritedownOpen(false); load(); onAdjusted(); }}
         />
       )}
-    </div>
+    </Modal>
   );
 }
 
@@ -808,7 +820,7 @@ function AdjustStockModal({
   }
 
   async function submit() {
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError); return; }
     const qty = parseFloat(quantity);
     if (!(qty > 0)) { setError("Enter a quantity greater than 0."); return; }
     setSaving(true);
@@ -834,13 +846,10 @@ function AdjustStockModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-[110] flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-        <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between">
-          <p className="text-sm font-semibold text-ps-ink">Adjust Stock — {item.name}</p>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-body text-xl leading-none" aria-label="Close">×</button>
-        </div>
-        <div className="p-5 space-y-3">
+    // A shared dialog over the ledger's shared dialog: it is the top of the stack, so Escape and a click outside are its own, and its close
+    // is held while its posting is out.
+    <Modal title={`Adjust Stock — ${item.name}`} maxWidthClass="max-w-md" onClose={() => { if (!saving) onClose(); }}>
+        <div className="space-y-3">
           <p className="text-2xs text-ps-hint">
             Currently {fmtQty(item.stock_qty_units)} on hand. This posts a journal entry immediately — review the details before saving.
           </p>
@@ -908,8 +917,7 @@ function AdjustStockModal({
             </Button>
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -968,7 +976,7 @@ function NrvWritedownModal({
   }, [nrvPaise, item.id, clientId]);
 
   async function submit() {
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError); return; }
     if (nrvPaise === null || nrvPaise < 0) { setError("Enter a valid net realisable value per unit."); return; }
     setSaving(true);
     setError(null);
@@ -990,13 +998,10 @@ function NrvWritedownModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-[110] flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-        <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between">
-          <p className="text-sm font-semibold text-ps-ink">Write Down to NRV — {item.name}</p>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-body text-xl leading-none" aria-label="Close">×</button>
-        </div>
-        <div className="p-5 space-y-3">
+    // A shared dialog over the ledger's shared dialog: it is the top of the stack, so Escape and a click outside are its own, and its close
+    // is held while its posting is out.
+    <Modal title={`Write Down to NRV — ${item.name}`} maxWidthClass="max-w-md" onClose={() => { if (!saving) onClose(); }}>
+        <div className="space-y-3">
           <p className="text-2xs text-ps-hint">
             AS-2 / Ind AS 2 / ICDS-II: inventory must be carried at the lower of cost or net realisable value. Quantity
             never changes — only the recorded value. Current average cost is {formatServicePrice(item.avg_cost_paise) || "₹0"}/unit
@@ -1068,7 +1073,6 @@ function NrvWritedownModal({
             </Button>
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

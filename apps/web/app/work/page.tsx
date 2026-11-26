@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   CheckSquare, Clock, AlertTriangle, CheckCircle2,
-  Calendar, Loader2, ExternalLink, Activity, InboxIcon,
+  Calendar, ExternalLink, Activity, InboxIcon, ListChecks,
 } from "lucide-react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +12,8 @@ import { Button } from "@/components/ui/button";
 import { getTasks, getTasksWindow, getTaskCounts } from "@/lib/data/tasks";
 import { getTeamWorkload } from "@/lib/data/analytics";
 import { getUserProfile } from "@/lib/data/getFirmId";
+import { getMyObligations, type MyObligations } from "@/lib/data/compliance";
+import { usePermissions } from "@/lib/auth/AuthContext";
 import type { Task, TaskStatus, TeamWorkload } from "@/lib/types";
 import type { TaskCounts } from "@/lib/data/tasks";
 import { daysBetweenLocalISO } from "@/lib/dateMath";
@@ -20,6 +22,8 @@ import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
 import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
 import { windowDescription } from "@/lib/lists/window";
+import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
+import { SectionPlaceholder } from "@/components/ui/page-frame";
 
 const STATUS_COLORS: Record<TaskStatus, string> = {
   todo: "bg-ps-muted text-ps-label",
@@ -88,6 +92,64 @@ function TaskRow({ task }: { task: Task }) {
   );
 }
 
+const MY_OBLIGATIONS_SHOWN = 8;
+
+const ROLE_WORD: Record<string, string> = { preparer: "Preparer", reviewer: "Reviewer", approver: "Approver" };
+
+/** The obligation half of "my obligations and my tasks" (POST-A-206): the returns and deposits the person is named on, from the
+ *  obligation store Deadlines shows. It says what it read and what it did not: an obligation nobody is named on is on nobody's list,
+ *  and a failed read is said in words, never shown as "none". */
+function MyObligationsCard({ data, error }: { data: MyObligations | null; error: string | null }) {
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-1.5">
+          <ListChecks size={13} className="text-ps-label" /> My Obligations
+          {data && data.overdue > 0 && (
+            <Badge className="ml-1 text-3xs px-1.5 py-0 bg-state-problem-surface text-state-problem">{data.overdue} overdue</Badge>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="px-2 space-y-1">
+        {error ? (
+          <p className="text-sm text-state-problem text-center py-4">Your obligations could not be read: {error}</p>
+        ) : data === null ? (
+          <LoadingRegion label="Reading your obligations" noticeClassName="justify-center text-center">
+            <SkeletonText lines={3} className="px-2 py-3" />
+          </LoadingRegion>
+        ) : data.obligations.length === 0 ? (
+          <p className="text-sm text-ps-hint text-center py-4">You are not named as preparer, reviewer or approver on any open obligation.</p>
+        ) : (
+          data.obligations.slice(0, MY_OBLIGATIONS_SHOWN).map((o) => (
+            <div key={o.id} className="flex items-center gap-3 px-4 py-2.5 rounded-lg">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-ps-ink truncate font-medium">{o.label}</p>
+                <p className="text-2xs text-ps-hint truncate">
+                  {o.clientName ?? "Client not named"} · {o.roles.map((r) => ROLE_WORD[r] ?? r).join(", ")}
+                  {o.status ? ` · ${o.status}` : ""}
+                </p>
+              </div>
+              <p className={`shrink-0 text-2xs ${o.overdue ? "text-state-problem font-medium" : "text-ps-hint"}`}>
+                {o.dueDate ? formatDate(o.dueDate) : "No due date"}{o.overdue ? " · overdue" : ""}
+              </p>
+            </div>
+          ))
+        )}
+        {data && data.total > MY_OBLIGATIONS_SHOWN && (
+          <p className="text-2xs text-ps-hint text-center py-1">
+            {data.total - MY_OBLIGATIONS_SHOWN} more not shown here. The rest are on <Link href="/deadlines" className="underline">Deadlines</Link>.
+          </p>
+        )}
+        {data && data.unassigned > 0 && (
+          <p className="text-2xs text-ps-hint text-center py-1">
+            {data.unassigned} open {data.unassigned === 1 ? "obligation has" : "obligations have"} nobody named on {data.unassigned === 1 ? "it" : "them"}, so {data.unassigned === 1 ? "it is" : "they are"} on nobody&apos;s list. Deadlines shows {data.unassigned === 1 ? "it" : "them"}.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 /** The window holds 50 open tasks, soonest due first. This says so when a
  *  section is short of what the exact counts say exists, instead of the section
  *  looking complete. `known` is the database's own count for the section. */
@@ -115,6 +177,20 @@ export default function WorkPage() {
   const [loadingWorkload, setLoadingWorkload] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isManager, setIsManager] = useState(false);
+  const { can, resolved } = usePermissions();
+  const mayReadObligations = resolved && can("compliance", "read");
+  const [myObligations, setMyObligations] = useState<MyObligations | null>(null);
+  const [obligationsError, setObligationsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!mayReadObligations) return;
+    let live = true;
+    setObligationsError(null);
+    getMyObligations()
+      .then((d) => { if (live) setMyObligations(d); })
+      .catch((e: unknown) => { if (live) setObligationsError(e instanceof Error ? e.message : "the server did not answer"); });
+    return () => { live = false; };
+  }, [mayReadObligations]);
 
   const load = useCallback(async () => {
     setLoadingTasks(true);
@@ -182,9 +258,7 @@ export default function WorkPage() {
       {error && <Callout tone="problem">{error}</Callout>}
 
       {loadingTasks ? (
-        <div className="flex items-center justify-center py-20 text-ps-hint">
-          <Loader2 className="animate-spin mr-2" size={18} /> Loading your work…
-        </div>
+        <SectionPlaceholder label="Loading your work" shape="list" rows={6} />
       ) : isEmpty ? (
         <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
           <div className="w-12 h-12 rounded-full bg-ps-muted flex items-center justify-center">
@@ -253,6 +327,8 @@ export default function WorkPage() {
               </CardContent>
             </Card>
           </div>
+
+          {mayReadObligations && <MyObligationsCard data={myObligations} error={obligationsError} />}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {/* Due Today */}
@@ -372,6 +448,7 @@ export default function WorkPage() {
                   <CardContent className="py-3">
                     <p className="text-xs text-ps-label">Avg Utilisation</p>
                     <p className="text-xl font-bold text-ps-ink mt-0.5">{workload.avg_utilisation_pct}%</p>
+                    {workload.utilisation_counts && <p className="text-3xs text-ps-hint mt-1">{workload.utilisation_counts}</p>}
                   </CardContent>
                 </Card>
               </div>

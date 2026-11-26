@@ -13,15 +13,19 @@ import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useCallback, useRef, ChangeEvent } from "react";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { Combobox } from "@/components/ui/combobox";
-import { Plus, X, Upload, Download, Trash2, FileText, AlertTriangle, CheckCircle, Clock, Loader2 } from "lucide-react";
+import { Plus, Upload, Download, Trash2, FileText, AlertTriangle, CheckCircle, Clock, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { api } from "@/lib/api";
+import { UploadProgress } from "@/components/ui/upload-progress";
+import type { UploadProgress as BytesSent } from "@/lib/api/uploadWithProgress";
+import { failureSentence } from "@/lib/api/failureSentence";
 import { deleteRowAndConfirm } from "@/lib/data/deleteRowAndConfirm";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
@@ -123,7 +127,7 @@ function AddModal({ clients, presetClientId, onClose, onAdded }: {
   const lbl = "text-xs font-medium text-ps-body block mb-1";
 
   async function handleSave() {
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError); return; }
     if (!form.clientId || !form.dateReceived) { setError("Client and date received are required"); return; }
     // All money in integer paise — no floating point
     const amountPaise = form.amountDemandedRs
@@ -159,13 +163,15 @@ function AddModal({ clients, presetClientId, onClose, onAdded }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white flex items-center justify-between px-6 py-4 border-b border-ps-border">
-          <h3 className="text-sm font-semibold text-ps-ink">Add IT Notice</h3>
-          <button aria-label="Close" onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
-        </div>
-        <div className="px-6 py-4 space-y-3">
+    // The shared dialog (POST-A-130). Its close (Escape, a click beside it, its ×) is held while the notice is being saved.
+    <Modal title="Add IT Notice" maxWidthClass="max-w-md" onClose={() => { if (!saving) onClose(); }}
+      footer={<>
+        <button disabled={saving} onClick={onClose} className="px-4 py-2 text-sm text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg disabled:opacity-50">Cancel</button>
+        <Button variant="plain" size="none" spinner={false} onClick={handleSave} disabled={saving} className="px-4 py-2 text-sm text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-60">
+          {saving ? "Saving…" : "Add Notice"}
+        </Button>
+      </>}>
+        <div className="space-y-3">
           {error && <Callout tone="problem">{error}</Callout>}
           <div>
             <label className={lbl}>Client *</label>
@@ -204,7 +210,7 @@ function AddModal({ clients, presetClientId, onClose, onAdded }: {
             </div>
             <div>
               <label htmlFor="notice-response-due" className={lbl}>Response Due Date</label>
-              <DateInput id="notice-response-due" anchor={form.dateReceived || null} value={form.responseDueDate} onChange={v => upd({ responseDueDate: v })} onStateChange={dates.watch("due", "Response due date")} className={inputCls} />
+              <DateInput id="notice-response-due" anchor={form.dateReceived || null} near={form.dateReceived || null} value={form.responseDueDate} onChange={v => upd({ responseDueDate: v })} onStateChange={dates.watch("due", "Response due date")} className={inputCls} />
             </div>
           </div>
           <div>
@@ -224,14 +230,7 @@ function AddModal({ clients, presetClientId, onClose, onAdded }: {
               placeholder="Additional details…" />
           </div>
         </div>
-        <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-ps-border flex gap-2 justify-end">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg">Cancel</button>
-          <button onClick={handleSave} disabled={saving} className="px-4 py-2 text-sm text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-60">
-            {saving ? "Saving…" : "Add Notice"}
-          </button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -245,6 +244,7 @@ function UploadDocButton({ noticeId, field, label, currentPath, onUploaded }: {
   onUploaded: () => void;
 }) {
   const [uploading, setUploading] = useState(false);
+  const [sent, setSent] = useState<BytesSent | null>(null);
   const [opening, setOpening] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   // Which slot of the notice this fills; the server names the column, so the browser never chooses one.
@@ -257,11 +257,12 @@ function UploadDocButton({ noticeId, field, label, currentPath, onUploaded }: {
     try {
       // The server bounds the file, checks its bytes against its type, names and stores it under the firm, client and
       // notice, and writes the path onto the notice, or removes the file again (POST-A-010).
-      await api.incomeTax.attachToNotice(noticeId, slot, file);
+      await api.incomeTax.attachToNotice(noticeId, slot, file, setSent);
       onUploaded();
     } catch (e) {
       toast({ title: e instanceof Error ? e.message : "Upload failed", variant: "destructive" });
     } finally {
+      setSent(null);
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
     }
@@ -295,6 +296,7 @@ function UploadDocButton({ noticeId, field, label, currentPath, onUploaded }: {
             {uploading ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />}
             {uploading ? "Uploading…" : label}
           </button>
+          {sent && <UploadProgress progress={sent} what="the file" />}
         </>
       )}
     </div>
@@ -352,8 +354,18 @@ export default function ITNoticesPage() {
 
   async function updateStatus(id: string, status: NoticeStatus) {
     const sb = getSupabaseClient();
-    await sb.from("it_notices").update({ status }).eq("id", id);
-    loadData();
+    // The answer used to be ignored (POST-A-414): a refusal, or a request that got no answer, looked like a change. `.select("id")` because
+    // a policy that refuses an update finds nothing to change and raises no error, so "no error" is not "changed".
+    const { data: reached, error: err } = await sb.from("it_notices").update({ status }).eq("id", id).select("id");
+    const refusal = err
+      ? failureSentence(err, "The notice's status was not changed.", "write")
+      : !reached || reached.length === 0
+        ? "The notice's status was not changed: it may have been removed, or you may not change notices for this client."
+        : null;
+    // The list is read again either way (a request that got no answer may have changed the row), and the sentence is set after the read,
+    // which clears the page's message as it starts.
+    await loadData();
+    if (refusal) setError(refusal);
   }
 
   async function deleteNotice(id: string) {
@@ -413,11 +425,13 @@ export default function ITNoticesPage() {
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3">
-        <select aria-label="Filter notices by client" value={clientFilter} onChange={e => setClientFilter(e.target.value)}
-          className="border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand">
-          <option value="all">All Clients</option>
-          {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
-        </select>
+        <ClientLookup ariaLabel="Filter notices by client"
+          clients={clients}
+          value={clientFilter === "all" ? "" : clientFilter}
+          onChange={id => setClientFilter(id || "all")}
+          placeholder="All Clients"
+          clearable
+        />
         <select aria-label="Filter notices by status" value={statusFilter} onChange={e => setStatusFilter(e.target.value as NoticeStatus | "all")}
           className="border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand">
           <option value="all">All Statuses</option>
@@ -497,22 +511,22 @@ export default function ITNoticesPage() {
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-1.5">
                           {n.status === "pending" && (
-                            <button onClick={() => updateStatus(n.id, "responded")}
+                            <Button variant="plain" size="none" spinner={false} onClick={() => updateStatus(n.id, "responded")}
                               className="text-xs px-2 py-1 bg-state-attention-surface text-state-attention rounded hover:bg-state-attention-hover">
                               Responded
-                            </button>
+                            </Button>
                           )}
                           {n.status === "responded" && (
-                            <button onClick={() => updateStatus(n.id, "closed")}
+                            <Button variant="plain" size="none" spinner={false} onClick={() => updateStatus(n.id, "closed")}
                               className="text-xs px-2 py-1 bg-state-ready-surface text-state-ready rounded hover:bg-state-ready-hover">
                               Close
-                            </button>
+                            </Button>
                           )}
                           {(n.status === "pending" || n.status === "responded") && (
-                            <button onClick={() => updateStatus(n.id, "appeal")}
+                            <Button variant="plain" size="none" spinner={false} onClick={() => updateStatus(n.id, "appeal")}
                               className="text-xs px-2 py-1 bg-brand-surface text-brand rounded hover:bg-brand-light">
                               Appeal
-                            </button>
+                            </Button>
                           )}
                           <Button variant="plain" size="none" onClick={() => deleteNotice(n.id)}
                             className="p-1 text-ps-disabled hover:text-state-problem">

@@ -1,9 +1,10 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { useEffect, useState } from "react";
 import { Sparkles, AlertTriangle, RefreshCw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { SkeletonText } from "@/components/ui/skeleton";
+import { SkeletonText, LoadingRegion } from "@/components/ui/skeleton";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import { api } from "@/lib/api";
@@ -120,7 +121,7 @@ export default function AiInsightsPage() {
               </span>
             </CardTitle>
             {mayGenerate && (
-              <button
+              <Button variant="plain" size="none" spinner={false}
                 onClick={generate}
                 disabled={generating || loading}
                 className="shrink-0 flex items-center gap-1.5 text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-label disabled:opacity-50"
@@ -129,7 +130,7 @@ export default function AiInsightsPage() {
                   ? <RefreshCw size={12} className="animate-spin" />
                   : <Sparkles size={12} />}
                 {generating ? "Generating…" : "Generate"}
-              </button>
+              </Button>
             )}
           </div>
           {generateError && (
@@ -138,13 +139,13 @@ export default function AiInsightsPage() {
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="space-y-3" role="status" aria-label="Loading insights">
+            <LoadingRegion label="Loading insights" className="space-y-3">
               {[1, 2, 3].map((i) => (
                 <div key={i} className="rounded-lg border border-ps-border px-4 py-3">
                   <SkeletonText lines={2} />
                 </div>
               ))}
-            </div>
+            </LoadingRegion>
           ) : loadFailed ? (
             <div className="text-center py-12 space-y-2">
               <p className="text-sm text-red-600 font-medium">Couldn&apos;t load insights — the request failed or timed out.</p>

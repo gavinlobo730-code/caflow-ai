@@ -89,6 +89,27 @@ STEPS: tuple[StepDef, ...] = (
 
 STEP_IDS: tuple[str, ...] = tuple(s.id for s in STEPS)
 
+# THE FIRM'S OWN PRACTICE (POST-A-533). The four steps above are all about clients, so a new CA could finish the card
+# without learning that the firm's own books exist. These are the same idea for the firm itself, and they are a SECOND
+# list and not four more rows of the first: only a Partner reaches the practice's own record (guardrail G1), so only a
+# Partner is sent them, and a Manager's card is the four steps it always was. Each ticks from the practice's own rows.
+PRACTICE_STEPS: tuple[StepDef, ...] = (
+    StepDef("practice_identity", "Check your own firm's details",
+            "Your firm is kept as a client of itself, so it has books of its own. They are set up from "
+            "the firm's PAN and legal form: check both before the first entry goes in."),
+    StepDef("practice_books", "Start your own firm's books",
+            "Enter the opening balances from your earlier books, or post the first entry. Until "
+            "then every statement of your own firm is empty."),
+    StepDef("practice_statement", "Import your firm's own bank statement",
+            "The firm's own bank account is reconciled the way a client's is, from a worklist "
+            "of proposed entries."),
+    StepDef("practice_fee_bill", "Raise your first fee bill",
+            "A fee bill issued from My practice posts to your own firm's books and is what its "
+            "own GST return is built from."),
+)
+
+PRACTICE_STEP_IDS: tuple[str, ...] = tuple(s.id for s in PRACTICE_STEPS)
+
 
 @dataclass(frozen=True)
 class Fact:
@@ -103,6 +124,8 @@ def _parse(ts: object) -> Optional[datetime]:
     try:
         parsed = datetime.fromisoformat(ts.strip().replace("Z", "+00:00"))
     except ValueError:
+        # Not a timestamp. A timestamptz column always reads back as ISO text, so a stored instant never lands here: this is an absent value or a
+        # hand-built one, and None says there is no instant.
         return None
     # A timestamptz comes back with an offset; a bare one was written as UTC.
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
@@ -118,13 +141,10 @@ def minutes_between(start: object, end: object) -> Optional[int]:
     return int((b - a).total_seconds() // 60)
 
 
-def build(facts: Mapping[str, Fact], *, firm_created_at: object = None, dismissed: Optional[bool] = None) -> dict:
-    """The checklist for one firm, as one PERSON sees it. `facts` may omit a step, which reads as unreadable.
-
-    `dismissed` is whether THIS person dismissed the card for good: True hides it, and False and None leave it to the steps. None is
-    "could not be read", which is not a dismissal: a card the person did not ask to lose stays, and the answer says `dismissed: None`."""
+def _listed(definitions: tuple[StepDef, ...], facts: Mapping[str, Fact]) -> dict:
+    """One list of steps with its own counts. A step the facts omit reads as unreadable."""
     steps = []
-    for definition in STEPS:
+    for definition in definitions:
         fact = facts.get(definition.id) or Fact(None)
         steps.append({
             "id": definition.id,
@@ -133,12 +153,43 @@ def build(facts: Mapping[str, Fact], *, firm_created_at: object = None, dismisse
             "done": fact.done if fact.done in (True, False) else None,
             "done_at": fact.at if fact.done is True else None,
         })
-
     done_count = sum(1 for s in steps if s["done"] is True)
     unreadable = [s["id"] for s in steps if s["done"] is None]
-    complete = done_count == len(steps)
-    next_step = next((s["id"] for s in steps if s["done"] is False), None)
-    readable = len(unreadable) < len(steps)
+    return {
+        "steps": steps,
+        "total": len(steps),
+        "done_count": done_count,
+        "complete": done_count == len(steps),
+        "next_step": next((s["id"] for s in steps if s["done"] is False), None),
+        "unreadable": unreadable,
+    }
+
+
+def _has_something_to_do(listed: dict) -> bool:
+    """Not finished, and at least one step could be read: a list that is all question marks asks for nothing."""
+    return (not listed["complete"]) and len(listed["unreadable"]) < listed["total"]
+
+
+def build(facts: Mapping[str, Fact], *, firm_created_at: object = None, dismissed: Optional[bool] = None,
+          practice_facts: Optional[Mapping[str, Fact]] = None, practice_client_id: Optional[str] = None) -> dict:
+    """The checklist for one firm, as one PERSON sees it. `facts` may omit a step, which reads as unreadable.
+
+    `dismissed` is whether THIS person dismissed the card for good: True hides it, and False and None leave it to the steps. None is
+    "could not be read", which is not a dismissal: a card the person did not ask to lose stays, and the answer says `dismissed: None`.
+
+    `practice_facts` is given for a PARTNER and for nobody else (None): the firm's own practice is the Partner's alone, so
+    its steps, and the id of its record that their links open, are in a Partner's answer only. `practice` is then a
+    second list with its own counts, and the card stays while EITHER list has something to do."""
+    clients = _listed(STEPS, facts)
+    steps, done_count, unreadable = clients["steps"], clients["done_count"], clients["unreadable"]
+    complete, next_step = clients["complete"], clients["next_step"]
+
+    practice = None
+    if practice_facts is not None:
+        practice = {**_listed(PRACTICE_STEPS, practice_facts),
+                    # The practice's own record, for the links; None while it is not set up, and the first step says so.
+                    "client_id": str(practice_client_id) if practice_client_id else None}
+    to_do = _has_something_to_do(clients) or (practice is not None and _has_something_to_do(practice))
 
     first_invoice = facts.get("first_invoice") or Fact(None)
     return {
@@ -149,7 +200,9 @@ def build(facts: Mapping[str, Fact], *, firm_created_at: object = None, dismisse
         "next_step": next_step,
         "unreadable": unreadable,
         "dismissed": dismissed if dismissed in (True, False) else None,
-        "visible": (not complete) and readable and dismissed is not True,
+        "visible": to_do and dismissed is not True,
+        # The firm's own practice: a second list, in a Partner's answer only (None for everybody else).
+        "practice": practice,
         "minutes_to_first_invoice": (
             minutes_between(firm_created_at, first_invoice.at) if first_invoice.done is True else None),
     }

@@ -3,7 +3,7 @@
 /**
  * Payroll Reports — PracticeSync AI
  *
- * IT Act Section 192 (TDS on Salary), EPF Act, ESI Act
+ * IT Act Section 192 (TDS on Salary), Code on Social Security 2020 (PF, ESI)
  * All monetary values stored and computed in integer paise.
  * IT Act Section 234B/234C: interest on under-payment of advance tax / TDS.
  *
@@ -41,8 +41,15 @@ import { toLocalISO, dueDateUrgency, fromLocalISO, istToday } from "@/lib/dateMa
 import { formatDate, formatMonthYear } from "@/lib/dates/format";
 import { api, type ApiResp, type PayrollDepositDueDates_FY, type PayrollTdsProjection } from "@/lib/api";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
+import { unreadSentence } from "@/lib/export/unread";
+import { toast } from "@/components/ui/use-toast";
 import { formatPaise } from "@/lib/money/format";
 import { PageHeader } from "@/components/ui/page-header";
+import { MY_PRACTICE, openedForChoice, type PickerClient } from "@/lib/payroll/openedFor";
+import { useOpenedFor } from "@/lib/payroll/useOpenedFor";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { SectionPlaceholder, PagePlaceholder } from "@/components/ui/page-frame";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -153,7 +160,7 @@ function buildStatutoryCalendar(
   rows.push({
     id: `esi-${start}-h1`,
     label: `ESI Return — Apr–Sep ${start}`,
-    description: "Half-yearly ESI return — ESIC Portal (ESI Act; employees ≤ ₹21,000/month)",
+    description: "Half-yearly ESI return — ESIC Portal (employees ≤ ₹21,000/month)",
     dueDate: formatDate(toLocalISO(esiDue1)),
     dueDateObj: esiDue1,
     portal: "ESIC Portal",
@@ -164,7 +171,7 @@ function buildStatutoryCalendar(
   rows.push({
     id: `esi-${start}-h2`,
     label: `ESI Return — Oct ${start}–Mar ${start + 1}`,
-    description: "Half-yearly ESI return — ESIC Portal (ESI Act; employees ≤ ₹21,000/month)",
+    description: "Half-yearly ESI return — ESIC Portal (employees ≤ ₹21,000/month)",
     dueDate: formatDate(toLocalISO(esiDue2)),
     dueDateObj: esiDue2,
     portal: "ESIC Portal",
@@ -460,10 +467,16 @@ function MonthlyReviewTab({ runs, clientNames }: {
       {run ? (
         <MonthlyReview clientId={run.client_id} month={run.month} />
       ) : (
-        <p className="text-xs text-ps-label">
-          No payroll runs yet. Create one to see how a month compares with the
-          one before it.
-        </p>
+        <EmptyState
+          className="py-10"
+          title="No payroll runs yet"
+          description="A run is computed in a client's own Payroll tab. Open the client from the Clients list and compute a month; this review then compares it with the month before."
+          action={
+            <EmptyStateActions>
+              <EmptyStateAction requires={["payroll", "write"]} label="Open the Clients list" href="/clients" variant="secondary" />
+            </EmptyStateActions>
+          }
+        />
       )}
     </div>
   );
@@ -516,6 +529,9 @@ function YtdTab({ employees, runs, fyOptions }: {
   }
 
   function exportCsv(): void {
+    // Twelve months of nil pay is what a failed read of the payslips used to export (POST-A-464): refused in words instead.
+    const refused = unreadSentence("payslips for this employee and year", slipsError);
+    if (refused) { toast({ title: refused, variant: "destructive" }); return; }
     const header = "Month,Gross,PF,ESI,PT,TDS,Total Deductions,Net Pay,YTD Gross,YTD TDS,YTD Net";
     const csvRows = rows.map(r =>
       [
@@ -560,14 +576,23 @@ function YtdTab({ employees, runs, fyOptions }: {
           >
             {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
           </select>
-          <Button size="sm" variant="outline" onClick={exportCsv} className="flex items-center gap-1.5">
+          <Button size="sm" variant="outline" onClick={exportCsv} disabled={!selectedEmpId || slipsLoading || !!slipsError} className="flex items-center gap-1.5">
             <Download size={13} />Export CSV
           </Button>
         </div>
       </CardHeader>
       <CardContent className="p-0">
         {!emp ? (
-          <p className="text-center text-ps-hint py-12 text-sm">No employees found.</p>
+          <EmptyState
+            className="py-12"
+            title="No employees found"
+            description="Add the client's employees under People; their year-to-date pay is shown here once a run has paid them."
+            action={
+              <EmptyStateActions>
+                <EmptyStateAction requires={["payroll", "write"]} label="Go to People" href="/payroll/people" variant="secondary" />
+              </EmptyStateActions>
+            }
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -698,6 +723,8 @@ function CtcTab({ runs, employees }: { runs: PayrollRun[]; employees: Employee[]
     // split and the s.2(88) base mean the stored figure is not 12% of anything
     // on this row. EDLI and the admin charge get their own columns because a
     // client reading a CTC needs to see what the employer actually bears.
+    const refused = unreadSentence("payslips for this month", slipsError);
+    if (refused) { toast({ title: refused, variant: "destructive" }); return; }
     const header = "Employee,PAN,Gross Salary,Employer PF,Employer ESI,EDLI,PF Admin Charges,Total CTC";
     const rows = ctcRows.map(r => {
       const emp = r.slip.employee;
@@ -731,7 +758,7 @@ function CtcTab({ runs, employees }: { runs: PayrollRun[]; employees: Employee[]
       <CardHeader className="flex flex-row items-center justify-between pb-3">
         <div>
           <CardTitle className="text-base">Cost to Company (CTC)</CardTitle>
-          <p className="text-xs text-ps-label mt-0.5">Gross + Employer PF + ESI + EDLI + admin charges, as computed on each payslip — EPF Act, ESI Act, Code on Social Security s.2(88)</p>
+          <p className="text-xs text-ps-label mt-0.5">Gross + Employer PF + ESI + EDLI + admin charges, as computed on each payslip — Code on Social Security, 2020 (s.2(88) for wages)</p>
           {/* THE ADMIN CHARGE IS FLOORED PER ESTABLISHMENT, NOT PER MEMBER.
               EPFO charges 0.5% of PF wages with a ₹500 monthly minimum for the
               whole establishment, and the floor is applied to the RUN
@@ -754,7 +781,7 @@ function CtcTab({ runs, employees }: { runs: PayrollRun[]; employees: Employee[]
           >
             {availableMonths.map(m => <option key={m} value={m}>{formatMonthYear(m)}</option>)}
           </select>
-          <Button size="sm" variant="outline" onClick={exportCsv} disabled={ctcRows.length === 0} className="flex items-center gap-1.5">
+          <Button size="sm" variant="outline" onClick={exportCsv} disabled={ctcRows.length === 0 || slipsLoading || !!slipsError} className="flex items-center gap-1.5">
             <Download size={13} />Export CSV
           </Button>
         </div>
@@ -865,24 +892,32 @@ function TdsProjectionTab({ employees, fyOptions }: {
     actualTds: number;
     projectedTds: number;
     hasActual: boolean;
+    /** A month before the product ran this client's payroll (POST-A-082): its pay and tax are the opening position's, in
+     *  total, and the server sends no figure of the month's own. */
+    opening: boolean;
     cumulativeActual: number;
     cumulativeRemaining: number;
   };
 
   const projectionRows: ProjectionRow[] = [];
   {
-    let running = 0;
+    // The running total STARTS at the tax the opening position records, which "TDS Deducted So Far" above already includes,
+    // so the Cumulative TDS and Remaining Tax columns agree with it. An opening month adds nothing of its own: its tax is in
+    // that starting figure.
+    let running = proj?.opening_position?.tds_paise ?? 0;
     for (const m of proj?.months ?? []) {
-      if (m.actual) running += m.tds_paise;
+      const opening = Boolean(m.opening);
+      if (m.actual && !opening) running += m.tds_paise ?? 0;
       projectionRows.push({
         month: m.month,
-        actualGross: m.actual ? m.gross_paise : 0,
-        actualTds: m.actual ? m.tds_paise : 0,
+        actualGross: m.actual && !opening ? (m.gross_paise ?? 0) : 0,
+        actualTds: m.actual && !opening ? (m.tds_paise ?? 0) : 0,
         // A month with no released run carries the served §192(3) spread; one
         // already run carries what it actually deducted, so the Variance
         // column compares like with like.
-        projectedTds: m.actual ? m.tds_paise : (proj?.projected_monthly_paise ?? 0),
-        hasActual: m.actual,
+        projectedTds: m.actual ? (m.tds_paise ?? 0) : (proj?.projected_monthly_paise ?? 0),
+        hasActual: m.actual && !opening,
+        opening,
         cumulativeActual: running,
         cumulativeRemaining: Math.max(0, estimatedAnnualTds - running),
       });
@@ -974,7 +1009,11 @@ function TdsProjectionTab({ employees, fyOptions }: {
                     >
                       <td className="py-3 px-4 font-medium text-ps-body">{formatMonthYear(r.month)}</td>
                       <td className="py-3 px-4 text-center">
-                        {r.hasActual ? (
+                        {r.opening ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-ps-muted text-ps-label">
+                            Before this product (opening position)
+                          </span>
+                        ) : r.hasActual ? (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700">
                             <CheckCircle size={10} />Processed
                           </span>
@@ -986,7 +1025,7 @@ function TdsProjectionTab({ employees, fyOptions }: {
                       </td>
                       <td className="py-3 px-4 text-right font-mono">{r.hasActual ? formatPaise(r.actualGross) : "—"}</td>
                       <td className="py-3 px-4 text-right font-mono text-red-600">{r.hasActual ? formatPaise(r.actualTds) : "—"}</td>
-                      <td className="py-3 px-4 text-right font-mono text-ps-label">{formatPaise(r.projectedTds)}</td>
+                      <td className="py-3 px-4 text-right font-mono text-ps-label">{r.opening ? "—" : formatPaise(r.projectedTds)}</td>
                       <td className={`py-3 px-4 text-right font-mono ${varianceColor}`}>
                         {r.hasActual ? `${variance >= 0 ? "+" : ""}${formatPaise(Math.abs(variance))}` : "—"}
                       </td>
@@ -1007,6 +1046,14 @@ function TdsProjectionTab({ employees, fyOptions }: {
               computation the payroll run pays from — the employee&apos;s own declaration
               and regime, that year&apos;s rates, and §192(3) spreading what is left over
               the {remainingMonths} month{remainingMonths === 1 ? "" : "s"} still to run.
+            </p>
+          )}
+          {proj?.opening_position && (
+            <p className="text-xs text-ps-hint mt-2">
+              Opening position: before {formatMonthYear(proj.opening_position.first_month_here)} this employee was paid{" "}
+              {formatPaise(proj.opening_position.gross_paise)} with {formatPaise(proj.opening_position.tds_paise)} tax withheld over{" "}
+              {proj.opening_position.months_paid} month(s), as the CA recorded it. Those months show no figure of their own; the
+              total is in TDS Deducted So Far and is where Cumulative TDS starts.
             </p>
           )}
           {(proj?.gaps ?? []).length > 0 && (
@@ -1039,7 +1086,7 @@ type EmpYearRow = {
 // a hundred employees over twelve months is 1,200 payslips to render a hundred
 // lines, and that is proportional to payroll volume rather than to the table.
 
-function YearEndSummaryTab({ fyOptions }: { fyOptions: string[] }) {
+function YearEndSummaryTab({ fyOptions, clientId }: { fyOptions: string[]; clientId?: string }) {
   const [selectedFy, setSelectedFy] = useState(fyOptions[0] ?? currentFy());
 
   // THE ONE TAB THAT HAS TO BE A SERVER AGGREGATE, and the distinction is
@@ -1057,7 +1104,8 @@ function YearEndSummaryTab({ fyOptions }: { fyOptions: string[] }) {
     let cancelled = false;
     setRowsLoading(true);
     setRowsError(null);
-    api.payroll.yearEndSummary({ financial_year: selectedFy })
+    // With a client named this is that client's year (the practice's own, when the screen was opened for it: POST-A-534).
+    api.payroll.yearEndSummary({ financial_year: selectedFy, ...(clientId ? { client_id: clientId } : {}) })
       .then(res => {
         if (cancelled) return;
         if (!res.success) throw new Error(res.error || "Could not load the year");
@@ -1070,7 +1118,7 @@ function YearEndSummaryTab({ fyOptions }: { fyOptions: string[] }) {
       })
       .finally(() => { if (!cancelled) setRowsLoading(false); });
     return () => { cancelled = true; };
-  }, [selectedFy]);
+  }, [selectedFy, clientId]);
 
   const empRows: EmpYearRow[] = rows.map(r => ({
     emp: r.employee ? ({ ...r.employee } as Employee) : undefined,
@@ -1359,7 +1407,7 @@ function SliceState({ loading, error }: { loading: boolean; error: string | null
     );
   }
   if (loading) {
-    return <p className="text-xs text-ps-hint px-1 py-2">Loading…</p>;
+    return <SectionPlaceholder label="Loading this report" shape="table" rows={4} />;
   }
   return null;
 }
@@ -1373,6 +1421,11 @@ export default function PayrollReportsPage() {
   const [clientNames, setClientNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // OPENED FOR ONE CLIENT (POST-A-534): `?client=` from a client's own Payroll page. Every tab then reads that one client's
+  // employees and runs, which is the only way the firm's own practice is reported on here: the firm-wide lists leave it out
+  // (it is not one of the firm's clients), and the server returns its rows to a Partner who names it. See lib/payroll/openedFor.
+  const { openedFor, practiceId, settled } = useOpenedFor();
+  const [narrowedTo, setNarrowedTo] = useState<{ id: string; name: string } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1385,19 +1438,30 @@ export default function PayrollReportsPage() {
       // the CSV would go out short with no error anywhere. `payroll_runs` is the one that passes 1000 first: it is a row
       // per client per month, so a fifty-client practice crosses it inside two years. The server answers runs newest
       // month first.
+      const clientsRead = selectAll(() => sb.from("clients").select("id, client_name").eq("firm_id", firmId).eq("is_internal", false).order("id"));
+      // Which client the address names, if it names one this screen can open: one of the firm's clients, or the practice
+      // (the server's answer, never a guess). Anything else is ignored and the screen opens as it does from the menu.
+      const opened = openedFor
+        ? openedForChoice(((await clientsRead).data ?? []) as PickerClient[], openedFor, practiceId)
+        : null;
+      const only = opened?.choose ?? undefined;
       const [empRes, runsRes, clientsRes] = await Promise.all([
-        api.payroll.listEmployees(undefined, true) as Promise<ApiResp<Employee[]>>,
-        api.payroll.listRuns() as Promise<ApiResp<PayrollRun[]>>,
-        selectAll(() => sb.from("clients").select("id, client_name").eq("firm_id", firmId).eq("is_internal", false).order("id")),
+        api.payroll.listEmployees(only, true) as Promise<ApiResp<Employee[]>>,
+        api.payroll.listRuns(only) as Promise<ApiResp<PayrollRun[]>>,
+        clientsRead,
       ]);
       if (!empRes?.success || !Array.isArray(empRes.data)) throw new Error(empRes?.error ?? "Could not load the employees.");
       if (!runsRes?.success || !Array.isArray(runsRes.data)) throw new Error(runsRes?.error ?? "Could not load the payroll runs.");
       // A missing client name is not worth failing the page for — the run is
       // still selectable, it just reads "Client — August 2026".
-      setClientNames(Object.fromEntries(
+      const names: Record<string, string> = Object.fromEntries(
         ((clientsRes.data ?? []) as { id: string; client_name: string }[])
           .map(c => [c.id, c.client_name]),
-      ));
+      );
+      // The practice is in no client list, so it is named here when the screen was opened for it.
+      if (opened?.isPractice && only) names[only] = MY_PRACTICE;
+      setClientNames(names);
+      setNarrowedTo(only ? { id: only, name: names[only] ?? "this client" } : null);
 
       const empList: Employee[] = empRes.data;
       const runList: PayrollRun[] = runsRes.data;
@@ -1419,15 +1483,15 @@ export default function PayrollReportsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [openedFor, practiceId]);
 
-  useEffect(() => { load(); }, [load]);
+  // Not before the practice question is answered: the first read is one client's rows or the firm's, and a read made
+  // early would draw the firm's clients and then replace them.
+  useEffect(() => { if (settled) load(); }, [load, settled]);
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-ps-bg flex items-center justify-center">
-        <p className="text-ps-label">Loading payroll reports...</p>
-      </div>
+      <PagePlaceholder label="Loading payroll reports" shape="table" />
     );
   }
 
@@ -1468,9 +1532,16 @@ export default function PayrollReportsPage() {
           back={{ href: "/payroll", label: "Payroll" }}
           icon={<BarChart2 size={22} className="text-blue-600" />}
           title="Payroll Reports"
-          subtitle="IT Act Section 192 &middot; EPF Act &middot; ESI Act &middot; 234B/234C planning"
+          subtitle="IT Act Section 192 &middot; Code on Social Security, 2020 &middot; 234B/234C planning"
           className="mb-6"
         />
+
+        {narrowedTo && (
+          <p data-reports-for={narrowedTo.id} className="mb-4 text-xs text-ps-label">
+            Showing <span className="font-medium text-ps-ink">{narrowedTo.name}</span> only.{" "}
+            <a href="/payroll/reports/" className="text-brand hover:underline">Show every client</a>
+          </p>
+        )}
 
         <Tabs defaultValue="payslip-summary">
           <TabsList className="mb-6 flex-wrap h-auto gap-1">
@@ -1516,7 +1587,7 @@ export default function PayrollReportsPage() {
             <TdsProjectionTab employees={employees} fyOptions={fyOptions} />
           </TabsContent>
           <TabsContent value="year-end">
-            <YearEndSummaryTab fyOptions={fyOptions} />
+            <YearEndSummaryTab fyOptions={fyOptions} clientId={narrowedTo?.id} />
           </TabsContent>
           <TabsContent value="statutory-calendar">
             <StatutoryDuesCalendarTab />

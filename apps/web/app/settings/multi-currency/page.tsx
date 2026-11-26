@@ -27,7 +27,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, Globe, Check } from "lucide-react";
-import { RoleGuard } from "@/components/RoleGuard";
+import { ChangePart, ReadOnlyNotice } from "@/components/settings/ChangePart";
 import { api, type CurrencyPolicy } from "@/lib/api/index";
 import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 import { TableSkeleton } from "@/components/ui/skeleton";
@@ -126,7 +126,7 @@ export default function MultiCurrencyPage() {
   }
 
   return (
-    <RoleGuard allowed={["Partner"]}>
+    <>
       <div className="max-w-ps-data mx-auto space-y-4 p-6">
         <Link href="/settings" className="inline-flex items-center gap-1 text-xs text-ps-label hover:text-ps-body">
           <ChevronLeft size={13} /> Settings
@@ -138,6 +138,8 @@ export default function MultiCurrencyPage() {
           subtitle="Lets a client raise invoices, receive payments and hold bank accounts in a foreign currency, with the realized and unrealized exchange difference computed and posted. The books stay in rupees."
         />
 
+        <ReadOnlyNotice resource="settings" action="write" page="Foreign currency" />
+
         {error && <Callout tone="problem">{error}</Callout>}
 
         {loading ? <TableSkeleton cols={4} rows={4} /> : (
@@ -147,11 +149,13 @@ export default function MultiCurrencyPage() {
             {!platformOn && (
               <div className="bg-state-attention-surface border border-state-attention-border rounded-xl px-4 py-3 text-xs text-amber-900 space-y-1 max-w-2xl">
                 <p className="font-semibold">Multi-currency is off for this deployment.</p>
-                <p>{firmGates?.platform.why ?? "MULTI_CURRENCY_ENABLED is not set."}</p>
+                <p>{firmGates?.platform?.why
+                  ?? (firmGates?.platform ? "MULTI_CURRENCY_ENABLED is not set." : "The deployment's switch could not be read, so it is treated as off.")}</p>
                 <p>Nothing below takes effect until it is switched on in the environment.</p>
               </div>
             )}
 
+            <ChangePart resource="settings" action="write" className="space-y-4">
             {/* L2 — the firm. */}
             {/* The CLIENTS table below is the data and takes the page's width;
                 these two are a notice and a single switch, so they keep the
@@ -201,12 +205,12 @@ export default function MultiCurrencyPage() {
                   <tbody className="divide-y divide-ps-border">
                     {rows.map(({ client, policy }) => {
                       const on = policy?.gates?.client?.on ?? false;
-                      const supported = policy?.gates.functional_currency_supported ?? true;
+                      const supported = policy?.gates?.functional_currency_supported ?? true;
                       return (
                         <tr key={client.id} className="hover:bg-ps-bg">
                           <td className="px-5 py-2.5 font-medium text-ps-ink">{label(client)}</td>
                           <td className="px-3 py-2.5 font-mono text-ps-label">
-                            {policy?.gates.functional_currency ?? "—"}
+                            {policy?.gates?.functional_currency ?? "—"}
                           </td>
                           <td className="px-3 py-2.5">
                             <label className="flex items-center gap-2 text-ps-body">
@@ -226,7 +230,7 @@ export default function MultiCurrencyPage() {
                               </span>
                             ) : !supported ? (
                               <span className="text-state-attention">
-                                Books kept in {policy?.gates.functional_currency} — not supported
+                                Books kept in {policy?.gates?.functional_currency ?? "a currency this screen could not read"} — not supported
                               </span>
                             ) : (
                               <span className="text-ps-hint">
@@ -243,6 +247,7 @@ export default function MultiCurrencyPage() {
                 </table>
               )}
             </div>
+            </ChangePart>
             {/* The rate the whole feature runs on. `fx_rates` was read by the
                 booking path and written by nothing, so switching the gates on
                 above left a Partner with no way to record one. */}
@@ -250,6 +255,6 @@ export default function MultiCurrencyPage() {
           </>
         )}
       </div>
-    </RoleGuard>
+    </>
   );
 }

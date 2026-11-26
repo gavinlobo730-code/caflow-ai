@@ -1,10 +1,12 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { useState, useEffect, useMemo, type Dispatch, type SetStateAction } from "react";
 import { readWindow } from "@/lib/lists/readWindow";
 import { ENTITY_REGISTER_WINDOW_MAX } from "@/lib/lists/window";
 import { errorMessage } from "@/lib/api";
-import { Plus, X } from "lucide-react";
+import { Plus } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { DataTable } from "@/components/ui/data-table";
 import type { Column, FilterDef } from "@/lib/table/types";
@@ -21,7 +23,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
   const { data: { session } } = await getSupabaseClient().auth.getSession();
   const token = session?.access_token ?? "";
   const doing = doingOf(opts?.method);
-  const res = await fetchPlain(`${API}${path}`, {
+  const res = await fetchBounded(`${API}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
@@ -38,7 +40,7 @@ import { Badge } from "@/components/ui/badge";
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
-import { doingOf, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, fetchBounded, jsonPlain, type UntypedJson, LONG_REQUEST_BOUND_MS } from "@/lib/api/failureSentence";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -157,109 +159,113 @@ function EntityFormModal({
   saveDisabled?: boolean;
 }) {
   return (
-    <div className="fixed inset-0 bg-brand/60 flex items-center justify-center z-50 px-4">
-      <div className="bg-white border border-gray-200 rounded-xl shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-sm font-semibold text-brand">{title}</h2>
-          <button onClick={onCancel} className="text-gray-400 hover:text-gray-700">
-            <X size={16} />
-          </button>
+    // The shared dialog (POST-A-130): named, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it, its ×) and its
+    // Cancel are held while its own request is out.
+    <Modal title={title} maxWidthClass="max-w-lg" onClose={() => { if (!saving) onCancel(); }}
+      footer={<>
+        <button disabled={saving}
+          onClick={onCancel}
+          className="flex-1 text-sm text-gray-600 border border-gray-300 py-2 rounded-md hover:bg-gray-50 disabled:opacity-50"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={onSave}
+          disabled={saving || !!saveDisabled || !form.full_name.trim()}
+          className="flex-1 text-sm bg-brand text-white py-2 rounded-md hover:bg-brand-dark disabled:opacity-50"
+        >
+          {saving ? savingLabel : saveLabel}
+        </button>
+      </>}>
+    <div className="space-y-3">
+      <div>
+        <label className="text-xs text-gray-600 font-medium">Full Name *</label>
+        <input aria-label="Full Name"
+          value={form.full_name}
+          onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
+          className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder:text-ps-hint focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
+          placeholder="Individual or entity name"
+        />
+      </div>
+      <div>
+        <label className="text-xs text-gray-600 font-medium">Entity Type</label>
+        <select aria-label="Entity Type"
+          value={form.entity_type}
+          onChange={(e) => setForm((f) => ({ ...f, entity_type: e.target.value as EntityType }))}
+          className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
+        >
+          {ENTITY_TYPES.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs text-gray-600 font-medium">PAN</label>
+          <input aria-label="PAN"
+            value={form.pan}
+            onChange={(e) => setForm((f) => ({ ...f, pan: e.target.value.toUpperCase() }))}
+            className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder:text-ps-hint font-mono focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
+            placeholder="AAAAA9999A"
+            maxLength={10}
+          />
         </div>
-        <div className="space-y-3">
-          <div>
-            <label className="text-xs text-gray-600 font-medium">Full Name *</label>
-            <input aria-label="Full Name"
-              value={form.full_name}
-              onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
-              className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder:text-ps-hint focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
-              placeholder="Individual or entity name"
-            />
-          </div>
-          <div>
-            <label className="text-xs text-gray-600 font-medium">Entity Type</label>
-            <select aria-label="Entity Type"
-              value={form.entity_type}
-              onChange={(e) => setForm((f) => ({ ...f, entity_type: e.target.value as EntityType }))}
-              className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
-            >
-              {ENTITY_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-gray-600 font-medium">PAN</label>
-              <input aria-label="PAN"
-                value={form.pan}
-                onChange={(e) => setForm((f) => ({ ...f, pan: e.target.value.toUpperCase() }))}
-                className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder:text-ps-hint font-mono focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
-                placeholder="AAAAA9999A"
-                maxLength={10}
-              />
-            </div>
-            <div>
-              <label className="text-xs text-gray-600 font-medium">GSTIN</label>
-              <input aria-label="GSTIN"
-                value={form.gstin}
-                onChange={(e) => setForm((f) => ({ ...f, gstin: e.target.value.toUpperCase() }))}
-                className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder:text-ps-hint font-mono focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
-                placeholder="22AAAAA0000A1ZC"
-                maxLength={15}
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-gray-600 font-medium">Email</label>
-              <input aria-label="Email"
-                type="email"
-                value={form.email}
-                onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-                className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder:text-ps-hint focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
-                placeholder="contact@example.com"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-gray-600 font-medium">Phone</label>
-              <input aria-label="Phone"
-                type="tel"
-                value={form.phone}
-                onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-                className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder:text-ps-hint focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
-                placeholder="+91 98765 43210"
-              />
-            </div>
-          </div>
+        <div>
+          <label className="text-xs text-gray-600 font-medium">GSTIN</label>
+          <input aria-label="GSTIN"
+            value={form.gstin}
+            onChange={(e) => setForm((f) => ({ ...f, gstin: e.target.value.toUpperCase() }))}
+            className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder:text-ps-hint font-mono focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
+            placeholder="22AAAAA0000A1ZC"
+            maxLength={15}
+          />
         </div>
-        {saveError && <Callout tone="problem">{saveError}</Callout>}
-        <div className="flex gap-2 mt-5">
-          <button
-            onClick={onCancel}
-            className="flex-1 text-sm text-gray-600 border border-gray-300 py-2 rounded-md hover:bg-gray-50"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onSave}
-            disabled={saving || !!saveDisabled || !form.full_name.trim()}
-            className="flex-1 text-sm bg-brand text-white py-2 rounded-md hover:bg-brand-dark disabled:opacity-50"
-          >
-            {saving ? savingLabel : saveLabel}
-          </button>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs text-gray-600 font-medium">Email</label>
+          <input aria-label="Email"
+            type="email"
+            value={form.email}
+            onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+            className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder:text-ps-hint focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
+            placeholder="contact@example.com"
+          />
+        </div>
+        <div>
+          <label className="text-xs text-gray-600 font-medium">Phone</label>
+          <input aria-label="Phone"
+            type="tel"
+            value={form.phone}
+            onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+            className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder:text-ps-hint focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
+            placeholder="+91 98765 43210"
+          />
         </div>
       </div>
     </div>
+    {saveError && <Callout tone="problem">{saveError}</Callout>}
+    </Modal>
   );
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
+/** What the server said about whose register it answered with: `scoped` true or false, or null when it did not say. */
+function registerScopeSaid(data: unknown): boolean | null {
+  if (typeof data !== "object" || data === null || Array.isArray(data)) return null;
+  const said = (data as Record<string, unknown>).scoped;
+  return typeof said === "boolean" ? said : null;
+}
+
 export default function RelationshipsPage() {
   const [entities, setEntities] = useState<Entity[]>([]);
   const [entitiesCapped, setEntitiesCapped] = useState(false);
+  // What the SERVER said about whose register this is: true, the caller's part of it; false, all of it; null, it did not say
+  // (an API a few minutes older than this page). The notice below is drawn from this and says nothing when it is null.
+  const [registerScoped, setRegisterScoped] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -299,6 +305,7 @@ export default function RelationshipsPage() {
       if (!win) throw new Error("The entity register came back in a form this screen cannot read.");
       setEntities(win.rows);
       setEntitiesCapped(win.hasMore);
+      setRegisterScoped(registerScopeSaid(json.data));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
@@ -342,7 +349,8 @@ export default function RelationshipsPage() {
     try {
       const json: ApiResponse<{ new_matches_detected: number }> = await apiFetch(
         "/api/relationships/cross-client-matches/detect",
-        { method: "POST", body: JSON.stringify({}) }
+        // Every entity of the firm is compared in one request: the long bound (POST-A-470).
+        { method: "POST", body: JSON.stringify({}), signal: AbortSignal.timeout(LONG_REQUEST_BOUND_MS) }
       );
       if (!json.success) throw new Error(json.error ?? "Detection failed");
       setDetectToast(`Detection complete — ${json.data.new_matches_detected} match(es) found`);
@@ -395,13 +403,13 @@ export default function RelationshipsPage() {
         }
         actions={
           <div className="flex items-center gap-2">
-            <button
+            <Button variant="plain" size="none" spinner={false}
               onClick={handleDetectMatches}
               disabled={actionInFlight}
               className="text-sm text-brand border border-brand/30 px-3 py-1.5 rounded-md hover:bg-brand-light/20 disabled:opacity-50"
             >
               {detectLoading ? "Detecting…" : "Detect Matches"}
-            </button>
+            </Button>
             <button
               onClick={() => {
                 setForm(EMPTY_FORM);
@@ -416,14 +424,23 @@ export default function RelationshipsPage() {
         }
       />
 
-      {/* POST-A-357: the register is read by every member of the firm on purpose, so the screen says so (the Python guard
-          tests/test_the_register_says_it_is_shared_across_the_practice.py holds this sentence to the catalog). */}
-      <Callout tone="note" title="This register is shared across the whole practice">
-        Everyone in the firm who can open Relationships sees every person and company here, whichever clients they are
-        assigned to, including PAN, GSTIN, date of birth, phone and address. That is deliberate: one person who stands
-        behind several clients is one record, and the match detection needs to see all of them. Who may add or change a
-        record is decided by role.
-      </Callout>
+      {/* POST-A-544 (it replaces the notice of POST-A-357, which said the whole firm read all of it): the server now shows
+          a member who is not a Partner only the entities of their own clients, and says which answer it gave. The Python
+          guard tests/test_the_register_says_it_is_shared_across_the_practice.py holds both sentences to the server. */}
+      {registerScoped === true && (
+        <Callout tone="note" title="You are shown part of this register">
+          You see the people and companies connected to the clients you are assigned to, and any that are not attached to
+          a client yet. A Partner sees the whole register. If somebody you need is already recorded for another client,
+          ask a Partner to add them to yours: one person is one record, so they cannot be added a second time.
+        </Callout>
+      )}
+      {registerScoped === false && (
+        <Callout tone="note" title="You are shown the whole register">
+          You see every person and company the firm keeps on record, including PAN, GSTIN, date of birth, phone and
+          address. Other members of staff see only those connected to the clients they are assigned to, and any that are
+          not attached to a client yet. One person who stands behind several clients is one record.
+        </Callout>
+      )}
 
       {/* Registry table — shared DataTable (search, sort, filters, pagination, export, prefs) */}
       <DataTable

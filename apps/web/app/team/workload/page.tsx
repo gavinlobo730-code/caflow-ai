@@ -3,15 +3,17 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   AlertTriangle, TrendingDown, Activity, Users,
-  Loader2, RefreshCw, Pencil, X, UserPlus,
+  Loader2, RefreshCw, Pencil, UserPlus,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { getTeamWorkload } from "@/lib/data/analytics";
 import { getClients } from "@/lib/data/clients";
 import { OpenWorkPanel } from "@/components/team/OpenWorkPanel";
+import { FilingEffortPanel } from "@/components/team/FilingEffortPanel";
 import type { Client, TeamWorkload, WorkloadMember } from "@/lib/types";
 import { Callout } from "@/components/ui/callout";
 import Link from "next/link";
@@ -20,6 +22,7 @@ import type { WorkloadInsight, CapacityRiskPayload } from "@/lib/api";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { SectionPlaceholder } from "@/components/ui/page-frame";
 
 function UtilisationBar({ pct }: { pct: number }) {
   const clamped = Math.min(100, Math.max(0, pct));
@@ -78,44 +81,38 @@ function CapacityModal({ member, onClose, onSaved }: {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="font-semibold text-ps-ink">Edit Capacity — {member.user_name}</h2>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-label">
-            <X size={18} />
-          </button>
-        </div>
-        {error && <Callout tone="problem">{error}</Callout>}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-medium text-ps-body mb-1">Weekly Hours</label>
-            <input aria-label="Weekly Hours"
-              type="number" min="1" max="100"
-              value={weeklyHours}
-              onChange={e => setWeeklyHours(e.target.value)}
-              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-ps-body mb-1">Max Concurrent Tasks</label>
-            <input aria-label="Max Concurrent Tasks"
-              type="number" min="1" max="100"
-              value={maxTasks}
-              onChange={e => setMaxTasks(e.target.value)}
-              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
-            />
-          </div>
-        </div>
-        <div className="flex gap-2 justify-end pt-1">
-          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" onClick={handleSave} disabled={saving}>
-            {saving ? <Loader2 className="animate-spin mr-1" size={13} /> : null}
-            Save
-          </Button>
-        </div>
+    // The shared dialog (POST-A-130): named, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it, its ×) and its
+    // Cancel are held while its own request is out.
+    <Modal title={`Edit Capacity — ${member.user_name}`} maxWidthClass="max-w-sm" onClose={() => { if (!saving) onClose(); }}
+      footer={<>
+        <Button disabled={saving} variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+        <Button size="sm" onClick={handleSave} disabled={saving}>
+          {saving ? <Loader2 className="animate-spin mr-1" size={13} /> : null}
+          Save
+        </Button>
+      </>}>
+    {error && <Callout tone="problem">{error}</Callout>}
+    <div className="grid grid-cols-2 gap-3">
+      <div>
+        <label className="block text-xs font-medium text-ps-body mb-1">Weekly Hours</label>
+        <input aria-label="Weekly Hours"
+          type="number" min="1" max="100"
+          value={weeklyHours}
+          onChange={e => setWeeklyHours(e.target.value)}
+          className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-ps-body mb-1">Max Concurrent Tasks</label>
+        <input aria-label="Max Concurrent Tasks"
+          type="number" min="1" max="100"
+          value={maxTasks}
+          onChange={e => setMaxTasks(e.target.value)}
+          className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
+        />
       </div>
     </div>
+    </Modal>
   );
 }
 
@@ -249,7 +246,7 @@ function CapacityRiskPanel() {
     return () => { live = false; };
   }, []);
 
-  if (!risk || risk.weeks.length === 0) return null;
+  if (!risk || (risk.weeks ?? []).length === 0) return null;
 
   const busiest = Math.max(1, ...risk.weeks.map((w) => w.items_due));
   const totalHours = risk.weeks.reduce((n, w) => n + w.estimated_hours, 0);
@@ -368,6 +365,8 @@ export default function WorkloadPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editingMember, setEditingMember] = useState<WorkloadMember | null>(null);
+  // Bumped when a filing-time figure changes, so the forecast above it is read again with the new figure.
+  const [forecastVersion, setForecastVersion] = useState(0);
   // Only names for the task lists below; a failure to load them costs the lists
   // their client names and nothing else.
   const [clients, setClients] = useState<Client[]>([]);
@@ -459,12 +458,11 @@ export default function WorkloadPage() {
       {/* Rendered unconditionally rather than inside the `workload` branch: the
           forecast is its own fetch and a slow or refused workload read must not
           take the one answer no other screen gives with it. */}
-      <CapacityRiskPanel />
+      <CapacityRiskPanel key={forecastVersion} />
+      <FilingEffortPanel onChanged={() => setForecastVersion((v) => v + 1)} />
 
       {loading && !workload ? (
-        <div className="flex items-center justify-center py-20 text-ps-hint">
-          <Loader2 className="animate-spin mr-2" size={18} /> Loading workload data…
-        </div>
+        <SectionPlaceholder label="Loading workload data" shape="dashboard" />
       ) : workload ? (
         <>
           {/* Summary stats */}
@@ -501,6 +499,7 @@ export default function WorkloadPage() {
               <CardContent className="py-4">
                 <p className="text-xs text-ps-label">Avg Utilisation</p>
                 <p className="text-2xl font-bold text-ps-ink mt-1">{workload.avg_utilisation_pct}%</p>
+                {workload.utilisation_counts && <p className="text-3xs text-ps-hint mt-1">{workload.utilisation_counts}</p>}
               </CardContent>
             </Card>
           </div>

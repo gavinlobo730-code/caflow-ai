@@ -208,7 +208,7 @@ const firmPageAsks = {
     // its bottom buttons left the page; it scrolls now. 440 px is the control: the first version's Cancel cannot be reached there with the question showing.
     await page.setViewportSize({ width: 1280, height: 440 });
     await page.getByRole("button", { name: "Mark as Filed", exact: true }).click();
-    const dialog = page.locator("div.fixed.inset-0.z-50");                      // the Mark as Filed dialog (the only full-screen overlay the page opens)
+    const dialog = page.getByRole("dialog", { name: /^Mark .+ as Filed$/ });      // the Mark as Filed dialog, the shared one since POST-A-130's fifteenth step
     const confirmFiled = dialog.getByRole("button", { name: "Confirm Filed", exact: true });
     const cancel = dialog.getByRole("button", { name: "Cancel", exact: true });
     await page.getByLabel("PRN (Provisional Receipt Number)", { exact: true }).fill("PRN0000000001");

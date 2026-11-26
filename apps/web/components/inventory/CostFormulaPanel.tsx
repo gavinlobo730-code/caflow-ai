@@ -26,8 +26,13 @@ import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { LoadingRegion } from "@/components/ui/skeleton";
+import { usePermissions } from "@/lib/auth/AuthContext";
 
 export function CostFormulaPanel({ clientId }: { clientId: string }) {
+  // Recording the cost formula asks `accounting` `write` (a Manager or a Partner); Record and Change were drawn to an
+  // Executive, whose `accounting` is read only (POST-A-455).
+  const mayWriteBooks = usePermissions().can("accounting", "write");
   const [policy, setPolicy] = useState<InventoryCostingPolicy | null>(null);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
@@ -65,7 +70,7 @@ export function CostFormulaPanel({ clientId }: { clientId: string }) {
   }
 
   async function save() {
-    if (dates.first) { setRefusal(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setRefusal); return; }
     setSaving(true);
     setRefusal(null);
     try {
@@ -87,9 +92,11 @@ export function CostFormulaPanel({ clientId }: { clientId: string }) {
 
   if (loading) {
     return (
-      <div className="flex items-center gap-2 text-xs text-ps-hint">
-        <Loader2 size={12} className="animate-spin" /> Cost formula…
-      </div>
+      <LoadingRegion label="Loading the cost formula">
+        <div className="flex items-center gap-2 text-xs text-ps-hint">
+          <Loader2 size={12} className="animate-spin" /> Cost formula…
+        </div>
+      </LoadingRegion>
     );
   }
   if (!policy) return null;
@@ -127,10 +134,12 @@ export function CostFormulaPanel({ clientId }: { clientId: string }) {
             </div>
           )}
         </div>
-        <button onClick={begin}
-                className="flex-shrink-0 px-2.5 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">
-          {policy.is_recorded ? "Change" : "Record"}
-        </button>
+        {mayWriteBooks && (
+          <button onClick={begin}
+                  className="flex-shrink-0 px-2.5 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">
+            {policy.is_recorded ? "Change" : "Record"}
+          </button>
+        )}
       </div>
 
       {open && (

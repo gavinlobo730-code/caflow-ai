@@ -48,6 +48,7 @@ from core.db_provider import privileged_for
 from domain.tds import deposit_due
 from repositories.compliance_records_repository import compliance_records_repo
 from services import tds_deposit_closes_obligation as deposit_closer
+from domain.practice.compliance_overdue import is_filed
 
 _logger = logging.getLogger("caflow.tds.challan_retraction")
 
@@ -127,14 +128,22 @@ def calendar_effect(*, firm_id: str, client_id: str, challan: dict, reason: Opti
     caller has checked that this person may approve Compliance); without it they are only named. NEVER FAILS THE RETRACTION: the
     challan is already gone, and a failure to read the calendar is reported and answered with nothing."""
     empty: dict[str, Any] = {"reopened": [], "reopened_ids": [], "named": [], "unknown": [], "failed": [], "note": None}
-    if deposit_due.is_salary(str(challan.get("section") or "")):
-        return empty                        # a salary challan is not what the monthly non-salary deposit obligations close from
+    # A salary challan closes the salary deposit of the wage month it names (POST-A-267, migration 695); any other challan closes
+    # non-salary months of its quarter. Each is looked for only among the obligations its own closer closes.
+    salary = deposit_due.is_salary(str(challan.get("section") or ""))
     try:
-        quarter_starts = {date(y, m, 1).isoformat() for y, m in deposit_closer.months_of(
-            str(challan.get("financial_year") or ""), str(challan.get("quarter") or ""))}
+        if salary:
+            from services import tds_salary_deposit_closes_obligation as salary_closer
+            stated = str(challan.get("deduction_month") or "").strip()
+            quarter_starts = {f"{stated}-01"} if stated else set()
+            compliance_type, obligation_type = salary_closer.COMPLIANCE_TYPE, salary_closer.OBLIGATION_TYPE
+        else:
+            quarter_starts = {date(y, m, 1).isoformat() for y, m in deposit_closer.months_of(
+                str(challan.get("financial_year") or ""), str(challan.get("quarter") or ""))}
+            compliance_type, obligation_type = deposit_closer.COMPLIANCE_TYPE, deposit_closer.OBLIGATION_TYPE
         filed = [rec for rec in compliance_records_repo.find_all(firm_id=firm_id, client_id=client_id,
-                                                                 compliance_type=deposit_closer.COMPLIANCE_TYPE)
-                 if rec.get("obligation_type") == deposit_closer.OBLIGATION_TYPE and rec.get("status") in ("Filed", "Completed")]
+                                                                 compliance_type=compliance_type)
+                 if rec.get("obligation_type") == obligation_type and is_filed(rec.get("status"))]
     except Exception as exc:                                # noqa: BLE001
         from core.observability import capture_soft_failure
         capture_soft_failure(exc, operation="tds.challan_retraction.calendar_note", firm_id=firm_id, client_id=client_id)
@@ -158,7 +167,7 @@ def calendar_effect(*, firm_id: str, client_id: str, challan: dict, reason: Opti
             out["reopened_ids"].append(rec["id"])
         else:
             out["failed"].append(f"{label} ({problem})")
-    out["note"] = _calendar_sentence(out)
+    out["note"] = _calendar_sentence(out, salary=salary)
     return out
 
 
@@ -184,22 +193,26 @@ def _reopen(rec: dict, *, challan: dict, reason: str, actor: dict, firm_id: str,
 _WHO = "a Manager or Partner can reopen it, with a reason, from Deadlines or the client's Compliance tab"
 
 
-def _calendar_sentence(effect: dict[str, Any]) -> Optional[str]:
+def _calendar_sentence(effect: dict[str, Any], *, salary: bool = False) -> Optional[str]:
+    kind = "monthly TDS deposit (salary)" if salary else "monthly TDS deposit (non-salary)"
+    again = ("The register looks at it again the next time a salary challan naming that month is recorded and closes it if the "
+             "challans then naming it paid what payroll deducted, on time"
+             if salary else
+             "The register looks at it again the next time a challan is recorded for the quarter and closes it if the challans then "
+             "recorded cover it in full and on time")
     parts = []
     if effect["reopened"]:
-        parts.append(f"The monthly TDS deposit (non-salary) on the compliance calendar for {_join(effect['reopened'])} was closed on "
-                     "this challan, so it has been reopened and reads Ready To File again. The register looks at it again the next "
-                     "time a challan is recorded for the quarter and closes it if the challans then recorded cover it in full and on "
-                     "time; until then it can be marked filed from Compliance.")
+        parts.append(f"The {kind} on the compliance calendar for {_join(effect['reopened'])} was closed on this challan, so it has "
+                     f"been reopened and reads Ready To File again. {again}; until then it can be marked filed from Compliance.")
     if effect["named"]:
-        parts.append(f"The monthly TDS deposit (non-salary) for {_join(effect['named'])} was closed on this challan and still reads "
+        parts.append(f"The {kind} for {_join(effect['named'])} was closed on this challan and still reads "
                      f"filed on the compliance calendar. Your access does not include approving Compliance, so it was not reopened; "
                      f"{_WHO}.")
     if effect["failed"]:
-        parts.append(f"The monthly TDS deposit (non-salary) for {_join(effect['failed'])} was closed on this challan and could not be "
+        parts.append(f"The {kind} for {_join(effect['failed'])} was closed on this challan and could not be "
                      f"reopened; {_WHO}.")
     if effect["unknown"]:
-        parts.append(f"The compliance calendar still shows the monthly TDS deposit (non-salary) for {_join(effect['unknown'])} as "
+        parts.append(f"The compliance calendar still shows the {kind} for {_join(effect['unknown'])} as "
                      "filed. Retracting the challan does not reopen it, because nothing recorded which challan closed that month. "
                      f"If this challan closed one of them, {_WHO}.")
     return " ".join(parts) or None

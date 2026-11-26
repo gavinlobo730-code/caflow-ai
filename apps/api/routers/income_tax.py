@@ -7,8 +7,9 @@ IT Act 1961 — Section 80C, 80D, 80G, 87A, 111A, 112A, 234B/C etc.
 from __future__ import annotations
 from datetime import date, datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from pydantic import BaseModel, Field, field_validator, model_validator
-from typing import Annotated, Optional
+from typing import Annotated, Literal, Optional
 from uuid import UUID
 from models.common import api_response
 from core.authz import assert_client_access, can_access_client
@@ -110,6 +111,7 @@ def _chapter_vi_a_claims(inp: "ChapterVIAInput") -> ChapterVIAClaims:
         try:
             sanctioned = _date.fromisoformat(raw[:10])
         except ValueError:
+            # Text that is not a date: no sanction date is passed on. The docstring says why none is assumed: there is no safe default.
             sanctioned = None
     return ChapterVIAClaims(
         education_loan_interest_paise=inp.education_loan_interest_paise,
@@ -596,6 +598,11 @@ def compute_itr(req: ComputeITRRequest, current_user: dict = Depends(rbac("incom
         },
         "warnings": result.warnings,
         "validation_errors": result.validation_errors,
+        # THE REQUEST AS COMPUTED, kept with the answer (POST-A-068). The computation screen saves this whole answer as the snapshot, so
+        # a snapshot now carries the inputs the CA typed and the choices they made, and the filing season's bulk re-run
+        # (`services/filing_season_service`) can compute the same inputs again at today's rates and records without asking for them
+        # twice. A snapshot saved before this key existed has no inputs, and the bulk run says so for it and re-runs nothing.
+        "inputs": req.model_dump(mode="json"),
         # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
         "ca_review_required": True,
     })
@@ -1520,6 +1527,7 @@ def advance_tax_unforeseen_income(
     client_id: str = Query(...),
     *,
     fy: Annotated[FYLabel, Query()],
+    total_income_paise: Annotated[Optional[int], Query(ge=0)] = None,
     current_user: dict = Depends(rbac("income_tax", "read")),
 ):
     """The capital gains register's transfers in this financial year, offered as
@@ -1528,26 +1536,30 @@ def advance_tax_unforeseen_income(
     A CANDIDATE, NEVER AN ANSWER. Whether a gain is "income that arose after an
     instalment fell due" is decided by its date, which the register holds, and
     what it ADDS to the year's tax is a figure from the computation. The tax
-    offered here is the register's own — the statutory rate on the gain alone,
-    with cess — and it leaves out the surcharge, the ₹1,25,000 §112A exemption
-    (which is annual and cannot be assigned to one transfer) and the basic
-    exemption the slab income did not use. So it is an estimate and is marked
-    one, the CA replaces it with the computation's figure where they have it,
-    and a candidate nobody includes affects nothing: prepare-only, with an
-    accept and a reject on every line.
+    offered here is `domain/income_tax/unforeseen_offer`'s (POST-A-075): the
+    register's rate on the gain with the ANNUAL §112A exemption used once across
+    the year's listed-equity gains in date order, and the surcharge from the
+    FY-versioned registry's bracket for `total_income_paise` where the caller
+    gives the year's total income (without it none is included, and it says so).
+    That bracket is the slab path's, so it is offered only where the client's
+    own entity type (read here, firm-scoped) makes it an individual, a HUF, an
+    AOP or a BOI; a firm, an LLP, a company or a client with no tax basis
+    recorded is offered no surcharge, and the sentence says why.
+    A year the registry does not hold is never filled with another year's figure.
+    It is still an estimate and is marked one: the CA replaces it with the
+    computation's figure where they have it, and a candidate nobody includes
+    affects nothing: prepare-only, with an accept and a reject on every line.
 
     Only transfers that produced a GAIN with tax on it are offered. A loss, or a
     gain wholly inside an exemption, adds no tax and has nothing to excuse.
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal"""
     assert_client_access(current_user, client_id)
     from core.ist_clock import fy_bounds
-    from domain.income_tax.statutory_rates import cess_paise, rates_for
+    from domain.income_tax import unforeseen_offer
 
     caveats = [
-        "The tax shown is the statutory rate on each gain alone, plus cess. It "
-        "leaves out surcharge, the annual ₹1,25,000 §112A exemption and any "
-        "basic exemption the slab income did not use, so it is an ESTIMATE — "
-        "replace it with the figure from the computation where you have one.",
+        "The tax shown is an ESTIMATE of what each gain adds to the year's tax: replace it with the figure from the computation "
+        "where you have one. What it includes and leaves out is listed below.",
     ]
     from domain.income_tax.advance_tax_interest_engine import (
         UNFORESEEN_KIND_LABELS, UNFORESEEN_KINDS)
@@ -1564,8 +1576,7 @@ def advance_tax_unforeseen_income(
             .eq("firm_id", current_user["firm_id"]).eq("client_id", client_id)
             .gte("sale_date", start).lte("sale_date", end)
             .order("sale_date").execute().data) or []
-    rates = rates_for(fy)
-    out = []
+    transfers, computed = [], []
     for r in rows:
         try:
             res = compute_capital_gains(
@@ -1580,9 +1591,19 @@ def advance_tax_unforeseen_income(
             # A register row the engine cannot recompute is left out and not
             # guessed at; the register screen is where it is repaired.
             continue
-        if res.gain_paise <= 0 or res.tax_liability_paise <= 0:
+        transfers.append(unforeseen_offer.Transfer(
+            r.get("id"), str(r["sale_date"])[:10], res.section_ref, res.gain_paise, res.tax_liability_paise))
+        computed.append((r, res))
+    client_rows = (db.table("clients").select("entity_type")
+                   .eq("firm_id", current_user["firm_id"]).eq("id", client_id)
+                   .limit(1).execute().data) or []
+    kind, _no_basis = assessee_kind_for_entity_type(client_rows[0].get("entity_type") if client_rows else None)
+    offers, notes = unforeseen_offer.offer(transfers, fy, total_income_paise, assessee_kind=kind)
+    caveats.extend(notes)
+    out = []
+    for (r, res), o in zip(computed, offers, strict=True):
+        if res.gain_paise <= 0 or o.tax_paise <= 0:
             continue
-        tax = res.tax_liability_paise
         out.append({
             "source": "capital_gains_register",
             "register_id": r.get("id"),
@@ -1590,7 +1611,8 @@ def advance_tax_unforeseen_income(
             "arose_on": str(r["sale_date"])[:10],
             "description": str(r.get("asset_description") or "")[:200],
             "gain_paise": res.gain_paise,
-            "tax_paise": tax + cess_paise(tax, rates),
+            "tax_paise": o.tax_paise,
+            "surcharge_paise": o.surcharge_paise,
             "is_estimate": True,
             "rate_is_a_slab_estimate": res.is_slab_rate_estimate,
         })
@@ -2777,7 +2799,44 @@ def form_3cd_register(
     from services.form_3cd_service import build
     return api_response(True, build(
         db, current_user["firm_id"], client_id, fy,
-        nature=nature, bank_rate_bps=bank_rate_bps))
+        nature=nature, bank_rate_bps=bank_rate_bps, current_user=current_user))
+
+
+@router.get("/form-3cd/export")
+def form_3cd_working_paper(
+    client_id: str,
+    fy: Annotated[FYLabel, Query(description="YYYY-YY, e.g. 2025-26")],
+    format: Literal["pdf", "xlsx"] = Query("pdf"),
+    nature: Optional[str] = Query(None, description="business | profession, as on the register"),
+    bank_rate_bps: Optional[int] = Query(None, description="RBI Bank Rate, as on the register"),
+    current_user: dict = Depends(rbac("income_tax", "read")),
+):
+    """The register above as a printable working paper (PDF) or a spreadsheet: every clause with its number and heading, the answer
+    and where it came from, and the basis of each. It is built by `services.form_3cd_service.build`, the function the register's own
+    endpoint calls, so the file shows exactly what the screen shows; it carries what the CA has SAVED on the register, not what is typed
+    and unsaved. A working paper, not Form 3CD as the portal takes it: nothing is filed or submitted, and no portal file is produced.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal
+    """
+    assert_client_access(current_user, client_id)
+    db = _db()
+    if db is None:
+        raise HTTPException(
+            status_code=503,
+            detail="The working paper is built from the live books and is unavailable without the database.")
+    from domain.reporting.export_document import ExportRefused
+    from services.form_3cd_service import build
+    from services.report_export_service import export_form_3cd
+    register = build(db, current_user["firm_id"], client_id, fy,
+                     nature=nature, bank_rate_bps=bank_rate_bps, current_user=current_user)
+    try:
+        out = export_form_3cd(register, format, db=db, firm_id=current_user["firm_id"], client_id=client_id)
+    except ExportRefused as e:
+        # A refusal is the answer, in words, as on every other report file.
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    return Response(
+        content=out.content, media_type=out.media_type,
+        headers={"Content-Disposition": f'attachment; filename="{out.filename}"'})
 
 
 class Form3cdManualClauses(BaseModel):

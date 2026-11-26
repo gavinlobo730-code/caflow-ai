@@ -1,0 +1,29 @@
+{
+  // The type-check of this app's test files, the same arrangement as
+  // apps/web/tsconfig.test.json (engineering-17).
+  //
+  // tsconfig.json EXCLUDES **/*.test.ts: the tests import node:test and
+  // node:assert and are not part of the site, and `next build` type-checks
+  // everything tsconfig.json includes. The suite runs on
+  // `node --experimental-strip-types` (`pnpm test`), which ERASES types without
+  // checking them, so without this program nothing would check the tests at all.
+  //
+  // It EXTENDS tsconfig.json so the two cannot disagree about strictness. The
+  // differences:
+  //   - `target: es2022`, because the tests use syntax the site's target does not;
+  //   - `types: ["node"]`, for node:test, node:assert and node:fs;
+  //   - `allowImportingTsExtensions`, because Node needs the `.ts` on an import
+  //     and the site's own files never write one;
+  //   - `incremental: false`, so a CI run writes no .tsbuildinfo beside it.
+  //
+  // Run: pnpm exec tsc -p tsconfig.test.json (Marketing CI runs it).
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "target": "es2022",
+    "incremental": false,
+    "types": ["node"],
+    "allowImportingTsExtensions": true
+  },
+  "include": ["**/*.test.ts"],
+  "exclude": ["node_modules"]
+}

@@ -2,22 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  Building2,
-  ShieldCheck,
-  ClipboardList,
-  Calendar,
-  Shield,
-  Palette,
-  Hash,
-  FileText,
-  Mail,
-  Library,
-  Coins,
-  Scale,
-  Globe2,
-  Cpu,
-} from "lucide-react";
+import { useScreenAccess } from "@/lib/access/useScreenAccess";
+import { SETTINGS_GROUPS, groupHasContent, linkShownTo, settingsTabHref } from "@/lib/settings/groups";
 import { cn, isExactPath } from "@/lib/utils";
 
 /**
@@ -39,50 +25,34 @@ import { cn, isExactPath } from "@/lib/utils";
  * NO `requires` HERE, and that is measured rather than assumed: every one of
  * these pages reads its own data over PostgREST or through an endpoint the
  * Settings screens already reach, so RLS and each page's own `RoleGuard`
- * govern them. Branding is the one with a Partner-only section, and its guard
- * is ON THE PAGE where it can explain itself, which is better than a link
- * that silently is not there.
+ * govern them. WHAT IT DOES FILTER ON IS THAT GUARD (POST-A-447): it listed
+ * every page to everyone, so a Manager, an Executive or a Reviewer was offered
+ * ten pages whose guard sent them straight back to the home page. A link is now
+ * shown only to the roles its page's guard admits (`roles` in the groups, held
+ * equal to each page's guard by `lib/settings/groups.test.ts`).
  */
-const SETTINGS_GROUPS: Array<{
-  heading: string | null;
-  items: Array<{ href: string; label: string; icon: typeof Building2; exact?: boolean }>;
-}> = [
-  {
-    heading: null,
-    items: [{ href: "/settings", label: "Firm Profile", icon: Building2, exact: true }],
-  },
-  {
-    heading: "Documents",
-    items: [
-      { href: "/settings/branding", label: "Branding", icon: Palette },
-      { href: "/settings/invoice-settings", label: "Invoice Numbering", icon: Hash },
-      { href: "/settings/invoice-templates", label: "Invoice Templates", icon: FileText },
-      { href: "/settings/email-templates", label: "Email Templates", icon: Mail },
-    ],
-  },
-  {
-    heading: "Statutory",
-    items: [
-      { href: "/settings/statutory-values", label: "Statutory Values", icon: Scale },
-      { href: "/settings/treaty-rates", label: "DTAA Treaty Rates", icon: Globe2 },
-      { href: "/settings/firm-hsn-library", label: "HSN Library", icon: Library },
-      { href: "/settings/multi-currency", label: "Multi-currency", icon: Coins },
-      { href: "/settings/dsc-tracker", label: "DSC Tracker", icon: Shield },
-      { href: "/settings/ai", label: "AI status", icon: Cpu },
-    ],
-  },
-  {
-    heading: "Firm",
-    items: [
-      { href: "/settings/security", label: "Security / 2FA", icon: ShieldCheck },
-      { href: "/settings/audit-log", label: "Audit Log", icon: ClipboardList },
-      { href: "/settings/scheduled-reports", label: "Scheduled Reports", icon: Calendar },
-    ],
-  },
-];
+/**
+ * THE GROUPS ARE `lib/settings/groups.ts` (PRE-A-023), the same list the tab row across every Settings page and
+ * the Settings home read, so this panel cannot drift from them. Each heading is a tab of the Settings home, and
+ * under it are the group's Settings screens; a link that leaves Settings (Team, which the Team panel owns) is not
+ * repeated here.
+ */
+const PANEL_GROUPS = SETTINGS_GROUPS.map((g) => ({
+  group: g,
+  id: g.id,
+  heading: g.label,
+  tabHref: settingsTabHref(g.id),
+  items: g.links
+    .map((l) => ({ href: l.href.split("#")[0], label: l.label, link: l }))
+    .filter((l, i, all) => l.href.startsWith("/settings") && all.findIndex((o) => o.href === l.href) === i),
+}));
 
 export function SettingsPanel() {
   const pathname = usePathname();
+  const access = useScreenAccess();
+  const groups = PANEL_GROUPS
+    .filter(({ group }) => groupHasContent(group, access))
+    .map((g) => ({ ...g, items: g.items.filter(({ link }) => linkShownTo(link, access)) }));
 
   return (
     <div className="flex flex-col h-full">
@@ -92,18 +62,17 @@ export function SettingsPanel() {
         </p>
       </div>
       <nav className="flex-1 overflow-y-auto px-2 py-2">
-        {SETTINGS_GROUPS.map(({ heading, items }) => (
-          <div key={heading ?? "_"} className={heading ? "mt-3 first:mt-0" : ""}>
-            {heading && (
-              <p className="px-3 pb-1 text-3xs font-semibold uppercase tracking-wider text-ps-hint">
-                {heading}
-              </p>
-            )}
+        {groups.map(({ id, heading, tabHref, items }) => (
+          <div key={id} className="mt-3 first:mt-0">
+            <Link
+              href={tabHref}
+              className="block px-3 pb-1 text-3xs font-semibold uppercase tracking-wider text-ps-hint hover:text-ps-ink"
+            >
+              {heading}
+            </Link>
             <div className="flex flex-col gap-0.5">
-              {items.map(({ href, label, icon: Icon, exact }) => {
-                const isActive = exact
-                  ? isExactPath(pathname, href)
-                  : pathname.startsWith(href);
+              {items.map(({ href, label }) => {
+                const isActive = isExactPath(pathname, href) || (href !== "/settings" && pathname.startsWith(href));
                 return (
                   <Link
                     key={href}
@@ -115,10 +84,6 @@ export function SettingsPanel() {
                         : "text-ps-label hover:bg-ps-bg"
                     )}
                   >
-                    <Icon
-                      size={14}
-                      className={isActive ? "text-white" : "text-ps-hint"}
-                    />
                     {label}
                   </Link>
                 );

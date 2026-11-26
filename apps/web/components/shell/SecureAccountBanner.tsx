@@ -10,14 +10,15 @@ import { Callout } from "@/components/ui/callout";
  *  has a verified authenticator — without one, mfa_guard refuses the
  *  administration screens and nothing else tells them why. */
 export function SecureAccountBanner({ pathname }: { pathname: string }) {
-  const { mustEnrolMfa } = useAuth();
+  const { mustEnrolMfa, mfaLockedSentence } = useAuth();
   if (!showsSecureAccountBanner(mustEnrolMfa, pathname)) return null;
   return (
     <div className="px-4 pt-3 print:hidden">
       <Callout tone="attention" title="Secure your account">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm">
-            Team, Payroll, Billing and firm settings stay locked until you set up an authenticator app.
+            {/* The server's sentence for THIS person (PRE-A-021); without it, nothing specific is claimed. */}
+            {mfaLockedSentence ?? "Some screens stay locked until you set up an authenticator app."}
           </p>
           <Link
             href={MFA_SETUP_HREF}

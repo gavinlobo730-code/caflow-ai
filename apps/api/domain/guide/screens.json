@@ -1,0 +1,1451 @@
+[
+ {
+  "id": "firm:/",
+  "name": "Home",
+  "section": "General",
+  "words": [
+   "dashboard",
+   "hub",
+   "start"
+  ]
+ },
+ {
+  "id": "firm:/deadlines",
+  "name": "Compliance calendar",
+  "section": "General",
+  "words": [
+   "due dates",
+   "deadlines",
+   "whats due",
+   "calendar"
+  ]
+ },
+ {
+  "id": "firm:/calendar",
+  "name": "Calendar",
+  "section": "General",
+  "words": [
+   "schedule",
+   "diary"
+  ]
+ },
+ {
+  "id": "firm:/tasks",
+  "name": "Tasks",
+  "section": "General",
+  "words": [
+   "to do",
+   "work items"
+  ]
+ },
+ {
+  "id": "firm:/tasks/templates",
+  "name": "Task templates",
+  "section": "General",
+  "words": [
+   "recurring tasks",
+   "checklist template"
+  ]
+ },
+ {
+  "id": "firm:/work",
+  "name": "My work",
+  "section": "General",
+  "words": [
+   "assigned to me",
+   "my queue"
+  ]
+ },
+ {
+  "id": "firm:/approvals",
+  "name": "Approvals",
+  "section": "General",
+  "words": [
+   "sign off",
+   "review queue"
+  ]
+ },
+ {
+  "id": "firm:/workflows",
+  "name": "Workflows",
+  "section": "General",
+  "words": [
+   "automation",
+   "process"
+  ]
+ },
+ {
+  "id": "firm:/workflows/approvals",
+  "name": "Workflow approvals",
+  "section": "General",
+  "words": [
+   "approval chain"
+  ]
+ },
+ {
+  "id": "firm:/notifications",
+  "name": "Notifications",
+  "section": "General",
+  "words": [
+   "alerts"
+  ]
+ },
+ {
+  "id": "firm:/notifications/whatsapp",
+  "name": "WhatsApp notifications",
+  "section": "General",
+  "words": [
+   "whatsapp",
+   "wa"
+  ]
+ },
+ {
+  "id": "firm:/search",
+  "name": "Search",
+  "section": "General",
+  "words": [
+   "find"
+  ]
+ },
+ {
+  "id": "firm:/documents",
+  "name": "Documents",
+  "section": "General",
+  "words": [
+   "files",
+   "attachments",
+   "dms"
+  ]
+ },
+ {
+  "id": "firm:/knowledge",
+  "name": "Knowledge base",
+  "section": "General",
+  "words": [
+   "help",
+   "articles",
+   "notes"
+  ]
+ },
+ {
+  "id": "firm:/risks",
+  "name": "Risk register",
+  "section": "General",
+  "words": [
+   "risks",
+   "exposure"
+  ]
+ },
+ {
+  "id": "firm:/time",
+  "name": "Timesheets",
+  "section": "General",
+  "words": [
+   "time",
+   "hours",
+   "utilisation"
+  ]
+ },
+ {
+  "id": "firm:/clients",
+  "name": "Clients",
+  "section": "Clients",
+  "words": [
+   "client list",
+   "all clients"
+  ]
+ },
+ {
+  "id": "firm:/clients/onboarding",
+  "name": "Client onboarding",
+  "section": "Clients",
+  "words": [
+   "onboarding checklist",
+   "10-step checklist",
+   "go live"
+  ]
+ },
+ {
+  "id": "firm:/clients/documents",
+  "name": "Client documents",
+  "section": "Clients",
+  "words": [
+   "client files"
+  ]
+ },
+ {
+  "id": "firm:/pipeline",
+  "name": "Pipeline",
+  "section": "Clients",
+  "words": [
+   "leads",
+   "prospects",
+   "sales pipeline"
+  ]
+ },
+ {
+  "id": "firm:/relationships",
+  "name": "Relationships",
+  "section": "Clients",
+  "words": [
+   "group",
+   "related parties"
+  ]
+ },
+ {
+  "id": "firm:/relationships/cross-client",
+  "name": "Cross-client exposure",
+  "section": "Clients",
+  "words": [
+   "inter company",
+   "common parties"
+  ]
+ },
+ {
+  "id": "firm:/relationships/explorer",
+  "name": "Relationship explorer",
+  "section": "Clients",
+  "words": [
+   "graph",
+   "network"
+  ]
+ },
+ {
+  "id": "firm:/relationships/intelligence",
+  "name": "Relationship intelligence",
+  "section": "Clients",
+  "words": [
+   "insights"
+  ]
+ },
+ {
+  "id": "firm:/relationships/ownership-map",
+  "name": "Ownership map",
+  "section": "Clients",
+  "words": [
+   "shareholding",
+   "structure",
+   "group chart"
+  ]
+ },
+ {
+  "id": "firm:/engagements",
+  "name": "Engagements",
+  "section": "Clients",
+  "words": [
+   "engagement letter",
+   "loe",
+   "appointment"
+  ]
+ },
+ {
+  "id": "firm:/client-portal",
+  "name": "Client portal",
+  "section": "Clients",
+  "words": [
+   "portal access",
+   "sharing"
+  ]
+ },
+ {
+  "id": "firm:/accounting",
+  "name": "Accounting",
+  "section": "Accounting",
+  "words": [
+   "books",
+   "ledger",
+   "gl",
+   "general ledger"
+  ]
+ },
+ {
+  "id": "firm:/accounting/account-groups",
+  "name": "Account groups",
+  "section": "Accounting",
+  "words": [
+   "groups",
+   "chart grouping"
+  ]
+ },
+ {
+  "id": "firm:/accounting/budget",
+  "name": "Budgets",
+  "section": "Accounting",
+  "words": [
+   "budget vs actual",
+   "variance"
+  ]
+ },
+ {
+  "id": "firm:/accounting/coa-export",
+  "name": "Export chart of accounts",
+  "section": "Accounting",
+  "words": [
+   "coa export",
+   "download coa"
+  ]
+ },
+ {
+  "id": "firm:/accounting/coa-import",
+  "name": "Import chart of accounts",
+  "section": "Accounting",
+  "words": [
+   "coa import",
+   "upload coa"
+  ]
+ },
+ {
+  "id": "firm:/accounting/loans",
+  "name": "Loans",
+  "section": "Accounting",
+  "words": [
+   "borrowings",
+   "related party loans"
+  ]
+ },
+ {
+  "id": "firm:/accounting/lock-year",
+  "name": "Lock financial year",
+  "section": "Accounting",
+  "words": [
+   "close year",
+   "freeze",
+   "year end lock"
+  ]
+ },
+ {
+  "id": "firm:/accounting/msme-tracker",
+  "name": "MSME payments",
+  "section": "Accounting",
+  "words": [
+   "43b(h)",
+   "43bh",
+   "micro small",
+   "msmed",
+   "section 43b"
+  ]
+ },
+ {
+  "id": "firm:/accounting/receivables",
+  "name": "Earlier fee receivables",
+  "section": "Practice",
+  "words": [
+   "unpaid fees",
+   "fee invoices",
+   "fee receivables",
+   "owed to the firm",
+   "fee ageing"
+  ]
+ },
+ {
+  "id": "firm:/accounting/banking",
+  "name": "Banking worklist",
+  "section": "Accounting",
+  "words": [
+   "bank lines",
+   "unpassed",
+   "which clients",
+   "reconcile",
+   "statement queue"
+  ]
+ },
+ {
+  "id": "firm:/accounting/invoices",
+  "name": "Sales worklist",
+  "section": "Accounting",
+  "words": [
+   "debtors",
+   "ar",
+   "receivables",
+   "owed by customers",
+   "which clients"
+  ]
+ },
+ {
+  "id": "firm:/accounting/purchases",
+  "name": "Purchases worklist",
+  "section": "Accounting",
+  "words": [
+   "creditors",
+   "ap",
+   "overdue to suppliers",
+   "which clients",
+   "payables"
+  ]
+ },
+ {
+  "id": "firm:/accounting/fixed-assets",
+  "name": "Fixed assets worklist",
+  "section": "Accounting",
+  "words": [
+   "depreciation due",
+   "which clients",
+   "schedule ii",
+   "wdv",
+   "asset register"
+  ]
+ },
+ {
+  "id": "firm:/accounting/year-end",
+  "name": "Year-end worklist",
+  "section": "Accounting",
+  "words": [
+   "finalisation",
+   "which clients",
+   "closing",
+   "statements",
+   "schedule iii"
+  ]
+ },
+ {
+  "id": "firm:/accounting/recurring",
+  "name": "Recurring journals",
+  "section": "Accounting",
+  "words": [
+   "repeating entry",
+   "standing journal"
+  ]
+ },
+ {
+  "id": "firm:/accounting/retainer",
+  "name": "Retainers",
+  "section": "Accounting",
+  "words": [
+   "retainer billing",
+   "fixed fee"
+  ]
+ },
+ {
+  "id": "firm:/accounting/schedule-iii",
+  "name": "Schedule III statements",
+  "section": "Accounting",
+  "words": [
+   "schedule 3",
+   "balance sheet",
+   "profit and loss",
+   "p&l",
+   "section 129",
+   "statements"
+  ]
+ },
+ {
+  "id": "firm:/accounting/schedule-iii-mapping",
+  "name": "Schedule III account mapping",
+  "section": "Accounting",
+  "words": [
+   "map accounts",
+   "schedule 3 mapping"
+  ]
+ },
+ {
+  "id": "firm:/accounting/suppliers",
+  "name": "Suppliers (firm)",
+  "section": "Accounting",
+  "words": [
+   "vendors",
+   "creditors"
+  ]
+ },
+ {
+  "id": "firm:/accounting/trial-balance-import",
+  "name": "Import trial balance",
+  "section": "Accounting",
+  "words": [
+   "tb import",
+   "opening tb"
+  ]
+ },
+ {
+  "id": "firm:/gst",
+  "name": "GST",
+  "section": "GST",
+  "words": [
+   "goods and services tax"
+  ]
+ },
+ {
+  "id": "firm:/gst/gstr1",
+  "name": "GSTR-1",
+  "section": "GST",
+  "words": [
+   "gstr1",
+   "outward supplies",
+   "sales return"
+  ]
+ },
+ {
+  "id": "firm:/gst/gstr3b",
+  "name": "GSTR-3B",
+  "section": "GST",
+  "words": [
+   "gstr3b",
+   "3b",
+   "summary return",
+   "monthly return"
+  ]
+ },
+ {
+  "id": "firm:/einvoice",
+  "name": "e-Invoice",
+  "section": "GST",
+  "words": [
+   "irn",
+   "irp",
+   "e invoice",
+   "einvoice"
+  ]
+ },
+ {
+  "id": "firm:/income-tax",
+  "name": "Income tax",
+  "section": "Income tax",
+  "words": [
+   "it",
+   "itr"
+  ]
+ },
+ {
+  "id": "firm:/income-tax/advance-tax",
+  "name": "Advance tax",
+  "section": "Income tax",
+  "words": [
+   "234b",
+   "234c",
+   "instalments"
+  ]
+ },
+ {
+  "id": "firm:/income-tax/season",
+  "name": "Filing season",
+  "section": "Income tax",
+  "words": [
+   "itr season",
+   "returns by stage",
+   "bulk compute"
+  ]
+ },
+ {
+  "id": "firm:/income-tax/ais",
+  "name": "AIS",
+  "section": "Income tax",
+  "words": [
+   "annual information statement",
+   "tis"
+  ]
+ },
+ {
+  "id": "firm:/income-tax/book-to-tax",
+  "name": "Book to tax",
+  "section": "Income tax",
+  "words": [
+   "reconciliation",
+   "bridge"
+  ]
+ },
+ {
+  "id": "firm:/income-tax/capital-gains",
+  "name": "Capital gains",
+  "section": "Income tax",
+  "words": [
+   "54",
+   "54f",
+   "112a",
+   "111a",
+   "ltcg",
+   "stcg"
+  ]
+ },
+ {
+  "id": "firm:/income-tax/deductions",
+  "name": "Chapter VI-A deductions",
+  "section": "Income tax",
+  "words": [
+   "80c",
+   "80d",
+   "80g",
+   "deductions"
+  ]
+ },
+ {
+  "id": "firm:/income-tax/notices",
+  "name": "Notices",
+  "section": "Income tax",
+  "words": [
+   "143(1)",
+   "139(9)",
+   "intimation",
+   "scrutiny"
+  ]
+ },
+ {
+  "id": "firm:/income-tax/section-32",
+  "name": "Depreciation (section 32)",
+  "section": "Income tax",
+  "words": [
+   "32",
+   "additional depreciation",
+   "block"
+  ]
+ },
+ {
+  "id": "firm:/income-tax/tax-audit",
+  "name": "Tax audit",
+  "section": "Income tax",
+  "words": [
+   "44ab",
+   "3cd",
+   "3ca",
+   "3cb",
+   "audit report"
+  ]
+ },
+ {
+  "id": "firm:/income-tax/tax-audit/form-3cd",
+  "name": "Form 3CD",
+  "section": "Income tax",
+  "words": [
+   "44ab",
+   "statement of particulars",
+   "clause register"
+  ]
+ },
+ {
+  "id": "firm:/tds",
+  "name": "TDS",
+  "section": "TDS",
+  "words": [
+   "withholding",
+   "deduction"
+  ]
+ },
+ {
+  "id": "firm:/tds/returns",
+  "name": "TDS returns",
+  "section": "TDS",
+  "words": [
+   "24q",
+   "26q",
+   "27q",
+   "27eq",
+   "quarterly statement",
+   "fvu"
+  ]
+ },
+ {
+  "id": "firm:/payroll",
+  "name": "Payroll",
+  "section": "Payroll",
+  "words": [
+   "salary",
+   "wages"
+  ]
+ },
+ {
+  "id": "firm:/payroll/attendance",
+  "name": "Attendance",
+  "section": "Payroll",
+  "words": [
+   "lop",
+   "leave",
+   "days present"
+  ]
+ },
+ {
+  "id": "firm:/payroll/declarations",
+  "name": "Investment declarations",
+  "section": "Payroll",
+  "words": [
+   "12bb",
+   "proofs",
+   "80c declaration"
+  ]
+ },
+ {
+  "id": "firm:/payroll/people",
+  "name": "Employees",
+  "section": "Payroll",
+  "words": [
+   "staff",
+   "people",
+   "employee master"
+  ]
+ },
+ {
+  "id": "firm:/payroll/reports",
+  "name": "Payroll reports",
+  "section": "Payroll",
+  "words": [
+   "variance",
+   "department cost",
+   "bank advice"
+  ]
+ },
+ {
+  "id": "firm:/payroll/statutory",
+  "name": "Payroll statutory",
+  "section": "Payroll",
+  "words": [
+   "pf",
+   "esi",
+   "pt",
+   "ecr",
+   "challan"
+  ]
+ },
+ {
+  "id": "firm:/mca",
+  "name": "MCA / ROC",
+  "section": "MCA",
+  "words": [
+   "roc",
+   "aoc-4",
+   "mgt-7",
+   "adt-1",
+   "company filings"
+  ]
+ },
+ {
+  "id": "firm:/practice",
+  "name": "My practice",
+  "section": "Practice",
+  "words": [
+   "firm",
+   "own books",
+   "our books",
+   "my firm",
+   "practice home"
+  ]
+ },
+ {
+  "id": "firm:/practice/ar",
+  "name": "Practice receivables",
+  "section": "Practice",
+  "words": [
+   "fee outstanding",
+   "our debtors"
+  ]
+ },
+ {
+  "id": "firm:/practice/billing",
+  "name": "Practice billing",
+  "section": "Practice",
+  "words": [
+   "fee bills",
+   "invoicing"
+  ]
+ },
+ {
+  "id": "firm:/practice/collections",
+  "name": "Collections",
+  "section": "Practice",
+  "words": [
+   "chasing",
+   "reminders",
+   "dunning"
+  ]
+ },
+ {
+  "id": "firm:/practice/compliance",
+  "name": "Practice compliance",
+  "section": "Practice",
+  "words": [
+   "our own compliance"
+  ]
+ },
+ {
+  "id": "firm:/practice/instructions",
+  "name": "Standing instructions",
+  "section": "Practice",
+  "words": [
+   "instructions"
+  ]
+ },
+ {
+  "id": "firm:/practice/revenue",
+  "name": "Revenue",
+  "section": "Practice",
+  "words": [
+   "fee income",
+   "realisation"
+  ]
+ },
+ {
+  "id": "firm:/insights",
+  "name": "Insights",
+  "section": "Home",
+  "words": [
+   "what needs attention",
+   "compliance risk",
+   "recommendations",
+   "clients at risk"
+  ]
+ },
+ {
+  "id": "firm:/practice/profitability",
+  "name": "Profitability",
+  "section": "Practice",
+  "words": [
+   "margin",
+   "realization",
+   "realisation",
+   "cost to serve",
+   "which clients make money"
+  ]
+ },
+ {
+  "id": "firm:/practice/benchmark",
+  "name": "Client benchmark",
+  "section": "Practice",
+  "words": [
+   "effective tax rate",
+   "ITC to purchases",
+   "GST to turnover",
+   "compare clients",
+   "where does this client sit",
+   "peer",
+   "ratios"
+  ]
+ },
+ {
+  "id": "firm:/billing",
+  "name": "Earlier fee bills",
+  "section": "Practice",
+  "words": [
+   "fee billing",
+   "old fee bills",
+   "fees"
+  ]
+ },
+ {
+  "id": "firm:/team",
+  "name": "Team",
+  "section": "Practice",
+  "words": [
+   "staff",
+   "users",
+   "permissions"
+  ]
+ },
+ {
+  "id": "firm:/team/assignments",
+  "name": "Client assignments",
+  "section": "Practice",
+  "words": [
+   "who handles which client"
+  ]
+ },
+ {
+  "id": "firm:/team/login-history",
+  "name": "Login history",
+  "section": "Practice",
+  "words": [
+   "sign ins",
+   "access log"
+  ]
+ },
+ {
+  "id": "firm:/team/workload",
+  "name": "Workload",
+  "section": "Practice",
+  "words": [
+   "capacity",
+   "utilisation",
+   "allocate",
+   "assign work",
+   "unassigned",
+   "reassign"
+  ]
+ },
+ {
+  "id": "firm:/health",
+  "name": "Client health",
+  "section": "Insights",
+  "words": [
+   "score",
+   "health"
+  ]
+ },
+ {
+  "id": "firm:/health/alerts",
+  "name": "Health alerts",
+  "section": "Insights",
+  "words": [
+   "alerts"
+  ]
+ },
+ {
+  "id": "firm:/health/at-risk",
+  "name": "At-risk clients",
+  "section": "Insights",
+  "words": [
+   "churn",
+   "at risk"
+  ]
+ },
+ {
+  "id": "firm:/health/critical",
+  "name": "Critical clients",
+  "section": "Insights",
+  "words": [
+   "critical"
+  ]
+ },
+ {
+  "id": "firm:/health/overrides",
+  "name": "Health overrides",
+  "section": "Insights",
+  "words": [
+   "override score"
+  ]
+ },
+ {
+  "id": "firm:/executive-dashboard",
+  "name": "Executive dashboard",
+  "section": "Insights",
+  "words": [
+   "partner view",
+   "mis"
+  ]
+ },
+ {
+  "id": "firm:/reports",
+  "name": "Reports",
+  "section": "Insights",
+  "words": [
+   "statements",
+   "mis"
+  ]
+ },
+ {
+  "id": "firm:/reports/cash-flow",
+  "name": "Cash flow",
+  "section": "Insights",
+  "words": [
+   "as-3",
+   "cash flow statement"
+  ]
+ },
+ {
+  "id": "firm:/ai-assistant",
+  "name": "AI assistant",
+  "section": "Insights",
+  "words": [
+   "copilot",
+   "ask",
+   "chat"
+  ]
+ },
+ {
+  "id": "firm:/copilot",
+  "name": "Copilot",
+  "section": "Insights",
+  "words": [
+   "ai",
+   "assistant",
+   "ask"
+  ]
+ },
+ {
+  "id": "firm:/memory",
+  "name": "Practice memory",
+  "section": "Insights",
+  "words": [
+   "what it remembers",
+   "ai memory",
+   "signals"
+  ]
+ },
+ {
+  "id": "firm:/settings",
+  "name": "Settings",
+  "section": "Settings",
+  "words": [
+   "configuration",
+   "preferences"
+  ]
+ },
+ {
+  "id": "firm:/settings/audit-log",
+  "name": "Audit log",
+  "section": "Settings",
+  "words": [
+   "who changed what",
+   "edit log",
+   "rule 3(1)"
+  ]
+ },
+ {
+  "id": "firm:/settings/branding",
+  "name": "Branding",
+  "section": "Settings",
+  "words": [
+   "logo",
+   "letterhead"
+  ]
+ },
+ {
+  "id": "firm:/settings/dsc-tracker",
+  "name": "DSC tracker",
+  "section": "Settings",
+  "words": [
+   "digital signature",
+   "dsc expiry",
+   "token"
+  ]
+ },
+ {
+  "id": "firm:/settings/email-templates",
+  "name": "Email templates",
+  "section": "Settings",
+  "words": [
+   "mail wording"
+  ]
+ },
+ {
+  "id": "firm:/settings/ai",
+  "name": "PracticeSync AI status",
+  "section": "Settings",
+  "words": [
+   "ai",
+   "assistant",
+   "groq",
+   "gemini",
+   "probe",
+   "model"
+  ]
+ },
+ {
+  "id": "firm:/settings/firm-hsn-library",
+  "name": "HSN library",
+  "section": "Settings",
+  "words": [
+   "hsn",
+   "sac",
+   "rate master"
+  ]
+ },
+ {
+  "id": "firm:/settings/invoice-settings",
+  "name": "Invoice numbering",
+  "section": "Settings",
+  "words": [
+   "series",
+   "prefix",
+   "rule 46(b)"
+  ]
+ },
+ {
+  "id": "firm:/settings/invoice-templates",
+  "name": "Invoice templates",
+  "section": "Settings",
+  "words": [
+   "layout",
+   "pdf design"
+  ]
+ },
+ {
+  "id": "firm:/settings/journal-approval",
+  "name": "Journal approval",
+  "section": "Settings",
+  "words": [
+   "manual journal",
+   "maker checker",
+   "approve journals"
+  ]
+ },
+ {
+  "id": "firm:/settings/multi-currency",
+  "name": "Multi-currency",
+  "section": "Settings",
+  "words": [
+   "fx",
+   "foreign currency",
+   "as-11"
+  ]
+ },
+ {
+  "id": "firm:/settings/scheduled-reports",
+  "name": "Scheduled reports",
+  "section": "Settings",
+  "words": [
+   "email reports",
+   "subscriptions"
+  ]
+ },
+ {
+  "id": "firm:/settings/security",
+  "name": "Security",
+  "section": "Settings",
+  "words": [
+   "2fa",
+   "sessions",
+   "password policy"
+  ]
+ },
+ {
+  "id": "firm:/settings/statutory-values",
+  "name": "Statutory values",
+  "section": "Settings",
+  "words": [
+   "rates",
+   "limits",
+   "pt slabs"
+  ]
+ },
+ {
+  "id": "firm:/settings/treaty-rates",
+  "name": "DTAA treaty rates",
+  "section": "Settings",
+  "words": [
+   "dtaa",
+   "treaty",
+   "90(2)",
+   "trc"
+  ]
+ },
+ {
+  "id": "firm:/onboarding",
+  "name": "Onboarding",
+  "section": "Setup",
+  "words": [
+   "setup",
+   "get started"
+  ]
+ },
+ {
+  "id": "firm:/migration",
+  "name": "Tally migration",
+  "section": "Setup",
+  "words": [
+   "import from tally",
+   "migrate"
+  ]
+ },
+ {
+  "id": "firm:/platform",
+  "name": "Platform admin",
+  "section": "Setup",
+  "words": [
+   "superadmin",
+   "firms"
+  ]
+ },
+ {
+  "id": "client:overview",
+  "name": "Overview",
+  "section": "Client",
+  "words": [
+   "summary",
+   "home"
+  ]
+ },
+ {
+  "id": "client:accounting",
+  "name": "Accounting",
+  "section": "Client",
+  "words": [
+   "ledger",
+   "journal",
+   "gl",
+   "books"
+  ]
+ },
+ {
+  "id": "client:bank",
+  "name": "Bank",
+  "section": "Client",
+  "words": [
+   "statement",
+   "reconciliation",
+   "brs",
+   "pass book"
+  ]
+ },
+ {
+  "id": "client:sales",
+  "name": "Sales",
+  "section": "Client",
+  "words": [
+   "invoices",
+   "customers",
+   "receipts"
+  ]
+ },
+ {
+  "id": "client:purchases",
+  "name": "Purchases",
+  "section": "Client",
+  "words": [
+   "bills",
+   "vendors",
+   "payments"
+  ]
+ },
+ {
+  "id": "client:inventory",
+  "name": "Inventory",
+  "section": "Client",
+  "words": [
+   "stock",
+   "godown",
+   "batch",
+   "reorder"
+  ]
+ },
+ {
+  "id": "client:fixed-assets",
+  "name": "Fixed assets",
+  "section": "Client",
+  "words": [
+   "depreciation",
+   "schedule ii",
+   "wdv",
+   "block"
+  ]
+ },
+ {
+  "id": "client:payroll",
+  "name": "Payroll",
+  "section": "Client",
+  "words": [
+   "salary",
+   "pf",
+   "esi",
+   "payslip"
+  ]
+ },
+ {
+  "id": "client:compliance",
+  "name": "Compliance",
+  "section": "Client",
+  "words": [
+   "returns",
+   "filings"
+  ]
+ },
+ {
+  "id": "client:documents",
+  "name": "Documents",
+  "section": "Client",
+  "words": [
+   "files",
+   "attachments"
+  ]
+ },
+ {
+  "id": "client:tasks",
+  "name": "Tasks",
+  "section": "Client",
+  "words": [
+   "to do",
+   "checklist"
+  ]
+ },
+ {
+  "id": "client:instructions",
+  "name": "Instructions",
+  "section": "Client",
+  "words": [
+   "standing instructions",
+   "notes"
+  ]
+ },
+ {
+  "id": "client:health",
+  "name": "Health",
+  "section": "Client",
+  "words": [
+   "score",
+   "risk"
+  ]
+ },
+ {
+  "id": "client:ai-insights",
+  "name": "Insights",
+  "section": "Client",
+  "words": [
+   "insights",
+   "anomalies",
+   "ai insights",
+   "rule-based"
+  ]
+ },
+ {
+  "id": "client:knowledge",
+  "name": "Knowledge",
+  "section": "Client",
+  "words": [
+   "notes",
+   "articles"
+  ]
+ },
+ {
+  "id": "client:lifecycle",
+  "name": "Lifecycle",
+  "section": "Client",
+  "words": [
+   "stage",
+   "onboarding status"
+  ]
+ },
+ {
+  "id": "client:portal",
+  "name": "Portal",
+  "section": "Client",
+  "words": [
+   "client portal",
+   "sharing"
+  ]
+ },
+ {
+  "id": "client:relationships",
+  "name": "Relationships",
+  "section": "Client",
+  "words": [
+   "group",
+   "related parties"
+  ]
+ },
+ {
+  "id": "client:tax",
+  "name": "Income tax",
+  "section": "Client",
+  "words": [
+   "itr",
+   "computation"
+  ]
+ },
+ {
+  "id": "client:year-end",
+  "name": "Year end",
+  "section": "Client",
+  "words": [
+   "finalisation",
+   "closing",
+   "statements"
+  ]
+ },
+ {
+  "id": "client:reports",
+  "name": "Reports",
+  "section": "Client",
+  "words": [
+   "statements",
+   "registers"
+  ]
+ },
+ {
+  "id": "client:compliance/gst",
+  "name": "GST compliance",
+  "section": "Client",
+  "words": [
+   "gstr-1",
+   "3b",
+   "2b",
+   "gstr-9",
+   "e-way"
+  ]
+ },
+ {
+  "id": "client:compliance/tds",
+  "name": "TDS compliance",
+  "section": "Client",
+  "words": [
+   "24q",
+   "26q",
+   "27q",
+   "challan",
+   "26as"
+  ]
+ },
+ {
+  "id": "client:compliance/mca",
+  "name": "MCA compliance",
+  "section": "Client",
+  "words": [
+   "roc",
+   "aoc-4",
+   "mgt-7"
+  ]
+ },
+ {
+  "id": "client:tax/computation",
+  "name": "Tax computation",
+  "section": "Client",
+  "words": [
+   "compute",
+   "slabs",
+   "115bac",
+   "regime"
+  ]
+ },
+ {
+  "id": "client:tax/filing",
+  "name": "ITR filing",
+  "section": "Client",
+  "words": [
+   "itr-1",
+   "itr-4",
+   "acknowledgement",
+   "139"
+  ]
+ },
+ {
+  "id": "client:tax/26as",
+  "name": "Form 26AS",
+  "section": "Client",
+  "words": [
+   "26as",
+   "tax credit",
+   "tds credit"
+  ]
+ },
+ {
+  "id": "client:year-end/xbrl",
+  "name": "XBRL",
+  "section": "Client",
+  "words": [
+   "xbrl",
+   "taxonomy",
+   "mca filing"
+  ]
+ },
+ {
+  "id": "client:reports/ageing",
+  "name": "Ageing",
+  "section": "Client",
+  "words": [
+   "debtors ageing",
+   "creditors",
+   "schedule iii ageing"
+  ]
+ },
+ {
+  "id": "client:reports/bank-book",
+  "name": "Bank book",
+  "section": "Client",
+  "words": [
+   "cash book",
+   "bank register"
+  ]
+ },
+ {
+  "id": "client:reports/ratios",
+  "name": "Ratios",
+  "section": "Client",
+  "words": [
+   "ratio note",
+   "g.s.r. 207(e)",
+   "current ratio"
+  ]
+ },
+ {
+  "id": "client:reports/trend",
+  "name": "Trend",
+  "section": "Client",
+  "words": [
+   "year on year",
+   "comparative"
+  ]
+ }
+]

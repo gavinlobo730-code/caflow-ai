@@ -19,7 +19,9 @@
  * correct it with a fresh note, not an edit); there is deliberately no
  * Cancel/reversal path, unlike Sales Invoices.
  */
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
+import { recentFirst, useRecentPartyIds } from "@/lib/lookups/recentParties";
+import { api } from "@/lib/api";
 import { Trash2, Plus, Loader2, AlertCircle } from "lucide-react";
 import { InvoiceWorkspaceLayout } from "@/components/invoices/InvoiceWorkspaceLayout";
 import { CustomerLookup } from "@/components/lookups/CustomerLookup";
@@ -34,11 +36,11 @@ import { toInvoiceLinePayload } from "@/lib/invoices/lineItemPayload";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import {
-  apiCall, getAuthToken, fmt, gstRateOptions, gstRateToPercent,
+  apiCall, getAuthToken, cessInputsFromStored, fmt, gstRateOptions, gstRateToPercent, linesCarryCess,
   previewTotals, isValidLine,
   type Customer, type InvoiceLine,
 } from "@/lib/invoices/shared";
-import { editedText } from "@/lib/forms/editedValue";
+import { editedChoice, editedText } from "@/lib/forms/editedValue";
 import { validateSalesDebitNoteEditor } from "@/lib/sales/salesDebitNoteEditor";
 
 import { todayIstISO } from "@/lib/dates/format";
@@ -80,6 +82,9 @@ export interface SalesDebitNoteLineDetail {
   unit?: string | null;
   rate_paise: number;
   gst_rate_bps: number;
+  /** Compensation cess limbs (migration 615). A bigint may arrive as a string. */
+  cess_rate_bps?: number | string | null;
+  cess_specific_paise_per_unit?: number | string | null;
   service_catalogue_id?: string | null;
 }
 
@@ -97,6 +102,7 @@ export interface SalesDebitNoteDetail {
   cgst_paise?: number;
   sgst_paise?: number;
   igst_paise?: number;
+  cess_paise?: number;
   total_gst_paise?: number;
   total_paise?: number;
   applied_paise?: number;
@@ -112,6 +118,9 @@ function detailLinesToEditorLines(lines: SalesDebitNoteDetail["lines"]): EditorL
     qty: String(l.quantity ?? 1),
     rate: String((l.rate_paise ?? 0) / 100),
     gst_rate: gstRateToPercent(l.gst_rate_bps),
+    // Compensation cess (migration 615), rehydrated because a draft's save re-sends every line and the server derives the cess
+    // from what is sent: a limb the editor did not carry would be a cess silently taken off a note nobody meant to change.
+    ...cessInputsFromStored(l),
     unit: l.unit ?? "NOS",
     serviceCatalogueId: l.service_catalogue_id ?? null,
     _k: i,
@@ -134,9 +143,12 @@ export function SalesDebitNoteEditor({
 }) {
   const today = todayISO();
   const isEdit = !!existing;
+  // The customers this client invoiced most recently go to the top of the picker (POST-A-155); nothing is pre-selected.
+  const recentCustomerIds = useRecentPartyIds(api.customers.recent, clientId, !isEdit);
+  const recentCustomers = useMemo(() => recentFirst(recentCustomerIds, customers), [recentCustomerIds, customers]);
   const initialLines: EditorLine[] =
-    existing && existing.lines.length > 0 ? detailLinesToEditorLines(existing.lines)
-    : duplicateSeed && duplicateSeed.lines.length > 0 ? detailLinesToEditorLines(duplicateSeed.lines)
+    existing && (existing.lines ?? []).length > 0 ? detailLinesToEditorLines(existing.lines)
+    : duplicateSeed && (duplicateSeed.lines ?? []).length > 0 ? detailLinesToEditorLines(duplicateSeed.lines)
     : [{ ...EMPTY_LINE, _k: 0 }];
 
   const [customerId, setCustomerId] = useState(existing?.customer_id ?? duplicateSeed?.customer_id ?? "");
@@ -145,12 +157,17 @@ export function SalesDebitNoteEditor({
   const [notes, setNotes] = useState(existing?.notes ?? "");
   const [invoiceId, setInvoiceId] = useState(existing?.sales_invoice_id ?? "");
   const [openInvoices, setOpenInvoices] = useState<OpenInvoiceOption[]>([]);
+  // A read of the customer's invoices that did not come is not a customer with none (POST-A-527): the picker says so.
+  const [openInvoicesUnread, setOpenInvoicesUnread] = useState(false);
   const [isInterstate, setIsInterstate] = useState(existing?.is_interstate ?? duplicateSeed?.is_interstate ?? false);
   // Once issued, everything except notes is frozen — a correction goes
   // through a fresh note (CGST Act §34), not an edit (routers/
   // sales_debit_notes.py's update_sales_debit_note enforces this identically).
   const isLocked = isEdit && existing?.status !== "draft";
   const [lines, setLines] = useState<EditorLine[]>(initialLines);
+  // Compensation cess reaches a handful of trades, so its two columns are revealed rather than always shown, and are on from the
+  // start whenever the note already carries cess (migration 615), so the fields are never hidden from a note that has them.
+  const [showCess, setShowCess] = useState<boolean>(() => linesCarryCess(initialLines));
   const keyRef = useRef(initialLines.length);
   const nextKey = () => keyRef.current++;
   const [saving, setSaving] = useState(false);
@@ -161,9 +178,9 @@ export function SalesDebitNoteEditor({
   const dates = useDateProblems();
 
   async function loadOpenInvoices(custId: string) {
-    if (!custId) { setOpenInvoices([]); return; }
+    if (!custId) { setOpenInvoices([]); setOpenInvoicesUnread(false); return; }
     const supabase = getSupabaseClient();
-    const { data } = await selectAll(() => supabase
+    const { data, error } = await selectAll(() => supabase
       .from("client_sales_invoices")
       .select("id, invoice_no, total_paise, paid_paise, credited_paise, debit_note_paise")
       .eq("client_id", clientId)
@@ -171,7 +188,9 @@ export function SalesDebitNoteEditor({
       .in("status", ["issued", "partially_paid", "paid"])
       .order("invoice_date", { ascending: false })
       .order("id"));
-    setOpenInvoices(data ?? []);
+    // The pager hands a failure back as `error` and does not throw.
+    setOpenInvoicesUnread(!!error);
+    setOpenInvoices(error ? [] : data ?? []);
   }
 
   useEffect(() => {
@@ -263,7 +282,7 @@ export function SalesDebitNoteEditor({
     // ₹7,080 debit notes from what looked like one click.
     if (saving) return;
     setAttempted(true);
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError); return; }
     if (!isLocked && !validation.ok) {
       setError(validation.errors.customer ?? validation.errors.debitNoteDate ?? validation.errors.lines ?? "Fix the highlighted fields.");
       return;
@@ -280,8 +299,10 @@ export function SalesDebitNoteEditor({
           : {
               customer_id: customerId,
               debit_note_date: dnDate,
-              sales_invoice_id: invoiceId || undefined,
-              reason: reason.trim() || undefined,
+              // A DRAFT may take these two away (POST-A-399, the sixth slice): an emptied box that had a value on file is sent as null and the server clears it
+              // on a draft. `x || undefined` sent nothing, so a note whose party was changed (which empties this box) went on pointing at the old party's document.
+              sales_invoice_id: editedChoice(invoiceId, existing.sales_invoice_id),
+              reason: editedText(reason, existing.reason),
               is_interstate: isInterstate,
               notes: editedText(notes, existing.notes),
               lines: linePayload,
@@ -345,6 +366,8 @@ export function SalesDebitNoteEditor({
           <Row label="SGST" value={fmt(totals.sgst_paise)} />
         </>
       )}
+      {/* Its own row, below the GST heads and never folded into them: Compensation Act s.11(2) proviso. */}
+      {totals.cess_paise > 0 && <Row label="Compensation cess" value={fmt(totals.cess_paise)} />}
       <p className="text-3xs text-ps-hint">
         {isInterstate ? "Interstate — IGST" : "Intra-state — CGST + SGST"} (CGST Act §8)
       </p>
@@ -388,7 +411,7 @@ export function SalesDebitNoteEditor({
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Customer *</label>
-              <CustomerLookup customers={customers} value={customerId} onChange={onCustomerChange} ariaLabel="Customer" disabled={isEdit} />
+              <CustomerLookup customers={customers} recent={recentCustomers} value={customerId} onChange={onCustomerChange} ariaLabel="Customer" disabled={isEdit} />
               {isEdit && <p className="mt-1 text-3xs text-ps-hint">Customer can&apos;t be changed once a debit note exists.</p>}
               {fieldErr(validation.errors.customer)}
             </div>
@@ -414,6 +437,11 @@ export function SalesDebitNoteEditor({
                 placeholder="— Standalone / Select invoice —"
                 ariaLabel="Against invoice"
               />
+              {openInvoicesUnread && (
+                <p role="alert" className="mt-1 text-3xs text-state-problem">
+                  The customer&apos;s invoices could not be read, so none can be chosen here. That is not a customer with none: pick the customer again to read them before you issue a standalone note.
+                </p>
+              )}
             </div>
             <div className="col-span-2">
               <label className="block text-xs font-medium text-ps-label mb-1">Reason</label>
@@ -436,7 +464,20 @@ export function SalesDebitNoteEditor({
 
         {/* Line items */}
         <section className="bg-white rounded-xl border border-ps-border p-4">
-          <h2 className="text-xs font-semibold text-ps-body mb-2">Line items</h2>
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-xs font-semibold text-ps-body">Line items</h2>
+            {!isLocked && (
+              <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={showCess}
+                  onChange={(e) => setShowCess(e.target.checked)}
+                  className="h-3.5 w-3.5 rounded border-ps-border-strong accent-brand-dark"
+                />
+                <span className="text-2xs text-ps-label">Compensation cess</span>
+              </label>
+            )}
+          </div>
           {isLocked && (
             <p className="mb-2 text-3xs text-ps-hint">
               Frozen once issued — issue a fresh debit note to correct a quantity, rate, or item (CGST Act §34).
@@ -444,7 +485,7 @@ export function SalesDebitNoteEditor({
           )}
           <fieldset disabled={isLocked} className="border-0 p-0 m-0 min-w-0">
           <div className="overflow-x-auto">
-            <table className="w-full text-xs min-w-[760px]">
+            <table className={`w-full text-xs ${showCess ? "min-w-[920px]" : "min-w-[760px]"}`}>
               <thead>
                 <tr className="border-b border-ps-border text-ps-hint">
                   <th className="pb-2 text-left font-semibold w-36">Product/Service *</th>
@@ -454,6 +495,14 @@ export function SalesDebitNoteEditor({
                   <th className="pb-2 text-left font-semibold w-16">Unit</th>
                   <th className="pb-2 text-right font-semibold w-24">Rate (₹)</th>
                   <th className="pb-2 text-right font-semibold w-20">GST %</th>
+                  {/* GST (Compensation to States) Act 2017 s.8(2) levies "on the basis of value, quantity or on such basis": two
+                      limbs, added. Per unit of THIS LINE'S UQC; nothing converts tonnes to kilograms. */}
+                  {showCess && (
+                    <>
+                      <th className="pb-2 text-right font-semibold w-20" title="Compensation cess, ad valorem">Cess %</th>
+                      <th className="pb-2 text-right font-semibold w-24" title="Compensation cess per unit of this line's UQC">Cess/unit</th>
+                    </>
+                  )}
                   <th className="pb-2 text-right font-semibold w-24">Amount</th>
                   <th className="pb-2 w-6" />
                 </tr>
@@ -496,6 +545,22 @@ export function SalesDebitNoteEditor({
                           {gstRateOptions(line.gst_rate).map((r) => <option key={r} value={r}>{r}%</option>)}
                         </select>
                       </td>
+                      {showCess && (
+                        <>
+                          <td className="py-1.5 px-1">
+                            <input type="number" min="0" step="0.01" value={line.cessPercent ?? ""}
+                              onChange={(e) => setLine(idx, { cessPercent: e.target.value })}
+                              placeholder="0" aria-label={`Line ${idx + 1} compensation cess percent`}
+                              className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand text-right text-xs" />
+                          </td>
+                          <td className="py-1.5 px-1">
+                            <input type="number" min="0" step="0.01" value={line.cessPerUnit ?? ""}
+                              onChange={(e) => setLine(idx, { cessPerUnit: e.target.value })}
+                              placeholder="0.00" aria-label={`Line ${idx + 1} compensation cess per unit`}
+                              className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand text-right text-xs" />
+                          </td>
+                        </>
+                      )}
                       <td className="py-1.5 px-2 text-right font-mono text-ps-body">{g.grand_total_paise > 0 ? fmt(g.grand_total_paise) : "—"}</td>
                       <td className="py-1.5">
                         {lines.length > 1 && (

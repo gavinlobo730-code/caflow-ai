@@ -111,13 +111,65 @@ section it came from. `CLAUDE.md` lists every entry's headline in its "Design re
   signed sum whose signs the VBA does not carry), the 26 expense heads or a
   multi-GSTIN apportionment; its two bindings to GSTR-9 (12E to Table 6O,
   Table 9 to row 9d) are `[S]`, and `THRESHOLD_TABLE` is display data that never
-  places a client in a band. **Not built**: GSTR-6 and GSTR-7, GSTR-8 Tables
-  4/4.1, GSTR-4 Table 7 and the outward summary, the GSTR-9C Part B
-  certification, and a due date for any of the four
+  places a client in a band. **Not built**: GSTR-6 and GSTR-7 (GSTR-8
+  Tables 4/4.1 are built, in the next entry), GSTR-4 Table 7 and the outward
+  summary, the GSTR-9C Part B certification, and a due date for any of the four
   (`compliance_obligation_service._gst_obligations` takes no registration type,
   so a composition client still sees GSTR-1/3B/9 and none of these);
   `late_filing.late_fee` refuses all four forms. What is left is in
   `docs/open-items/`.
+
+- **A GSTR-8 AMENDMENT IS RECORDED AGAINST THE EARLIER MONTH IT AMENDS AND
+  CHECKED AS THE UTILITY CHECKS IT, AND IS NEVER NETTED AGAINST THAT MONTH'S
+  ROW** (POST-A-056, migration 617). What was missing: 421 recorded Table 3
+  and 3.1 for one month and named Tables 4 and 4.1, which revise a row an
+  EARLIER month's statement declared, as not built, so a correction could only
+  go in as a fresh row of the current month and declare a second supply.
+  What the change does: two tables, `ecommerce_operator_supply_amendments`
+  (Table 4, the utility's `tcsa`) and
+  `ecommerce_operator_unregistered_supply_amendments` (4.1, `urda`), shaped
+  from `ExportMod.bas.txt` (`ofp`, `ostin`, `opos`, `oeid`, then the revised
+  figures in Table 3's own shape, `eid`, `grsval`, `supret`, and the filer's
+  `flag`, kept as `add` / `delete`) and checked by what `ValidateMod.bas.txt`'s
+  `validateAmend` and `validateUNRDA` say: the original month must be EARLIER
+  than the statement's (a table CHECK and a 422, by return-period order and not
+  by the raw string, which calls `062025` later than `012026`); Table 3's tax
+  rules (CGST equals SGST, tax exactly when the net is positive, the exact-1% /
+  band fork) are read against the ORIGINAL month, because the utility keys them
+  on the amended row's own year and month; the place of supply, original and
+  revised, is asked from FY 2025-26 on and is an error before it; amounts are
+  not negative; and the unique index is the utility's duplicate key (original
+  month + original supplier, with the original place of supply from FY 2025-26,
+  read as a value when it is NULL). They are READ and recorded through the
+  API's privileged client alone: no signed-in role holds any privilege on either
+  table, not even `SELECT` (the twelve older return-workpaper tables keep it),
+  so the screen's list, the GSTR-8 build and the upsert's own lookup read them
+  with `privileged_for(db)`, naming the firm and the client, after the route has
+  asserted the caller's access to the client. A first version read them on the
+  caller's session, which every double accepted and production, with
+  `USE_USER_JWT` on, would have refused with 42501, taking the Table 3 and 3.1
+  rows of the same screen and statement down with it; found in review, and
+  `tests/test_the_return_workpaper_tables_are_written_with_the_privileged_client_only.py`
+  now holds every read of the two tables, in every module, to the privileged
+  client and its refusing double refuses a read of them as the database does.
+  Neither joins the list of tables a signed-in session reaches
+  outside the matrix, and each carries the two row guards every new client
+  table carries. `compute_gstr8` returns counts, a finding list naming the
+  original supplier, and a server sentence, and NEVER a total: the figures an
+  amended month filed live on the portal, so the change an amendment makes to
+  the tax payable is the portal's to work out and the statement says so beside
+  the rows. NOT modelled, each named in the module header: how far back an
+  amendment may go (the utility restricts the original year to a list read from
+  a worksheet range its VBA text does not carry, so no limit is asserted); what
+  "Add" and "Delete" do at the portal; the utility's supplier-is-not-the-collector
+  and same-State checks and its Enrolment ID shape (`ES_ID_REGEX`), none of
+  which Table 3 or 3.1 applies either; and a JSON file for the portal, which no
+  GSTR-8 table has. Verified by
+  `tests/test_a_gstr_8_amendment_is_recorded_against_the_month_it_amends.py` (a
+  source pin to the committed utility, the rule over return-period order, each
+  check against the original month, the doors, the statement) and
+  `tests/test_617_..._pg.py` (the CHECKs, the unique index with its NULL, the
+  absence of any signed-in privilege, the policies and the rollback).
 
 - **A PLACE OF SUPPLY HAS FOUR SOURCES AND ONE RESOLVER**, and the invoice
   declares the field TWICE. `domain/gst/place_of_supply.recipient_place_of_supply`
@@ -816,10 +868,51 @@ section it came from. `CLAUDE.md` lists every entry's headline in its "Design re
   held**: which cess reaches which HSN is Schedule data that moves by Council
   notification, the same human step as the state PT slabs. Three things are
   named rather than modelled — a "whichever is HIGHER" Schedule entry (record
-  the limb that applies), the four §34 NOTE tables (they have no cess column,
-  so a note against a cess-bearing invoice is reported in the return's
-  `cess_gaps` rather than silently declaring nil), and no upper bound on the
-  rate, because Schedule column (4) carries entries above 100%.
+  the limb that applies), the four §34 NOTE tables (they had no cess column
+  until migration 615, the next entry), and no upper bound on the rate,
+  because Schedule column (4) carries entries above 100%.
+
+- **A §34 NOTE CARRIES THE COMPENSATION CESS OF THE DOCUMENT IT ADJUSTS, BY THE
+  SAME TWO LIMBS AND THE SAME DERIVATION, TO THE SAME TWO LEDGERS** (POST-A-058,
+  migration 615). What was wrong: 374 gave the invoice and the bill the cess and
+  left the four note tables (sales credit note, sales debit note, purchase debit
+  note, purchase credit note) without it, so a note against a cess-bearing
+  document reduced (or added to) the value and the three GST heads and left the
+  cess on the receivable or payable, on the cess ledgers and in both returns.
+  The GSTR-1 build named the sales-side case in `cess_gaps`; the purchase side
+  was named nowhere. What the fix does: 615 gives each note header `cess_paise`
+  and each note line `cess_rate_bps`, `cess_specific_paise_per_unit` and
+  `cess_paise` (374's names and meaning, NOT NULL DEFAULT 0, non-negative), and
+  re-defines `numbered_document_atomic__unguarded` from 576's text with the three
+  line columns added to its FIXED insert list, because a note's first save goes
+  through it and would otherwise have dropped them without an error (a draft's
+  later saves go through `replace_draft_document_lines`, which inserts the
+  columns it is given). The two limbs moved from the invoice's subclass to the
+  shared `InvoiceLineIn` the notes use; each note router derives a line's cess
+  through `compensation_cess.line_columns` (one derivation, so a note cannot
+  charge a limb differently from the document it clears) and adds the header's
+  into `total_paise` and never into `total_gst_paise`; each note journal posts
+  it to Compensation Cess Payable (sales side) or Compensation Cess Input Credit
+  (purchase side) on the side its GST goes, never to a GST ledger (s.11(2)
+  proviso); the issue check asks a note's cess against its lines as it asks the
+  invoice's; the GSTR-1 and GSTR-3B builders already read `cess_paise` off every
+  note header and line and now find one; and `cess_gaps` names only a note that
+  carries NO cess against a cess-bearing invoice (a note recorded before 615, or
+  one given no cess), because that note may be right (a price correction on a
+  per-unit cess) or short, and only the CA can say which. The four note editors
+  take the two limbs behind the same "Compensation cess" switch the invoice has,
+  open with it on when a note carries cess, and REHYDRATE both limbs, since a
+  draft's save re-sends every line and the server derives the cess from what is
+  sent. NOT done: a purchase note carries no s.17(5) blocked-credit split (the
+  bill does), so a note against a bill whose credit was blocked moves the cess
+  credit ledger exactly as it already moves GST Input for the three heads; and
+  the six note lines production held before 615 stay with no cess. Verified by
+  `tests/test_a_s34_note_carries_compensation_cess.py` (each note end to end:
+  stored limbs, header and total, issue, the cess leg on its own ledger and
+  side, an edit that takes the cess off, the issue check, the gap) and
+  `tests/test_615_..._pg.py` (each kind stores the limbs through the wrapper,
+  576's function loses them, the columns' defaults and checks, the function's
+  attributes, the rollback).
 
 - **A discount on the invoice reduces the value of supply; a discount after it
   does not, and the two are different sections.** §15(3)(a) excludes a discount
@@ -1263,7 +1356,7 @@ real document with wrong figures.
   **Routing (gst-10).** A 2B was reconciled one client at a time with the CA choosing the client BEFORE the file, although `data.gstin` says whose it is. `POST /api/gst-workspace/gstr2b/bulk` takes files and nothing else - no client, no month - and answers one row per file (`reconciled`, `unmatched_gstin`, `ambiguous_gstin`, `refused`, `unreadable`, `failed`). `domain/gst/gstr2b_routing.route` matches the GSTIN against `clients.gstin` and `client_gst_registrations` of the CALLER'S FIRM, narrowed to `effective_client_ids` (None every client, a set exactly those, an EMPTY set nothing and never 'no filter'). **Nothing defaults**: a GSTIN no client holds is reported and not stored even where the firm has one client; a GSTIN two clients hold is ambiguous and goes to neither; a client outside the caller's book reads in the SAME words as a GSTIN nobody holds, because a different sentence would be an oracle for another person's client (`assert_client_access` answers 404 for the same reason); and `can_access_client` is asked again per routed client. It is the single upload repeated, not a second reconciler - `gstr2b_intake.assess`, `reconcile_2b`, and `keep_upload` / `log_discrepancies`, extracted from the single route so the kept file has one writer. Two files for one client and month in one request reconcile the first and REFUSE the second naming it; across requests every result carries `replaced_earlier`, so a stale download among sixty cannot overwrite a newer one without a word. The answer is a summary per file, never the matches. A request takes five files and the screen sends one at a time (`lib/api` aborts at 45 seconds and never retries; there is no background job to lose on a restart). **Not done**: no job queue, no cross-request refusal of a replace, no Excel, no per-registration split of the client's bills (the `registration_caveat` still applies), and no read-back of what a drop did after the screen is closed.
   **Probable matches (gst-12).** A bill under a GSTIN with one character wrong came back as two unrelated rows and nothing said they were one invoice. `domain/gst/itc_probable.suggest` reads the two leftover lists and offers pairs of three kinds - same folded number under a different or absent GSTIN, same GSTIN with a number a typing slip away, same supplier/day/exact amounts with an unrelated number - each needing a second and usually a third fact (INV-41 and INV-42 are one digit apart and are not the same invoice), graded `strong` or `possible` with the sentences that earned it, never a percentage. **It is computed AFTER the rows are written and persisted nowhere**: `reconcile` is untouched and still has no tolerance (a test asserts the matcher neither imports the module nor mentions its band), the stored row keeps `purchase_bill_id` empty, and `rule_36_4` goes on withholding the credit until the CA corrects the bill and re-runs. The finding's 'off by Rs 1' case is deliberately not a kind: same GSTIN and number is already ONE `amount_mismatch` row. **Not done**: no one-to-one assignment (picking a winner is the guess this exists to avoid), no re-run from stored rows, and no suggestion on a reopened tab.
   **Draft bill from a 2B document (gst-13).** `POST /api/purchase-bills/from-2b` takes the document's ADDRESS (client, period, section, type, supplier GSTIN, number) and no figure; the figures come off the stored `gstr2a_records` row and the rates off the kept uploaded file, whose document must reproduce the stored totals to the paisa or the draft is refused with 'upload the file again'. The parser now keeps each rate line (`RateLine`) and 2B's `rev` flag because tax divided by taxable would give 11.5% for a 5% line and an 18% line. The lines go through the ONE bill engine, so the result is `draft`: no journal, no credit, and `read_book_bills` counts only received bills, so the row stays `missing_in_books` until the CA receives the bill and the next reconciliation matches it BY KEY. **There is deliberately no stored link** - writing `purchase_bill_id` at draft time would make a bill nobody has received read as matched to `status_for_bills` and `rule_36_4`. `bill_no` is the supplier's own number exactly as filed. Refused, each with its own sentence: reverse charge (whether s.9(3)/(4) applies is the CA's answer), amendment, credit note, debit note, import, a line with no stated rate, no vendor with that GSTIN, two live vendors with it, a document already matched. `agrees_with_2b` names every head where the engine's arithmetic differs from the supplier's (a paisa of rounding, or a vendor recorded in another State) and adjusts neither. **Not done**: no vendor is created, no HSN/unit/product or s.17(5) decision is invented, and the receive path is untouched.
-  **The s.16(4) radar (gst-15).** `correction_window` had answered 'when does this year close' since GST-09 and nothing laid it against the credit. `GET /api/gst-workspace/itc/time-bar` lists, nearest lapse first, the bills the per-document s.16(2)(aa) pass WITHHOLDS (`not_in_2b`, or the excess of `more_than_2b`, net of s.17(5)) and the 2B documents the books have no bill for, each with the date from `correction_window.window_for` - **the date is never restated** (a test asserts the module calls neither `november_30_cutoff` nor `date(y, 11, 30)`, because `november_30_cutoff` alone tells a CA a window is open when an early GSTR-9 has shut it) - and **the year is the INVOICE'S**, so a 31 March bill and a 1 April bill lapse a year apart. What is not a deadline is said, not hidden: a bill the portal itself marked ITC-unavailable is counted with no date, a bill recorded after its month's reconciliation is named as needing a re-run, and a month with no 2B reconciled is listed as a MONTH with its own date and is not judged - an empty list is never a clean bill of health. A closed window is still reported. Verdicts come from the same `rule_36_4.assess` and the return's own helpers, asked per reconciled month. **Not done**: the read is bounded by the window (financial years closed within sixty days, at most two, months whose 2B exists) but is still proportional to those months' bills - a SQL function is the reporting rule's preferred shape and would put s.16(2)(aa) in two languages, so it is the next step, not this one; matching stays per month (a late-filed April invoice can read as two rows, and the answer says so); the 14th-of-the-next-month 2B generation day is `[S]`.
+  **The s.16(4) radar (gst-15).** `correction_window` had answered 'when does this year close' since GST-09 and nothing laid it against the credit. `GET /api/gst-workspace/itc/time-bar` lists, nearest lapse first, the bills the per-document s.16(2)(aa) pass WITHHOLDS (`not_in_2b`, or the excess of `more_than_2b`, net of s.17(5)) and the 2B documents the books have no bill for, each with the date from `correction_window.window_for` - **the date is never restated** (a test asserts the module calls neither `november_30_cutoff` nor `date(y, 11, 30)`, because `november_30_cutoff` alone tells a CA a window is open when an early GSTR-9 has shut it) - and **the year is the INVOICE'S**, so a 31 March bill and a 1 April bill lapse a year apart. What is not a deadline is said, not hidden: a bill the portal itself marked ITC-unavailable is counted with no date, a bill recorded after its month's reconciliation is named as needing a re-run, and a month with no 2B reconciled is listed as a MONTH with its own date and is not judged - an empty list is never a clean bill of health. A closed window is still reported. Verdicts come from the same `rule_36_4.assess` and the return's own helpers, asked per reconciled month. **Not done**: the read was still proportional to the window's bills and a late-filed April invoice read as two rows (both closed by POST-A-062, its own entry below); the 14th-of-the-next-month 2B generation day is `[S]`.
 
 - **THE GSTR-3B IS TIED OUT AGAINST THE GSTR-1 THAT WAS FILED, AND A NIL THERE SAYS WHICH KIND** (GST-07). From the July 2025 tax period the portal fills Table 3.1 from the period's GSTR-1 and locks it (GSTN advisory 606), so an invoice raised after the GSTR-1 was filed makes the books-built 3B differ from the one the portal will show. `domain/gst/gstr1_3b_tie_out.py` compares the two in exact paise and attributes a difference to a cause (documents changed since filing, via the same `gst_exception_service` read the Amendments tab uses; bank receipts and asset disposals no GSTR-1 can carry; builder classification). **It reports and adjusts neither return.** 3.1(a) and 3.1(b) are compared TOGETHER because a note carries no parent-treatment marker and the portal's deemed-export routing could not be confirmed. **NOT FILED is its own state and carries no figures**: a period with nothing filed (or only a draft) has nothing to be equal to, which is not the same as agreeing. The filed return's rupee figures come back through `gstr9_builder.paise_of`, never `int(v * 100)`. Named as not compared: outward reverse-charge, amendment tables in the filed payload, GSTR-1A/IFF. The July 2025 lock is a `[S]` named constant, `VERIFIED` False. It rides on `gstr3b_from_books` as `gstr1_tie_out` and both GSTR-3B screens render it through `Gstr3bFindings`.
 
@@ -1313,8 +1406,162 @@ real document with wrong figures.
 
 - **A RETURN RECORDED AS FILED IN THE WORKSPACE CLOSES ITS COMPLIANCE OBLIGATION THROUGH THE ONE DOOR THAT CLOSES ONE, ONLY WHEN IT CAN TELL WHICH OBLIGATION AND WHETHER THEY ARE ALL FILED, AND NEVER FAILS THE FILING** (POST-A-264, 19-10-2026). A GSTR-1 or GSTR-3B can be recorded as filed in two places. The GST workspace's status door wrote the return row and the `filings` row (the period lock) and never touched `compliance_records`, which Deadlines, the client's Compliance tab and the firm dashboard read; the compliance door (`ComplianceRecordService.mark_filed`) closed the obligation and wrote the same `filings` row, and warned (`_unsubmitted_workspace_return`) when the workspace return was not submitted. Only one direction of one agreement existed, so a CA who filed eleven months in the workspace saw eleven Filed returns beside a calendar calling the same eleven overdue: on a seeded year all 25 GST obligations of one client read Not Started and the dashboard counted 384 of 403 overdue. `services/gst_return_closes_obligation.close_for_filed_return` is asked by both status handlers (through `_answered_with_the_obligation`) after the status moves to submitted and the `filings` row is written, and closes the matching obligation **through `mark_filed`**, so the walk through the lifecycle, the audit and timeline rows and the `filings` write stay the one path they always were; the filing row is idempotent on its window, so the second write refreshes the first (one row, the workspace's tax and summary kept) and the obligation carries the CA's stated filed date and the ARN. The answer carries `compliance_obligation: {state, closed, obligation_id, message}` with one of `closed`, `already_filed`, `waiting_for_other_registrations`, `registrations_on_different_cycles`, `not_on_the_calendar`, `not_allowed`, `not_closed`; every message names the return and its period, and the four screens that record a filing (the two client tabs and the two firm-level pages) show the server's sentence when the calendar was left open (`lib/compliance/obligationNote`, which decides nothing; the tabs keep one note per return until dismissed). **The match is the return's own window**: same obligation type, same first day AND same last day, from `return_period.resolve(period, the registration's frequency)`. A QRMP quarter's return and obligation are both keyed by the quarter's first month, but a monthly obligation left behind by a change of frequency starts on the same day and ends a month later; matching on the first day alone closed that stale row for a quarterly return and wrote a second, narrower `filings` row beside the quarter's. **The decisions.** An obligation already Filed or Completed is not touched, ARN and date included (they are the CA's). The obligation is per client and the returns per registration, so for a client with several registrations that file GSTR-1 and GSTR-3B it stays open until EVERY one that was LIVE in the window (a cancelled registration, or one that starts later, files nothing for it) has this period's return recorded as filed, and the answer names the one outstanding and says the CA can mark it from Compliance; **registrations on different cycles decline** (a monthly registration's three returns and a quarterly one's single return do not line up with one obligation, and closing it on the first quarterly filing locked May and June for the monthly registration while its returns were unfiled). Closing an obligation is a compliance write and the GST approval that got us here is a different permission, decided per person, so a caller without `compliance.write` files the return and is told the obligation was left open. **It never fails the filing**, and a walk through the lifecycle that stops part way (it is several writes) is answered with the status the obligation was really left in ("it now reads Ready To File"), never with "nothing changed", and goes to `capture_soft_failure`; a refusal from the compliance door is an answer and not an error, and one that arrives because someone filed the obligation a moment ago is reported as filed. An empty client or firm matches nothing (`find_all` drops an empty filter, which would read every client's calendar). **Reopening a return does not reopen its obligation**, the same as it leaves the period lock; un-filing is the CA's act. Deliberately NOT done: `compliance_calendar`, the `/gst` tracker's own table, which nothing populates (POST-A-208); a re-filed return with a different ARN or date leaves the obligation as the CA first recorded it while `filings` is refreshed; and each filing now makes about ten to fifteen further round trips and four audit and timeline rows (not measured). The seeder reads the answer, counts `obligations_closed`, lists any filed return that left its obligation open (not one that was already filed), and exits 2 for either. An independent read-only review of the first version found the window match, the cancelled and not-yet-live registrations, the different cycles, the two firm-level screens that dropped the answer, and the misleading message after a part-way failure; all are fixed. Verified on a real Postgres and PostgREST: filing March's GSTR-3B for a seeded client closed its obligation with the stated date and ARN, left one `filings` row, wrote five audit rows and moved the dashboard from 384 to 383 overdue.
 
+- **THE §16(4) RADAR READS ONLY THE BILLS WHOSE CREDIT COULD BE WITHHELD, THE
+  VERDICT STAYS IN ONE LANGUAGE, AND A BILL FURNISHED IN A LATER MONTH'S 2B IS
+  ONE ROW** (POST-A-062, migration 616). What was wrong: `GET
+  /api/gst-workspace/itc/time-bar` (gst-15) read every received bill of the
+  window's reconciled months, every stored 2B row of them and the suppliers'
+  names, and ran the §16(2)(aa) pass over all of it in Python to keep the few
+  it withholds, so what crossed the wire grew with the client's purchases and
+  not with the answer. And because the reconciliation matches a 2B month
+  against that month's bills only, an April invoice the supplier furnished in
+  June's 2B was listed twice (the April bill `not_in_2b`, the June document
+  `not_booked`) and its credit counted twice in the totals. What the fix does:
+  `public.itc_time_bar_candidates` (SECURITY INVOKER, STABLE, one JSON array)
+  joins each bill with the 2B rows matched to it and its month's header in the
+  database and returns only the bills the pass would NOT allow, with the inputs
+  the pass reads (heads net of §17(5), examined or not, the summed 2B heads, the
+  blocked flag and the first reason code, the way `_two_b_by_document` folds
+  them); the verdict is still `rule_36_4.assess`, so the function restates only
+  which bills the pass allows, and `tests/test_the_16_4_radar_candidates_parity_pg.py`
+  holds that equal to the pass over twenty-two bills written once into a
+  real database (every verdict kind and every exclusion, and a mutant that
+  drops the "examined" or the cess limb of the filter fails it). Where the
+  function cannot be called the service reads and judges the bills as before,
+  says so in its log, and that read is the twin. `itc_time_bar.join_furnished_later`
+  then joins a `not_in_2b` bill to ONE later month's unbooked document on the
+  reconciliation's own key (supplier GSTIN, number folded by
+  `itc_matching.normalise_document_number`), within the bill's own financial
+  year: one row of kind `furnished_later`,
+  dated by the bill, carrying the book credit and naming the month and the tax
+  that 2B carries; two bills or two documents on one key, an earlier month, a
+  document 2B marks unavailable or another supplier's number join nothing, and
+  the stored reconciliation is unchanged. **The year is part of the key**:
+  CGST Rule 46(b) makes a serial number unique for a financial year and the
+  scan spans two, so a document is a candidate only when its own date can be
+  read and falls in the bill's year (by the document's date, never the month
+  whose 2B carries it, so a March invoice furnished in April's 2B still
+  joins), and one that does not is left out BEFORE the one-bill / one-document
+  test, so it neither joins nor makes the bill's own year's document
+  ambiguous, and stays unbooked. A first version compared no date and joined a
+  June 2025 bill '15' to the supplier's May 2026 invoice '15', telling the CA
+  that June 2025's credit was communicated; found in review and held by four
+  tests in `tests/test_the_16_4_radar_dates_the_credit_that_is_not_yet_claimed.py`.
+  The join is Python's alone (`itc_time_bar_candidates` returns bills, never
+  2B documents), so migration 616 did not change. The screen labels the new kind and a
+  Python-side guard holds every kind the rule answers with to a label there.
+  NOT done: the radar still judges each bill against its own month's 2B and
+  does not move the claim to the later month's GSTR-3B; it only shows the two
+  facts as one. **The BILL side of the key carries the bill's own year too**
+  (POST-A-460, no migration): it used to be supplier and number alone, so a
+  June 2025 bill '15' and a June 2026 bill '15' of one supplier 'shared a key'
+  and joined nothing, and when the 2025 one was furnished late it stayed two
+  rows and its credit was counted twice in the totals. Each bill is now keyed
+  by (supplier, number, its financial year), matched only against its own
+  year's document; two same-numbered bills in ONE year still join nothing, and
+  a bill whose date cannot be read joins nothing. Held by two tests in the same
+  file, one of which fails on the code before the change.
+- **A BULK GSTR-2B DROP NEVER PUTS AN OLDER DOWNLOAD OVER A NEWER
+  RECONCILIATION, ACROSS REQUESTS TOO** (POST-A-057, part; no migration). What
+  was wrong: the bulk door refused two files for one client and month in ONE
+  request, but the screen sends a drop one file per request (the browser aborts
+  at 45 seconds and never retries), so a stale download meeting the newer
+  reconciliation an earlier request or an earlier day wrote replaced it whole
+  and only said so afterwards (`replaced_earlier`, relation `older`). What the
+  fix does: before replacing, `gst_2b_bulk_service` compares the two downloads
+  by the date the portal generated each (`gstr2b_intake.download_relation`,
+  the rule that already wrote the after-the-fact note) and REFUSES a provably
+  older one OF THE SAME REGISTRATION (or against a reconciliation that recorded
+  none), naming both dates, writing nothing and keeping no upload; a CA who
+  means the older file uploads it from the client's own GSTR-2B tab, a
+  deliberate act for one client whose answer still says OLDER. The same
+  download, a newer one and one whose date cannot be read still replace and
+  say so. A client with two registrations holds one reconciliation a month
+  (`gstr2b_intake`'s `registration_caveat`), so the other registration's 2B is
+  not a stale download of the one reconciled: `previous_reconciliation` reads
+  the header's `gstin` and such a file takes the existing replace path with
+  its caveat. A first version compared the dates whatever the registration and
+  refused it with a false sentence about a stale download; found in review.
+  Verified by five new tests and a changed one in
+  `tests/test_many_clients_2b_files_are_each_routed_by_the_gstin_inside_them.py`.
+  NOT done: two requests for one client and month at the same moment are not
+  serialised (each reads before it writes); the job queue and a read-back of a
+  drop after the screen closes stay on POST-A-057 (the read-back was built on
+  17-11-2026, the next entry).
+- **WHAT A BULK GSTR-2B DROP DID TO EACH FILE IS KEPT ON THE SERVER, AND THE
+  PERSON WHO MADE IT READS IT BACK AFTER THE SCREEN IS CLOSED** (POST-A-057,
+  17-11-2026; migration 715). What was wrong: the screen sends a drop one file
+  per request and the per-file answers lived only in that browser; close the tab
+  and nothing said what the drop did, and a refused or unmatched file left no
+  trace at all (`gstr2b_uploads` keeps a reconciled file only, and not the drop
+  it came in). What the fix does: `services/gst_2b_drop_record` opens a drop on
+  a drop's first request (`gstr2b_bulk_drops`, the firm and the member) and
+  answers its id; every later request of the drop sends it back and a drop that
+  is not this member's in this firm is refused in words BEFORE any file is
+  touched. Each file the server answered is kept in `gstr2b_bulk_drop_files`
+  with the answer's own fields (a reconciled row has counts, any other a
+  sentence; the CHECK holds the service's status list, a test holds the two
+  equal); the client's NAME is not stored but read at read-back.
+  `GET /api/gst-workspace/gstr2b/bulk/drops` (`gst` `read`) answers the
+  caller's own latest ten drops, files in the order answered, and a row routed to
+  a client the reader cannot see NOW carries its status and nothing about the
+  client or what was found. Both tables are the API's alone (privileged client,
+  every query naming the firm; no privilege for a signed-in role; a file row
+  names a drop of its own firm by a composite key and a client of its own firm
+  by `guard_client_firm`). Deploy order: without the tables the drop reconciles
+  as before and says it was not recorded, and the read-back says the record
+  cannot be read rather than "no drops". The panel shows "Your recent drops"
+  to whoever may read GST, and says a file the browser could not read never
+  reached the server. How verified:
+  `tests/test_a_bulk_gstr2b_drop_can_be_read_back.py` (14),
+  two route tests in the 2B routing suite, `tests/test_715_..._pg.py` (6), and
+  a browser guard; all 17 new mock, route and browser tests fail on the code
+  before. THE REVIEW OF 18-11-2026 FOUND THREE SHORTFALLS AND ALL ARE CLOSED:
+  a file the server answered whose row could not be written, and the files of a
+  request that failed after its drop was opened, were silently missing from the
+  read-back while it said only browser-side files can be missing; they are now
+  counted on the drop (`unrecorded_files`, in 715 itself, which had not merged)
+  and the read-back says how many, and a drop with nothing answered and
+  nothing counted is not listed as "0 file(s)". The page's not-recorded
+  sentence pointed "above" from above the table and spoke of the whole drop
+  when one request was not recorded; it now sits below the table and names the
+  files not recorded where others were (`lib/gst/bulkDropRecord`). The empty
+  read-back invited a drop from a reader who may not make one; it says so only
+  to someone with `gst` `compute`. 13 more tests (6 mock, 1 real Postgres, 2
+  browser source, 4 browser unit), all but the Postgres one failing on the code
+  before. NOT done: the job queue that would go on reconciling after the tab is
+  closed.
+
 - **A GST RETURN PERIOD IS A TYPE, AND A STRING THAT IS NOT A MONTH IS A 422 AT THE DOOR** (POST-A-270, found by filing a seeded year through the workspace doors). 27 route parameters and request-model fields took a period as a plain string, four query parameters of them behind `pattern=r"^\d{6}$"`, and what a malformed one became depended on the door. Where it reached `return_period.parse_month`, which raises for anything that is not a month, `2026-04`, `4/2026` and a month 13 reached the CA as a 500 (`iff/compute?period=139999` and `=010000` both answered 500 on a real stack); where it was only a key it was not checked at all (`itc/register?period=2026-04` answered 200 with an empty register, and on the two ITC reversal bodies nothing looked at it until the register table's own CHECK refused the insert, migration 285). `models/gst_period.PeriodMMYYYY` (and `OptionalPeriodMMYYYY`, where blank means not said) applies `parse_month`'s own rule and nothing restated: six digits, a month from 01 to 12, and a year of this century (a typo bound, deliberately not a statement of when GST began, which this repository has not read from a primary source). **ASCII DIGITS ONLY**, which `parse_month` itself does not insist on (`str.isdigit` accepts Arabic-Indic and full-width digits), because the text is stored as the key a saved return is found under and a second spelling of April 2026 would open a second row. A typed required query parameter is spelled `*, period: Annotated[PeriodMMYYYY, Query(...)]` with no default: `period: PeriodMMYYYY = Query(...)` validates nothing (the metadata is dropped when `Query` sits in the default) and `= ...` makes a required parameter optional under this FastAPI (b70); the OpenAPI document was compared before and after and no parameter changed its required flag, name or description; the one difference is that the four query parameters that carried a `pattern` no longer publish it, because the type does the refusing and the document describes the string. `tests/test_gst_return_periods_are_validated.py` holds the rule from the AST (every `period` entry point in the routers and models is typed or listed in `EXEMPT` with the reason it is not a GST return period: the analytics windows, the billing and depreciation months in YYYY-MM, the portal snapshot's free label, the MCA form's period), reads the served OpenAPI document for every operation that carries a period and sends each a malformed one expecting a 422 naming `period`, and fails a stale exemption. The purchase-bill-from-2B handler's own period check was deleted: a second statement of the rule behind the type is the drift this entry exists to prevent. Deliberately NOT done: the GSTR-2B upload keeps its own cross-check that the file's period agrees with the one typed; `gst_portal` and `mca_workspace` periods are free-form and exempt.
 
 - **AN AMENDMENT BUILD READS ONCE WHAT EVERY EARLIER PERIOD'S REBUILD WOULD READ AGAIN, AND A REBUILD NEVER READS THE LEDGER** (POST-A-265, 3-11-2026; no migration). **WHAT WAS WRONG:** the main GSTR-1 build asks each earlier filed period what has moved since it was filed, and each answer rebuilds that period's return from the books (`gst_exception_service.drift_since_filing`, the one comparison the amendment build and the GSTR-3B tie-out share). Measured on 19-10-2026 a February build took 9.7 s against 1.0 s for April, about 0.9 s per earlier period. The periods were first made to run four at a time (1-11-2026). A counting double over a seeded client with six filed months (three drifted) then showed what each rebuild read: **105 reads in all**, the client four times a period, the registrations three times, the invoices twice, the credit notes, debit notes, their lines and customers, the year's turnover, and **the whole ledger of the month**: every entry dated in it and then every line of each, in chunks of two hundred, plus the chart of accounts. **THE LEDGER READ WAS FOR NOTHING.** It is `gstr1_from_books`'s reconciliation of the books' output tax to the GST control accounts, and neither consumer of the rebuild reads it (the amendment build ignores the whole result; the tie-out reads the payload and the gaps). It was also by far the heaviest read, proportional to the ledger and not to the answer. **WHAT IT DOES:** (1) `gstr1_from_books(reconcile_to_ledger=...)`, True by default so the main build and every other caller is unchanged; `drift_since_filing` passes False, the reconciliation is returned as None, and a rule over the source holds that no module that calls `drift_since_filing` reads a `"reconciliation"` key. (2) `services/gst_read_memo`: a scope opened by `_exception_reports` when it has more than one period, inside which the client row, its registrations, the year's turnover and whether its advances bear tax are read once (single flight across the pool's threads; a loader that fails is not remembered), and the documents of the whole span the periods cover (invoices, cancelled invoices, credit notes, debit notes, then their lines and customers) are read once by `_prime_reads` and each period is answered by slicing on its date column, the comparison the query's inclusive bounds made. Every value is handed out as a copy; with no scope open every reader reads every time as before; the scope ends with the build. A failed priming costs only the saving. The comparison itself is unchanged: `drift_since_filing` stays the one place a filed return is compared with the books. **RESULT:** the same seeded build made 19 reads, not 105, and the number no longer grows by seventeen for each earlier period (it grows by one filed-return read). **HOW IT IS HELD:** `tests/test_an_amendment_build_reads_what_it_shares_once.py` (the amendments are identical with and without the memo, one at a time and four at a time, on a drifted year, on a year with a gap between two filed months, and with a credit note and a cancelled invoice; the reads bounded by table; the ledger read not at all by a rebuild and still by the main build; the memo's own cases: single flight, failure not remembered, copies, the window's slicing against the query's bounds, absent ids, no scope no memory, the scope closed on return and on failure); twelve mutants (the reconciliation asked for again, either bound of the window made exclusive, no copy, no scope, the window never set, no single flight, a failure remembered, an absent id re-asked, the registrations, the turnover and the cancelled invoices not shared) were each caught. **NOT MEASURED:** latency on the live deployment, which this container cannot reach; the counts are of reads against a counting double, and what a read costs from Singapore to Mumbai is not measured here. **NOT DONE:** the filed return of each period is still one read per period (the payload is what is compared); the classification of each period's documents is still done per period, in memory; a client that bears tax on advances still reads its receipts per period for Table 11; the month-by-month `gstr3b` build and the tie-out for one period are unchanged.
 
 - **A LIVE IRN IS CHECKED AGAINST THE GSTR-1 THE BOOKS BUILD FOR ITS PERIOD, AND A RECORD THAT NO LONGER NAMES ITS INVOICE IS SAID** (POST-A-066, 14-11-2026, no migration). **WHAT WAS MISSING:** the e-invoice rail records an IRN a person obtained on the IRP and the missing-IRN list names the invoices that owe one and have none; nothing looked the other way, so an IRN recorded as live for an invoice the return does not declare, or a record whose number or date is no longer the invoice's, was not seen before filing. **THE SHAPE:** `domain/gst/irn_against_return.compare(payload, records, invoices, start, end)` is pure. A record is LIVE when it is `generated` and carries an IRN (`irn_worklist.irn_state`'s reading). It names its invoice by link, or, unlinked, by its number (exactly, then case aside where only one invoice matches). The invoice's OWN state is asked FIRST, because a number the return declares may be another invoice's: a deleted draft whose number a new invoice reused, or a cancelled invoice differing from a declared one only in case, were both shown clean by the first version, found by an independent read. Reasons: `invoice_deleted`, `invoice_cancelled`, `invoice_not_issued`, `carried_over`, `other_period`, then `declared_elsewhere` (the return declares it as B2CL), `not_declared` (not by number as B2B, an export or B2CL: within a total, B2C small or nil-rated/exempt/non-GST, or not in the return at all, and the check says it cannot tell which) and `no_invoice`. A record whose number or date is not its invoice's is listed apart (`differs`), and more than one live record naming one invoice is `duplicates` (one per invoice, migration 518, which binds linked records only). Numbers are never matched by dropping separators: both records are the client's own and `INV-1` and `INV/1` are two invoices. **THE READS** (`services/irn_return_check_service`) build the GSTR-1 again without the ledger reconciliation and the Table 13 coverage, so the answer is about the books as they stand now and says so; they read the invoices dated in the window, the live records by date and by those invoices, the linked invoices outside the window by id, and the invoices carrying an unlinked record's number. **THE MISSING-IRN LIST WAS LENDING AN IRN BY NUMBER:** it matched a record to an invoice by number even when the record was linked to another invoice, so a new invoice that reused a deleted draft's number read as having the draft's IRN and was not listed; only an unlinked record names its invoice by number now. **WHAT IT DOES NOT CLAIM:** nothing about the IRP or the portal; it mints, cancels and files nothing. Whether a nil-rated or exempt supply to a registered person owes an IRN is owner-list S33: the missing-IRN list treats one as owing, this check reports its IRN as not declared invoice by invoice, and neither changes until the reading. Credit and debit notes are not compared. **SERVED:** `GET /api/gst/gstr1/irn-check?client_id&period&gstin` (a `PeriodMMYYYY`, required; the registration resolved as the GSTR-1 build resolves it); the GSTR-1 screen's summary has a Check, which shows the window the answer covers (a quarter for a QRMP filer).
+- **GSTR-8 ASKS EVERY ROW THE OFFLINE UTILITY'S OWN QUESTIONS ABOUT WHO IT NAMES AND HOW LONG ITS AMOUNTS ARE, AND ANSWERS BESIDE THE ROW**
+  (POST-A-458, 17-11-2026; no migration). What was wrong: `domain/gst/gstr8.py` checked the tax recorded on each Table 3 / 4 row as the
+  GSTN offline utility does and none of the utility's checks on the row's identity or size. The utility's `ValidateMod.bas.txt` refuses a
+  supplier GSTIN equal to the collector's (`MainMod.DeductorCheck`), a supplier whose GSTIN's first two characters differ from the
+  collector's (`MainMod.samestateCheck`), an Enrolment ID not matching `MainMod.ES_ID_REGEX` (`^[0-9]{12}[E][S][0-9a-zA-Z]{1}$`) or of
+  another State, and an amount with more than 13 digits before the decimal point (`length1 = 13`). Migration 421's comment says no
+  Enrolment ID shape is recorded; `MainMod.bas.txt` records one (the applied migration's comment is left as it stands). What the fix does:
+  `compute_gstr8` takes `collector_gstin` (the service passes the registration's own) and adds each check as a finding beside the row, on
+  the tables and columns the VBA loops over: the two identity checks on Table 3's supplier and Table 4's original and revised supplier,
+  the Enrolment ID shape and State on Table 3.1 and both of Table 4.1's IDs, and the length on Table 3's four values and net, Table 4's
+  four, Table 3.1's two and Table 4.1's two (the tax heads are not in those loops). Without a collector GSTIN the identity checks are
+  not asked and say nothing; the shape and length checks still are. Table 3.1 rows now carry findings at all, keyed by the Enrolment ID.
+  How verified: `tests/test_gstr8_applies_the_utilitys_own_row_checks.py` (9, all fail before; one reads the constants out of the
+  recorded VBA files) and the existing statement test, whose fixtures named a seller of another State and an Enrolment ID "E-1" and now
+  carry those findings. Not done: no door refuses such a row on the way in (the findings are the utility's posture, an error in the row,
+  not a refusal), and the GSTIN check-digit and shape checks the doors already apply are unchanged.
+- **THE RULE 37 REPORT REVERSES THE CREDIT A BILL AVAILED, SO TAX ITS LINES MARKED BLOCKED UNDER S.17(5) IS NEVER IN IT, AND A NOTE NETS ONLY THE TAX IT MOVED** (POST-A-463, 17-11-2026; no migration).
+  What was wrong: `services/itc_reversal_service.rule37_report` passed the bill's whole CGST, SGST and IGST to `reversal_for_bill` as the
+  credit availed, and `_fold_notes` netted each purchase debit note's and credit note's whole tax against it. A bill line marked blocked
+  posts its tax to the cost (migration 240) and since POST-A-459 a purchase note does the same (migration 685), so the report showed
+  blocked tax as credit due for reversal. What the fix does: the bill and both note tables are read with their three
+  `ineligible_itc_*_paise` heads, and the credit of each head is the head less its blocked part (never below nil, a blocked figure larger
+  than its head read as the whole head). The proportion is unchanged (the value of the supply still includes blocked tax, because the
+  supplier is owed it), and each bill carries `blocked_itc_paise`, net of its notes, so a reversal smaller than the bill's tax says why.
+  How verified: 8 tests in `tests/test_rule37_report.py`, all failing on the code before. Not done: cess is not in the report, before or
+  after; the GSTR-3B screen does not draw the new figure.
+
+- **THE DEMO RECORDS AS UNREGISTERED ONLY THE SUPPLIER OF A POSTED REVERSE-CHARGE BILL, AND ISSUES ITS SELF-INVOICE THROUGH THE SCREEN'S DOOR** (PRE-A-004, slice 3f, 17-11-2026). The seeder left every party without a GSTIN with its registration unrecorded, which `domain/gst/rcm_documents` rightly reads as a named gap, so the reverse-charge client's bill from its unregistered supplier never had a section 31(3)(f) self-invoice due and the demo showed none. `fixture._recorded_where_reverse_charge_needs_it` records as unregistered exactly the GSTIN-less vendor of a posted reverse-charge bill (no random draw, so nothing else moves) and leaves every other unregistered party unrecorded, so the gap still shows; `seed_demo_firm._self_invoices` issues the self-invoice for each such received bill at `POST /api/rcm-documents`, sending only the client, the kind and the bill (the door decides that it is due, its number and its date), straight after the documents and before the client's GST returns are filed, because the door asks whether the period is open. Not done: the section 31(3)(g) payment voucher for the payments of those bills. Verified on the recorder; all five new tests fail on the code before.

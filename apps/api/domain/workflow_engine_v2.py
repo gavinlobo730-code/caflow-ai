@@ -21,8 +21,23 @@ from datetime import datetime, timedelta
 from typing import Optional, Any
 from core.db_errors import error_code
 from core.ist_clock import ist_today
+import calendar
+import re
 
 _logger = logging.getLogger("caflow.workflow_engine")
+
+
+def _iso_day(value: Any):
+    """An ISO date, or None when the value is not one. A trigger's due date comes from the caller; a missing or malformed one is a
+    known absence, asked for here rather than caught as an exception (POST-A-021)."""
+    from datetime import date
+    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        return None
+    y, m, d = (int(x) for x in value.split("-"))
+    if not (1 <= m <= 12 and 1 <= y and 1 <= d <= calendar.monthrange(y, m)[1]):
+        return None
+    return date(y, m, d)
+
 
 MAX_RETRIES = 3
 RETRY_DELAYS = [2, 4, 8]   # seconds between attempts
@@ -252,12 +267,9 @@ class WorkflowEngineV2:
             # Expected keys: compliance_type, due_date, days_remaining
             # Ensure days_remaining is computed if not provided.
             if "due_date" in trigger_data and "days_remaining" not in trigger_data:
-                try:
-                    from datetime import date
-                    due = date.fromisoformat(trigger_data["due_date"])
+                due = _iso_day(trigger_data["due_date"])
+                if due is not None:   # no usable due_date: days_remaining stays absent, which the rule then reads as unknown
                     trigger_data["days_remaining"] = (due - ist_today()).days
-                except Exception:
-                    pass
             return True
 
         elif trigger_type == "ai_signal":
@@ -365,8 +377,8 @@ class WorkflowEngineV2:
                 if op == "equals":      return actual_str == str(expected_raw)
                 if op == "contains":    return str(expected_raw).lower() in actual_str.lower()
                 if op == "starts_with": return actual_str.lower().startswith(str(expected_raw).lower())
-        except Exception:
-            pass
+        except (ValueError, TypeError, AttributeError):
+            return False  # a value that cannot be compared is a rule that does not match
         return False
 
     # ── Step execution ────────────────────────────────────────────────────────

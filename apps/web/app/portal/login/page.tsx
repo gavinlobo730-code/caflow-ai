@@ -16,6 +16,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { ArrowRight } from "lucide-react";
+import { FrontDoor } from "@/components/FrontDoor";
+import { PasswordField } from "@/components/auth/PasswordField";
 
 export default function PortalLoginPage() {
   const router = useRouter();
@@ -47,73 +49,66 @@ export default function PortalLoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-6 py-12 bg-ps-bg">
-      <div className="w-full max-w-[380px]">
-        <div className="flex items-center gap-2.5 justify-center mb-8">
-          <div className="w-8 h-8 rounded-xl bg-brand flex items-center justify-center text-sm font-bold text-white">P</div>
-          <span className="text-base font-bold text-ps-ink">PracticeSync</span>
-        </div>
-
-        <div className="mb-8 text-center">
-          <h2 className="text-2xl font-bold text-ps-ink tracking-tight">Client portal</h2>
-          <p className="text-sm text-ps-label mt-1">Sign in to view your documents, invoices and statements.</p>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div className="space-y-1.5">
-            <label htmlFor="portal-login-email" className="block text-sm font-semibold text-ps-ink">Email address</label>
-            <input
-              id="portal-login-email" name="email" autoComplete="username"
-              autoFocus type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@company.com"
-              className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-hint outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label htmlFor="portal-login-password" className="block text-sm font-semibold text-ps-ink">Password</label>
-              <Link href="/login/forgot-password?portal=1" className="text-xs text-brand-dark hover:text-brand font-medium transition-colors">
-                Forgot password?
-              </Link>
-            </div>
-            <input
-              id="portal-login-password" name="password" autoComplete="current-password"
-              type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-hint outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
-            />
-          </div>
-
-          {error && (
-            <div role="alert" className="flex items-start gap-2.5 p-3.5 rounded-lg bg-state-problem-surface border border-state-problem-border">
-              <div className="w-4 h-4 rounded-full bg-state-problem-surface flex items-center justify-center shrink-0 mt-0.5">
-                <span className="text-state-problem text-3xs font-bold leading-none">!</span>
-              </div>
-              <p className="text-sm text-state-problem leading-snug">{error}</p>
-            </div>
-          )}
-
-          <button
-            type="submit" disabled={loading}
-            className="w-full flex items-center justify-center gap-2 bg-brand hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold px-4 py-3 rounded-lg transition-colors shadow-sm"
-          >
-            {loading ? (
-              <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Signing in…</>
-            ) : (
-              <>Sign in <ArrowRight size={15} /></>
-            )}
-          </button>
-        </form>
-
-        <p className="text-center text-sm text-ps-hint mt-6">
-          New here? Access is set up by your accountant — ask them to send you an invite.
-        </p>
-        <p className="text-center text-xs text-ps-hint mt-4">
-          <Link href="/login" className="hover:text-ps-label transition-colors">
-            Are you a Chartered Accountant? Sign in here →
-          </Link>
-        </p>
+    <FrontDoor name="PracticeSync">
+      <div className="mb-8 text-center">
+        <h2 className="text-2xl font-bold text-ps-ink tracking-tight">Client portal</h2>
+        <p className="text-sm text-ps-label mt-1">Sign in to view your documents, invoices and statements.</p>
       </div>
-    </div>
+
+      <form onSubmit={handleSubmit} className="space-y-5">
+        <div className="space-y-1.5">
+          <label htmlFor="portal-login-email" className="block text-sm font-semibold text-ps-ink">Email address</label>
+          <input
+            id="portal-login-email" name="email" autoComplete="username"
+            autoFocus type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@company.com"
+            className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-hint outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <label htmlFor="portal-login-password" className="block text-sm font-semibold text-ps-ink">Password</label>
+            <Link href="/login/forgot-password?portal=1" className="text-xs text-brand-dark hover:text-brand font-medium transition-colors">
+              Forgot password?
+            </Link>
+          </div>
+          <PasswordField
+            id="portal-login-password" name="password" label="password" autoComplete="current-password"
+            required value={password} onChange={setPassword}
+            placeholder="••••••••"
+            inputClassName="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-hint outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
+          />
+        </div>
+
+        {error && (
+          <div role="alert" className="flex items-start gap-2.5 p-3.5 rounded-lg bg-state-problem-surface border border-state-problem-border">
+            <div className="w-4 h-4 rounded-full bg-state-problem-surface flex items-center justify-center shrink-0 mt-0.5">
+              <span className="text-state-problem text-3xs font-bold leading-none">!</span>
+            </div>
+            <p className="text-sm text-state-problem leading-snug">{error}</p>
+          </div>
+        )}
+
+        <button
+          type="submit" disabled={loading}
+          className="w-full flex items-center justify-center gap-2 bg-brand hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold px-4 py-3 rounded-lg transition-colors shadow-sm"
+        >
+          {loading ? (
+            <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Signing in…</>
+          ) : (
+            <>Sign in <ArrowRight size={15} /></>
+          )}
+        </button>
+      </form>
+
+      <p className="text-center text-sm text-ps-hint mt-6">
+        New here? Access is set up by your accountant — ask them to send you an invite.
+      </p>
+      <p className="text-center text-xs text-ps-hint mt-4">
+        <Link href="/login" className="hover:text-ps-label transition-colors">
+          Are you a Chartered Accountant? Sign in here →
+        </Link>
+      </p>
+    </FrontDoor>
   );
 }

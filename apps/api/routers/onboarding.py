@@ -135,6 +135,10 @@ def create_firm(
     except Exception as e:  # pragma: no cover - defensive
         _logger.error("Internal-client provisioning failed for firm %s: %s", firm_id, e)
 
+    # The sign-up link this practice was made from has done its job (POST-A-485): the mail can no longer sign anybody in. Never raises.
+    from services import signup_link_service
+    signup_link_service.forget(jwt_user.get("email"))
+
     return api_response(True, {"firm": firm, "message": "Firm created successfully"})
 
 
@@ -171,7 +175,9 @@ def onboarding_status(
         raise HTTPException(status_code=404, detail="Firm not found")
 
     from services import first_run_service
-    first_run = first_run_service.first_run(firm_id, current_user.get("id"))
+    # The firm's own practice is the Partner's alone (guardrail G1): its steps are read and sent for a Partner only.
+    first_run = first_run_service.first_run(firm_id, current_user.get("id"),
+                                            for_partner=current_user.get("role") == "Partner")
     done = {s["id"]: s["done"] is True for s in first_run["steps"]}
 
     checks = {

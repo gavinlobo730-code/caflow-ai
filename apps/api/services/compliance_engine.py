@@ -336,9 +336,11 @@ def tds_return_due_dates_for_fy(financial_year_end: int) -> list[dict]:
 # did not have. Missing any of them costs interest, and two of them cost it at a
 # rate that makes the omission expensive rather than embarrassing.
 
-# EPF Scheme 1952, para 38(1): the employer deposits contributions within
-# FIFTEEN DAYS of the close of the month. Late deposit draws interest under
-# §7Q at 12% a year plus damages under §14B of up to 100% of the arrear.
+# Employees' Provident Funds Scheme, 2026, paras 24(2)(ix) and 28(3) (which replaced para 38(1) of the 1952 Scheme on 29-06-2026):
+# the employer uploads the return and remits the contributions within FIFTEEN DAYS of the close of the month. A late deposit draws
+# interest and damages; the 2026 Scheme names sections 127 and 128 of the Code on Social Security, 2020 for them (para 20(7)). The
+# figures this comment used to give, 12% a year under §7Q and up to 100% under §14B, belong to the 1952 Act repealed from
+# 21-11-2025, and no current rate is held here (POST-A-525).
 EPF_DEPOSIT_DAY: int = 15
 
 # ESI (General) Regulations 1950, regulation 31: within FIFTEEN DAYS of the last
@@ -356,7 +358,7 @@ TDS_MARCH_DEPOSIT_MONTH_DAY: tuple[int, int] = (4, 30)
 
 
 def epf_deposit_due_date(period_year: int, period_month: int) -> date:
-    """EPF contributions for a wage month — para 38(1) of the EPF Scheme 1952."""
+    """EPF contributions for a wage month — paras 24(2)(ix) and 28(3) of the Employees' Provident Funds Scheme, 2026."""
     y, m = next_month(period_year, period_month)
     return nth_of_month(y, m, EPF_DEPOSIT_DAY)
 
@@ -403,7 +405,7 @@ def payroll_deposit_due_dates(period_year: int, period_month: int) -> list[dict]
         [
             {"label": "EPF contribution", "authority": "EPFO",
              "due_date": epf_deposit_due_date(period_year, period_month),
-             "statute": "EPF Scheme 1952, para 38(1)"},
+             "statute": "Employees' Provident Funds Scheme, 2026, paras 24(2)(ix) and 28(3)"},
             {"label": "ESI contribution", "authority": "ESIC",
              "due_date": esi_deposit_due_date(period_year, period_month),
              "statute": "ESI (General) Regulations 1950, reg. 31"},

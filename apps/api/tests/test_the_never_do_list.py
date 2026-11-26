@@ -54,6 +54,9 @@ NOT_A_PORTAL_CREDENTIAL: dict[str, str] = {
         "the FIRM's own PIN, which authorises locking a financial year. It "
         "authenticates a partner to PracticeSync; no government portal has "
         "ever seen it",
+    "token_hash":
+        "signup_links (migration 771) — the sha256 HASH of the secret in PracticeSync's own sign-up link, in a table only the API's "
+        "service role can touch. Never the secret itself, and no government portal has ever seen it",
     "pin_hash":
         "firm_lock_pins (migration 480) — a salted PBKDF2 HASH of the firm's own year-lock PIN, in a table "
         "only the API's service role can touch. Never the PIN, and no government portal has ever seen it",
@@ -239,6 +242,12 @@ OUTBOUND_MODULES: dict[str, str] = {
     "scripts/smoke_api.py":
         "this product's OWN deployed API, over its public URL. A smoke test, "
         "and not part of the running service",
+    "scripts/ci/coverage_comment.py":
+        "GitHub's REST API (api.github.com, or GITHUB_API_URL), from the backend "
+        "CI workflow only: it lists and edits the one coverage comment on the "
+        "pull request being tested, with that run's own token. It sends the "
+        "coverage table and the commit id, no client data, and it is not part "
+        "of the running service (POST-A-041)",
     "core/readiness.py":
         "this product's OWN database host — the Supabase project at "
         "SUPABASE_URL, which is fixed configuration and not a portal — one "

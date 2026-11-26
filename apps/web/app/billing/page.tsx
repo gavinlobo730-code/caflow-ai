@@ -8,9 +8,10 @@
 
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useCallback } from "react";
-import { Plus, RefreshCw, X, MessageCircle, IndianRupee, Download, Clock } from "lucide-react";
+import { Plus, RefreshCw, MessageCircle, IndianRupee, Download, Clock } from "lucide-react";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { TableSkeleton } from "@/components/ui/skeleton";
+import { SectionPlaceholder } from "@/components/ui/page-frame";
 import { api, ENGAGEMENT_TRANSITIONS } from "@/lib/api";
 import type { ApiResp, FeeEngagementStatus } from "@/lib/api";
 import { usePermissions } from "@/lib/auth/AuthContext";
@@ -21,6 +22,7 @@ import { selectAll } from "@/lib/supabase/selectAll";
 import { daysBetweenLocalISO } from "@/lib/dateMath";
 import { formatDate, todayIstISO } from "@/lib/dates/format";
 import type { Client } from "@/lib/types";
+import Link from "next/link";
 import { Callout } from "@/components/ui/callout";
 // A payload field is not a list until something has checked.
 import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
@@ -29,6 +31,7 @@ import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 import { formatPaise as fmtPaise } from "@/lib/money/format";
 import { isOwedFeeInvoice, type FeeInvoiceStatus } from "@/lib/constants/feeInvoiceStatus";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { PageHeader } from "@/components/ui/page-header";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
@@ -131,7 +134,7 @@ function AddEngagementModal({ clients, onClose, onSaved }: {
   const dates = useDateProblems();
 
   async function handleSave() {
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError); return; }
     // Integer paise through the one parser — never Math.round(parseFloat(x)*100),
     // which reads a fee typed "1,25,000" as ₹1 and a blank field as NaN.
     const feePaise = paiseFromRupeeInput(feeRs);
@@ -167,12 +170,7 @@ function AddEngagementModal({ clients, onClose, onSaved }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-ps-ink">Add Fee Engagement</h3>
-          <button aria-label="Close" onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
-        </div>
+    <Modal title="Add Fee Engagement" maxWidthClass="max-w-md" onClose={() => { if (!saving) onClose(); }}>
         {error && <Callout tone="problem">{error}</Callout>}
         <div className="space-y-3">
           <div>
@@ -216,7 +214,7 @@ function AddEngagementModal({ clients, onClose, onSaved }: {
           </div>
         </div>
         <div className="flex gap-2 pt-1">
-          <button onClick={onClose}
+          <button disabled={saving} onClick={onClose}
             className="flex-1 border border-ps-border text-ps-body rounded-lg py-2 text-sm hover:bg-ps-bg">
             Cancel
           </button>
@@ -225,8 +223,7 @@ function AddEngagementModal({ clients, onClose, onSaved }: {
             {saving ? "Saving…" : "Save Engagement"}
           </Button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -252,7 +249,7 @@ function AddReceiptModal({ invoices, onClose, onSaved }: {
   const dates = useDateProblems();
 
   async function handleSave() {
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError); return; }
     const amtPaise = paiseFromRupeeInput(amountRs || "0");
     if (amtPaise === null) { setError("Enter the amount in rupees, e.g. 125000 or 125000.50 — without commas."); return; }
     if (!invoiceId || amtPaise <= 0) { setError("Select invoice and enter valid amount"); return; }
@@ -280,12 +277,7 @@ function AddReceiptModal({ invoices, onClose, onSaved }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-ps-ink">Record Receipt</h3>
-          <button aria-label="Close" onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
-        </div>
+    <Modal title="Record Receipt" maxWidthClass="max-w-md" onClose={() => { if (!saving) onClose(); }}>
         {error && <Callout tone="problem">{error}</Callout>}
         <div className="space-y-3">
           <div>
@@ -328,7 +320,7 @@ function AddReceiptModal({ invoices, onClose, onSaved }: {
           </div>
         </div>
         <div className="flex gap-2 pt-1">
-          <button onClick={onClose}
+          <button disabled={saving} onClick={onClose}
             className="flex-1 border border-ps-border text-ps-body rounded-lg py-2 text-sm hover:bg-ps-bg">
             Cancel
           </button>
@@ -337,8 +329,7 @@ function AddReceiptModal({ invoices, onClose, onSaved }: {
             {saving ? "Saving…" : "Record Receipt"}
           </Button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -364,7 +355,13 @@ export default function BillingPage() {
   // rather than testing the role, and a Manager granted billing sees the
   // controls their grant gives them.
   const { can } = usePermissions();
-  const canWrite = can("billing", "write");
+  // THIS SCREEN IS A RECORD SINCE 21-11-2026 (POST-B-193, decided by the owner on 20-11-2026). The firm's own fee billing lives
+  // in My practice, on the sales engine in the practice's own books (billing schedules, the practice's sales invoices, real GST,
+  // a posted journal). The bills raised here before that are kept exactly as they were and nothing is added to them or changed:
+  // every control that writes is drawn only where `canWrite` is true, and it is false for everybody. The handlers and the two
+  // dialogs below are kept so that the screen can be read against what it used to do; they are unreachable.
+  const FEE_BILLING_IS_A_RECORD = true;
+  const canWrite = !FEE_BILLING_IS_A_RECORD && can("billing", "write");
   const [transitioning, setTransitioning] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("dashboard");
   const [clients, setClients] = useState<Client[]>([]);
@@ -645,14 +642,22 @@ export default function BillingPage() {
   return (
     <div className="p-4 md:p-6 max-w-ps-data mx-auto space-y-5">
       <PageHeader
-        title="Fee Billing"
-        subtitle="Manage CA firm fee engagements and invoices"
+        title="Earlier fee bills"
+        subtitle="Fee bills raised before billing moved to My practice. A record: nothing here is added to or changed."
         actions={
           <button aria-label="Refresh" onClick={() => load()} className="p-2 rounded-lg border border-ps-border hover:bg-ps-bg text-ps-label">
             <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
           </button>
         }
       />
+
+      <Callout tone="note" title="New fee bills are raised in My practice">
+        Set up what you bill a client on{" "}
+        <Link href="/practice/billing/" className="font-medium underline underline-offset-2">Billing Schedules</Link>; each bill is
+        prepared as a draft in your own firm&apos;s books and issued from there. The bills on this screen stay as they were when
+        they were raised. What is still owed on them is on{" "}
+        <Link href="/accounting/receivables/" className="font-medium underline underline-offset-2">their ageing</Link>.
+      </Callout>
 
       {error && (
         <div className="rounded-lg bg-state-attention-surface border border-state-attention-border px-4 py-3 text-sm text-amber-800">{error}</div>
@@ -673,7 +678,9 @@ export default function BillingPage() {
       </div>
 
       {/* Dashboard */}
-      {tab === "dashboard" && (
+      {/* A figure that has not been read is not a zero: the dashboard waits with a shape, as the other tabs do. */}
+      {tab === "dashboard" && loading && <SectionPlaceholder label="Loading the fee dashboard" shape="dashboard" rows={4} cols={4} />}
+      {tab === "dashboard" && !loading && (
         <div className="space-y-5">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="bg-white border rounded-xl p-4">
@@ -743,12 +750,14 @@ export default function BillingPage() {
       {/* Engagements */}
       {tab === "engagements" && (
         <div className="space-y-4">
-          <div className="flex justify-end">
-            <button onClick={() => setShowEngModal(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-brand text-white text-sm rounded-lg hover:bg-brand-dark">
-              <Plus size={15} /> Add Engagement
-            </button>
-          </div>
+          {canWrite && (
+            <div className="flex justify-end">
+              <button onClick={() => setShowEngModal(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-brand text-white text-sm rounded-lg hover:bg-brand-dark">
+                <Plus size={15} /> Add Engagement
+              </button>
+            </div>
+          )}
           {loading ? (
             <TableSkeleton cols={6} rows={3} />
           ) : (
@@ -769,14 +778,14 @@ export default function BillingPage() {
                     <tr><td colSpan={6}>
                       <EmptyState
                         className="py-10"
-                        title="No engagements yet"
-                        description="An engagement is the work you do for a client and the fee agreed for it. Fee invoices are raised from engagements."
-                        action={
+                        title="No engagements were recorded here"
+                        description="An engagement was the work done for a client and the fee agreed for it. New ones are set up as billing schedules in My practice."
+                        action={canWrite ? (
                           <EmptyStateActions>
                             <EmptyStateAction requires={["billing", "write"]} icon={<Plus size={14} />} label="Add Engagement"
                               onClick={() => setShowEngModal(true)} />
                           </EmptyStateActions>
-                        }
+                        ) : undefined}
                       />
                     </td></tr>
                   )}
@@ -831,7 +840,7 @@ export default function BillingPage() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <p className="text-xs text-ps-label">GST @ 18% applied on CA services — SAC 998211</p>
-            <div className="flex items-center gap-2">
+            {canWrite && <div className="flex items-center gap-2">
               <Button variant="plain" size="none" onClick={handleRunOverdueCheck} disabled={actionInFlight}
                 className="flex items-center gap-2 px-4 py-2 border border-ps-border text-ps-body text-sm rounded-lg hover:bg-ps-bg disabled:opacity-60">
                 <Clock size={15} /> {runningOverdueCheck ? "Checking…" : "Run Overdue Check"}
@@ -840,7 +849,7 @@ export default function BillingPage() {
                 className="flex items-center gap-2 px-4 py-2 bg-brand text-white text-sm rounded-lg hover:bg-brand-dark disabled:opacity-60">
                 <IndianRupee size={15} /> {raisingInvoice ? "Raising…" : "Raise Invoice"}
               </Button>
-            </div>
+            </div>}
           </div>
           {loading ? (
             <TableSkeleton cols={8} rows={3} />
@@ -864,16 +873,16 @@ export default function BillingPage() {
                     <tr><td colSpan={8}>
                       <EmptyState
                         className="py-10"
-                        title="No invoices yet"
-                        description="Fee invoices are raised from your engagements. Raise them once an engagement with a fee is in place."
-                        action={
+                        title="No fee invoices were raised here"
+                        description="Fee invoices are now prepared from billing schedules in My practice and issued from your own firm's books."
+                        action={canWrite ? (
                           <EmptyStateActions>
                             <EmptyStateAction requires={["billing", "write"]} icon={<IndianRupee size={14} />} label="Raise Invoice"
                               disabled={actionInFlight} onClick={() => handleRaiseInvoice()} />
                             <EmptyStateAction requires={["billing", "write"]} variant="secondary" icon={<Plus size={14} />} label="Add Engagement"
                               onClick={() => setShowEngModal(true)} />
                           </EmptyStateActions>
-                        }
+                        ) : undefined}
                       />
                     </td></tr>
                   )}
@@ -959,12 +968,14 @@ export default function BillingPage() {
       {/* Receipts */}
       {tab === "receipts" && (
         <div className="space-y-4">
-          <div className="flex justify-end">
-            <button onClick={() => setShowReceiptModal(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700">
-              <Plus size={15} /> Record Receipt
-            </button>
-          </div>
+          {canWrite && (
+            <div className="flex justify-end">
+              <button onClick={() => setShowReceiptModal(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700">
+                <Plus size={15} /> Record Receipt
+              </button>
+            </div>
+          )}
           <div className="overflow-x-auto rounded-xl border border-ps-border bg-white">
             <table className="w-full text-sm min-w-[700px]">
               <thead className="bg-ps-bg border-b border-ps-border">
@@ -982,14 +993,14 @@ export default function BillingPage() {
                   <tr><td colSpan={6}>
                     <EmptyState
                       className="py-10"
-                      title="No receipts recorded"
-                      description="A receipt records money received against one of your fee invoices and clears it from what is owed."
-                      action={
+                      title="No receipts were recorded here"
+                      description="Money received against a fee bill is now recorded against the practice's own sales invoice, in My practice."
+                      action={canWrite ? (
                         <EmptyStateActions>
                           <EmptyStateAction requires={["billing", "write"]} icon={<Plus size={14} />} label="Record Receipt"
                             onClick={() => setShowReceiptModal(true)} />
                         </EmptyStateActions>
-                      }
+                      ) : undefined}
                     />
                   </td></tr>
                 )}

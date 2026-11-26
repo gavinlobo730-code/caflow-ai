@@ -13,6 +13,7 @@ import { DrCr } from "@/components/ui/drcr";
 // caught this file doing it — the docstring below already promised the
 // browser would keep no second vocabulary of what a source means.
 import { sourceLabel } from "@/lib/accounting/sourceDocument";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 /**
  * WHO THIS CONTROL ACCOUNT IS OWED BY, OR OWED TO (ACC-13's other half).
@@ -92,7 +93,7 @@ export function PartyBreakdown({
     );
   }
   if (loading && !data) {
-    return <div className="p-4 text-sm text-ps-label">Loading the party breakdown…</div>;
+    return <LoadingRegion label="Loading the party breakdown" className="p-4 text-sm text-ps-label">Loading the party breakdown…</LoadingRegion>;
   }
   const rows = data?.rows ?? [];
   if (!rows.length) {

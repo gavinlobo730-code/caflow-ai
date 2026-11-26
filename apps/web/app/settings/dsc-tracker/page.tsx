@@ -6,18 +6,22 @@
  * and Income Tax returns. Expire every 1-2 years.
  */
 
+import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { useState, useEffect, useCallback } from "react";
-import { Shield, Plus, X, AlertCircle, AlertTriangle, CheckCircle, RefreshCw } from "lucide-react";
+import { Shield, Plus, AlertCircle, AlertTriangle, CheckCircle, RefreshCw } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 import { daysBetweenLocalISO } from "@/lib/dateMath";
 import { formatDate, todayIstISO } from "@/lib/dates/format";
 import { Callout } from "@/components/ui/callout";
+import { Can } from "@/components/Can";
 import { PageHeader } from "@/components/ui/page-header";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
-import { doingOf, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, fetchBounded, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 import { errorMessage } from "@/lib/api";
+import { SectionPlaceholder } from "@/components/ui/page-frame";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -25,7 +29,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
   const { data: { session } } = await getSupabaseClient().auth.getSession();
   const token = session?.access_token ?? "";
   const doing = doingOf(opts?.method);
-  const res = await fetchPlain(`${API}${path}`, {
+  const res = await fetchBounded(`${API}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
@@ -125,7 +129,7 @@ function RenewDSCModal({ record, onClose, onRenewed }: {
   const dates = useDateProblems();
 
   async function submit() {
-    if (dates.first) { setErr(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setErr); return; }
     if (!newExpiry) { setErr("The new expiry date is required."); return; }
     setSaving(true); setErr(null);
     try {
@@ -150,19 +154,19 @@ function RenewDSCModal({ record, onClose, onRenewed }: {
 
   const field = "w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-sm outline-none focus:border-brand";
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl w-full max-w-md p-5 space-y-3">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-base font-semibold text-ps-ink">Renew this DSC</p>
-            <p className="text-2xs text-ps-label mt-0.5">
-              {record.holder_name} · {record.dsc_type} · expires {formatDate(record.expiry_date)}
-            </p>
-          </div>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-body">
-            <X size={16} />
-          </button>
-        </div>
+    // The shared dialog (POST-A-130): named, modal, Tab kept inside, focus given back. Its close is held while the renewal is being saved.
+    <Modal title="Renew this DSC" maxWidthClass="max-w-md" onClose={() => { if (!saving) onClose(); }}
+      note={<>{record.holder_name} · {record.dsc_type} · expires {formatDate(record.expiry_date)}</>}
+      footer={<>
+        <button disabled={saving} onClick={onClose}
+          className="px-3 py-1.5 text-xs border border-ps-border rounded-lg text-ps-body hover:bg-ps-bg disabled:opacity-50">
+          Cancel
+        </button>
+        <Button variant="plain" size="none" spinner={false} onClick={submit} disabled={saving}
+          className="px-3 py-1.5 text-xs bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
+          {saving ? "Saving…" : "Record the renewal"}
+        </Button>
+      </>}>
 
         <div>
           <label className="block text-2xs text-ps-label mb-0.5">
@@ -198,19 +202,7 @@ function RenewDSCModal({ record, onClose, onRenewed }: {
         </p>
 
         {err && <Callout tone="problem">{err}</Callout>}
-
-        <div className="flex justify-end gap-2 pt-1">
-          <button onClick={onClose}
-            className="px-3 py-1.5 text-xs border border-ps-border rounded-lg text-ps-body hover:bg-ps-bg">
-            Cancel
-          </button>
-          <button onClick={submit} disabled={saving}
-            className="px-3 py-1.5 text-xs bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
-            {saving ? "Saving…" : "Record the renewal"}
-          </button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -246,7 +238,7 @@ function CorrectDSCModal({ record, onClose, onSaved }: {
   const dates = useDateProblems();
 
   async function submit() {
-    if (dates.first) { setErr(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setErr); return; }
     if (!holderName.trim() || !expiryDate) {
       setErr("A holder name and an expiry date are required.");
       return;
@@ -273,20 +265,22 @@ function CorrectDSCModal({ record, onClose, onSaved }: {
 
   const field = "w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-sm outline-none focus:border-brand";
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl w-full max-w-md p-5 space-y-3">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-base font-semibold text-ps-ink">Correct this record</p>
-            <p className="text-2xs text-ps-label mt-0.5">
-              For something keyed wrongly. To record a NEW certificate for the
-              same holder, use Renew.
-            </p>
-          </div>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-body">
-            <X size={16} />
-          </button>
-        </div>
+    // The shared dialog (POST-A-130). Its close is held while the correction is being saved.
+    <Modal title="Correct this record" maxWidthClass="max-w-md" onClose={() => { if (!saving) onClose(); }}
+      note={<>
+        For something keyed wrongly. To record a NEW certificate for the
+        same holder, use Renew.
+      </>}
+      footer={<>
+        <button disabled={saving} onClick={onClose}
+          className="px-3 py-1.5 text-xs border border-ps-border rounded-lg text-ps-body hover:bg-ps-bg disabled:opacity-50">
+          Cancel
+        </button>
+        <Button variant="plain" size="none" spinner={false} onClick={submit} disabled={saving}
+          className="px-3 py-1.5 text-xs bg-brand-dark text-white rounded-lg disabled:opacity-40">
+          {saving ? "Saving…" : "Save the correction"}
+        </Button>
+      </>}>
 
         <div>
           <label className="block text-2xs text-ps-label mb-0.5">Holder name</label>
@@ -312,19 +306,7 @@ function CorrectDSCModal({ record, onClose, onSaved }: {
         </div>
 
         {err && <Callout tone="problem">{err}</Callout>}
-
-        <div className="flex justify-end gap-2 pt-1">
-          <button onClick={onClose}
-            className="px-3 py-1.5 text-xs border border-ps-border rounded-lg text-ps-body hover:bg-ps-bg">
-            Cancel
-          </button>
-          <button onClick={submit} disabled={saving}
-            className="px-3 py-1.5 text-xs bg-brand-dark text-white rounded-lg disabled:opacity-40">
-            {saving ? "Saving…" : "Save the correction"}
-          </button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -351,7 +333,7 @@ function AddDSCModal({ onClose, onAdded }: {
   const dates = useDateProblems();
 
   async function handleSubmit() {
-    if (dates.first) { setErr(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setErr); return; }
     if (!holderName.trim() || !issueDate || !expiryDate) {
       setErr("Name, issue date and expiry date are required.");
       return;
@@ -382,12 +364,14 @@ function AddDSCModal({ onClose, onAdded }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-ps-ink">Add DSC Record</h3>
-          <button onClick={onClose}><X className="w-4 h-4 text-ps-hint" /></button>
-        </div>
+    // The shared dialog (POST-A-130). Its close is held while the record is being saved.
+    <Modal title="Add DSC Record" maxWidthClass="max-w-md" onClose={() => { if (!saving) onClose(); }}
+      footer={<>
+        <button disabled={saving} onClick={onClose} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg disabled:opacity-50">Cancel</button>
+        <Button variant="plain" size="none" spinner={false} onClick={handleSubmit} disabled={saving} className="flex-1 bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50">
+          {saving ? "Saving…" : "Add DSC"}
+        </Button>
+      </>}>
         {err && <Callout tone="problem">{err}</Callout>}
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
@@ -429,14 +413,7 @@ function AddDSCModal({ onClose, onAdded }: {
             <input aria-label="Notes" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional" />
           </div>
         </div>
-        <div className="flex gap-2">
-          <button onClick={onClose} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg">Cancel</button>
-          <button onClick={handleSubmit} disabled={saving} className="flex-1 bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50">
-            {saving ? "Saving…" : "Add DSC"}
-          </button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -476,11 +453,24 @@ export default function DSCTrackerPage() {
         title="DSC Tracker"
         subtitle="Digital Signature Certificate expiry tracker"
         actions={
-          <button onClick={() => setShowModal(true)} className="flex items-center gap-1.5 bg-brand text-white text-sm px-3 py-2 rounded-lg hover:bg-brand-dark">
-            <Plus className="w-4 h-4" /> Add DSC
-          </button>
+          // POST /api/dsc asks `dsc` `write`, Manager and above: the button was offered to everyone who could open the page.
+          <Can resource="dsc" action="write">
+            <button onClick={() => setShowModal(true)} className="flex items-center gap-1.5 bg-brand text-white text-sm px-3 py-2 rounded-lg hover:bg-brand-dark">
+              <Plus className="w-4 h-4" /> Add DSC
+            </button>
+          </Can>
         }
       />
+
+      {/* POST-A-450: the register is read by every member of the firm, as the people register is (POST-A-357), so the screen says so.
+          The Python guard tests/test_the_register_says_it_is_shared_across_the_practice.py holds this sentence to the table catalog. */}
+      <Callout tone="note" title="This register is shared across the whole practice">
+        Everyone in the firm who can open this page sees every certificate here, whichever clients they are assigned to,
+        including the holder&apos;s name, PAN and token number, and global search finds a holder by name or PAN. That is
+        deliberate: the practice keeps the certificates it holds for its clients&apos; directors and partners and for its own
+        people in one register, and an expiry is a filing deadline for whoever files next. Who may add or change a
+        certificate is decided by role.
+      </Callout>
 
       {/* Alert banner */}
       {expiringIn30 > 0 && (
@@ -530,7 +520,7 @@ export default function DSCTrackerPage() {
           <h2 className="text-sm font-semibold text-ps-ink">DSC Records</h2>
           <p className="text-xs text-ps-hint mt-0.5">Class 2/3 digital signatures for GST, MCA, Income Tax filings</p>
         </div>
-        {loading ? <div className="px-5 py-10 text-center text-sm text-ps-hint">Loading…</div> : (
+        {loading ? <SectionPlaceholder label="Loading DSC records" shape="table" rows={4} /> : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -570,16 +560,19 @@ export default function DSCTrackerPage() {
                           have to wait for the badge to turn amber in December
                           before the product will let them say so. */}
                       <td className="px-4 py-3 text-right">
-                        <button onClick={() => setRenewing(d)}
-                          className="inline-flex items-center gap-1 px-2 py-1 text-2xs border
-                                     border-ps-border rounded-lg text-ps-body hover:bg-ps-bg">
-                          <RefreshCw size={11} /> Renew
-                        </button>
-                        <button onClick={() => setCorrecting(d)}
-                          className="ml-1.5 px-2 py-1 text-2xs border border-ps-border
-                                     rounded-lg text-ps-label hover:bg-ps-bg">
-                          Correct
-                        </button>
+                        {/* Renew and Correct ask `dsc` `write` (Manager and above), as Add does. */}
+                        <Can resource="dsc" action="write">
+                          <button onClick={() => setRenewing(d)}
+                            className="inline-flex items-center gap-1 px-2 py-1 text-2xs border
+                                       border-ps-border rounded-lg text-ps-body hover:bg-ps-bg">
+                            <RefreshCw size={11} /> Renew
+                          </button>
+                          <button onClick={() => setCorrecting(d)}
+                            className="ml-1.5 px-2 py-1 text-2xs border border-ps-border
+                                       rounded-lg text-ps-label hover:bg-ps-bg">
+                            Correct
+                          </button>
+                        </Can>
                       </td>
                     </tr>
                   );

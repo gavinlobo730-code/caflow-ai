@@ -4,10 +4,9 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { ChevronLeft, Download, ShieldCheck, RefreshCw } from "lucide-react";
 import { api, type AuditEntry } from "@/lib/api";
-import { RoleGuard } from "@/components/RoleGuard";
 import { formatDate } from "@/lib/services/formatting";
 import { todayIstISO } from "@/lib/dates/format";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton, LoadingRegion } from "@/components/ui/skeleton";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 import { PageHeader } from "@/components/ui/page-header";
 import { DateInput } from "@/components/ui/date-input";
@@ -238,7 +237,7 @@ function AuditLogContent() {
     setError(null);
     try {
       // Reads the authoritative audit_log via the Partner-gated backend endpoint
-      // (RBAC: accounting:approve == Partner-only, matching this page's RoleGuard).
+      // (RBAC: accounting:approve, a Partner's by default; the one access table opens this page on the same pair).
       const res = await api.audit.list(query());
       if (!res.success) throw new Error(res.error || "Failed to load audit log");
       setRows((res.data?.entries ?? []).map(toDisplay));
@@ -307,7 +306,7 @@ function AuditLogContent() {
           <PageHeader
             icon={<ShieldCheck size={16} className="text-blue-600" />}
             title="Audit Log"
-            subtitle="Partner-only view — immutable trail of who changed what across invoices, journals, compliance, clients and users."
+            subtitle="Immutable trail of who changed what across invoices, journals, compliance, clients and users."
           />
         </div>
         <button
@@ -319,7 +318,8 @@ function AuditLogContent() {
         </button>
         <button
           onClick={handleExport}
-          disabled={filtered.length === 0}
+          // After a failed read the rows on screen are an earlier filter's (POST-A-464).
+          disabled={filtered.length === 0 || !!error || loading}
           className="flex items-center gap-1.5 text-xs border border-ps-border text-ps-label px-3 py-1.5 rounded-md hover:bg-ps-bg disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <Download size={13} /> Export CSV
@@ -384,15 +384,17 @@ function AuditLogContent() {
         </div>
 
         {loading && (
-          <div className="divide-y divide-ps-border">
-            {Array.from({ length: 6 }).map((_, r) => (
-              <div key={r} className="grid grid-cols-12 gap-2 px-5 py-3 items-center">
-                {Array.from({ length: 6 }).map((_, c) => (
-                  <Skeleton key={c} className="col-span-2 h-3 w-3/4" />
-                ))}
-              </div>
-            ))}
-          </div>
+          <LoadingRegion label="Loading the audit log" noticeClassName="px-5">
+            <div className="divide-y divide-ps-border">
+              {Array.from({ length: 6 }).map((_, r) => (
+                <div key={r} className="grid grid-cols-12 gap-2 px-5 py-3 items-center">
+                  {Array.from({ length: 6 }).map((_, c) => (
+                    <Skeleton key={c} className="col-span-2 h-3 w-3/4" />
+                  ))}
+                </div>
+              ))}
+            </div>
+          </LoadingRegion>
         )}
         {!loading && error && (
           <div className="px-5 py-8 text-center space-y-3">
@@ -475,8 +477,8 @@ function AuditLogContent() {
 
 export default function AuditLogPage() {
   return (
-    <RoleGuard allowed={["Partner"]}>
+    <>
       <AuditLogContent />
-    </RoleGuard>
+    </>
   );
 }

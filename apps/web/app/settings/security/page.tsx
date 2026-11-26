@@ -3,13 +3,17 @@
 /**
  * Security settings — password change + Multi-Factor Authentication (TOTP).
  *
- * Change Password requires the CURRENT password before accepting a new one
- * (via a throwaway signInWithPassword check) — a live session alone isn't
- * proof of identity here; without this, anyone who gets to an unlocked,
- * already-signed-in browser could silently lock the real owner out by just
- * setting a new password. This is on top of, not instead of, Supabase's own
- * session auth — a stolen/left-open SESSION and knowledge of the CURRENT
- * PASSWORD are different things, and this form demands both.
+ * Change Password requires the CURRENT password before accepting a new one.
+ * The check is made on a THROWAWAY client that keeps nothing (lib/auth/
+ * verifyCurrentPassword, lib/supabase/client.makeEphemeralAuthClient), so it
+ * never replaces this browser's session, and the password is sent again in the
+ * update itself (`current_password`) for the project's "Require current
+ * password when updating" switch, which refuses a change without it (POST-A-512).
+ * A live session alone isn't proof of identity here; without this, anyone who
+ * gets to an unlocked, already-signed-in browser could silently lock the real
+ * owner out by just setting a new password. This is on top of, not instead of,
+ * Supabase's own session auth — a stolen/left-open SESSION and knowledge of the
+ * CURRENT PASSWORD are different things, and this form demands both.
  *
  * MFA section: lets any signed-in user enrol an authenticator app (Google
  * Authenticator, Authy, 1Password, …) as a TOTP second factor, scan a QR
@@ -18,9 +22,9 @@
  * locked out. Uses Supabase Auth MFA: enroll → challenge → verify. The
  * verified factor lets the user elevate to aal2 at login (see app/login).
  */
-import { useState, useEffect, useCallback } from "react";
-import { ShieldCheck, Smartphone, Trash2, CheckCircle2, Loader2, AlertCircle, KeyRound, Eye, EyeOff } from "lucide-react";
-import { getSupabaseClient } from "@/lib/supabase/client";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { ShieldCheck, Smartphone, Trash2, CheckCircle2, AlertCircle, KeyRound } from "lucide-react";
+import { getSupabaseClient, makeEphemeralAuthClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { setPasswordWithReauthNonce, isInvalidNonceError } from "@/lib/auth/reauth";
 import { Callout } from "@/components/ui/callout";
@@ -32,7 +36,13 @@ import { authErrorMessage } from "@/lib/auth/authErrorMessage";
 
 import { todayIstISO } from "@/lib/dates/format";
 import { PageHeader } from "@/components/ui/page-header";
-const MIN_PASSWORD_LENGTH = 10;
+import { LoadingRegion, Skeleton, SkeletonText } from "@/components/ui/skeleton";
+import { passwordProblem } from "@/lib/auth/passwordRules";
+import { rememberPasswordNotice, takePasswordNotice, rememberPasswordRefusal, takePasswordRefusal } from "@/lib/auth/passwordNotice";
+import { verifyCurrentPassword } from "@/lib/auth/verifyCurrentPassword";
+import { PasswordField } from "@/components/auth/PasswordField";
+import { PasswordRules } from "@/components/auth/PasswordRules";
+import { MyDevicesCard } from "@/components/security/MyDevicesCard";
 
 interface Factor {
   id: string;
@@ -54,7 +64,7 @@ export default function SecuritySettingsPage() {
   useEffect(() => {
     setSetup(new URLSearchParams(window.location.search).get("setup") === "1");
   }, []);
-  const { mustEnrolMfa } = useAuth();
+  const { mustEnrolMfa, mfaLockedSentence } = useAuth();
   const lead = setupPageLead(setup, mustEnrolMfa);
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-5">
@@ -80,10 +90,11 @@ export default function SecuritySettingsPage() {
           {lead === "welcome" && (
           <Callout tone="note" title="Welcome — one last step">
             <p className="text-sm">
-              Your practice holds clients&apos; financial records, so Team, Payroll, Billing and firm
-              settings open only after you add an authenticator app (Google Authenticator, Authy,
-              1Password or similar). It takes about a minute: scan the code below, then enter the
-              6-digit number the app shows.
+              Your practice holds clients&apos; financial records, so some screens open only after you
+              add an authenticator app (Google Authenticator, Authy, 1Password or similar).
+              {/* What they are for THIS person is the server's sentence (PRE-A-021), never a fixed list. */}
+              {mfaLockedSentence ? <> {mfaLockedSentence}</> : null} It takes about a minute: scan the code
+              below, then enter the 6-digit number the app shows.
             </p>
           </Callout>
           )}
@@ -94,6 +105,7 @@ export default function SecuritySettingsPage() {
         <>
           <ChangePasswordCard />
           <MfaCard />
+          <MyDevicesCard />
           <PostureCard />
         </>
       )}
@@ -149,7 +161,9 @@ function PostureCard() {
   ] : [];
 
   return (
-    <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
+    // `id` is the Settings link's anchor (PRE-A-023: Security and access → How this deployment is set up), and
+    // the scroll margin keeps the heading clear of the sticky Settings tab row.
+    <div id="deployment" className="scroll-mt-16 bg-white rounded-xl border border-ps-border overflow-hidden">
       <div className="flex items-center gap-2.5 px-5 py-4 border-b border-ps-border">
         <ShieldCheck size={15} className="text-blue-600" />
         <h2 className="text-sm font-semibold text-ps-ink">How this deployment is set up</h2>
@@ -158,7 +172,7 @@ function PostureCard() {
         {error && (
           <p className="text-xs text-red-600 flex items-start gap-1.5"><AlertCircle size={13} className="mt-0.5 shrink-0" /> {error}</p>
         )}
-        {!posture && !error && <p className="text-sm text-ps-label">Reading the live settings…</p>}
+        {!posture && !error && <LoadingRegion label="Reading the live settings"><SkeletonText lines={4} /></LoadingRegion>}
         {posture && (
           <>
             <ul className="divide-y divide-ps-border">
@@ -198,10 +212,13 @@ function ChangePasswordCard() {
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [showPw, setShowPw] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  // A sentence left by an earlier mount of this card, for the success AND for a refusal: if the page is rebuilt while a change is in
+  // flight, the answer arrives at a page that has gone, and it is shown by the page that replaced it (POST-A-493, POST-A-512).
+  const [error, setError] = useState<string | null>(() => takePasswordRefusal());
+  const [notice, setNotice] = useState<string | null>(() => takePasswordNotice());
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   // Reauthentication-nonce fallback — same "Secure password change" gap
   // onboarding's password step and /auth/reset-password already handle.
   const [needsReauth, setNeedsReauth] = useState(false);
@@ -212,36 +229,52 @@ function ChangePasswordCard() {
     setNeedsReauth(false); setReauthOtp("");
   }
 
+  /** The password was saved: say so here, or, if this page was unmounted while it was being saved, on the one that replaced it. */
+  function passwordSaved() {
+    const sentence = "Your password has been updated.";
+    if (!mounted.current) { rememberPasswordNotice(sentence); return; }
+    setNotice(sentence);
+    reset();
+  }
+
+  /** The change was refused: say why, here or on the page that replaced this one. A refusal is never silent (POST-A-512). */
+  function refused(sentence: string) {
+    if (!mounted.current) { rememberPasswordRefusal(sentence); return; }
+    setError(sentence);
+  }
+
   async function submit() {
     setError(null); setNotice(null);
     if (!current) { setError("Enter your current password."); return; }
-    if (next.length < MIN_PASSWORD_LENGTH) { setError(`New password must be at least ${MIN_PASSWORD_LENGTH} characters.`); return; }
+    // Every rule the sign-in service enforces, before anything is sent (POST-A-477).
+    const rulesProblem = passwordProblem(next);
+    if (rulesProblem) { setError(rulesProblem); return; }
     if (next !== confirm) { setError("New passwords do not match."); return; }
     if (!user?.email) { setError("Could not determine your account email. Please refresh and try again."); return; }
     setBusy(true);
     try {
-      // Prove identity with the CURRENT password before changing it — a live
-      // session is not sufficient on its own (see the card's doc comment).
-      // signInWithPassword re-validates credentials without disturbing the
-      // caller's existing session state beyond a token refresh.
-      const { error: verifyErr } = await supabase.auth.signInWithPassword({ email: user.email, password: current });
-      if (verifyErr) { setError("Current password is incorrect."); return; }
+      // Prove identity with the CURRENT password before changing it — a live session is not sufficient on its own (see the card's doc
+      // comment). The proof is made on a throwaway client that keeps nothing, so it neither replaces this browser's session (which
+      // rebuilt this page and dropped a person with an authenticator back to the first level) nor depends on the project's switch.
+      const proof = await verifyCurrentPassword(user.email, current, makeEphemeralAuthClient);
+      if (!proof.ok) { refused(proof.message); return; }
 
-      const { error: upErr } = await supabase.auth.updateUser({ password: next });
+      // The current password goes in the update itself: with the project's "Require current password when updating" switch on, a
+      // change without it is refused with `current_password_required` (seen live on 19-11-2026, POST-A-512).
+      const { error: upErr } = await supabase.auth.updateUser({ password: next, current_password: current });
       if (upErr) {
         if (upErr.message.toLowerCase().includes("reauthentication")) {
           const { error: raErr } = await supabase.auth.reauthenticate();
-          if (raErr) { setError("Could not send a verification code. Please try again."); return; }
+          if (raErr) { refused("Could not send a verification code. Please try again."); return; }
           setNeedsReauth(true);
           return;
         }
-        setError(upErr.message);
+        refused(authErrorMessage(upErr));
         return;
       }
-      setNotice("Your password has been updated.");
-      reset();
+      passwordSaved();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not update your password. Please try again.");
+      refused(authErrorMessage(e, "Could not update your password. Please try again."));
     } finally {
       setBusy(false);
     }
@@ -251,19 +284,20 @@ function ChangePasswordCard() {
     setError(null);
     setBusy(true);
     try {
-      const { error: upErr } = await setPasswordWithReauthNonce(supabase.auth, next, reauthOtp);
+      const { error: upErr } = await setPasswordWithReauthNonce(supabase.auth, next, reauthOtp, current);
       if (upErr) {
-        setError(isInvalidNonceError(upErr) ? "That code is incorrect or has expired. Try changing your password again." : upErr.message);
+        refused(isInvalidNonceError(upErr) ? "That code is incorrect or has expired. Try changing your password again." : authErrorMessage(upErr));
         return;
       }
-      setNotice("Your password has been updated.");
-      reset();
+      passwordSaved();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Verification failed. Please try again.");
+      refused(authErrorMessage(e, "Verification failed. Please try again."));
     } finally {
       setBusy(false);
     }
   }
+
+  const inputCls = "w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand";
 
   return (
     <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
@@ -274,10 +308,10 @@ function ChangePasswordCard() {
 
       <div className="px-5 py-4 space-y-4">
         {error && (
-          <p className="text-xs text-red-600 flex items-start gap-1.5"><AlertCircle size={13} className="mt-0.5 shrink-0" /> {error}</p>
+          <p role="alert" className="text-xs text-state-problem flex items-start gap-1.5"><AlertCircle size={13} className="mt-0.5 shrink-0" /> {error}</p>
         )}
         {notice && (
-          <p className="text-xs text-green-700 flex items-start gap-1.5"><CheckCircle2 size={13} className="mt-0.5 shrink-0" /> {notice}</p>
+          <p role="status" className="text-xs text-state-ready flex items-start gap-1.5"><CheckCircle2 size={13} className="mt-0.5 shrink-0" /> {notice}</p>
         )}
 
         {needsReauth ? (
@@ -309,35 +343,30 @@ function ChangePasswordCard() {
           </div>
         ) : (
           <div className="space-y-3">
+            {/* Each box has its OWN eye and hides only itself (POST-A-513): one setting used to drive all three while only the
+                new-password box carried the eye, so the current password showed in clear with nothing beside it to hide it. */}
             <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-ps-label">Current password</label>
-              <input aria-label="Current password"
-                type={showPw ? "text" : "password"} value={current} onChange={(e) => setCurrent(e.target.value)}
-                autoComplete="current-password"
-                className="w-full max-w-sm px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
-              />
+              <label htmlFor="security-current-password" className="block text-xs font-medium text-ps-label">Current password</label>
+              <div className="max-w-sm">
+                <PasswordField id="security-current-password" label="current password" autoComplete="current-password"
+                  value={current} onChange={setCurrent} inputClassName={inputCls} />
+              </div>
             </div>
+            <PasswordRules password={next} id="security-password-rules" />
             <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-ps-label">New password</label>
-              <div className="relative max-w-sm">
-                <input
-                  type={showPw ? "text" : "password"} value={next} onChange={(e) => setNext(e.target.value)}
-                  autoComplete="new-password" aria-label="New password" placeholder={`At least ${MIN_PASSWORD_LENGTH} characters`}
-                  className="w-full px-3 py-2 pr-10 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
-                />
-                <button type="button" onClick={() => setShowPw((s) => !s)} aria-label={showPw ? "Hide passwords" : "Show passwords"}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-ps-hint hover:text-ps-label">
-                  {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
-                </button>
+              <label htmlFor="security-new-password" className="block text-xs font-medium text-ps-label">New password</label>
+              <div className="max-w-sm">
+                <PasswordField id="security-new-password" label="new password" autoComplete="new-password"
+                  value={next} onChange={setNext} inputClassName={inputCls} placeholder="Create a password"
+                  ariaDescribedBy="security-password-rules" />
               </div>
             </div>
             <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-ps-label">Confirm new password</label>
-              <input aria-label="Confirm new password"
-                type={showPw ? "text" : "password"} value={confirm} onChange={(e) => setConfirm(e.target.value)}
-                autoComplete="new-password"
-                className="w-full max-w-sm px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
-              />
+              <label htmlFor="security-confirm-password" className="block text-xs font-medium text-ps-label">Confirm new password</label>
+              <div className="max-w-sm">
+                <PasswordField id="security-confirm-password" label="confirmation of the new password" autoComplete="new-password"
+                  value={confirm} onChange={setConfirm} inputClassName={inputCls} />
+              </div>
             </div>
             <button
               onClick={submit}
@@ -353,7 +382,6 @@ function ChangePasswordCard() {
   );
 }
 
-/** ── Two-Factor Authentication (TOTP) ────────────────────────────────────── */
 function MfaCard() {
   const supabase = getSupabaseClient();
   const { refreshUserContext, resolveEnrolmentRequired } = useAuth();
@@ -399,7 +427,7 @@ function MfaCard() {
     try {
       // Remove any leftover unverified factors so enroll() doesn't conflict.
       for (const f of factors.filter((f) => f.status === "unverified")) {
-        await supabase.auth.mfa.unenroll({ factorId: f.id }).catch(() => {});
+        await supabase.auth.mfa.unenroll({ factorId: f.id }).catch(() => { /* a leftover that stays is what the enrol call below would refuse, and it says why */ });
       }
       const { data, error } = await supabase.auth.mfa.enroll({
         factorType: "totp",
@@ -474,7 +502,12 @@ function MfaCard() {
           )}
 
           {loading ? (
-            <p className="text-sm text-ps-hint flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Loading…</p>
+            // NOT a `LoadingRegion`: the second factors are listed by the sign-in service, and the region's sentence is about
+            // this product's own server waking up, which would not be true here.
+            <div role="status" aria-label="Loading your sign-in methods" className="space-y-2">
+              <Skeleton className="h-3 w-2/3" />
+              <Skeleton className="h-3 w-1/3" />
+            </div>
           ) : enrolling ? (
             /* ── Enrolment in progress: QR + verify ── */
             <div className="space-y-4">

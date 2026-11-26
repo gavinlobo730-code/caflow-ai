@@ -35,6 +35,7 @@ def is_past_expiry(expiry_date: object, today: Optional[date] = None) -> bool:
     try:
         last_day = date.fromisoformat(str(expiry_date)[:10])
     except ValueError:
+        # Text that is not a date never expires a letter (docstring): guessing one would expire a letter nobody meant to.
         return False
     return (today or ist_today()) > last_day
 

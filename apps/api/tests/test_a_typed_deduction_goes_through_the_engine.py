@@ -53,6 +53,8 @@ def app_db(monkeypatch):
     monkeypatch.setattr(mod, "_USE_MOCK", False)
     monkeypatch.setattr(mod, "log_event", lambda *a, **k: None)
     monkeypatch.setattr("core.supabase_client.get_supabase", lambda: db)
+    # The register is written with the privileged client (POST-A-443), which in production reaches the same database: the double stands in for both.
+    monkeypatch.setattr("core.supabase_client.get_service_supabase", lambda: db)
     monkeypatch.setenv("SUPABASE_URL", "https://fake.supabase.test")
     app = FastAPI()
     app.include_router(mod.router)
@@ -295,15 +297,15 @@ def test_the_quarter_is_the_one_vocabulary_the_bill_path_uses(app_db):
     assert row["financial_year"] == fy_label(date(2026, 11, 20)) == "2026-27"
 
 
-def test_the_unified_aggregate_gap_is_reported_on_every_row(app_db):
-    """The aggregate counts hand-entered rows only; purchase bills for the same
-    payee sit in a register it does not read. Said out loud rather than left to
-    be discovered, because the number is right about what it saw."""
+def test_a_deduction_that_names_no_supplier_says_its_year_has_no_bills_in_it(app_db):
+    """A deduction that names no supplier (none holds its PAN here) is added up with the other typed deductions for its PAN that name none,
+    and not with any supplier's bills: said on the row, because the number is right about what it saw (POST-A-078)."""
     app, _ = app_db
     d = _post(app, payment_amount_paise=1_00_000_00).json()["data"]
-    from domain.tds.manual_register import GAP_REGISTERS_NOT_UNIFIED
-    assert GAP_REGISTERS_NOT_UNIFIED in d["explain"]["gaps"]
-    assert any("purchase bill" in m.lower() for m in d["explain"]["gap_messages"])
+    from domain.tds.manual_register import GAP_NO_SUPPLIER
+    assert d["vendor_id"] is None and d["explain"]["supplier"] is None
+    assert GAP_NO_SUPPLIER in d["explain"]["gaps"]
+    assert any("purchase bills" in m.lower() and "pick the supplier" in m.lower() for m in d["explain"]["gap_messages"])
 
 
 def test_the_request_cannot_carry_a_rate_or_an_amount(app_db):
@@ -378,3 +380,40 @@ def test_another_firms_row_is_not_found(app_db):
     r = _client(app, MANAGER).delete("/api/tds-workspace/deductions/D8")
     assert r.json()["success"] is False
     assert len(db.rows("tds_deductions")) == 1
+
+
+# ── the firm's own practice is a Partner's, on the doors that name a row (POST-A-443) ──
+
+PARTNER = {"id": "u0", "firm_id": FIRM, "role": "Partner", "email": "p@f1.test", "auth_user_id": "auth-partner"}
+
+
+def _the_client_is_the_practice(monkeypatch):
+    """CLIENT is the firm's internal practice client (migration 074's G1). The router's own guard reads a client id off a request; a correction and
+    a removal name a ROW, so the route asks the row's client itself now that the privileged client writes the register."""
+    import services.internal_client_service as ics
+    monkeypatch.setattr(ics, "get_internal_client_id", lambda firm_id: CLIENT if firm_id == FIRM else None)
+
+
+def test_a_manager_cannot_correct_or_remove_a_deduction_of_the_firms_own_practice(app_db, monkeypatch):
+    app, db = app_db
+    r = _post(app, user=PARTNER, section="194J", payment_amount_paise=1_00_000_00)
+    assert r.status_code == 200, r.text
+    row_id = r.json()["data"]["id"]
+    _the_client_is_the_practice(monkeypatch)
+    before = [dict(x) for x in db._tables.get("tds_deductions", [])]
+    fixed = _client(app, MANAGER).patch(f"/api/tds-workspace/deductions/{row_id}", json={"payment_amount_paise": 2_00_000_00})
+    gone = _client(app, MANAGER).delete(f"/api/tds-workspace/deductions/{row_id}")
+    assert fixed.status_code == 404 and gone.status_code == 404, (fixed.text, gone.text)
+    assert [dict(x) for x in db._tables.get("tds_deductions", [])] == before, "nothing was written"
+
+
+def test_a_partner_still_corrects_and_removes_one(app_db, monkeypatch):
+    app, db = app_db
+    r = _post(app, user=PARTNER, section="194J", payment_amount_paise=1_00_000_00)
+    row_id = r.json()["data"]["id"]
+    _the_client_is_the_practice(monkeypatch)
+    fixed = _client(app, PARTNER).patch(f"/api/tds-workspace/deductions/{row_id}", json={"payment_amount_paise": 2_00_000_00})
+    assert fixed.status_code == 200 and fixed.json()["success"] is True, fixed.text
+    gone = _client(app, PARTNER).delete(f"/api/tds-workspace/deductions/{row_id}")
+    assert gone.status_code == 200 and gone.json()["success"] is True, gone.text
+    assert db._tables.get("tds_deductions", []) == []

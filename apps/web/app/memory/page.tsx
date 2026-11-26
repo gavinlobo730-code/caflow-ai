@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
 import { readWindow } from "@/lib/lists/readWindow";
 import { windowDescription } from "@/lib/lists/window";
+import { SectionPlaceholder } from "@/components/ui/page-frame";
 
 // ── Interfaces ────────────────────────────────────────────────────────────────
 
@@ -154,9 +155,7 @@ function TriggersTab() {
   };
 
   if (loading) return (
-    <div className="flex items-center justify-center py-20">
-      <Loader2 size={24} className="animate-spin text-brand" />
-    </div>
+    <SectionPlaceholder label="Loading triggers" shape="list" rows={5} />
   );
 
   if (loadError) return (
@@ -279,9 +278,7 @@ function ProfilesTab() {
   useEffect(() => { load(); }, []);
 
   if (loading) return (
-    <div className="flex items-center justify-center py-20">
-      <Loader2 size={24} className="animate-spin text-brand" />
-    </div>
+    <SectionPlaceholder label="Loading client profiles" shape="cards" rows={6} />
   );
 
   if (loadError) return (
@@ -423,9 +420,7 @@ function AnomaliesTab() {
   };
 
   if (loading) return (
-    <div className="flex items-center justify-center py-20">
-      <Loader2 size={24} className="animate-spin text-brand" />
-    </div>
+    <SectionPlaceholder label="Loading anomalies" shape="list" rows={5} />
   );
 
   if (loadError) return (

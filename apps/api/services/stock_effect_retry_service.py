@@ -1,4 +1,4 @@
-"""Finding the documents whose stock effect was not all recorded, and completing it (POST-A-092, items 1, 2 and 4).
+"""Finding the documents whose stock effect was not all recorded, completing it, and marking one settled by hand (POST-A-092).
 
 THE DOOR IS NARROW ON PURPOSE. This module decides nothing about stock or money: it finds a document, refuses the ones a retry
 would be wrong for, and calls the same four functions a first issue calls (`inventory_service.apply_*_to_inventory`) with
@@ -13,6 +13,12 @@ RETRYING. One document, named by kind and id, which must be this firm's AND this
 deleted) and not an opening balance (those post no stock). A missing document and another client's document are the same refusal in
 the same words. A retry holds an in-process lock on the document, so two clicks do not both write the missing line; the lock is right
 for one worker and not for several, the same limit the rate windows record.
+
+A DOCUMENT THE CA PUT RIGHT BY HAND IS MARKED, NOT COMPLETED (migration 620). The list shows what the stock rows show, so a document
+corrected with a stock adjustment stayed listed and "Complete the stock" would have moved its goods a second time. `settle` records the
+CA's mark with the reason they typed (the finder then stops listing the document and a retry refuses it in words), and `remove` takes it
+back. The mark is the CA's statement; nothing here checks it, which is why the reason is required and the marks are listed where the
+list is. Both go through the privileged client after the route has proved the caller's access, and name the firm and the client.
 
 A CLOSED YEAR REFUSES FIRST. The document's own date is asked of the closures (`period_lock_service.assert_not_closed`) before the
 claim and before any write, so a retry never leaves a stock row standing in a year the kernel would refuse the journal for.
@@ -29,7 +35,11 @@ from dataclasses import dataclass
 from typing import Optional
 
 from core import db_provider
+from core.db_paging import fetch_all
+from core.db_provider import privileged_for
+from core.observability import capture_soft_failure
 from domain.inventory import stock_effect as stock_effects
+from domain.inventory import stock_settlement
 
 _logger = logging.getLogger("caflow.stock_effect_retry")
 
@@ -110,7 +120,10 @@ def unrecorded_documents(db, *, firm_id: str, client_id: str) -> Optional[dict]:
         return None
     try:
         total = int(data.get("total"))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError) as unreadable:
+        # The database function answered in a shape this reader does not know. That is "could not check" (None), never an empty
+        # list, and it is said: every screen that asks would otherwise show nothing for as long as the shape stays wrong (POST-A-505).
+        capture_soft_failure(unreadable, operation="stock_effect.unrecorded_documents_shape", firm_id=firm_id, client_id=client_id)
         return None
     return {"total": total, "documents": data["documents"]}
 
@@ -132,8 +145,9 @@ def _load(db, kind: str, *, firm_id: str, client_id: str, document_id: str) -> d
     return rows[0]
 
 
-def retry(db, *, firm_id: str, client_id: str, kind: str, document_id: str, created_by: Optional[str]) -> dict:
-    """Complete one document's stock effect. Returns `{"recorded", "message", "stock_effect"}`; raises `NotFound` or `Refused`."""
+def _live_document(db, kind: str, *, firm_id: str, client_id: str, document_id: str) -> tuple:
+    """The document, its kind's spec, its reference and the two ways it is named in a sentence (`subject` mid-sentence, `label` at the start), after the refusals
+    that apply to a retry and to a mark alike: not this firm's and client's (`NotFound`), deleted, a draft, cancelled, an opening balance (`Refused`)."""
     spec = KINDS.get(kind)
     if spec is None:
         raise Refused("That kind of document does not move stock.")
@@ -149,6 +163,96 @@ def retry(db, *, firm_id: str, client_id: str, kind: str, document_id: str, crea
         raise Refused(f"{label} {_NOT_LIVE[status]}, so it has no stock effect to complete.")
     if spec.opening_column and document.get("is_opening"):
         raise Refused(f"{label} is an opening balance carried over from the old books, which moves no stock here.")
+    return spec, document, reference, subject, label
+
+
+def _mark_of(db, *, firm_id: str, client_id: str, kind: str, document_id: str) -> Optional[dict]:
+    """The document's mark as settled by hand, or None. A read that fails RAISES: a retry that could not tell whether the CA had already put the document
+    right must not go on to move its goods a second time."""
+    rows = (privileged_for(db).table("stock_effect_settlements").select("id, reason")
+            .eq("firm_id", firm_id).eq("client_id", client_id).eq("document_kind", kind).eq("document_id", document_id)
+            .limit(1).execute().data) or []
+    return rows[0] if rows else None
+
+
+def settlements(db, *, firm_id: str, client_id: str) -> list[dict]:
+    """The client's documents marked as settled by hand, newest first. A read that fails RAISES, because an empty list means "none are marked"."""
+    rows = fetch_all(lambda: (privileged_for(db).table("stock_effect_settlements")
+                              .select("id, document_kind, document_id, reference, document_date, reason, settled_by_name, settled_at")
+                              .eq("firm_id", firm_id).eq("client_id", client_id)),
+                     label="inventory.stock_effect_settlements")
+    return sorted(rows, key=lambda r: (str(r.get("settled_at") or ""), str(r.get("id") or "")), reverse=True)
+
+
+def _is_unique_violation(exc: Exception) -> bool:
+    return getattr(exc, "code", None) == "23505" or "23505" in str(exc) or "duplicate key" in str(exc).lower()
+
+
+def settle(db, *, firm_id: str, client_id: str, kind: str, document_id: str, reason: str,
+           settled_by: Optional[str], settled_by_name: Optional[str]) -> dict:
+    """Mark one listed document's stock effect as settled by hand. Raises `NotFound`, `Refused`, or `ValueError` carrying the reason's sentence.
+
+    ONLY A LISTED DOCUMENT CAN BE MARKED: a mark on a document whose stock is whole would sit there claiming a correction nobody made. The list is the
+    finder's answer; where it is cut at its limit and the document is not among those shown, the finder cannot say either way and the mark is allowed."""
+    from datetime import datetime, timezone
+
+    problem = stock_settlement.reason_problem(reason)
+    if problem:
+        raise ValueError(problem)
+    spec, document, reference, subject, label = _live_document(db, kind, firm_id=firm_id, client_id=client_id, document_id=document_id)
+    if _mark_of(db, firm_id=firm_id, client_id=client_id, kind=kind, document_id=document_id):
+        raise Refused(stock_settlement.already_marked(label))
+    found = unrecorded_documents(db, firm_id=firm_id, client_id=client_id)
+    if found is None:
+        raise Refused(stock_settlement.CANNOT_CHECK_THE_LIST)
+    shown = any(d.get("kind") == kind and str(d.get("document_id")) == str(document_id) for d in found["documents"])
+    if not shown and found["total"] <= len(found["documents"]):
+        raise Refused(stock_settlement.not_listed(label))
+    when = datetime.now(timezone.utc).isoformat()
+    try:
+        inserted = privileged_for(db).table("stock_effect_settlements").insert({
+            "firm_id": firm_id, "client_id": client_id, "document_kind": kind, "document_id": str(document_id),
+            "reference": (str(reference)[:200] if reference else None), "document_date": str(document.get(spec.date_column) or "")[:10] or None,
+            "reason": stock_settlement.clean_reason(reason), "settled_by": settled_by,
+            "settled_by_name": ((settled_by_name or "").strip()[:200] or None), "settled_at": when,
+        }).execute().data or []
+    except Exception as exc:  # noqa: BLE001 - a second mark of one document is the unique key's refusal, said in words; anything else is raised
+        if _is_unique_violation(exc):
+            raise Refused(stock_settlement.already_marked(label)) from None
+        raise
+    row = inserted[0] if inserted else {}
+    return {"id": row.get("id"), "document_kind": kind, "document_id": str(document_id), "reference": reference,
+            "document_date": str(document.get(spec.date_column) or "")[:10] or None, "reason": stock_settlement.clean_reason(reason),
+            "settled_by_name": (settled_by_name or "").strip() or None, "settled_at": when,
+            "message": stock_settlement.marked(label)}
+
+
+def get_settlement(db, *, firm_id: str, settlement_id: str) -> dict:
+    """One mark, under the firm. A missing mark, another firm's and an id that is not one are the same `NotFound`."""
+    import uuid
+    try:
+        uuid.UUID(str(settlement_id))
+    except (ValueError, AttributeError, TypeError):
+        raise NotFound(settlement_id) from None
+    rows = (privileged_for(db).table("stock_effect_settlements").select("id, client_id, document_kind, document_id, reference")
+            .eq("id", settlement_id).eq("firm_id", firm_id).limit(1).execute().data) or []
+    if not rows:
+        raise NotFound(settlement_id)
+    return rows[0]
+
+
+def remove(db, *, firm_id: str, client_id: str, settlement_id: str) -> None:
+    """Take a mark back, so the document is listed again if its stock is still not all recorded. The caller has proved access to `client_id`, the mark's own."""
+    privileged_for(db).table("stock_effect_settlements").delete().eq("id", settlement_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()
+
+
+def retry(db, *, firm_id: str, client_id: str, kind: str, document_id: str, created_by: Optional[str]) -> dict:
+    """Complete one document's stock effect. Returns `{"recorded", "message", "stock_effect"}`; raises `NotFound` or `Refused`."""
+    spec, document, reference, subject, label = _live_document(db, kind, firm_id=firm_id, client_id=client_id, document_id=document_id)
+    # THE CA'S OWN MARK COMES BEFORE ANYTHING IS MOVED (migration 620): a document they put right by hand would have its goods moved a second time.
+    mark = _mark_of(db, firm_id=firm_id, client_id=client_id, kind=kind, document_id=document_id)
+    if mark:
+        raise Refused(stock_settlement.settled_refusal(label, str(mark.get("reason") or "").strip() or "no reason recorded"))
 
     # A year the firm locked, or this client's finalised year-end, takes no new stock row or journal: asked BEFORE anything is written,
     # because the journal behind a line the kernel would refuse would be left unposted while the stock row stood in a closed year, and

@@ -261,7 +261,8 @@ def test_dividends_carry_their_own_caveat():
 def test_the_proviso_is_graded_as_unconfirmed_and_says_so_on_every_answer():
     assert eng.UNFORESEEN_PROVISO_VERIFIED is False
     out = compute_234c_interest(FY, T, [_pay(U, date(2026, 3, 12))], unforeseen=[_gain()])
-    assert any("[S]" in c for c in out.caveats)
+    # Said in a reader's words: the grade letter is this repository's own shorthand and means nothing on a screen (POST-A-554).
+    assert any("have not been read against the Act itself" in c for c in out.caveats)
     assert eng.UNFORESEEN_KINDS == ("capital_gain", "winnings", "dividend")
 
 
@@ -326,7 +327,7 @@ def register(monkeypatch):
                               "purchase_cost_paise": 2_00_000_00, "sale_value_paise": 12_00_000_00})
     db.seed("capital_gains", {**base, "id": "G3", "asset_description": "A loss",
                               "purchase_date": "2021-01-10", "sale_date": "2025-11-10",
-                              "purchase_cost_paise": 12_00_000_00, "sale_value_paise": 2_00_000_00})
+                              "purchase_cost_paise": 12_00_000_00, "sale_value_paise": 10_00_000_00})
     return db
 
 
@@ -337,6 +338,9 @@ def test_the_register_offers_only_this_years_gains_with_tax_on_them(register):
     c = out["candidates"][0]
     assert c["arose_on"] == "2026-03-10" and c["kind"] == "capital_gain"
     assert c["tax_paise"] > 0 and c["is_estimate"] is True
+    # POST-A-075: the ₹2,00,000 loss earlier in the year nets against the ₹10,00,000 gain, and the ANNUAL §112A exemption is used
+    # once: (10,00,000 - 2,00,000 - 1,25,000) at 12.5%, with 4% cess.
+    assert c["tax_paise"] == 6_75_000_00 * 1250 // 10_000 * 104 // 100
     assert any("ESTIMATE" in cv for cv in out["caveats"])
 
 
@@ -367,3 +371,26 @@ def test_a_candidate_nobody_includes_changes_no_figure(register):
     out = it.compute_advance_tax_interest(_req(unforeseen_income=[]),
                                           current_user={"firm_id": "F"})
     assert out["data"]["unforeseen_income"] == []
+
+
+def test_the_panel_sends_the_years_total_income_by_the_routes_own_name():
+    """POST-A-075: the endpoint could include the surcharge from 16-11-2026, and no
+    screen sent it the year's total income, so through the screen none was ever
+    offered. The browser's reader must send the parameter the ROUTE declares (read
+    off the route's signature, not spelled here), and the panel must offer the box
+    and pass its figure; a blank box sends nothing, never a zero."""
+    import inspect
+    from pathlib import Path
+
+    declared = inspect.signature(it.advance_tax_unforeseen_income).parameters
+    assert "total_income_paise" in declared
+    web = Path(__file__).resolve().parents[2] / "web"
+    reader = (web / "lib" / "data" / "income-tax.ts").read_text(encoding="utf-8")
+    body = reader.split("export async function listUnforeseenIncomeCandidates(", 1)[1].split("\n}\n", 1)[0]
+    assert 'params.set("total_income_paise"' in body
+    assert "if (totalIncomePaise !== null)" in body
+    panel = (web / "components" / "tax" / "UnforeseenIncomePanel.tsx").read_text(encoding="utf-8")
+    assert "readTotalIncome(totalIncomeRs)" in panel
+    assert 'total.kind === "amount" ? total.paise : null' in panel
+    helper = (web / "lib" / "tax" / "unforeseenTotalIncome.ts").read_text(encoding="utf-8")
+    assert 'if (raw.trim() === "") return { kind: "absent" };' in helper

@@ -2,61 +2,52 @@ import Link from "next/link";
 import { Panel, SerifHeading, GlassCard, CineCTA } from "@/components/cinematic";
 import { Reveal } from "@/components/motion";
 import { Button } from "@/components/ui";
-import { Mail, Phone, Calendar, ArrowRight } from "@/components/icons";
+import { Mail, Calendar, ArrowRight } from "@/components/icons";
 import { instrumentSerif, manrope } from "@/lib/fonts";
-import { CONTACT } from "@/lib/site";
+import { CONTACT, DEMO_BOOKINGS_OPEN } from "@/lib/site";
 
 export const metadata = {
   title: "Support",
   description:
-    "Get help with PracticeSync — guides, email and phone support, plus hands-on onboarding and data migration for Indian CA firms moving from Tally, ClearTax or Winman.",
+    "Get help with PracticeSync — guides you can read any time, plus hands-on onboarding and data migration for Indian CA firms moving from Tally, ClearTax or Winman.",
 };
 
-// The marketing site is a static export with no backend, so contact actions are
-// plain mailto:/tel: anchors (never a submitted form). tel is derived from the
-// single source of truth, CONTACT.phone — digits only, keeping the leading +.
-const emailHref = `mailto:${CONTACT.email}`;
-const telHref = `tel:${CONTACT.phone.replace(/[^\d+]/g, "")}`;
+// THIS PAGE OFFERS ONLY THE HELP THAT EXISTS (PRE-A-026, the owner's decision of
+// 16-11-2026). It used to offer email and phone support, Monday to Saturday
+// 9am-7pm IST, a reply within one business day and a support line, at an
+// address and a number that did not exist. Until a business mailbox exists
+// there is no public contact, and the page says so; when `CONTACT.email` is set
+// the address is printed, with no hours and no reply time, because a promise
+// about a service is the owner's to make once somebody staffs it (POST-B-346).
 
-const CHANNELS = [
+type Channel = {
+  title: string;
+  desc: string;
+  meta: string;
+  link: { label: string; href: string } | null;
+};
+
+const CHANNELS: Channel[] = [
   {
     title: "Help centre & guides",
     desc: "Step-by-step guides for GST, ITR, TDS and MCA workflows, plus tips to get more out of every module — read them whenever it suits you.",
     meta: "Available anytime",
-    label: "Browse resources",
-    href: "/resources",
-    anchor: false,
-  },
-  {
-    title: "Email support",
-    desc: "Questions about the product, your account or a specific filing? Email us and a real person on the team will help you sort it.",
-    meta: "Reply within 1 business day",
-    label: "Email our team",
-    href: emailHref,
-    anchor: true,
+    link: { label: "Browse resources", href: "/resources" },
   },
   {
     title: "Onboarding & migration",
     desc: "Moving from Tally, ClearTax, Winman or spreadsheets? We help you bring your clients, ledgers and history across cleanly — no fresh start.",
     meta: "Guided, hands-on setup",
-    label: "Talk to us",
-    href: "#get-in-touch",
-    anchor: true,
-  },
-  {
-    title: "Phone support",
-    desc: "Prefer to talk it through? Reach our support line during working hours for a quick hand with anything that needs a conversation.",
-    meta: "Priority on Practice & Firm plans",
-    label: "Call us",
-    href: telHref,
-    anchor: true,
+    link: null,
   },
 ];
 
 const FAQ = [
   {
     q: "How do I get started?",
-    a: "Book a demo. We walk a real client's month end to end, and then set up your firm with you and bring your first clients across from Tally or a spreadsheet.",
+    a: DEMO_BOOKINGS_OPEN
+      ? "Book a demo. We walk a real client's month end to end, and then set up your firm with you and bring your first clients across from Tally or a spreadsheet."
+      : "Demo bookings are not open yet. When they open, you book one on the Demo page: we walk a real client's month end to end, and then set up your firm with you and bring your first clients across from Tally or a spreadsheet.",
   },
   {
     q: "Can you help migrate my existing data?",
@@ -65,10 +56,6 @@ const FAQ = [
   {
     q: "Is onboarding included?",
     a: "Every plan includes guided onboarding. Practice and Firm plans also get a dedicated onboarding specialist to set up your team, templates and compliance calendar.",
-  },
-  {
-    q: "What are your support hours?",
-    a: "Our support team is available Monday to Saturday, 9am–7pm IST. Email us any time and we'll respond within one business day.",
   },
   {
     q: "How is my data protected?",
@@ -88,7 +75,7 @@ export default function SupportPage() {
           layout="split"
           eyebrow="Support"
           lines={[{ text: "We're here to help" }, { text: "your firm succeed.", italic: true }]}
-          subtitle="From your first client to peak filing season, our team knows Indian practice inside out — and we're ready to help by guide, email or phone."
+          subtitle="From your first client to peak filing season: guides you can read whenever it suits you, and hands-on help moving your firm across."
         />
       </Panel>
 
@@ -99,7 +86,7 @@ export default function SupportPage() {
           eyebrow="How we help"
           theme="light"
           lines={[{ text: "Help, whichever" }, { text: "way suits you.", italic: true }]}
-          subtitle="Self-serve when you're in a hurry, hands-on when you're switching over. Every PracticeSync plan includes real support from people who understand CA workflows."
+          subtitle="Self-serve when you're in a hurry, hands-on when you're switching over."
         />
         <div className="mt-12 grid gap-x-12 gap-y-9 sm:grid-cols-2">
           {CHANNELS.map((c, i) => (
@@ -107,16 +94,12 @@ export default function SupportPage() {
               <div className="flex flex-col border-t border-slate-900/10 pt-6">
                 <h3 className="font-display text-[22px] italic text-brand-dark">{c.title}</h3>
                 <p className="mt-2 text-[15px] leading-relaxed text-slate-600">{c.desc}</p>
-                <p className="mt-3 text-[12px] font-semibold uppercase tracking-[0.12em] text-slate-400">{c.meta}</p>
-                {c.anchor ? (
-                  <a href={c.href} className={linkCls}>
-                    {c.label} <ArrowRight size={15} />
-                  </a>
-                ) : (
-                  <Link href={c.href} className={linkCls}>
-                    {c.label} <ArrowRight size={15} />
+                <p className="mt-3 text-[12px] font-semibold uppercase tracking-[0.12em] text-slate-500">{c.meta}</p>
+                {c.link ? (
+                  <Link href={c.link.href} className={linkCls}>
+                    {c.link.label} <ArrowRight size={15} />
                   </Link>
-                )}
+                ) : null}
               </div>
             </Reveal>
           ))}
@@ -128,61 +111,44 @@ export default function SupportPage() {
         <SerifHeading
           layout="split"
           eyebrow="Get in touch"
-          lines={[{ text: "Talk to a" }, { text: "real person.", italic: true }]}
-          subtitle="No bots, no ticket black holes. Reach us directly — we usually reply within one business day, Monday to Saturday."
+          lines={[{ text: "How to" }, { text: "reach us.", italic: true }]}
+          subtitle={
+            CONTACT.email
+              ? `Write to us at ${CONTACT.email}.`
+              : "There is no public email address or phone line yet. When there is one, it is listed here."
+          }
         />
-        <div className="mt-12 grid gap-6 lg:grid-cols-3">
-          <Reveal variant="up">
-            <GlassCard className="flex h-full flex-col">
-              <span className="grid h-11 w-11 place-items-center rounded-xl bg-brand-light/10 text-brand-light ring-1 ring-white/10">
-                <Mail size={20} />
-              </span>
-              <h3 className="mt-5 font-display text-[22px] italic text-white">Email us</h3>
-              <p className="mt-2 text-[14px] leading-relaxed text-slate-300">
-                The fastest way to reach us for anything — product, billing or your account.
-              </p>
-              <a href={emailHref} className="mt-4 self-start break-words text-[17px] font-semibold text-brand-light hover:text-white">
-                {CONTACT.email}
-              </a>
-              <Button href={emailHref} external variant="light" className="mt-auto w-full">
-                Send an email <ArrowRight size={16} />
-              </Button>
-            </GlassCard>
-          </Reveal>
+        <div className={`mt-12 grid gap-6 ${CONTACT.email ? "lg:grid-cols-2" : "max-w-xl"}`}>
+          {CONTACT.email ? (
+            <Reveal variant="up">
+              <GlassCard className="flex h-full flex-col">
+                <span className="grid h-11 w-11 place-items-center rounded-xl bg-brand-light/10 text-brand-light ring-1 ring-white/10">
+                  <Mail size={20} />
+                </span>
+                <h3 className="mt-5 font-display text-[22px] italic text-white">Email us</h3>
+                <a
+                  href={`mailto:${CONTACT.email}`}
+                  className="mt-4 self-start break-words text-[17px] font-semibold text-brand-light hover:text-white"
+                >
+                  {CONTACT.email}
+                </a>
+              </GlassCard>
+            </Reveal>
+          ) : null}
 
           <Reveal variant="up" delay={100}>
-            <GlassCard className="flex h-full flex-col">
-              <span className="grid h-11 w-11 place-items-center rounded-xl bg-brand-light/10 text-brand-light ring-1 ring-white/10">
-                <Phone size={20} />
-              </span>
-              <h3 className="mt-5 font-display text-[22px] italic text-white">Call us</h3>
-              <p className="mt-2 text-[14px] leading-relaxed text-slate-300">
-                Speak to our support team during working hours, Monday to Saturday, 9am–7pm IST.
-              </p>
-              <a href={telHref} className="mt-4 self-start break-words text-[17px] font-semibold text-brand-light hover:text-white">
-                {CONTACT.phone}
-              </a>
-              <Button href={telHref} external variant="ghost-light" className="mt-auto w-full">
-                Call now <ArrowRight size={16} />
-              </Button>
-            </GlassCard>
-          </Reveal>
-
-          <Reveal variant="up" delay={200}>
             <GlassCard className="flex h-full flex-col">
               <span className="grid h-11 w-11 place-items-center rounded-xl bg-brand-light/10 text-brand-light ring-1 ring-white/10">
                 <Calendar size={20} />
               </span>
               <h3 className="mt-5 font-display text-[22px] italic text-white">Book a demo</h3>
               <p className="mt-2 text-[14px] leading-relaxed text-slate-300">
-                See PracticeSync mapped to your firm&apos;s workflow in a short, no-pressure walkthrough tailored to how you work.
+                {DEMO_BOOKINGS_OPEN
+                  ? "See PracticeSync mapped to your firm's workflow in a short, no-pressure walkthrough tailored to how you work."
+                  : "Demo bookings are not open yet. The Demo page shows what one covers, and takes bookings once they open."}
               </p>
-              <p className="mt-4 self-start text-[13px] font-medium text-slate-400">Typically around 30 minutes.</p>
-              {/* Was a mailto: — the only "book a demo" the site had before
-                  /demo existed. The form is the route in now; the address is
-                  still on that page, and is what it offers if a send fails. */}
-              <Button href="/demo" variant="light" className="mt-auto w-full">
-                Book a demo <ArrowRight size={16} />
+              <Button href="/demo" variant="light" className="mt-6 w-full">
+                {DEMO_BOOKINGS_OPEN ? "Book a demo" : "See what a demo covers"} <ArrowRight size={16} />
               </Button>
             </GlassCard>
           </Reveal>
@@ -211,10 +177,10 @@ export default function SupportPage() {
       </Panel>
 
       {/* ── Closing CTA ──────────────────────────────────────────────────── */}
-      <CineCTA
-        titleLines={[{ text: "Ready when", italic: true }, { text: "you are." }]}
-        subtitle="Try PracticeSync free, or get in touch and we'll help your firm make the switch."
-      />
+      {/* The subtitle used to offer a free trial (the Pricing page says there is
+          none yet) and to "get in touch" (there is no contact yet, PRE-A-026), so
+          it takes the shared default, which follows whether bookings are open. */}
+      <CineCTA titleLines={[{ text: "Ready when", italic: true }, { text: "you are." }]} />
     </div>
   );
 }

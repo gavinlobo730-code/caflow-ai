@@ -1,0 +1,595 @@
+{
+  "Partner": {
+    "accounting": [
+      "approve",
+      "read",
+      "write"
+    ],
+    "ai": [
+      "copilot",
+      "read"
+    ],
+    "analytics": [
+      "export",
+      "read",
+      "write"
+    ],
+    "approval": [
+      "approve",
+      "read",
+      "request"
+    ],
+    "assignment": [
+      "read",
+      "write"
+    ],
+    "audit": [
+      "read"
+    ],
+    "automation": [
+      "read",
+      "write"
+    ],
+    "banking": [
+      "approve",
+      "read",
+      "write"
+    ],
+    "billing": [
+      "read",
+      "write"
+    ],
+    "branding": [
+      "read",
+      "write"
+    ],
+    "client": [
+      "delete",
+      "read",
+      "write"
+    ],
+    "client_instruction": [
+      "read",
+      "write"
+    ],
+    "compliance": [
+      "approve",
+      "delete",
+      "read",
+      "write"
+    ],
+    "compliance_record": [
+      "approve",
+      "delete",
+      "read",
+      "write"
+    ],
+    "copilot": [
+      "read",
+      "write"
+    ],
+    "document": [
+      "approve",
+      "delete",
+      "read",
+      "write"
+    ],
+    "dsc": [
+      "delete",
+      "read",
+      "write"
+    ],
+    "einvoice": [
+      "approve",
+      "read",
+      "write"
+    ],
+    "engagement": [
+      "read",
+      "write"
+    ],
+    "eway_bill": [
+      "approve",
+      "read",
+      "write"
+    ],
+    "firm": [
+      "admin",
+      "read",
+      "write"
+    ],
+    "gst": [
+      "approve",
+      "compute",
+      "read"
+    ],
+    "identity": [
+      "read",
+      "write"
+    ],
+    "income_tax": [
+      "approve",
+      "compute",
+      "read",
+      "write"
+    ],
+    "invoice": [
+      "approve",
+      "delete",
+      "read",
+      "write"
+    ],
+    "knowledge": [
+      "read",
+      "write"
+    ],
+    "mca": [
+      "approve",
+      "read",
+      "write"
+    ],
+    "notification": [
+      "read",
+      "write"
+    ],
+    "payroll": [
+      "enable",
+      "finalize",
+      "read",
+      "write"
+    ],
+    "pipeline": [
+      "read",
+      "write"
+    ],
+    "portal": [
+      "read",
+      "write"
+    ],
+    "practice": [
+      "read",
+      "write"
+    ],
+    "reminder": [
+      "read",
+      "write"
+    ],
+    "report": [
+      "export",
+      "read",
+      "write"
+    ],
+    "risk": [
+      "read",
+      "write"
+    ],
+    "settings": [
+      "read",
+      "write"
+    ],
+    "tally_migration": [
+      "approve",
+      "read",
+      "write"
+    ],
+    "task": [
+      "delete",
+      "read",
+      "write"
+    ],
+    "tds": [
+      "approve",
+      "compute",
+      "read",
+      "write"
+    ],
+    "team": [
+      "delete",
+      "read",
+      "write"
+    ],
+    "time_entry": [
+      "delete",
+      "read",
+      "report",
+      "write"
+    ],
+    "timeline": [
+      "delete",
+      "write"
+    ],
+    "workflow": [
+      "instantiate",
+      "read"
+    ],
+    "workload": [
+      "read",
+      "write"
+    ],
+    "xbrl": [
+      "approve",
+      "read",
+      "write"
+    ],
+    "year_end": [
+      "approve",
+      "final_approve",
+      "read",
+      "write"
+    ]
+  },
+  "Manager": {
+    "accounting": [
+      "read",
+      "write"
+    ],
+    "ai": [
+      "copilot",
+      "read"
+    ],
+    "analytics": [
+      "export",
+      "read",
+      "write"
+    ],
+    "approval": [
+      "read",
+      "request"
+    ],
+    "assignment": [
+      "read"
+    ],
+    "automation": [
+      "read"
+    ],
+    "banking": [
+      "approve",
+      "read",
+      "write"
+    ],
+    "branding": [
+      "read"
+    ],
+    "client": [
+      "read",
+      "write"
+    ],
+    "client_instruction": [
+      "read",
+      "write"
+    ],
+    "compliance": [
+      "approve",
+      "read",
+      "write"
+    ],
+    "compliance_record": [
+      "approve",
+      "read",
+      "write"
+    ],
+    "copilot": [
+      "read",
+      "write"
+    ],
+    "document": [
+      "approve",
+      "read",
+      "write"
+    ],
+    "dsc": [
+      "delete",
+      "read",
+      "write"
+    ],
+    "einvoice": [
+      "approve",
+      "read",
+      "write"
+    ],
+    "engagement": [
+      "read",
+      "write"
+    ],
+    "eway_bill": [
+      "approve",
+      "read",
+      "write"
+    ],
+    "firm": [
+      "read"
+    ],
+    "gst": [
+      "approve",
+      "compute",
+      "read"
+    ],
+    "identity": [
+      "read",
+      "write"
+    ],
+    "income_tax": [
+      "approve",
+      "compute",
+      "read",
+      "write"
+    ],
+    "invoice": [
+      "approve",
+      "read",
+      "write"
+    ],
+    "knowledge": [
+      "read",
+      "write"
+    ],
+    "mca": [
+      "approve",
+      "read",
+      "write"
+    ],
+    "notification": [
+      "read",
+      "write"
+    ],
+    "payroll": [
+      "read",
+      "write"
+    ],
+    "pipeline": [
+      "read",
+      "write"
+    ],
+    "portal": [
+      "read",
+      "write"
+    ],
+    "reminder": [
+      "read",
+      "write"
+    ],
+    "report": [
+      "export",
+      "read",
+      "write"
+    ],
+    "risk": [
+      "read",
+      "write"
+    ],
+    "settings": [
+      "read"
+    ],
+    "tally_migration": [
+      "read",
+      "write"
+    ],
+    "task": [
+      "delete",
+      "read",
+      "write"
+    ],
+    "tds": [
+      "approve",
+      "compute",
+      "read",
+      "write"
+    ],
+    "team": [
+      "read"
+    ],
+    "time_entry": [
+      "delete",
+      "read",
+      "report",
+      "write"
+    ],
+    "timeline": [
+      "write"
+    ],
+    "workflow": [
+      "instantiate",
+      "read"
+    ],
+    "workload": [
+      "read",
+      "write"
+    ],
+    "xbrl": [
+      "approve",
+      "read",
+      "write"
+    ],
+    "year_end": [
+      "approve",
+      "read",
+      "write"
+    ]
+  },
+  "Executive": {
+    "accounting": [
+      "read"
+    ],
+    "ai": [
+      "read"
+    ],
+    "approval": [
+      "request"
+    ],
+    "banking": [
+      "read",
+      "write"
+    ],
+    "client": [
+      "read"
+    ],
+    "client_instruction": [
+      "read",
+      "write"
+    ],
+    "compliance": [
+      "read",
+      "write"
+    ],
+    "compliance_record": [
+      "read",
+      "write"
+    ],
+    "document": [
+      "read",
+      "write"
+    ],
+    "dsc": [
+      "read"
+    ],
+    "einvoice": [
+      "read",
+      "write"
+    ],
+    "eway_bill": [
+      "read",
+      "write"
+    ],
+    "gst": [
+      "compute",
+      "read"
+    ],
+    "identity": [
+      "read",
+      "write"
+    ],
+    "income_tax": [
+      "compute",
+      "read",
+      "write"
+    ],
+    "invoice": [
+      "read",
+      "write"
+    ],
+    "knowledge": [
+      "read"
+    ],
+    "mca": [
+      "read",
+      "write"
+    ],
+    "notification": [
+      "read",
+      "write"
+    ],
+    "portal": [
+      "read",
+      "write"
+    ],
+    "reminder": [
+      "read",
+      "write"
+    ],
+    "report": [
+      "read"
+    ],
+    "task": [
+      "read",
+      "write"
+    ],
+    "tds": [
+      "compute",
+      "read"
+    ],
+    "time_entry": [
+      "read",
+      "write"
+    ],
+    "timeline": [
+      "write"
+    ],
+    "workflow": [
+      "instantiate",
+      "read"
+    ],
+    "xbrl": [
+      "read",
+      "write"
+    ],
+    "year_end": [
+      "read",
+      "write"
+    ]
+  },
+  "Reviewer": {
+    "ai": [
+      "read"
+    ],
+    "client": [
+      "read"
+    ],
+    "client_instruction": [
+      "read"
+    ],
+    "compliance": [
+      "read"
+    ],
+    "compliance_record": [
+      "read"
+    ],
+    "document": [
+      "approve",
+      "read"
+    ],
+    "dsc": [
+      "read"
+    ],
+    "einvoice": [
+      "read"
+    ],
+    "eway_bill": [
+      "read"
+    ],
+    "gst": [
+      "read"
+    ],
+    "identity": [
+      "read",
+      "write"
+    ],
+    "income_tax": [
+      "read"
+    ],
+    "knowledge": [
+      "read"
+    ],
+    "mca": [
+      "read"
+    ],
+    "notification": [
+      "read",
+      "write"
+    ],
+    "portal": [
+      "read"
+    ],
+    "reminder": [
+      "read"
+    ],
+    "report": [
+      "read"
+    ],
+    "task": [
+      "read"
+    ],
+    "tds": [
+      "read"
+    ],
+    "time_entry": [
+      "read",
+      "write"
+    ],
+    "timeline": [
+      "write"
+    ],
+    "workflow": [
+      "read"
+    ]
+  }
+}

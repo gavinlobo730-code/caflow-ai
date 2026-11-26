@@ -5,7 +5,7 @@ import { Library, Search, Plus, RefreshCw } from "lucide-react";
 import { api, type ApiResp } from "@/lib/api";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
-import { PageLoader } from "@/components/ui/skeleton";
+import { SectionPlaceholder } from "@/components/ui/page-frame";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { PageHeader } from "@/components/ui/page-header";
@@ -75,12 +75,14 @@ export default function ClientKnowledgePage() {
         result = r.data ?? [];
       } else {
         const supabase = getSupabaseClient();
-        const { data } = await selectAll(() =>
+        const { data, error } = await selectAll(() =>
           supabase.from("knowledge_articles")
             .select("id, title, current_version, tags, updated_at")
             .eq("client_id", clientId)
             .eq("is_archived", false)
             .order("updated_at", { ascending: false }));
+        // The pager hands a failure back as `error` and does not throw: a list that stopped partway is not the client's articles.
+        if (error) throw new Error("The articles could not be read.");
         result = (data as Article[]) ?? [];
       }
       if (latestQuery.current === q) { setArticles(result); setAnswered(q.trim()); }
@@ -144,7 +146,7 @@ export default function ClientKnowledgePage() {
                 <Plus size={13} /> New article
               </button>
             )}
-            <button onClick={() => load(query)} className="text-gray-400 hover:text-brand"><RefreshCw size={14} /></button>
+            <button onClick={() => load(query)} aria-label="Reload" title="Reload" className="text-gray-400 hover:text-brand"><RefreshCw size={14} aria-hidden="true" /></button>
           </div>
         }
         className="mb-4"
@@ -165,11 +167,11 @@ export default function ClientKnowledgePage() {
           <button type="submit" disabled={saving} className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs disabled:opacity-50">Create</button>
         </form>
       )}
-      {loading ? <PageLoader onRetry={() => { void load(query); }} /> : (
+      {loading ? <SectionPlaceholder label="Loading this client's knowledge" shape="list" rows={4} onRetry={() => { void load(query); }} /> : (
         <div className="space-y-2">
-          {articles.length === 0 && !answered && <p className="text-xs text-gray-400">No client-scoped articles.</p>}
+          {articles.length === 0 && !answered && <p className="text-xs text-gray-600">No client-scoped articles.</p>}
           {articles.length === 0 && answered && (
-            <p className="text-xs text-gray-400">
+            <p className="text-xs text-gray-600">
               No article of this client has every word of &ldquo;{answered}&rdquo; in its title or its current text.
             </p>
           )}

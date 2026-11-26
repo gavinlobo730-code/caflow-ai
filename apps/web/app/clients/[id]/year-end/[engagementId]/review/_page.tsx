@@ -3,10 +3,11 @@
 import { useEffect, useState, useCallback } from "react";
 import { CheckCircle2, Circle, User, Loader2 } from "lucide-react";
 import { yearEndApi, type ReviewStep, type ReviewHistory, type ReviewStatus } from "@/lib/api/yearEnd";
-import { Skeleton, FormSkeleton, TimelineSkeleton } from "@/components/ui/skeleton";
+import { Skeleton, FormSkeleton, TimelineSkeleton, LoadingRegion } from "@/components/ui/skeleton";
 import { useEngagementId } from "../_engagementId";
 import { useRefreshEngagement } from "../_engagementRefresh";
 import { formatDate } from "@/lib/dates/format";
+import { Can } from "@/components/Can";
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -106,7 +107,7 @@ export default function ReviewPage() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-5 max-w-2xl mx-auto">
+      <LoadingRegion label="Loading the review" className="p-6 space-y-5 max-w-2xl mx-auto">
         {/* Three-step timeline placeholder */}
         <div className="bg-white rounded-xl border border-ps-border p-5">
           <Skeleton className="h-3 w-32 mb-4" />
@@ -123,7 +124,7 @@ export default function ReviewPage() {
         <FormSkeleton fields={1} className="bg-white rounded-xl border border-ps-border p-5" />
         {/* Review history placeholder */}
         <TimelineSkeleton rows={3} className="bg-white rounded-xl border border-ps-border p-5" />
-      </div>
+      </LoadingRegion>
     );
   }
 
@@ -232,9 +233,12 @@ export default function ReviewPage() {
             />
           )}
 
-          {/* Approve — available in_review */}
+          {/* Approve — available in_review. Approve and Request Revision ask `year_end` `approve` (Manager and above), and were
+              offered to an Executive, who was refused (POST-A-455). */}
           {currentStatus === "in_review" && (
-            <>
+            <Can resource="year_end" action="approve" fallback={
+              <p className="text-xs text-ps-label py-2">Approving this review or sending it back for revision needs permission to approve year-end work, so those buttons are not shown to you.</p>
+            }>
               <ActionButton
                 label="Approve"
                 action={() => doAction("approve")}
@@ -247,17 +251,22 @@ export default function ReviewPage() {
                 loading={actionLoading === "requestRevision"}
                 variant="danger"
               />
-            </>
+            </Can>
           )}
 
-          {/* Final Approve & Lock — available in approved */}
+          {/* Final Approve & Lock — available in approved. It asks `year_end` `final_approve` (Partner only), and was offered to a
+              Manager and an Executive (POST-A-455). */}
           {currentStatus === "approved" && (
-            <ActionButton
-              label="Final Approve & Lock"
-              action={() => doAction("finalApprove")}
-              loading={actionLoading === "finalApprove"}
-              variant="primary"
-            />
+            <Can resource="year_end" action="final_approve" fallback={
+              <p className="text-xs text-ps-label py-2">The final approval, which locks the year, needs permission to give it, so the button is not shown to you.</p>
+            }>
+              <ActionButton
+                label="Final Approve & Lock"
+                action={() => doAction("finalApprove")}
+                loading={actionLoading === "finalApprove"}
+                variant="primary"
+              />
+            </Can>
           )}
 
           {/* Reopen — the only action available on a locked engagement (ACC-05).
@@ -272,12 +281,14 @@ export default function ReviewPage() {
                 for posting. A Partner can reopen it — give the reason above; it goes
                 on the audit trail.
               </p>
-              <ActionButton
-                label="Reopen Year"
-                action={() => doAction("reopen")}
-                loading={actionLoading === "reopen"}
-                variant="danger"
-              />
+              <Can resource="year_end" action="final_approve">
+                <ActionButton
+                  label="Reopen Year"
+                  action={() => doAction("reopen")}
+                  loading={actionLoading === "reopen"}
+                  variant="danger"
+                />
+              </Can>
             </>
           )}
         </div>

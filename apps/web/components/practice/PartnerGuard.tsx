@@ -4,10 +4,12 @@ import { ReactNode } from "react";
 import { Lock } from "lucide-react";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { isPartnerOnlyAllowed } from "@/lib/auth/permissions";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 /**
- * Route-level guard for the Practice workspace (Amendment v1.1 Guardrail G1).
- * Practice/Revenue surfaces are Partner-only. The nav entry is already hidden
+ * Route-level guard for My practice (Amendment v1.1 Guardrail G1; the area was named "Practice" and "Revenue
+ * Operations" until POST-A-532, and this guard's sentence still said so until the role walk of 21-11-2026).
+ * Its surfaces are Partner-only. The nav entry is already hidden
  * for non-partners; this also blocks direct URL access. The backend RBAC + RLS
  * remain the authoritative control — this is the UI layer.
  */
@@ -17,7 +19,7 @@ export function PartnerGuard({ children }: { children: ReactNode }) {
   // answers "no" — which flashed "Partner access only" at a Partner on every
   // hard load. A role still resolving is not a refusal (lib/auth/guardDecision).
   if (loading || roleLoading) {
-    return <div className="p-8 text-sm text-gray-500">Loading…</div>;
+    return <LoadingRegion label="Checking your access" className="p-8 text-sm text-gray-500">Loading…</LoadingRegion>;
   }
   if (!isPartnerOnlyAllowed(userRole)) {
     return (
@@ -27,7 +29,7 @@ export function PartnerGuard({ children }: { children: ReactNode }) {
         </div>
         <h2 className="text-base font-semibold text-brand">Partner access only</h2>
         <p className="text-sm text-gray-500 mt-1 max-w-sm">
-          The Practice workspace and Revenue Operations are restricted to Partners.
+          My practice (the firm&apos;s own billing, collections, profitability and books) is open to Partners only.
         </p>
       </div>
     );

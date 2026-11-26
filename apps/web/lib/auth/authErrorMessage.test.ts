@@ -11,9 +11,8 @@ import {
   authErrorMessage,
   knownAuthErrorMessage,
   AUTH_ERROR_SENTENCES,
+  SERVICE_ONLY_ERROR_SENTENCES,
   PASSWORD_BREACHED,
-  INVITE_EMAIL_REFUSED_NO_REASON,
-  inviteEmailProblem,
   inviteEmailNotSentMessage,
 } from "./authErrorMessage.ts";
 
@@ -106,10 +105,44 @@ function weakPassword(message: string, reasons: string[]) {
   return e;
 }
 
-test("a password missing a required character group is told which groups, in Supabase's words", () => {
+test("a password missing a required character group is told which groups, from the groups the server names", () => {
   const server =
     "Password should contain at least one character of each: abcdefghijklmnopqrstuvwxyz, ABCDEFGHIJKLMNOPQRSTUVWXYZ, 0123456789.";
-  assert.equal(authErrorMessage(weakPassword(server, ["characters"])), server);
+  assert.equal(
+    authErrorMessage(weakPassword(server, ["characters"])),
+    "Your password needs a lowercase letter, a capital letter and a digit.",
+  );
+});
+
+// The refusal as the live sign-in log recorded it on 18-11-2026 (PUT /user, 422): NO error code.
+const LIVE_CHARACTERS_REFUSAL =
+  "Password should contain at least one character of each: abcdefghijklmnopqrstuvwxyz, ABCDEFGHIJKLMNOPQRSTUVWXYZ, 0123456789, !@#$%^&*()_+-=[]{};'\\:\"|<>?,./`~.";
+
+test("the character-group refusal that arrives with no code is worded in plain English too (POST-A-477)", () => {
+  const raw = authApiError(LIVE_CHARACTERS_REFUSAL, 422);
+  const shown = authErrorMessage(raw);
+  assert.equal(shown, "Your password needs a lowercase letter, a capital letter, a digit and a symbol (for example ! @ # $ %).");
+  assert.doesNotMatch(shown, /abcdefghij|ABCDEFGH|0123456789/);
+});
+
+test("the same refusal with the code the SDK adds for a weak password is worded the same way", () => {
+  const shown = authErrorMessage(weakPassword(LIVE_CHARACTERS_REFUSAL, ["characters"]));
+  assert.equal(shown, "Your password needs a lowercase letter, a capital letter, a digit and a symbol (for example ! @ # $ %).");
+});
+
+test("a character-group refusal that names groups in words is worded from those words", () => {
+  const raw = authApiError("Password should contain at least one character of each: lowercase, uppercase, digit, symbol", 422);
+  assert.equal(authErrorMessage(raw), "Your password needs a lowercase letter, a capital letter, a digit and a symbol (for example ! @ # $ %).");
+});
+
+test("a character-group refusal that names nothing it recognises still says what kind of problem it is", () => {
+  const raw = authApiError("Password should contain at least one character of each: group one, group two", 422);
+  assert.match(authErrorMessage(raw), /at least one character from each group/i);
+});
+
+test("a same-password refusal, as the live log recorded it, is the plain sentence", () => {
+  const raw = authApiError("New password should be different from the old password.", 422, "same_password");
+  assert.equal(authErrorMessage(raw), AUTH_ERROR_SENTENCES.same_password);
 });
 
 test("a password that is too short is told the minimum length the server asked for", () => {
@@ -181,30 +214,59 @@ test("the mail server refusing is not reported as the address being wrong", () =
   assert.match(authErrorMessage(smtp), /mail server/i);
 });
 
-test("an invite email that went is no problem; one that did not is always a sentence", () => {
-  assert.equal(inviteEmailProblem(null), null);
-  assert.equal(inviteEmailProblem(undefined), null);
-  assert.equal(inviteEmailProblem({}), INVITE_EMAIL_REFUSED_NO_REASON);
-});
-
-test("an address the default mailer will not reach tells the Partner what to set up", () => {
-  const e = authApiError("Email address not authorized", 400, "email_address_not_authorized");
-  assert.match(inviteEmailProblem(e)!, /SMTP/);
-  // The sign-up screen's reader cannot set up a mail server, so it is not told to.
-  assert.doesNotMatch(authErrorMessage(e), /SMTP/);
-});
-
-test("an invite refusal with an unknown code keeps the server's words inside a sentence", () => {
-  const e = authApiError("Something specific happened.", 500, "saml_idp_not_found");
-  assert.equal(inviteEmailProblem(e), "The email service refused it: Something specific happened.");
-  assert.equal(inviteEmailProblem(authApiError("email rate limit exceeded", 429, "over_email_send_rate_limit")),
-    AUTH_ERROR_SENTENCES.over_email_send_rate_limit);
-});
-
 test("the Team screen's sentence says the row exists and the email did not go", () => {
   const s = inviteEmailNotSentMessage("Priya Sharma", "priya@firm.test",
     AUTH_ERROR_SENTENCES.over_email_send_rate_limit);
   assert.match(s, /^The invite for Priya Sharma was created, but the email to priya@firm\.test could not be sent\./);
   assert.match(s, /last hour/);
   assert.doesNotMatch(s, /\bsent!/);
+});
+
+test("the groups are told apart by their own alphabet, and the words are read in any case", () => {
+  // only the capital alphabet is named: it must not be read as asking for lowercase too
+  assert.equal(authErrorMessage(authApiError("Password should contain at least one character of each: ABCDEFGHIJKLMNOPQRSTUVWXYZ, 0123456789", 422)),
+    "Your password needs a capital letter and a digit.");
+  assert.equal(authErrorMessage(authApiError("Password should contain at least one character of each: Lowercase, Uppercase, Digit, Symbol", 422)),
+    "Your password needs a lowercase letter, a capital letter, a digit and a symbol (for example ! @ # $ %).");
+});
+
+test("the throttle on a repeat link request says how long to wait, not that the hour's emails are used up (POST-A-479)", () => {
+  // As the live sign-in log recorded it on 18-11-2026: 429, code over_email_send_rate_limit.
+  const raw = authApiError("For security purposes, you can only request this after 7 seconds.", 429, "over_email_send_rate_limit");
+  const shown = authErrorMessage(raw);
+  assert.equal(shown, "Please wait 7 seconds before asking again.");
+  assert.doesNotMatch(shown, /last hour/i);
+  // the hourly limit keeps its own sentence
+  assert.match(authErrorMessage(authApiError("email rate limit exceeded", 429, "over_email_send_rate_limit")), /last hour/i);
+});
+
+// ---- POST-A-512: the project's "Require current password when updating" switch ------------------------------------------------
+
+test("the service's refusal for a missing current password is a sentence, as seen live on 19-11-2026 (HTTP 400)", () => {
+  const raw = authApiError("Current password required when setting new password.", 400, "current_password_required");
+  assert.equal(authErrorMessage(raw), "Your current password is needed to change it. Enter it and try again.");
+});
+
+test("the expected wrong-current-password code is worded too, and an UNKNOWN refusal keeps the service's own words", () => {
+  const mismatch = authApiError("Current password is incorrect.", 400, "current_password_mismatch");
+  assert.equal(authErrorMessage(mismatch), "Current password is incorrect.");
+  const unknown = authApiError("Some refusal nobody has seen yet.", 400, "some_new_code");
+  assert.equal(authErrorMessage(unknown), "Some refusal nobody has seen yet.", "hiding a real reason behind a guess is worse than showing it");
+});
+
+test("the service-only codes are still ABSENT from the library's union, so the day it lists one it moves into the main map", async () => {
+  const { readFileSync, realpathSync } = await import("node:fs");
+  const { join, dirname } = await import("node:path");
+  const { createRequire } = await import("node:module");
+  const require = createRequire(join(process.cwd(), "package.json"));
+  const supabaseJs = dirname(require.resolve("@supabase/supabase-js/package.json"));
+  const requireFromSupabase = createRequire(join(realpathSync(supabaseJs), "package.json"));
+  const authJs = dirname(requireFromSupabase.resolve("@supabase/auth-js/package.json"));
+  const union = readFileSync(join(authJs, "dist/module/lib/error-codes.d.ts"), "utf8");
+  const known = new Set([...union.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]));
+  assert.ok(known.size > 50, "the ErrorCode union was not read");
+  for (const code of Object.keys(SERVICE_ONLY_ERROR_SENTENCES)) {
+    assert.ok(!known.has(code), `${code} is now an auth-js ErrorCode: move it into AUTH_ERROR_SENTENCES`);
+    assert.ok(!Object.prototype.hasOwnProperty.call(AUTH_ERROR_SENTENCES, code), `${code} must be in one map only`);
+  }
 });

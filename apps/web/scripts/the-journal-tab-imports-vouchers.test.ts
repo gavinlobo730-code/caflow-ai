@@ -61,13 +61,29 @@ test("the browser converts and the server decides", () => {
 test("the CA must say where the vouchers go, and neither answer is pre-selected", () => {
   assert.match(screen, /useState<VoucherStatus \| null>\(null\)/);
   // Re-opening the dialog starts from no answer again, not from last time's.
-  assert.match(screen, /setStatus\(null\);\s*setStep\("choose"\)/);
+  assert.match(screen, /setStatus\(null\);\s*(?:setRuleKey\(\(k\) => k \+ 1\);\s*)?setStep\("choose"\)/);
   assert.match(screen, /disabled=\{status === null\}/);
   assert.match(screen, /Post to the ledger now/);
   assert.match(screen, /Save as drafts for review/);
   // The import step cannot be reached, nor a request built, without a status.
   assert.match(screen, /step === "import" && status && \(/);
   assert.match(screen, /if \(!status\) throw new Error\(/);
+});
+
+test("posting is offered only where the server's journal-approval answer allows it (POST-A-456)", () => {
+  // The import route asks the firm's rule for an import sent as posted, as the editor's route does; the screen reads the same
+  // served answer and withholds "Post to the ledger now" only on a definite no, never while it is unknown.
+  assert.match(screen, /import \{ useJournalApprovalRule \} from "@\/lib\/accounting\/journalApprovalRule";/);
+  assert.match(screen, /const mayPost = postingRule\.mayPost !== false;/);
+  const choice = screen.slice(screen.indexOf("Where do the vouchers go?"), screen.indexOf("Save as drafts for review"));
+  assert.match(choice, /\{mayPost \? \(\s*<label[\s\S]*Post to the ledger now[\s\S]*\) : \(\s*<p[^>]*>\{HELD_FOR_APPROVAL\}<\/p>/,
+    "Post to the ledger now is drawn without the server's answer, or the refusal is not said");
+  assert.match(screen, /if \(status === "posted" && !mayPost\) throw new Error\(HELD_FOR_APPROVAL\)/);
+  assert.match(screen, /setStatus\(\(s\) => \(s === "posted" \? null : s\)\)/, "a choice made before the answer arrived is not kept");
+  assert.match(screen, /saved as drafts: each waits in "\s*\+ "Approvals/);
+  const api = fs.readFileSync(path.join(__dirname, "..", "..", "api", "routers", "accounting.py"), "utf8");
+  const door = api.slice(api.indexOf("def import_vouchers_endpoint"), api.indexOf("class YearLockIn"));
+  assert.match(door, /if data\.status == "posted":\s*journal_approval_rule\.assert_may_post\(current_user\)/);
 });
 
 test("a file goes up as small requests of whole vouchers and stops at the first that fails", () => {
@@ -113,9 +129,9 @@ test("the button is on the Journal tab and not on the day book", () => {
   // It sits in a `!dayBook` branch of its own — the day book is a report — and
   // does NOT wrap New Journal Entry, whose own condition
   // the-book-can-be-read-not-only-posted-to reads (`!dayBook && ( <button`).
-  assert.match(page, /\{!dayBook && \(\s*<VoucherImportButton\b/,
+  assert.match(page, /\{!dayBook && mayWriteBooks && \(\s*<VoucherImportButton\b/,
     "the import button must sit in the branch the day book does not render");
-  assert.match(page, /\{!dayBook && \(\s*<button/,
+  assert.match(page, /\{!dayBook && mayWriteBooks && \(\s*<button/,
     "New Journal Entry keeps its own !dayBook branch");
   assert.match(page, /<VoucherImportButton clientId=\{clientId\} onImported=\{loadEntries\}/);
 });

@@ -42,6 +42,7 @@ import { api, type PayrollBankAdvice, type PayrollDepartmentCost, type PayrollMo
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { formatPaise } from "@/lib/money/format";
 import { objectWithLists } from "@/lib/api/shape";
+import { failureSentence } from "@/lib/api/failureSentence";
 
 function rupees(paise: number): string {
   const sign = paise < 0 ? "-" : "";
@@ -75,6 +76,9 @@ export function MonthlyReview({ clientId, month }: { clientId: string; month: st
   const [variance, setVariance] = useState<PayrollMonthOnMonth | null>(null);
   const [departments, setDepartments] = useState<PayrollDepartmentCost | null>(null);
   const [advice, setAdvice] = useState<PayrollBankAdvice | null>(null);
+  // An advice that could not be read is not a month with nothing to pay (POST-A-515 (d)): a refusal says its reason, a request that
+  // failed outright says it did not answer, and only a month with no run is left to the variance panel's own words.
+  const [adviceUnread, setAdviceUnread] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [downloading, setDownloading] = useState(false);
@@ -83,18 +87,25 @@ export function MonthlyReview({ clientId, month }: { clientId: string; month: st
     if (!clientId || !month) return;
     setLoading(true);
     setError("");
+    setAdviceUnread(null);
     const params = { client_id: clientId, month };
     try {
+      let adviceFailure: unknown = null;
       const [v, d, a] = await Promise.all([
         api.payroll.monthOnMonth(params),
         api.payroll.departmentCost(params),
-        api.payroll.bankAdvice(params).catch(() => null),
+        api.payroll.bankAdvice(params).catch((e) => { adviceFailure = e ?? new Error(""); return null; }),
       ]);
       setVariance(v.success ? objectWithLists<PayrollMonthOnMonth>(v.data, "employees", "notes") : null);
       setDepartments(d.success ? objectWithLists<PayrollDepartmentCost>(d.data, "notes", "rows") : null);
       // A 404 here means no run for the month, which the variance panel
       // already says in its own words — not an error worth a red banner.
       setAdvice(a && a.success ? objectWithLists<PayrollBankAdvice>(a.data, "excluded", "notes", "rows") : null);
+      // A month that has a run (the variance answered) has a bank advice: one that did not come is a read that failed, not a month with
+      // nothing to pay. A month with no run is left to the variance panel's own words, as above.
+      if (adviceFailure !== null && v.success) {
+        setAdviceUnread(failureSentence(adviceFailure, "The request failed.", "read"));
+      }
     } catch {
       setError("Couldn't load the monthly review — the request failed or timed out.");
     } finally {
@@ -229,7 +240,7 @@ export function MonthlyReview({ clientId, month }: { clientId: string; month: st
           </>
         ) : null}
 
-        {(variance?.notes.length ?? 0) > 0 && (
+        {(variance?.notes ?? []).length > 0 && (
           <div className="px-5 py-3 border-t border-ps-border bg-ps-bg space-y-1">
             {variance!.notes.map((n, i) => (
               <p key={i} className="text-xs text-ps-label flex gap-2">
@@ -242,7 +253,7 @@ export function MonthlyReview({ clientId, month }: { clientId: string; month: st
       </section>
 
       {/* ── What each department costs ─────────────────────────────────── */}
-      {departments && departments.rows.length > 0 && (
+      {departments && (departments.rows ?? []).length > 0 && (
         <section className="bg-ps-surface border border-ps-border rounded-xl overflow-hidden">
           <div className="px-5 py-3 bg-ps-bg border-b border-ps-border flex items-center gap-2">
             <Building2 size={14} className="text-ps-label" />
@@ -301,6 +312,14 @@ export function MonthlyReview({ clientId, month }: { clientId: string; month: st
       )}
 
       {/* ── The bank advice ────────────────────────────────────────────── */}
+      {adviceUnread && (
+        <div role="status" className="rounded-xl border border-state-attention-border bg-state-attention-surface p-4">
+          <h3 className="font-semibold text-ps-ink text-sm">Bank payment advice</h3>
+          <p className="text-2xs text-ps-label mt-1">
+            The advice could not be read, so it is not shown: {adviceUnread} It is not empty; open this month again to read it.
+          </p>
+        </div>
+      )}
       {advice && (
         <section className="bg-ps-surface border border-ps-border rounded-xl overflow-hidden">
           <div className="px-5 py-3 bg-ps-bg border-b border-ps-border flex items-center gap-2">

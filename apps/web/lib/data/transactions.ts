@@ -16,7 +16,9 @@
  *
  * All amounts remain integer paise. Nothing here divides by 100.
  */
-import { api } from "@/lib/api";
+import { api, type ReportPartyTotals } from "@/lib/api";
+
+export type { ReportPartyTotals };
 
 export interface Transaction {
   id: string;
@@ -74,10 +76,22 @@ export interface GSTSummary {
  * on `transaction_type` themselves afterwards, and a server-side filter nobody
  * used was one more thing to keep in step.
  */
-export async function getTransactions(clientId?: string): Promise<Transaction[]> {
-  const res = await api.reports.transactions(clientId);
+/** `dateFrom`/`dateTo` bound the transaction date on the SERVER (inclusive, ISO days); absent, no bound. */
+export async function getTransactions(clientId?: string, dateFrom?: string, dateTo?: string): Promise<Transaction[]> {
+  const res = await api.reports.transactions(clientId, dateFrom, dateTo);
   if (!res.success) throw new Error(res.error ?? "Failed to load transactions");
   return res.data.transactions;
+}
+
+/**
+ * The P&L Statement of /reports: taxable value of the counted sales invoices and purchase bills by party, with both
+ * totals and the net, summed by the server for the caller's own clients in the window given (POST-A-469). The screen
+ * draws it and adds nothing.
+ */
+export async function getPartyTotals(clientId?: string, dateFrom?: string, dateTo?: string): Promise<ReportPartyTotals> {
+  const res = await api.reports.partyTotals(clientId, dateFrom, dateTo);
+  if (!res.success) throw new Error(res.error ?? "Couldn't read the P&L Statement.");
+  return res.data;
 }
 
 /** GSTR-1 / GSTR-3B working figures for one client-month (month: "YYYY-MM"). */

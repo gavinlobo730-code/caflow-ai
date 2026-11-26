@@ -32,6 +32,7 @@
  * All filing actions require explicit CA confirmation. Never auto-submit to Income Tax Portal.
  */
 
+import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
 import {
@@ -42,15 +43,12 @@ import {
   ChevronDown,
   ChevronUp,
   Plus,
-  X,
   CalendarDays,
   IndianRupee,
 } from "lucide-react";
 import { StatCard } from "@/components/stat-card";
-import { getSupabaseClient } from "@/lib/supabase/client";
-import { selectAll } from "@/lib/supabase/selectAll";
-import { getFirmId } from "@/lib/data/getFirmId";
 import { api, request, type ApiResp } from "@/lib/api";
+import { usePermissions } from "@/lib/auth/AuthContext";
 import { getClients } from "@/lib/data/clients";
 import { formatDate } from "@/lib/services/formatting";
 import type { Client } from "@/lib/types";
@@ -63,11 +61,13 @@ import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { Callout, GapList } from "@/components/ui/callout";
 import { YearPicker } from "@/components/ui/year-picker";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { todayIstISO } from "@/lib/dates/format";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -235,7 +235,7 @@ function BulkMarkFiledModal({
   const submitDisabled = loading || !filedDate || !allArnsFilled;
 
   async function handleSubmit() {
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError); return; }
     if (submitDisabled || remaining.length === 0) return;
     setLoading(true);
     setError(null);
@@ -296,21 +296,26 @@ function BulkMarkFiledModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg">
-        <div className="flex items-center justify-between px-6 py-5 border-b border-ps-border">
-          <h3 className="text-base font-semibold text-ps-ink">
-            Mark {pending.length} ITR Filing{pending.length === 1 ? "" : "s"} as Filed
-          </h3>
-          <button
-            onClick={onClose}
-            className="text-ps-hint hover:text-ps-label transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="px-6 py-5 space-y-4">
+    // The shared dialog (POST-A-130). Its close (Escape, a click beside it, its ×) and its Cancel are held while the filings are out: the
+    // hand-built one could be closed over requests still in flight, which then landed on nothing.
+    <Modal title={`Mark ${pending.length} ITR Filing${pending.length === 1 ? "" : "s"} as Filed`} maxWidthClass="max-w-lg" onClose={() => { if (!loading) onClose(); }}
+      footer={<>
+        <button
+          onClick={onClose}
+          disabled={loading}
+          className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors disabled:opacity-50"
+        >
+          Cancel
+        </button>
+        <Button variant="plain" size="none"
+          onClick={handleSubmit}
+          disabled={submitDisabled}
+          className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-50 transition-colors"
+        >
+          {loading ? "Saving…" : `Confirm Filing (${remaining.length})`}
+        </Button>
+      </>}>
+        <div className="space-y-4">
           {/* Warning banner — CA Review */}
           <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-4 py-3">
             <p className="text-xs font-semibold text-state-attention uppercase tracking-wide">
@@ -394,24 +399,7 @@ function BulkMarkFiledModal({
 
           {error && <Callout tone="problem">{error}</Callout>}
         </div>
-
-        <div className="px-6 py-4 border-t border-ps-border flex gap-3 justify-end">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors"
-          >
-            Cancel
-          </button>
-          <Button variant="plain" size="none"
-            onClick={handleSubmit}
-            disabled={submitDisabled}
-            className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-50 transition-colors"
-          >
-            {loading ? "Saving…" : `Confirm Filing (${remaining.length})`}
-          </Button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -423,6 +411,7 @@ const TABS = ["ITR Status", "Advance Tax"] as const;
 type Tab = (typeof TABS)[number];
 
 export default function IncomeTaxPage() {
+  const { can } = usePermissions();
   const [activeTab, setActiveTab] = useState<Tab>("ITR Status");
   const [entries, setEntries] = useState<ITREntry[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
@@ -476,21 +465,16 @@ export default function IncomeTaxPage() {
     setLoading(true);
     setError(null);
     try {
-      const [clientList, firmId] = await Promise.all([getClients(), getFirmId()]);
+      const clientList = await getClients();
       setClients(clientList);
 
-      const sb = getSupabaseClient();
-      // Every ITR row of every year for every client; paged so a long-running book is not cut at ~1000 rows.
-      const { data, error: dbErr } = await selectAll(() => sb
-        .from("compliance_calendar")
-        .select("*, clients(client_name, pan, entity_type)")
-        .eq("firm_id", firmId)
-        .eq("compliance_type", "ITR")
-        .order("due_date")
-        .order("id"));
-
-      if (dbErr) throw new Error(dbErr.message);
-      setEntries((data ?? []) as ITREntry[]);
+      // The calendar's ITR rows through the API (POST-A-208): every year, every client the caller may reach, all pages, each with its
+      // client's name, PAN and entity type. The list is still the calendar, not the obligation store, and the sentence under the heading
+      // says so.
+      const res = await api.compliance.trackerRows("itr");
+      if (!res.success) throw new Error(res.error ?? "The income-tax filings could not be read.");
+      const data = res.data ?? [];
+      setEntries(data as unknown as ITREntry[]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load data");
     } finally {
@@ -621,7 +605,7 @@ export default function IncomeTaxPage() {
   }
 
   async function handleAddSubmit() {
-    if (addDates.first) { setAddError(addDates.first); return; }
+    if (addDates.first) { addDates.refuseWith(setAddError); return; }
     if (!addForm.client_id) {
       setAddError("Please select a client");
       return;
@@ -633,27 +617,22 @@ export default function IncomeTaxPage() {
         setAddError("No due date yet — pick a client so the due date can be computed.");
         return;
       }
-      const firmId = await getFirmId();
       const fy = addForm.financial_year as FY;
       const period = FY_PERIOD[fy];
 
-      const sb = getSupabaseClient();
-      // compliance_type is CHECK-constrained to the bare "ITR" — there is no
-      // per-form value in the constraint's vocabulary. The form the CA picked
-      // goes in `notes`, the only column that can carry it without a
-      // migration; itrFormLabel() reads it back everywhere it is displayed.
-      const { error: insertErr } = await sb.from("compliance_calendar").insert({
-        firm_id: firmId,
+      // compliance_type is CHECK-constrained to the bare "ITR" — there is no per-form value in the constraint's vocabulary. The form the CA
+      // picked goes in `notes`, the only column that can carry it without a migration; itrFormLabel() reads it back everywhere it is
+      // displayed. Added through the API (POST-A-208): the route asks `compliance_record:write` and the client, writes an audit event and
+      // answers a second return for the same year in a sentence.
+      const added = await api.compliance.addCalendarEntry({
         client_id: addForm.client_id,
         compliance_type: "ITR",
         notes: addForm.itr_form,
         period_start: period.start,
         period_end: period.end,
         due_date: addForm.due_date,
-        filing_status: "pending",
       });
-
-      if (insertErr) throw new Error(insertErr.message);
+      if (!added.success) throw new Error(added.error ?? "The ITR deadline was not added.");
       setShowAddModal(false);
       setAddForm({ client_id: "", itr_form: "ITR-1", financial_year: "2025-26", due_date: "" });
       setDueDate(null);
@@ -673,7 +652,7 @@ export default function IncomeTaxPage() {
 
   async function handleMarkFiled() {
     if (!filedModal) return;
-    if (filedDates.first) { setFiledError(filedDates.first); return; }
+    if (filedDates.first) { filedDates.refuseWith(setFiledError); return; }
     if (!filedForm.arn.trim()) {
       setFiledError("Acknowledgement number is required");
       return;
@@ -866,13 +845,16 @@ export default function IncomeTaxPage() {
         title="Income Tax"
         subtitle="ITR Tracking — IT Act Section 139"
         actions={
-          <button
-            onClick={openAddModal}
-            className="flex items-center gap-2 px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Add ITR Deadline
-          </button>
+          // The add route asks `compliance_record` write (POST-A-208), so the button is offered only to someone it admits.
+          can("compliance_record", "write") ? (
+            <button
+              onClick={openAddModal}
+              className="flex items-center gap-2 px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Add ITR Deadline
+            </button>
+          ) : undefined
         }
       >
         {/* Sub-navigation */}
@@ -1237,38 +1219,37 @@ export default function IncomeTaxPage() {
       {/* MODAL: Add ITR Deadline                                             */}
       {/* ================================================================== */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-ps-border">
-              <h3 className="text-base font-semibold text-ps-ink">
-                Add ITR Deadline
-              </h3>
-              <button
-                onClick={() => setShowAddModal(false)}
-                className="text-ps-hint hover:text-ps-label transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="px-6 py-5 space-y-4">
+        <Modal title="Add ITR Deadline" maxWidthClass="max-w-md" onClose={() => { if (!actionInFlight) setShowAddModal(false); }}
+          footer={<>
+            <button disabled={actionInFlight}
+              onClick={() => setShowAddModal(false)}
+              className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            {/* Also waits on the due-date lookup: saving mid-fetch would
+                either store a blank date or store the one left over from the
+                previously-selected client. */}
+            <Button variant="plain" size="none"
+              onClick={handleAddSubmit}
+              disabled={actionInFlight || dueDateLoading}
+              className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-50 transition-colors"
+            >
+              {addLoading ? "Adding…" : "Add Deadline"}
+            </Button>
+          </>}>
+            <div className="space-y-4">
               {/* Client */}
               <div>
                 <label className="block text-xs font-medium text-ps-body mb-1.5">
                   Client <span className="text-state-problem">*</span>
                 </label>
-                <select aria-label="Client"
+                <ClientLookup ariaLabel="Client"
+                  clients={clients}
                   value={addForm.client_id}
-                  onChange={(e) => handleAddFormChange("client_id", e.target.value)}
-                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand"
-                >
-                  <option value="">Select client…</option>
-                  {clients.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.client_name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(id) => handleAddFormChange("client_id", id)}
+                  placeholder="Select client…"
+                />
               </div>
 
               {/* ITR Form */}
@@ -1322,9 +1303,9 @@ export default function IncomeTaxPage() {
                 />
 
                 {dueDateLoading && (
-                  <p className="mt-1.5 text-xs text-ps-hint">
+                  <LoadingRegion label="Computing the due date" className="mt-1.5 text-xs text-ps-hint">
                     Computing the due date…
-                  </p>
+                  </LoadingRegion>
                 )}
 
                 {!dueDateLoading && !dueDate && !dueDateError && (
@@ -1359,27 +1340,7 @@ export default function IncomeTaxPage() {
 
               {addError && <Callout tone="problem">{addError}</Callout>}
             </div>
-
-            <div className="px-6 py-4 border-t border-ps-border flex gap-3 justify-end">
-              <button
-                onClick={() => setShowAddModal(false)}
-                className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors"
-              >
-                Cancel
-              </button>
-              {/* Also waits on the due-date lookup: saving mid-fetch would
-                  either store a blank date or store the one left over from the
-                  previously-selected client. */}
-              <Button variant="plain" size="none"
-                onClick={handleAddSubmit}
-                disabled={actionInFlight || dueDateLoading}
-                className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-50 transition-colors"
-              >
-                {addLoading ? "Adding…" : "Add Deadline"}
-              </Button>
-            </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ================================================================== */}
@@ -1387,21 +1348,23 @@ export default function IncomeTaxPage() {
       {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT                            */}
       {/* ================================================================== */}
       {filedModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-ps-border">
-              <h3 className="text-base font-semibold text-ps-ink">
-                Mark ITR as Filed
-              </h3>
-              <button
-                onClick={() => setFiledModal(null)}
-                className="text-ps-hint hover:text-ps-label transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="px-6 py-5 space-y-4">
+        <Modal title="Mark ITR as Filed" maxWidthClass="max-w-md" onClose={() => { if (!actionInFlight) setFiledModal(null); }}
+          footer={<>
+            <button disabled={actionInFlight}
+              onClick={() => setFiledModal(null)}
+              className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <Button variant="plain" size="none"
+              onClick={handleMarkFiled}
+              disabled={actionInFlight}
+              className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-50 transition-colors"
+            >
+              {filedLoading ? "Saving…" : "Confirm Filing"}
+            </Button>
+          </>}>
+            <div className="space-y-4">
               {/* Warning banner — CA Review */}
               <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-4 py-3">
                 <p className="text-xs font-semibold text-state-attention uppercase tracking-wide">
@@ -1458,24 +1421,7 @@ export default function IncomeTaxPage() {
 
               {filedError && <Callout tone="problem">{filedError}</Callout>}
             </div>
-
-            <div className="px-6 py-4 border-t border-ps-border flex gap-3 justify-end">
-              <button
-                onClick={() => setFiledModal(null)}
-                className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors"
-              >
-                Cancel
-              </button>
-              <Button variant="plain" size="none"
-                onClick={handleMarkFiled}
-                disabled={actionInFlight}
-                className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-50 transition-colors"
-              >
-                {filedLoading ? "Saving…" : "Confirm Filing"}
-              </Button>
-            </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ================================================================== */}

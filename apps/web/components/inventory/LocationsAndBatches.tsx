@@ -21,6 +21,7 @@
  *   the server's.
  */
 import { useCallback, useEffect, useState } from "react";
+import { useFirstRead } from "@/lib/loading/firstRead";
 import { Plus, AlertCircle, Info, Warehouse, ArrowRightLeft, Trash2, Boxes, RotateCcw } from "lucide-react";
 import { request } from "@/lib/api";
 import { formatPaise } from "@/lib/services/formatting";
@@ -30,12 +31,14 @@ import { TableSkeleton } from "@/components/ui/skeleton";
 import { Callout } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { formatDate } from "@/lib/dates/format";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
+import { usePermissions } from "@/lib/auth/AuthContext";
 
 interface Godown {
   id: string;
@@ -98,18 +101,23 @@ export function LocationsAndBatches({ clientId, asOf, items }: {
    *  to populate the Add Lot / transfer item pickers. */
   items: StockItem[];
 }) {
+  // Adding or closing a godown, adding a lot and moving stock ask `accounting` `write`, a Manager's or a Partner's; they were
+  // drawn to an Executive, whose `accounting` is read only, and came back refused (POST-A-455).
+  const mayWriteBooks = usePermissions().can("accounting", "write");
   const [godowns, setGodowns] = useState<Godown[]>([]);
   const [unallocatedMeans, setUnallocatedMeans] = useState("");
   const [detail, setDetail] = useState<DetailRow[]>([]);
   const [expiry, setExpiry] = useState<Expiry | null>(null);
   const [batches, setBatches] = useState<Batch[]>([]);
   const [addingBatch, setAddingBatch] = useState(false);
-  const [loading, setLoading] = useState(true);
+  // The skeleton for the first read of this client and day only (POST-A-400): Move stock records a transfer and asks for
+  // this read again (`onDone={load}`), and a read that replaced the section unmounted the panel mid-answer.
+  const { loading, reader: firstRead } = useFirstRead(`${clientId}|${asOf}`);
   const [error, setError] = useState("");
   const [adding, setAdding] = useState(false);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    const read = firstRead.begin();
     try {
       const [g, d, e, b] = await Promise.all([
         request<{ success: boolean; data: { godowns: Godown[]; unallocated_means: string }; error: string | null }>(
@@ -121,6 +129,7 @@ export function LocationsAndBatches({ clientId, asOf, items }: {
         request<{ success: boolean; data: Batch[]; error: string | null }>(
           `/api/inventory/batches?client_id=${encodeURIComponent(clientId)}`),
       ]);
+      if (!firstRead.isLatest(read)) return;   // a later read has been asked for: its answer is the one to show
       if (!g.success || !d.success || !e.success || !b.success) {
         throw new Error(g.error ?? d.error ?? e.error ?? b.error ?? "Couldn't load.");
       }
@@ -130,12 +139,15 @@ export function LocationsAndBatches({ clientId, asOf, items }: {
       setExpiry(objectWithLists<Expiry>(e.data, "bucket_order", "notes", "rows"));
       setBatches(b.data ?? []);
       setError("");
+      firstRead.landed(read);
     } catch (err) {
+      if (!firstRead.isLatest(read)) return;
+      firstRead.failed(read);
       setError(err instanceof Error ? err.message : "Couldn't load stock locations.");
     } finally {
-      setLoading(false);
+      firstRead.settled(read);
     }
-  }, [clientId, asOf]);
+  }, [clientId, asOf, firstRead]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -207,10 +219,12 @@ export function LocationsAndBatches({ clientId, asOf, items }: {
           <h3 className="text-sm font-semibold text-ps-ink flex items-center gap-2">
             <Warehouse size={15} className="text-blue-600" /> Godowns
           </h3>
-          <button onClick={() => setAdding(true)}
-            className="text-xs px-3 py-1.5 rounded-lg bg-brand text-white flex items-center gap-1">
-            <Plus size={12} /> Add godown
-          </button>
+          {mayWriteBooks && (
+            <button onClick={() => setAdding(true)}
+              className="text-xs px-3 py-1.5 rounded-lg bg-brand text-white flex items-center gap-1">
+              <Plus size={12} /> Add godown
+            </button>
+          )}
         </div>
         {godowns.length === 0 ? (
           <EmptyState
@@ -270,17 +284,17 @@ export function LocationsAndBatches({ clientId, asOf, items }: {
                         .reduce((t, r) => t + r.value_paise, 0))}
                     </td>
                     <td className="px-5 py-2 text-right">
-                      {g.is_active ? (
+                      {mayWriteBooks && g.is_active ? (
                         <Button variant="plain" size="none" spinner={false} onClick={() => closeGodown(g)} aria-label={`Close ${g.name}`}
                           className="p-1 rounded hover:bg-state-problem-hover text-red-600">
                           <Trash2 size={12} />
                         </Button>
-                      ) : (
+                      ) : mayWriteBooks ? (
                         <Button variant="plain" size="none" spinner={false} onClick={() => reopenGodown(g)} aria-label={`Reopen ${g.name}`}
                           className="p-1 rounded hover:bg-ps-hover text-ps-label">
                           <RotateCcw size={12} />
                         </Button>
-                      )}
+                      ) : null}
                     </td>
                   </tr>
                 ))}
@@ -342,10 +356,12 @@ export function LocationsAndBatches({ clientId, asOf, items }: {
           <h3 className="text-sm font-semibold text-ps-ink flex items-center gap-2">
             <Boxes size={15} className="text-blue-600" /> Lots
           </h3>
-          <button onClick={() => setAddingBatch(true)}
-            className="text-xs px-3 py-1.5 rounded-lg bg-brand text-white flex items-center gap-1">
-            <Plus size={12} /> Add lot
-          </button>
+          {mayWriteBooks && (
+            <button onClick={() => setAddingBatch(true)}
+              className="text-xs px-3 py-1.5 rounded-lg bg-brand text-white flex items-center gap-1">
+              <Plus size={12} /> Add lot
+            </button>
+          )}
         </div>
         {batches.length === 0 ? (
           <EmptyState
@@ -464,7 +480,7 @@ export function LocationsAndBatches({ clientId, asOf, items }: {
         </div>
       )}
 
-      {godowns.filter((g) => g.is_active).length >= 2 && (
+      {godowns.filter((g) => g.is_active).length >= 2 && mayWriteBooks && (
         <TransferPanel clientId={clientId} godowns={godowns.filter((g) => g.is_active)}
           detail={detail} onDone={load} />
       )}
@@ -639,12 +655,19 @@ function GodownModal({ clientId, onClose, onSaved }: {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-      <div className="bg-white rounded-xl w-full max-w-lg shadow-xl">
-        <div className="px-5 py-4 border-b border-ps-border">
-          <h3 className="text-sm font-semibold text-ps-ink">New godown</h3>
-        </div>
-        <div className="px-5 py-4 space-y-3">
+    // The shared dialog (POST-A-130). Its close is held while the godown is being created.
+    <Modal title="New godown" maxWidthClass="max-w-lg" onClose={() => { if (!saving) onClose(); }}
+      footer={<>
+        <button onClick={onClose} disabled={saving}
+          className="px-3 py-1.5 rounded-lg border border-ps-border text-xs text-ps-label disabled:opacity-50">
+          Cancel
+        </button>
+        <Button variant="plain" size="none" onClick={save} disabled={saving || !name.trim()}
+          className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs disabled:opacity-40">
+          Create
+        </Button>
+      </>}>
+        <div className="space-y-3">
           {error && <Callout tone="problem">{error}</Callout>}
           <label className="block text-xs">
             <span className="block text-ps-hint mb-1">Name</span>
@@ -683,18 +706,7 @@ function GodownModal({ clientId, onClose, onSaved }: {
             Stock movements default to this godown
           </label>
         </div>
-        <div className="px-5 py-3 border-t border-ps-border flex justify-end gap-2">
-          <button onClick={onClose} disabled={saving}
-            className="px-3 py-1.5 rounded-lg border border-ps-border text-xs text-ps-label disabled:opacity-50">
-            Cancel
-          </button>
-          <Button variant="plain" size="none" onClick={save} disabled={saving || !name.trim()}
-            className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs disabled:opacity-40">
-            Create
-          </Button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -741,12 +753,20 @@ function BatchModal({ clientId, items, onClose, onSaved }: {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-      <div className="bg-white rounded-xl w-full max-w-lg shadow-xl">
-        <div className="px-5 py-4 border-b border-ps-border">
-          <h3 className="text-sm font-semibold text-ps-ink">New lot</h3>
-        </div>
-        <div className="px-5 py-4 space-y-3">
+    // The shared dialog (POST-A-130), which is bounded by the window and scrolls with its buttons in a footer that stays in view, so on a
+    // short window they stay on the screen (POST-A-395). Its close is held while the lot is being created.
+    <Modal title="New lot" maxWidthClass="max-w-lg" onClose={() => { if (!saving) onClose(); }}
+      footer={<>
+        <button onClick={onClose} disabled={saving}
+          className="px-3 py-1.5 rounded-lg border border-ps-border text-xs text-ps-label disabled:opacity-50">
+          Cancel
+        </button>
+        <Button variant="plain" size="none" onClick={save} disabled={saving || !item || !batchNo.trim()}
+          className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs disabled:opacity-40">
+          Create
+        </Button>
+      </>}>
+        <div className="space-y-3">
           {(refusal.shown ?? error) && <Callout tone="problem">{refusal.shown ?? error}</Callout>}
           <label className="block text-xs">
             <span className="block text-ps-hint mb-1">Item</span>
@@ -775,17 +795,6 @@ function BatchModal({ clientId, items, onClose, onSaved }: {
             </label>
           </div>
         </div>
-        <div className="px-5 py-3 border-t border-ps-border flex justify-end gap-2">
-          <button onClick={onClose} disabled={saving}
-            className="px-3 py-1.5 rounded-lg border border-ps-border text-xs text-ps-label disabled:opacity-50">
-            Cancel
-          </button>
-          <Button variant="plain" size="none" onClick={save} disabled={saving || !item || !batchNo.trim()}
-            className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs disabled:opacity-40">
-            Create
-          </Button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

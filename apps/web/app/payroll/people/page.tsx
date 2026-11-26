@@ -22,6 +22,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useFirstRead } from "@/lib/loading/firstRead";
 import {
   Users, Plus, X, AlertCircle, Upload, Pencil, Ban, Trash2, RotateCcw,
   ShieldAlert, } from "lucide-react";
@@ -39,13 +40,14 @@ import {
   apiErr,
   type Client, type Employee,
 } from "@/components/payroll/shared";
-import { EMPLOYEE_IMPORT_COLUMNS as SERVER_COLUMNS } from "@/lib/imports/mappers";
+import { EMPLOYEE_IMPORT_COLUMNS as SERVER_COLUMNS, EMPLOYEE_REIMPORT_NOTE } from "@/lib/imports/mappers";
 import { AddEmployeeModal } from "@/components/payroll/AddEmployeeModal";
 import { PortalAccessModal } from "@/components/payroll/PortalAccessModal";
 import { ExceptionIndexTab } from "@/components/payroll/ExceptionIndex";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { PagePlaceholder } from "@/components/ui/page-frame";
 
 /** The importable columns: the server-mirrored list, plus the one column only a
  *  FIRM-wide import needs.
@@ -65,7 +67,9 @@ const PEOPLE_IMPORT_COLUMNS = [
 export default function PayrollPeoplePage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [loading, setLoading] = useState(true);
+  // "Loading the roster…" for the first read only (POST-A-400): the portal access dialog changes an employee's access and
+  // asks for this read again (`onChanged={load}`), and a read that replaced the page unmounted the dialog and its answer.
+  const { loading, reader: firstRead } = useFirstRead("roster");
   // A failed read must not render as an empty roster — that is indistinguishable
   // from a firm with no employees, and it is the mistake M17 fixed across this
   // module.
@@ -74,14 +78,16 @@ export default function PayrollPeoplePage() {
   const [showImportEmp, setShowImportEmp] = useState(false);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    const read = firstRead.begin();
     setLoadError(null);
     try {
       const [cRes, eRes] = await Promise.all([
         api.clients.list(),
         api.payroll.listEmployees() as Promise<ApiResp<Employee[]>>,
       ]);
+      if (!firstRead.isLatest(read)) return;   // a later read has been asked for: its answer is the one to show
       if (!cRes.success || !eRes.success) {
+        firstRead.failed(read);
         setLoadError(cRes.error ?? eRes.error ?? "Could not load the roster.");
         return;
       }
@@ -92,12 +98,15 @@ export default function PayrollPeoplePage() {
       // that and neither could tsc, because the cast asserted it away.
       setClients(arrayOrEmpty<Client>(cRes.data?.clients));
       setEmployees(eRes.data ?? []);
+      firstRead.landed(read);
     } catch (e) {
+      if (!firstRead.isLatest(read)) return;
+      firstRead.failed(read);
       setLoadError(apiErr(e, "Could not load the roster."));
     } finally {
-      setLoading(false);
+      firstRead.settled(read);
     }
-  }, []);
+  }, [firstRead]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -214,7 +223,7 @@ export default function PayrollPeoplePage() {
       imported: created,
       errors,
       skipped: updated,
-      skippedDetail: updated > 0 ? [`${updated} existing employee(s) updated from their employee code`] : undefined,
+      skippedDetail: updated > 0 ? [`${updated} existing employee(s) updated from their employee code`, EMPLOYEE_REIMPORT_NOTE] : undefined,
     };
   }
 
@@ -290,7 +299,7 @@ export default function PayrollPeoplePage() {
   // ── Payslips table (shared DataTable) ──────────────────────────────────────
 
   if (loading) {
-    return <div className="min-h-screen bg-ps-bg flex items-center justify-center"><p className="text-ps-label">Loading the roster…</p></div>;
+    return <PagePlaceholder label="Loading the roster" shape="table" />;
   }
 
   if (loadError) {
@@ -318,7 +327,7 @@ export default function PayrollPeoplePage() {
           back={{ href: "/payroll", label: "Payroll" }}
           icon={<Users size={22} className="text-blue-600" />}
           title="People"
-          subtitle="Every employee across every client, and what the statutory outputs still need from them."
+          subtitle="Every employee of the clients you can see, and what the statutory outputs still need from them."
           className="mb-6"
         />
 

@@ -37,7 +37,6 @@ import {
   AlertCircle,
   Info,
   CheckCircle,
-  Loader2,
   Download,
   RefreshCw,
 } from "lucide-react";
@@ -50,6 +49,7 @@ import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 import { api } from "@/lib/api";
 import { objectWithLists } from "@/lib/api/shape";
 import { PageHeader } from "@/components/ui/page-header";
+import { SectionPlaceholder } from "@/components/ui/page-frame";
 
 // ─── The server's shape ───────────────────────────────────────────────────────
 
@@ -374,7 +374,7 @@ export default function RisksPage() {
               Refresh
             </button>
             {rows.length > 0 && (
-              <button onClick={exportCsv} className="flex items-center gap-2 rounded-lg bg-brand px-3 py-2 text-sm font-medium text-white hover:bg-brand-dark">
+              <button onClick={exportCsv} disabled={!!pageError || loading} className="disabled:opacity-40 flex items-center gap-2 rounded-lg bg-brand px-3 py-2 text-sm font-medium text-white hover:bg-brand-dark">
                 <Download size={14} />
                 Export CSV
               </button>
@@ -384,7 +384,7 @@ export default function RisksPage() {
       />
 
       {loading ? (
-        <div className="flex items-center justify-center py-24"><Loader2 className="h-7 w-7 animate-spin text-blue-500" /></div>
+        <SectionPlaceholder label="Loading risks" shape="dashboard" rows={6} cols={6} />
       ) : pageError ? (
         <div className="flex flex-col items-center justify-center py-24 text-center">
           <AlertCircle className="h-10 w-10 text-red-600 mb-3" />

@@ -1,0 +1,147 @@
+# Measures the marketing site with Lighthouse and axe, on demand only, and keeps the reports (POST-A-122).
+#
+# WHY IT EXISTS
+#     Stage 5 of docs/marketing/2026-09-16-website-redesign-plan.md ends with a final pass (Lighthouse, keyboard
+#     focus, contrast, alt text, mobile layout, CLS) and Stage 2 sets a performance budget. No Lighthouse run was
+#     recorded anywhere, the axe scan in the smoke walk covers apps/web only, and the hero is a 205 KB full-bleed
+#     picture loaded first, so LCP and CLS are the figures to take. A figure taken in the container the site is
+#     built in is not one: it has no GPU and renders in software, which the plan's own performance note says
+#     overstates the real cost. So the pass runs here, on a GitHub-hosted runner, and its reports are kept.
+#
+# WHAT IT DOES
+#     Builds apps/marketing at the commit it is started on and serves out/ with scripts/serve-out.mjs (gzip and
+#     the out/_headers headers, as Cloudflare Pages sends them; HTTP/1.1 and gzip where Pages has HTTP/2 and
+#     Brotli), or, with `target: live-site`, measures the deployed site instead. Then scripts/quality-pass.mjs runs
+#     Lighthouse on every page (read off the app/ tree) as a phone and as a desktop, and an axe scan (WCAG 2.0
+#     and 2.1, A and AA, the tags the product's own scan uses) on every page at a desktop and a phone window.
+#
+# WHAT IT LEAVES BEHIND
+#     * `marketing-quality-reports`, on every run that got that far, 30 days: each page's Lighthouse report as
+#       JSON and HTML, each axe result as JSON, and summary.md and summary.json;
+#     * the run's summary page: the plan's performance budget word for word, then LCP, CLS, TBT and the four
+#       Lighthouse scores per page and form factor, then what axe found. The plan states no LCP or CLS figure,
+#       so nothing is marked as passing it; the reader compares.
+#     It fails only when a measurement did not happen (a page Lighthouse could not load, an axe scan that did
+#     not run). What the measurements say does not fail it: there is no baseline yet.
+#
+# WHEN IT RUNS
+#     Only when a person starts it (Actions > Marketing quality pass > Run workflow), against the branch they
+#     choose. It is no trigger of a pull request or a push, it has no `paths:` filter and no schedule, and it is
+#     not a required check: a required check named here would be pending for ever on every pull request
+#     (CLAUDE.md, CI). No measured figure is written into the repository by it or about it.
+#
+# LIGHTHOUSE AND THE AXE SCANNER ARE ADDED IN THIS JOB AND NOWHERE ELSE, at exact versions, as the smoke walk adds
+# Playwright: none is in apps/marketing/package.json, so the site's install and Marketing CI pay nothing for them.
+# Dependabot does not watch an inline `pnpm add`; bump the versions here by hand. The browser is the runner's own
+# Chrome (Lighthouse and Playwright both take CHROME_PATH), so nothing is installed with apt.
+name: Marketing quality pass
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "What to measure: this commit's build, served on the runner, or the deployed site"
+        type: choice
+        options: ["this-build", "live-site"]
+        default: "this-build"
+
+concurrency:
+  group: marketing-quality-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # Exact, and published on 18-09-2026, two months before this file was written. It needs Node 22.19 or later,
+  # which setup-node's "22" gives.
+  LIGHTHOUSE_VERSION: "13.5.0"
+  # The two the smoke walk pins (.github/workflows/smoke-walk.yml), so the product and the site are scanned by
+  # the same axe. playwright-core is named because @axe-core/playwright takes it as a peer.
+  PLAYWRIGHT_VERSION: "1.63.0"
+  AXE_PLAYWRIGHT_VERSION: "4.13.0"
+  # The deployed marketing site: SITE_URL's default in apps/marketing/lib/site.ts (a test holds the two equal).
+  LIVE_SITE_URL: "https://practicesync.pages.dev"
+
+jobs:
+  measure:
+    name: Lighthouse and axe on the marketing site
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: "10"
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: "pnpm"
+          cache-dependency-path: apps/marketing/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: apps/marketing
+        run: pnpm install --frozen-lockfile
+
+      # In this job only. The edit to package.json and the lockfile lives and dies with this checkout.
+      - name: Add Lighthouse and the axe scanner to THIS job
+        working-directory: apps/marketing
+        run: >-
+          pnpm add --save-dev
+          "lighthouse@${LIGHTHOUSE_VERSION}"
+          "playwright-core@${PLAYWRIGHT_VERSION}"
+          "@axe-core/playwright@${AXE_PLAYWRIGHT_VERSION}"
+
+      - name: Find the runner's Chrome
+        run: |
+          set -euo pipefail
+          chrome="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
+          if [ -z "$chrome" ]; then
+            echo "::error::No Chrome or Chromium on this runner; nothing can be measured."
+            exit 1
+          fi
+          "$chrome" --version
+          echo "CHROME_PATH=$chrome" >> "$GITHUB_ENV"
+
+      - name: Build the site
+        if: inputs.target != 'live-site'
+        working-directory: apps/marketing
+        run: pnpm build
+
+      # The server and the pass run in one step, so the server cannot outlive the job's interest in it or be
+      # missing when the pass starts.
+      - name: Measure this build
+        if: inputs.target != 'live-site'
+        working-directory: apps/marketing
+        run: |
+          set -euo pipefail
+          node scripts/serve-out.mjs --root out --port 4173 &
+          server=$!
+          trap 'kill "$server" 2>/dev/null || true' EXIT
+          for _ in $(seq 1 30); do
+            curl -fsS -o /dev/null http://127.0.0.1:4173/ && break
+            sleep 1
+          done
+          curl -fsS -o /dev/null http://127.0.0.1:4173/
+          node scripts/quality-pass.mjs --base http://127.0.0.1:4173 --out .qa
+
+      - name: Measure the deployed site
+        if: inputs.target == 'live-site'
+        working-directory: apps/marketing
+        run: node scripts/quality-pass.mjs --base "$LIVE_SITE_URL" --out .qa
+
+      - name: Keep the reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: marketing-quality-reports
+          path: apps/marketing/.qa/
+          # `.qa` is a hidden directory and upload-artifact leaves hidden files out by default, so the runs of 19-11-2026 said "No files were found
+          # with the provided path" and kept NO report at all, whatever the comment at the top of this file said (POST-A-507).
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 30

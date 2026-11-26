@@ -10,13 +10,13 @@ Written on 30 Sep 2026 from the per-area improvement plans. Each decision gates 
 - **Why it matters:** The free host sleeps and takes about 56 seconds to wake (measured by the repo's smoke script). Invites and sign-ups have already hit the shared mail rate limit. The repo cannot show which plans production is on, so please check the dashboards.
 - **Cost or time:** The repo's plan document says about $7 a month for the smallest paid API plan (medium confidence, not re-checked); that plan keeps 512 MB memory, so a bigger plan may be needed after a load test. Mail service price: unsure. Time: hours.
 - **Roadmap points it unlocks:** ops-01, frontend_ux-06, ops-07, ops-13, ops-20, market_and_trust-12, every demo and pilot
-- **Open ledger items carrying them:** PRE-C-005, POST-B-058, POST-B-002, POST-B-050, POST-B-048, POST-B-054
+- **Open ledger items carrying them:** PRE-C-005, POST-B-058, POST-B-002, POST-B-050, POST-B-048
 
 ### Decision 2. Confirm the Supabase plan and approve at least the level that keeps daily backups; decide on point-in-time recovery later; approve an independent nightly copy of the database and of uploaded files
 - **Why it matters:** The repo shows no evidence of a backup setting. Per Supabase documentation reported during the review, the Pro plan keeps 7 days of daily backups, point-in-time recovery is a separate add-on, and uploaded files are not included in database backups. A backup nobody has restored is an assumption.
 - **Cost or time:** Reported (searched, medium-high confidence) about $100 a month for seven days of point-in-time recovery plus a larger compute size; I would defer that until database size and a paying firm justify it. Storage for an independent copy: unsure, likely small. Time: days.
 - **Roadmap points it unlocks:** ops-02, ops-03, ops-04, security_privacy-31, a restore drill you can show a CA
-- **Open ledger items carrying them:** PRE-B-012, POST-B-064, POST-B-057
+- **Open ledger items carrying them:** POST-B-347, POST-B-064, POST-B-057 (15 Nov 2026: the plan is Free with no backups; the owner decided to upgrade when real clients' books go in)
 
 ### Decision 3. Name the legal entity that contracts with firms, a grievance and security contact, and retain Indian technology-law counsel for the privacy notice, terms and processor agreement
 - **Why it matters:** The footer links go to the support page, nothing is recorded about who the contracting entity is, and a processor agreement is what a CA firm needs before loading client data. The entity also decides GST invoicing, the software-developer registration and any later ERI choice.
@@ -34,15 +34,15 @@ Written on 30 Sep 2026 from the per-area improvement plans. Each decision gates 
 - **Why it matters:** Image extraction and scanned statements use a key the code calls free-tier. As recalled (not verified here), the unpaid Gemini terms allow the vendor to use submitted content to improve its products. Client invoices carry third-party GSTINs and amounts.
 - **Cost or time:** Usage-based; per-document cost is unmeasured, so meter it before promising unlimited AI. Time: days.
 - **Roadmap points it unlocks:** ai-13, security_privacy-13, market_and_trust-04, ai-14, ai-11 later, a truthful sub-processor list
-- **Open ledger items carrying them:** PRE-B-013, POST-B-080 (the in-app provider notice is built: it names the provider and says content leaves India, and says nothing about training or retention until this decision is made)
+- **Open ledger items carrying them:** POST-B-080 (DECIDED 16 Nov 2026: Gemini moved to Google's paid terms with Rs 500 prepaid and auto-reload off as a hard cap; Groq's zero data retention for inference switched on; recorded in docs/compliance/06) (the in-app provider notice is built: it names the provider and says content leaves India, and says nothing about training or retention until this decision is made)
 
 ### Decision 6. Choose the domain, one brand for app and website, and the sending domain
 - **Why it matters:** The app is served from a pages.dev address under the old name and the website from another pages.dev address. A firm handing over client books judges by the address and the email. Keep the old name in code; only the public address changes.
 - **Cost or time:** Domain and mailbox cost: unsure, small. Time: days, with a staged cutover because sign-in redirects and emailed links change.
 - **Roadmap points it unlocks:** market_and_trust-11, ops-20, security_privacy-10, better invite deliverability
-- **8 Oct 2026:** the sending-domain half is no longer parked. The Render dashboard shows the mail sender is Resend's shared test address, so mail cannot reach a client or a stranger; buying the domain and verifying it for mail is PRE-B-016 and comes before the demo (moved later on 9 Oct 2026, no fixed date). The hostname cutover (app, site and API on the new domain) stays after the demo.
+- **8 Oct 2026:** the sending-domain half is no longer parked. The Render dashboard shows the mail sender is Resend's shared test address, so mail cannot reach a client or a stranger; buying the domain and verifying it for mail is a pre-demo item, done on 15 Nov 2026 on a temporary demo domain, and comes before the demo (moved later on 9 Oct 2026, no fixed date). The hostname cutover (app, site and API on the new domain) stays after the demo.
 - **9 Oct 2026:** the owner has not bought the domain yet and will say when it is bought. Until then everything that depends on it is built against test doubles (a recording mail sender, the existing mock payment provider), so that buying the domain leaves only the connecting steps: DNS on Cloudflare, the Resend sending subdomain, Supabase custom SMTP and `EMAIL_FROM` in the Render dashboard. Nothing is hidden for want of it; a feature that cannot work without a registration or a paid account says 'coming soon' (ordinary product features) or 'planned' with what gates it (filing and registrations).
-- **Open ledger items carrying them:** PRE-B-016, POST-B-053, POST-B-054, POST-B-018
+- **Open ledger items carrying them:** POST-B-053, POST-B-018 (15 Nov 2026: the product serves at a temporary demo domain, app.jlgsfinance.com, and mail leaves from a verified Resend subdomain of it; the final brand and domain are POST-B-053)
 
 ### Decision 7. Decide whether to start the free registrations now and, separately, whether to reverse the 'no registrations' and prepare-only decisions for scoped API access only
 - **Why it matters:** The repo's own notes disagree: one says start this week, the plan says after a CA demo, the compliance document says none are being pursued. The free steps (software-developer registration on the income-tax portal, the e-invoice sandbox, the drafted enquiries) commit to nothing. Renting read access to the GST portal through an existing licensed provider needs a stored access token and an OTP step entered in the product, which current never-do tests forbid. Keep never-auto-submit.
@@ -72,7 +72,7 @@ Written on 30 Sep 2026 from the per-area improvement plans. Each decision gates 
 - **Why it matters:** Two billing systems and two deadline stores are live, so screens disagree and some fee income never reaches the firm's own books or GST return. Dropping an old table is a production migration.
 - **Cost or time:** No cash cost; weeks of work; a migration.
 - **Roadmap points it unlocks:** practice_management-13, practice_management-16, practice_management-18, practice_management-14 revenue figures
-- **Open ledger items carrying them:** POST-B-193, POST-B-194, POST-B-326, POST-B-150, POST-B-323
+- **Open ledger items carrying them:** POST-B-193, POST-B-326, POST-B-150, POST-B-323 (hourly billing, formerly carried here, was built and closed on 21 November 2026)
 
 ### Decision 12. Approve a staging copy (second database project and second API service) and a second engineer or reviewer
 - **Why it matters:** Migrations apply to the live database on merge with no rehearsal, and one human holds nearly all knowledge of the money path. Customers' accountants will ask about both.
@@ -93,7 +93,7 @@ Written on 30 Sep 2026 from the per-area improvement plans. Each decision gates 
 - **Open ledger items carrying them:** POST-B-147
 
 ### Decision 15. Approve moving the website hosting to Cloudflare Workers (decision D26) in your own Cloudflare account
-- **Why it matters:** A hidden limit of 100 rewrite rules already broke every reload of a client page once, and the budget now sits at 98 of 100. Workers removes the limit; it needs your account and a cutover.
+- **Why it matters:** A hidden limit of 100 rewrite rules already broke every reload of a client page once, and the budget now sits at 99 of 100, so one more client page goes past it. Workers removes the limit; it needs your account and a cutover.
 - **Cost or time:** About a day of work per the plan; no new subscription per the plan's own research (not re-checked). The repo says it is your call.
 - **Roadmap points it unlocks:** ops-26, frontend_ux-27, new client sections without breaking reloads
 - **Open ledger items carrying them:** POST-B-055

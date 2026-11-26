@@ -170,6 +170,8 @@ def ist_date_of(instant) -> "date | None":
         try:
             instant = datetime.fromisoformat(instant.strip().replace("Z", "+00:00"))
         except ValueError:
+            # Not a timestamp. A timestamptz column always reads back as ISO text, so a stored instant never lands here: this is an absent value or a
+            # hand-built one, and None says there is no instant.
             return None
     if not isinstance(instant, datetime):
         return instant if isinstance(instant, date) else None
@@ -205,6 +207,8 @@ def portal_day(value) -> "date | None":
         try:
             value = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
         except ValueError:
+            # Not a timestamp. A timestamptz column always reads back as ISO text, so a stored instant never lands here: this is an absent value or a
+            # hand-built one, and None says there is no instant.
             return None
     if isinstance(value, datetime):
         if value.tzinfo is None:
@@ -212,6 +216,7 @@ def portal_day(value) -> "date | None":
         try:
             return value.astimezone(IST).date()
         except OverflowError:
+            # An instant at the very edge of the calendar cannot be moved to the Indian zone: no day, rather than a wrong one.
             return None
     return value if isinstance(value, date) else None
 

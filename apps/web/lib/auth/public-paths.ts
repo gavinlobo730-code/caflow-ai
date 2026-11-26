@@ -29,9 +29,9 @@ export const PUBLIC_PREFIXES = [
  *
  * That tracker has since moved to /clients/onboarding (sweep-auth-and-public-05
  * — sharing a path prefix with an unrelated wizard was confusing on its own,
- * quite apart from this bug), and /onboarding/checklist is now a staff-only
- * redirect stub kept for bookmarks, still correctly excluded by being a
- * sub-route of an EXACT entry. `app/onboarding/` holds exactly one page today;
+ * quite apart from this bug), and the forwarding page left at
+ * /onboarding/checklist was deleted by POST-A-562; the address stays
+ * correctly excluded by being a sub-route of an EXACT entry. `app/onboarding/` holds exactly one page today;
  * a later multi-step wizard adds its steps here by name.
  */
 export const PUBLIC_EXACT = ["/onboarding"];

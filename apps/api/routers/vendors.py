@@ -14,7 +14,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, ValidationError
 from models.common import api_response
 from domain.party_duplicates import possible_duplicates, same_party_sentence
-from models.parties import VendorIn, VendorUpdateIn
+from models.clearable import drop_empty, patch_dict, removed_identifier_problem
+from models.parties import NON_RESIDENT_NEEDS_COUNTRY, PARTY_IDENTIFIERS, VendorIn, VendorUpdateIn
+from domain.tds.residency import NON_RESIDENT
 from domain.tds.section_rates import threshold_class_problem
 from domain.tds.no_pe_declaration import declarant_write
 from core.authz import assert_client_access, can_access_client
@@ -147,6 +149,10 @@ _VENDOR_DEPENDENCY_TABLES: list[tuple[str, str, str | None]] = [
     # without a word. UNDATED on purpose, as the recurring template is: they block on referential grounds and claim no statutory clock.
     ("cheques", "post_dated_cheques", None),
     ("certificates", "tds_lower_deduction_certificates", None),
+    # A deduction typed on the TDS screen that names this supplier (POST-A-078, migration 594). Its vendor_id is ON DELETE RESTRICT, so
+    # without this line a permanent delete would reach the database's refusal and come back as a general failure. DATED: it is a statutory
+    # register row (s.200, the 26Q), kept as the rest of the register is.
+    ("tds_register", "tds_deductions", None),
 ]
 # Tables with a deleted_at (soft-delete) column — a deleted row is no longer
 # a live accounting record and must not block a vendor's permanent delete.
@@ -632,6 +638,30 @@ def create_vendors_bulk(
 # registration order, so below it `GET /ap-aging` was answered by
 # get_vendor("ap-aging") — a lookup for a vendor with that id — and the
 # payables ageing never ran (tests/test_no_route_is_shadowed_by_an_earlier_one.py).
+@router.get("/recent")
+def recent_vendors(
+    client_id: str = Query(..., description="CA client ID — required"),
+    limit: int = Query(8, ge=1, le=20),
+    current_user: dict = Depends(rbac("client", "read")),
+):
+    """The vendors this client used most recently, newest first, for the top of the picker (POST-A-155).
+
+    Read off the client's own newest bills (`domain/party_recent`): ids only, each once, carried-over and deleted
+    documents left out. The picker reorders its list with them and pre-selects nothing.
+    """
+    assert_client_access(current_user, client_id)
+    if _USE_MOCK:
+        return api_response(True, {"ids": [], "documents_read": 0, "window": 0})
+    from core.supabase_client import get_supabase
+    from domain.party_recent import read_recent
+    try:
+        return api_response(True, read_recent(get_supabase(), "vendors",
+                                              current_user.get("firm_id"), client_id, limit))
+    except Exception as e:  # a failed read is said, never answered as "nobody used recently"
+        _logger.error("recent_vendors: %s", e)
+        return api_response(False, None, "The recently used suppliers could not be read.")
+
+
 @router.get("/ap-aging")
 def ap_aging(
     client_id: str = Query(..., description="CA client ID — required"),
@@ -698,6 +728,20 @@ def get_vendor(
         return api_response(False, None, "Unable to complete vendor operation. Please try again.")
 
 
+def _merged_residency_problem(sent: dict, stored: dict) -> Optional[str]:
+    """Why the row an edit would leave cannot be saved for want of a non-resident's country, or None (POST-A-399).
+
+    The model asks that a non-resident carries a country only of what one request sends, and the country is clearable, so a PATCH that clears it
+    alone over a stored non-resident would leave the row the model refuses (Form 27Q reports the country on every deductee row, and Rule 37BC's
+    relief from the s.206AA floor rests on it). Asked of the MERGED row, as TDS-30's limit class is, and only when the edit touches either field.
+    """
+    if "country_of_residence" not in sent and "residential_status" not in sent:
+        return None
+    status = sent.get("residential_status", stored.get("residential_status"))
+    country = sent.get("country_of_residence", stored.get("country_of_residence"))
+    return NON_RESIDENT_NEEDS_COUNTRY if status == NON_RESIDENT and not str(country or "").strip() else None
+
+
 @router.patch("/{vendor_id}")
 def update_vendor(
     vendor_id: str,
@@ -706,7 +750,10 @@ def update_vendor(
 ):
     """Partial update of vendor."""
     try:
-        payload = data.model_dump(exclude_none=True)
+        # POST-A-399. What the model names in CLEARABLE and the request sent empty is a clear (written NULL); a tax identifier sent empty over
+        # nothing writes nothing (never a stored ""), and one sent empty over a stored value is refused below, once the row is read.
+        model = data
+        payload = drop_empty(patch_dict(data), PARTY_IDENTIFIERS)
         payload["updated_at"] = datetime.now(timezone.utc).isoformat()
         # A validator only at the create door is one PATCH from being none
         # (GST-29). Editing a vendor is a place a human types a GSTIN.
@@ -720,6 +767,10 @@ def update_vendor(
         # can post a real GL journal, so the refusal must land before that fetch
         # even decides whether anything changed, let alone before the update.
         prior = _load_vendor_or_404(current_user, vendor_id)
+        # A tax identifier emptied over a stored one, or a stored non-resident left with no country (asked of the merged row, as TDS-30 below is).
+        _removed = removed_identifier_problem(model, prior, PARTY_IDENTIFIERS) or _merged_residency_problem(data, prior)
+        if _removed:
+            raise HTTPException(status_code=422, detail=_removed)
 
         # POST-A-401. A save that RECORDS the no-PE declaration (ticked and dated, changed or not yet attributed) names the
         # member who made it; one that takes the declaration off file empties the name. Asked of the stored row and the
@@ -799,7 +850,7 @@ def get_vendor_dependencies(
         opening = vend.get("opening_balance_paise") or 0
         if _USE_MOCK:
             deps = {"counts": {"bills": 0, "payments": 0, "debit_notes": 0, "credit_notes": 0, "recurring_templates": 0,
-                               "cheques": 0, "certificates": 0, "opening_balance": 1 if opening else 0},
+                               "cheques": 0, "certificates": 0, "tds_register": 0, "opening_balance": 1 if opening else 0},
                     "total": 1 if opening else 0, "has_any": bool(opening)}
         else:
             from core.supabase_client import get_supabase

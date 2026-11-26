@@ -13,21 +13,23 @@
 6. `coming-soon.md` is the register of everything the product tells a person is not there yet (planned, coming, not built, not switched on): one `COMING-NNN` row per statement with where it appears, its exact words, the gate, who acts and the ledger id. It is not a ledger and its rows are not counted. Add, edit or delete its row in the same commit as the wording, the feature or the switch; `apps/api/tests/test_the_coming_soon_register_is_well_formed.py` holds every row to the code and to this ledger.
 7. `checkpoint-2026-10-09.md` is a snapshot of where a long run of pull requests stopped: what landed (#711 to #726), the build waves not started and their order, the owner decisions still owed and the human steps. It is not a ledger and goes stale; the ledger is this file and the six section files.
    `checkpoint-2026-10-15.md` is the next one, written when the owner asked for a checkpoint: what landed in #727 to #750 (the security and truthfulness run of 14 and 15 October, migrations 483 to 498), what was staged but not yet pushed (the payroll signed-in write revoke, which landed on 17 October as migration 499), what this run created or narrowed, what is owed, and what was and was not verified. Same rule: a snapshot, not a ledger.
+   `checkpoint-2026-11-18.md` is the third, written when the owner's weekly usage limit ran out and he said to merge no half-finished work: what Train 6 (#1148) landed, the known gaps in it (two held-dialog items, since closed), the five wave-2 batches that were built and are NOT merged (their branches, heads, what each aims at and what is unfinished), the owner-list rows still to be written, and what to do first on resuming. Read it before touching wave 2 or the dialog sweep.
+   `plan-2026-11-19-thursday-friday.md` is the plan for the two days after it: the live sign-up and sign-out fixes and the eight Claude-alone before-demo items landed overnight, the forty-nine that need the owner worked through with him, then the deck for the CAs, with the message to paste into the next chat.
 8. `plan-going-faster-2026-10-09.md` is the plan the owner agreed on 9 October 2026 for working through this ledger faster (decision sheets, themed batches, a parked list). Its Step 0 (the decisions) was taken on 14 October 2026 and is recorded in the next two files; the rest follows.
 9. `decisions-taken-2026-10-14.md` records every decision Claude took on 14 October 2026 under the owner's standing instructions, with a one-line reason: what to build, what waits until someone asks, what stays as it is, and what is decided but blocked. **A line listed there as "build" is Claude-alone work whatever its id letter says**; a "keep as it is" decision closed its line (a line something else cites stays until that citation changes). Ids are not renumbered.
 10. `owner-list.md` is the owner's list in one place: the money decisions with a recommendation, the tasks only the owner can do, the statutory and legal points Claude will not assume (the exact question, the document needed, who can supply it, what stays unbuilt), the wait-until-asked items the goal probably needs, and two open questions. Refresh it, do not scatter it.
-11. `post-demo-parked.md` holds the after-demo items that wait until someone asks or until the work is sized down: low priority and sized weeks or months, or a title that starts "Watch for", "Hold" or "Keep", plus the items Claude decided on 14 October 2026 to leave until a client asks. They keep their ids and their letters, are **not** counted as open (the counts block shows both numbers), and a pre-demo item is never parked. To un-park one, move its line back to the section file for its letter and rerun the counts script.
+11. `post-demo-parked.md` is retired. It held 150 after-demo items that were kept out of the open count (the owner's rule of 9 October 2026 and Claude's decisions of 14 October 2026); on 18 November 2026 the owner withdrew the parking and all 150 were moved, unchanged and not re-triaged, into the section file for their letter, keeping their ids. Nothing is parked, so the counts block counts everything. A pre-demo item was never parked.
 
 ## The two axes
 
-**When — before or after the demo.** The demo is showing practising CAs the seeded demo firm on the live deployment. `docs/plan/THE-PLAN.md` says it has no fixed date (D16; **the owner set 1 November 2026 on 8 Oct and then moved the demo later on 9 Oct, so there is no fixed date and D16 stands again**), that the owner decided on 15 Sep to show CAs only once, after a verification session with five gates (Track 4), and that the commercial registrations (GSP, ERI, NIC, Third Party Software Utility; Track 5) start after it. **The pre/post split is a judgement, not a fact:** an item is *before* only if leaving it open could break, embarrass or mislead in front of a practising CA (sign-up and invites, mail, AI answering, a visible wrong number or false claim, a screen that fails, the cold start on the first load, portal behaviour) or it is a cheap check with a large risk reduction. Everything else is *after*. The first pre-demo item now asks for the new date and who attends; the agreed order is to build every item first, so nothing has been cut or frozen for a date.
+**When — before or after the demo.** The demo is showing practising CAs the seeded demo firm on the live deployment. `docs/plan/THE-PLAN.md` says it has no fixed date (D16; **the owner set 1 November 2026 on 8 Oct and then moved the demo later on 9 Oct, so there is no fixed date and D16 stands again; on 19 Nov 2026 at 19:41 IST the owner postponed the demo by one more week and has not yet fixed a date**), that the owner decided on 15 Sep to show CAs only once, after a verification session with five gates (Track 4), and that the commercial registrations (GSP, ERI, NIC, Third Party Software Utility; Track 5) start after it. **The pre/post split is a judgement, not a fact:** an item is *before* only if leaving it open could break, embarrass or mislead in front of a practising CA (sign-up and invites, mail, AI answering, a visible wrong number or false claim, a screen that fails, the cold start on the first load, portal behaviour) or it is a cheap check with a large risk reduction. Everything else is *after*. The first pre-demo item now asks for the new date and who attends; the agreed order is to build every item first, so nothing has been cut or frozen for a date. **Re-triaged on 18 November 2026 (the owner's request, so that Thursday starts with the before-demo items):** the test above was applied again to every open item, and an item that passed it but carries a `POST-` id or a new-finding id has the header token `· before demo`, because ids are never renumbered; the 15 triaged on 2 October keep their `PRE-` ids. Being important is not enough: a statutory reading that only a pilot firm will need, a feature, a refactor and a registration stay after. This is a judgement and is reversible one line at a time: delete the token to move an item back, add it to move one forward, and rerun the counts script.
 
 **Who — three buckets.**
 - **A — Mine** (`…-A-…`): Claude can do it alone: code, tests, docs, CI, a migration under the standing merge convention. No decision, credential, outside document or spend is needed.
 - **B — Ours** (`…-B-…`): the owner decides (or approves a spend) first and Claude builds afterwards; or it needs a live session together (rehearsals, single-use email links). The decision question, the options and Claude's recommendation are in the item.
 - **C — Yours alone** (`…-C-…`): only the owner or someone outside this container can do it: dashboards, accounts, secrets, payments, registrations, statutory documents a person has to fetch or read (this container's egress to `.gov.in` is blocked), per-client facts.
 
-Line format: `ID · theme · priority · effort [· UNSURE] [· live session] [· waits on owner] — **Title.** Detail. _When: reason._ — _Sources:_ where it came from — _Refs:_ ids`. Priority is `high` (wrong number, false claim, security or legal exposure, data loss, or gates many items), `normal` or `low`. Effort is Claude's estimate: hours, days, weeks, months.
+Line format: `ID · theme · priority · effort [· UNSURE] [· live session] [· waits on owner] [· before demo] — **Title.** Detail. _When: reason._ — _Sources:_ where it came from — _Refs:_ ids`. Priority is `high` (wrong number, false claim, security or legal exposure, data loss, or gates many items), `normal` or `low`. Effort is Claude's estimate: hours, days, weeks, months.
 
 **Id namespaces — they collide, so read carefully.** Lowercase `area-NN` ids (`gst-18`, `ops-08`) belong to the 30 Sep 2026 roadmap and are written `rm/gst-18` here. UPPERCASE ids (`GST-18`, `TDS-16`, `PAY-27`) belong to the earlier September audit and its status file. `D<n>` are decisions in `docs/plan/THE-PLAN.md`. `COMING-NNN` are rows of the coming-soon register, a fifth namespace; a row cites the ledger ids that hold its work. The same number means different things in the two audit namespaces: `rm/gst-18` is not `GST-18`.
 
@@ -38,24 +40,26 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] [�
 | file | items | what it holds |
 |---|---|---|
 | [pre-demo-A-mine.md](pre-demo-A-mine.md) | 2 | before the demo: Claude can do alone |
-| [pre-demo-B-ours.md](pre-demo-B-ours.md) | 14 | before the demo: owner decides, or a live session |
-| [pre-demo-C-yours.md](pre-demo-C-yours.md) | 6 | before the demo: only the owner can do |
-| [post-demo-A-mine.md](post-demo-A-mine.md) | 79 | after the demo: Claude can do alone |
-| [post-demo-B-ours.md](post-demo-B-ours.md) | 166 | after the demo: owner decides first, then Claude builds |
-| [post-demo-C-yours.md](post-demo-C-yours.md) | 197 | after the demo: only the owner or outsiders can do |
-| [new-findings.md](new-findings.md) | 25 | everything found from 6 November 2026 on, kept apart from the backlog above; worked after the backlog's Claude-alone items (the rule is at its head); NOT counted in the backlog's total |
-| [post-demo-parked.md](post-demo-parked.md) | 150 | after the demo: parked until someone asks or the work is sized down; NOT counted as open |
-| [decisions-and-strategy.md](decisions-and-strategy.md) | — | the 15 owner decisions with the items each gates, what is parked until after the demo, the 30 Sep strategy and staged roadmap |
+| [pre-demo-B-ours.md](pre-demo-B-ours.md) | 10 | before the demo: owner decides, or a live session |
+| [pre-demo-C-yours.md](pre-demo-C-yours.md) | 3 | before the demo: only the owner can do |
+| [post-demo-A-mine.md](post-demo-A-mine.md) | 77 | after the demo: Claude can do alone |
+| [post-demo-B-ours.md](post-demo-B-ours.md) | 275 | after the demo: owner decides first, then Claude builds |
+| [post-demo-C-yours.md](post-demo-C-yours.md) | 210 | after the demo: only the owner or outsiders can do |
+| [new-findings.md](new-findings.md) | 47 | everything found from 6 November 2026 on, kept apart from the backlog above; worked after the backlog's Claude-alone items (the rule is at its head); NOT counted in the backlog's total |
+| [post-demo-parked.md](post-demo-parked.md) | 0 | retired on 18 November 2026: every item that was parked is now an ordinary item in its own letter file |
+| [decisions-and-strategy.md](decisions-and-strategy.md) | — | the 15 owner decisions with the items each gates, what was parked until after the demo (now ordinary items), the 30 Sep strategy and staged roadmap |
 | [checked-closed.md](checked-closed.md) | — | what the sweep tested and found already done, answered or moot, with evidence, so nobody reopens it |
 | [deletion-plan.md](deletion-plan.md) | — | which audit and plan documents can be deleted, which must stay and why, and what must be done first |
 | [progress.md](progress.md) | — | the day by day numbers: the backlog open and closed, the new findings found and fixed (IST days) |
 | [coming-soon.md](coming-soon.md) | — | the register of every statement a person is shown that something is planned, coming or not switched on: where, its exact words, what gates it, who acts and the ledger id |
 
-**THE BACKLOG: 464 open items** (22 before the demo, 442 after); 11 after-demo items are `high` priority; 26 are UNSURE. A further **150 items are parked** (not counted above).
+**THE BACKLOG: 577 open items** (39 before the demo, 538 after); 11 after-demo items are `high` priority; 25 are UNSURE. Nothing is parked.
 
-**Who must act (backlog).** 81 items are Claude's alone to build, but 13 of them are marked `waits on owner` (a statutory reading or a document only the owner can supply, written in [owner-list.md](owner-list.md)), so 68 can be built now. 180 need the owner to decide first and 203 only the owner or someone outside this container can do. In all **396 of the 464 wait on the owner.**
+**Who must act (backlog).** 79 items are Claude's by their letter. Of those, **40 need no help and can be built now**; 24 wait on the owner for a document, a statutory reading or a decision of theirs (written in [owner-list.md](owner-list.md)), 11 need the owner's hands (a real browser or phone, a step on the live database, a working session with the owner, or something this container is refused) and 4 are held by the owner's own rule. 285 need the owner to decide first and 213 only the owner or someone outside this container can do. In all **537 of the 577 need the owner.**
 
-**NEW FINDINGS: 25 open** (0 before the demo, 25 after; 0 `high` priority; 0 UNSURE), counted apart from the backlog. 25 are Claude's alone to build (4 of them `waits on owner`, so 21 can be built now), 0 need the owner to decide first and 0 only the owner or someone outside this container can do. The day by day numbers are in [progress.md](progress.md).
+**NEW FINDINGS: 47 open** (10 before the demo, 37 after; 8 `high` priority; 6 UNSURE), counted apart from the backlog. 35 are Claude's by their letter (**15 need no help and can be built now**, 14 wait on a document or reading, 6 need the owner's hands, 0 are held), 8 need the owner to decide first and 4 only the owner or someone outside this container can do. The day by day numbers are in [progress.md](progress.md).
+
+**BEFORE THE DEMO (the list to start from).** 49 open items are before the demo (39 of the backlog, 10 of the new findings; the 15 triaged on 2 October 2026 carry a `PRE-` id and every item moved before the demo since carries the header token `before demo`, because ids are never renumbered). Of these, **2 Claude can do alone**, 1 are Claude's but wait on the owner for a document or reading, 5 need the owner's hands, 0 are held, 22 need the owner to decide first and 19 only the owner or someone outside this container can do. To list them: every line of the three `pre-demo-` files, and `grep -n "· before demo" docs/open-items/post-demo-*.md docs/open-items/new-findings.md`.
 
 <!-- counts:end -->
 
@@ -63,18 +67,11 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] [�
 
 Pre-demo items by suggested order. The first is the date; Render and Supabase dashboard checks and the fixes Claude can make come next, then the seeded-firm work, then the rehearsals, then the day-of wake-up.
 
-1. **PRE-C-001** (you) — Tell Claude the demo date once you set one, and who attends (the demo was moved later on 9 Oct; build everything first)
-2. **PRE-C-002** (you) — Check the Render dashboard variables
-3. **PRE-B-012** (decision) — Check the Supabase dashboard: plan, backups, password and auth limits
-4. **PRE-B-016** (decision) — Buy the domain and make mail leave: a verified Resend sender and Supabase sign-up mail
-5. **PRE-C-003** (you) — Confirm Resend delivers: verified domain, webhook, one real mail of each kind
+1. **PRE-C-001** (you) — Tell Claude the demo date once you set one, and who attends (the demo was moved later on 9 Oct, and by one more week on 19 Nov; build everything first)
 6. **PRE-B-004** (decision) — Decide which known gaps the demo fixes, shows or avoids
 9. **PRE-B-002** (decision) — Stop three screens promising what they do not do
-10. **PRE-B-013** (decision) — Look at which tier the Gemini and Groq keys are on
-11. **PRE-C-006** (you) — Check the website's support and onboarding promises are staffed
-25. **PRE-C-004** (you) — Redeploy the latest main on Render and record how it deploys
+11. **PRE-C-006** (you) — Check the website's onboarding promise is staffed
 29. **PRE-B-006** (live) — Rehearse sign-up and first Partner sign-in as a stranger would
-30. **PRE-B-014** (live) — Press Check now on Settings > AI status for Groq and Gemini
 31. **PRE-B-001** (live) — Seed the demo firm with seed_demo_firm.py --confirm and walk it
 32. **PRE-B-003** (live) — Check the seeded and a fresh firm can raise a first invoice
 33. **PRE-A-004** (Claude) — Run the seeded firm through GST, year-end and ITR; fill empty screens
@@ -96,7 +93,6 @@ Pre-demo items by suggested order. The first is the date; Render and Supabase da
 - **POST-B-259** (owner-decides) — Publish a real Privacy Notice and Terms of Service; footer links dead-end
 - **POST-B-295** (owner-decides) — Decide the Tally import rules (decision 8) before building ledger import
 - **POST-C-072** (owner-only) — Verify FY 2026-27 statutory figures and promote LATEST_VERIFIED_FY
-- **POST-C-120** (owner-only) — Check ECR EPF-contribution-remitted convention against a real EPFO sample
 - **POST-C-121** (owner-only) — Confirm Labour Code PF 50% wage-base reading and ceiling notifications
 - **POST-C-193** (owner-only) — Engage counsel for data incidents and DPDP opinions
 

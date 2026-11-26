@@ -7,9 +7,16 @@
 // that uploads the report still `pending` when the job ended, 55 minutes after it began, against an allowance of 45. A job that times out is cancelled, and its later steps never run.
 //
 // THE FIX, AND WHAT IT DOES NOT DO. The allowance is the OWNER'S MONEY and is not raised; the drive was cut to fit it, and it now stops ITSELF before the allowance. A night drives ONE zone of the matrix's
-// three and ONE third of the date group (`--zone rotate`; it was one half until POST-A-399, 7-11-2026, when ten browser scenarios that every night runs took the worst night over its budget), taken in turn by the INDIAN day, so that over any nine consecutive nights every zone sees every date scenario once. The other groups run in full
+// three and ONE quarter of the date group (`--zone rotate`; it was one half until POST-A-399, 7-11-2026, when ten browser scenarios that every night runs took the worst night over its budget, then one third until POST-A-386, POST-A-395 and POST-A-396, 17-11-2026, when their date rows and twenty more every-night scenarios did the same again), taken in turn by the INDIAN day, so that over any twelve consecutive nights every zone sees every date scenario once. The other groups run in full
 // every night. The runner is given a DEADLINE (`--stop-after`): after it, it starts no more scenarios, writes its report with the runs it did not drive named, and exits 1, so the job goes red, uploads the
-// report and ends inside its allowance. A person can still ask for everything (about 85 minutes of drive on 7 November 2026, 77 when this was written; a cap of 120, only on request).
+// report and ends inside its allowance. A person can still ask for everything (about 96 minutes of drive on 17 November 2026, 85 on 7 November, 77 when this was written; a cap of 120, only on request).
+//
+// THE OTHER GROUPS ARE CUT TOO (22-11-2026). The night of 22 November 2026 (smoke-walk run 44967231176) was stopped at its deadline with 490 of 499 runs driven and none failed, while the estimate
+// below still passed: it priced a run of the other groups at 1.71 s, read off two nights of early November, and by then they took 2.59 s (390 runs in 1,011 s; the newer scenarios sign in as a role,
+// wait out a held request or walk a dialog). At the real figure the 400 other runs are 17 minutes of a night before a single date scenario, so cutting the date group finer could not fit a night
+// (eight parts left it at 20.9 of 21). The other groups are therefore cut in TWO halves, on alternate nights (`HALVES` in `drive/kit.mjs`): each of their scenarios is driven every second night.
+// The per-run seconds below are that night's, and the estimate is what would have failed before the night did had they been current: WHEN A NIGHT IS STOPPED AT ITS DEADLINE, READ THE REAL
+// SECONDS OFF ITS LOG BEFORE ANYTHING ELSE.
 //
 // WHY THE INDIAN DAY. The nightly is scheduled for 02:00 IST (20:30 UTC), but GitHub starts it hours late: the drive step began at 05:43, 05:34, 05:10, 05:23, 08:08, 06:23, 06:37 and 06:48 IST
 // in the eight nights before this was written, which straddles UTC midnight (05:30 IST). Keyed on the UTC day, those eight nights drove America/Los_Angeles on two nights running (31 October
@@ -31,8 +38,8 @@ import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
-  FLAGS, MAX_STOP_AFTER_MINUTES, SHARDS, TZ_MATRIX, contextsFor, deadlinePassed, inShard, indianDayNumber, parseArgs, partOfTheNight, reportOf, resolveNow, resolveShard,
-  resolveStopAfter, resolveZone, shardOf, zoneOfTheDay,
+  FLAGS, HALVES, MAX_STOP_AFTER_MINUTES, SHARDS, TZ_MATRIX, contextsFor, deadlinePassed, halfOf, inShard, indianDayNumber, parseArgs, partOfTheNight, reportOf, resolveHalf, resolveNow,
+  resolveShard, resolveStopAfter, resolveZone, shardOf, zoneOfTheDay,
 } from "./drive/kit.mjs";
 
 const WEB = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -48,10 +55,11 @@ const ZONES = TZ_MATRIX.map((c) => c.timezoneId);
 /** The nights it takes for every (zone, shard) pair to come round once: three zones times the parts of the date group (nine, since POST-A-399). */
 const CYCLE = ZONES.length * SHARDS;
 
-// What the runner's own step times gave (smoke-walk runs 41749300419 and 41945303205, 4 and 5 November 2026): 216 runs (59 of them date runs) took 9 min 18 s and 342 (185 date runs) took
-// 19 min 38 s, which is 4.92 s a date run and 1.71 s any other run. A date run is slower because most of them type, leave, wait for the network to go quiet and assert twice.
-const SECONDS_PER_DATE_RUN = 4.92;
-const SECONDS_PER_OTHER_RUN = 1.71;
+// What the runner's own lines gave on the night of 22 November 2026 (smoke-walk run 44967231176, each run's milliseconds as the runner printed them, which account for all but a second of the
+// step): 100 date runs took 430.0 s and 390 other runs took 1,011.3 s, which is 4.30 s a date run and 2.59 s any other run. A date run is slower because most of them type, leave, wait for the
+// network to go quiet and assert twice. (The figures before were 4.92 and 1.71, read off the step times of 4 and 5 November: the other groups had grown slower by half and nothing re-read them.)
+const SECONDS_PER_DATE_RUN = 4.30;
+const SECONDS_PER_OTHER_RUN = 2.59;
 /** The most a night has cost between the job's start and the drive's start (checkout, install, the browser, the build and the walk): 16 min 26 s on 6 November (run 42141029562: the job began at 01:02:02Z and the drive
  *  step at 01:18:28Z; the browser install took 8 min 46 s), 8 min 8 s on the 5th (run 41945303205). 17 is used. */
 const WORST_SETUP_MINUTES = 17;
@@ -133,6 +141,16 @@ test("the rotation visits every zone and every (zone, shard) pair in turn, over 
   for (const edge of ["2026-12-31", "2027-01-01", "2027-02-28", "2027-03-01", "2028-02-29", "2028-03-01"]) {
     assert.ok(covered.includes(edge), `the window does not cross ${edge}`);
   }
+});
+
+test("the half of the other groups changes every night, over three years, so none of their scenarios goes two nights undriven", () => {
+  const halves = nightsFrom(2026, 11, 6, 3 * 366).map((t) => partOfTheNight(t).half);
+  assert.equal(HALVES, 2, "the count of halves changed: 'every second night' below is for two");
+  for (const h of halves) assert.ok(h === 0 || h === 1, `a night's half is ${h}`);
+  for (let i = 0; i + 1 < halves.length; i++) assert.notEqual(halves[i], halves[i + 1], `nights ${i} and ${i + 1} drive the same half of the other groups`);
+  // The half follows the zone's flag: the night's under `rotate`, every one otherwise.
+  assert.equal(resolveHalf("rotate", NIGHT), partOfTheNight(NIGHT).half);
+  for (const zone of ["all", ...ZONES]) assert.equal(resolveHalf(zone, NIGHT), "all", `--zone ${zone} cut the other groups`);
 });
 
 test("a rotation keyed on the day of the month or the day of the year fails the same rule, so the rule is strong enough to catch the mistake", () => {
@@ -255,11 +273,11 @@ async function everyScenario(): Promise<Sc[]> {
   }
   return out;
 }
-/** The runs the rule asks for under a zone and a shard, in the runner's order and spelling. */
-function expectedIds(scenarios: Sc[], zone: string, shard: number | "all", noTzMatrix = false): string[] {
+/** The runs the rule asks for under a zone, a shard of the date group and a half of the other groups, in the runner's order and spelling. */
+function expectedIds(scenarios: Sc[], zone: string, shard: number | "all", noTzMatrix = false, half: number | "all" = "all"): string[] {
   const out: string[] = [];
   for (const s of scenarios) {
-    if (!inShard(s.group, s.id, shard)) continue;
+    if (!inShard(s.group, s.id, shard, half)) continue;
     if (!s.contexts) { out.push(`${s.group}/${s.id}`); continue; }
     const cs = contextsFor(s.contexts, zone);
     for (const c of noTzMatrix ? cs.slice(0, 1) : cs) out.push(`${s.group}/${s.id} [${c.locale} ${c.timezoneId}]`);
@@ -288,14 +306,15 @@ test("the runner lists, without a build, the runs the rule asks for: the whole d
     const part = list("--zone", "all", "--shard", String(k));
     assert.deepEqual(part.ids, expectedIds(scenarios, "all", k), `--shard ${k} does not list that part`);
   }
-  // a night, at fixed instants: the nine nights from 7 November 2026
+  // a night, at fixed instants: the twelve nights from 7 November 2026
   for (let i = 0; i < CYCLE; i++) {
     const at = new Date(NIGHT + i * DAY).toISOString().replace(".000Z", "Z");
     const part = partOfTheNight(NIGHT + i * DAY);
     const night = list("--zone", "rotate", "--now", at);
     assert.equal(night.status, 0, night.stderr);
-    assert.deepEqual(night.ids, expectedIds(scenarios, part.zone, part.shard), `the night at ${at} does not list ${part.zone}, part ${part.shard + 1}`);
-    assert.match(night.header, new RegExp(`${part.zone} only, part ${part.shard + 1} of ${SHARDS} \\(the Indian day ${part.day}, by --zone rotate, read at ${at}\\)`), `the header does not name the part of ${at}`);
+    assert.deepEqual(night.ids, expectedIds(scenarios, part.zone, part.shard, false, part.half), `the night at ${at} does not list ${part.zone}, part ${part.shard + 1}, half ${part.half + 1}`);
+    assert.match(night.header, new RegExp(`${part.zone} only, part ${part.shard + 1} of ${SHARDS} \\(the Indian day ${part.day}, by --zone rotate, read at ${at}\\); the other groups: half ${part.half + 1} of ${HALVES}\\.`), `the header does not name the part of ${at}`);
+    assert.ok(night.ids.length < expectedIds(scenarios, part.zone, part.shard).length, `the night at ${at} drove every scenario of the other groups: the runner does not use the half`);
   }
   // --no-tz-matrix and --only still narrow what is listed
   assert.deepEqual(list("--zone", "all", "--no-tz-matrix").ids, expectedIds(scenarios, "all", "all", true));
@@ -314,7 +333,7 @@ test("the list reaches a reader that is slow to take it: the exit waits for the 
   assert.equal(lines.length - 2, Number(/^(\d+)/.exec(last)![1]), "the list has not as many runs as it says it has");
 });
 
-test("over a cycle of nights the runner lists every run of the drive: each date run once, each unzoned date run on the nights of its part, and the other groups every night", async () => {
+test("over a cycle of nights the runner lists every run of the drive: each date run once, each unzoned date run on the nights of its part, and the other groups every second night", async () => {
   const scenarios = await everyScenario();
   const whole = expectedIds(scenarios, "all", "all");
   const nights = Array.from({ length: CYCLE }, (_, i) => list("--zone", "rotate", "--now", new Date(NIGHT + i * DAY).toISOString().replace(".000Z", "Z")).ids);
@@ -324,9 +343,14 @@ test("over a cycle of nights the runner lists every run of the drive: each date 
   for (const s of scenarios) {
     const ids = s.contexts ? s.contexts.map((c) => `${s.group}/${s.id} [${c.locale} ${c.timezoneId}]`) : [`${s.group}/${s.id}`];
     for (const id of ids) {
-      // The other groups run every night; a date run with a context of its own runs in the one zone and the one part that ask for it; one without runs on the nights of its part, one in each zone.
-      const want = s.group !== "dates" ? CYCLE : s.contexts ? 1 : ZONES.length;
+      // The other groups run every second night; a date run with a context of its own runs in the one zone and the one part that ask for it; one without runs on the nights of its part, one in each zone.
+      const want = s.group !== "dates" ? CYCLE / HALVES : s.contexts ? 1 : ZONES.length;
       assert.equal(tally.get(id), want, `${id} is listed ${tally.get(id)} times in ${CYCLE} nights, not ${want}`);
+      // ...and never two nights running without it, nor two with it: the nights it is on alternate.
+      if (s.group !== "dates") {
+        const on = nights.map((ids) => ids.includes(id));
+        for (let i = 0; i + 1 < on.length; i++) assert.notEqual(on[i], on[i + 1], `${id} is ${on[i] ? "driven" : "left out"} on nights ${i} and ${i + 1} running`);
+      }
     }
   }
 });
@@ -341,14 +365,14 @@ test("without --now the runner reads the rotation at the real clock, not at a fr
 
 // ── nothing is dropped by a choice, and the parts add up ────────────────────────────────────────────────
 
-/** The runs a zone and a shard ask for. */
-function runsUnder(scenarios: Sc[], zone: string, shard: number | "all"): number {
-  return scenarios.reduce((n, s) => (!inShard(s.group, s.id, shard) ? n : n + (s.contexts ? contextsFor(s.contexts, zone).length : 1)), 0);
+/** The runs a zone, a shard and a half ask for. */
+function runsUnder(scenarios: Sc[], zone: string, shard: number | "all", half: number | "all" = "all"): number {
+  return scenarios.reduce((n, s) => (!inShard(s.group, s.id, shard, half) ? n : n + (s.contexts ? contextsFor(s.contexts, zone).length : 1)), 0);
 }
-function minutesOf(scenarios: Sc[], zone: string, shard: number | "all"): number {
+function minutesOf(scenarios: Sc[], zone: string, shard: number | "all", half: number | "all" = "all"): number {
   const date = scenarios.filter((s) => s.group === "dates");
   const other = scenarios.filter((s) => s.group !== "dates");
-  return (runsUnder(date, zone, shard) * SECONDS_PER_DATE_RUN + runsUnder(other, zone, shard) * SECONDS_PER_OTHER_RUN) / 60;
+  return (runsUnder(date, zone, shard, half) * SECONDS_PER_DATE_RUN + runsUnder(other, zone, shard, half) * SECONDS_PER_OTHER_RUN) / 60;
 }
 
 test("choosing a zone or a part never removes a scenario from the drive: across the parts every scenario runs under every zone, once", async () => {
@@ -364,12 +388,20 @@ test("choosing a zone or a part never removes a scenario from the drive: across 
     assert.equal(s.contexts!.length, ZONES.length, `${s.group}/${s.id} asks for contexts outside the matrix`);
   }
   for (const zone of ZONES) {
-    // Each date scenario is in exactly one shard; every other scenario runs in every part.
+    // Each date scenario is in exactly one shard; every other scenario runs in every part of the date group, and in exactly one half of its own cut.
     for (const s of scenarios) {
       const inWhich = Array.from({ length: SHARDS }, (_, k) => k).filter((k) => inShard(s.group, s.id, k));
       if (s.group === "dates") assert.equal(inWhich.length, 1, `${s.id} is in ${inWhich.length} shards`);
       else assert.equal(inWhich.length, SHARDS, `${s.id} (not a date scenario) must run in every part`);
+      const inHalves = Array.from({ length: HALVES }, (_, h) => h).filter((h) => inShard(s.group, s.id, "all", h));
+      if (s.group === "dates") assert.equal(inHalves.length, HALVES, `${s.id} (a date scenario) is cut by the half, which is for the other groups`);
+      else assert.equal(inHalves.length, 1, `${s.group}/${s.id} is in ${inHalves.length} halves`);
     }
+    // The halves add up to the other groups, and neither is much the larger (a lopsided cut is a long night every second night).
+    const others = scenarios.filter((s) => s.group !== "dates");
+    const perHalf = Array.from({ length: HALVES }, (_, h) => runsUnder(others, zone, "all", h));
+    assert.equal(perHalf.reduce((a, b) => a + b, 0), runsUnder(others, zone, "all"), `the halves of the other groups do not add up: ${perHalf.join(" + ")}`);
+    assert.ok(Math.min(...perHalf) > others.length / HALVES * 0.85, `the hash cuts the other groups unevenly: ${perHalf.join(" / ")}`);
     // The parts of one zone add up to the zone's whole date group (the other groups run in every part, so they are counted once).
     const date = scenarios.filter((s) => s.group === "dates");
     const sum = Array.from({ length: SHARDS }, (_, k) => runsUnder(date, zone, k)).reduce((a, b) => a + b, 0);
@@ -382,20 +414,25 @@ test("choosing a zone or a part never removes a scenario from the drive: across 
 
 test("a scenario's part is a stable function of its id, so adding or removing a scenario moves no other", () => {
   // FNV-1a over the id, modulo the count, pinned on ids so a change of the hash is a change of every part, on purpose.
-  assert.equal(SHARDS, 3, "the count of parts changed: the pins below are for three");
-  assert.deepEqual(["shipping-bill", "vendor-no-pe-declaration", "bank-account-opening-date", "a", "scenario-1"].map(shardOf), [1, 1, 0, 1, 1]);
+  assert.equal(SHARDS, 4, "the count of parts changed: the pins below are for four");
+  assert.deepEqual(["shipping-bill", "vendor-no-pe-declaration", "bank-account-opening-date", "a", "scenario-1"].map(shardOf), [3, 2, 3, 0, 1]);
   const ids = Array.from({ length: 200 }, (_, i) => `scenario-${i}`);
   const counts = Array(SHARDS).fill(0);
   for (const id of ids) counts[shardOf(id)] += 1;
-  assert.ok(Math.min(...counts) > 60, `the hash cuts 200 ids unevenly: ${counts.join(" / ")}`);
+  assert.ok(Math.min(...counts) > 200 / SHARDS * 0.8, `the hash cuts 200 ids unevenly: ${counts.join(" / ")}`);
+  // The half of a scenario of the other groups: the same hash over the group and the id together, pinned the same way.
+  assert.deepEqual([["keyboard", "a"], ["amounts", "a"], ["drafts", "scenario-1"], ["drafts", "scenario-2"]].map(([g, id]) => halfOf(g, id)), PINNED_HALVES);
 });
+
+/** `halfOf` of the four pairs pinned above, as the hash gave them on 22-11-2026. */
+const PINNED_HALVES = [0, 0, 0, 1];
 
 // ── the report ─────────────────────────────────────────────────────────────────────────────────────────
 
 test("a report written part-way is never ok, names what was not driven, and says when the deadline stopped the run", () => {
   const selected = ["a", "b", "c"].map((id) => ({ id }));
   const build = reportOf as unknown as (input: Record<string, unknown>) => Record<string, any>;
-  const base = { only: null, tzMatrix: true, zone: "Asia/Kolkata", shard: 1, stopAfter: 24, chosenAtMs: Date.UTC(2026, 10, 7), csp: "REPORT-ONLY", pinnedClock: "2026-10-08T08:00:00Z", selected, escaped: [], startedMs: 0, nowMs: 5000 };
+  const base = { only: null, tzMatrix: true, zone: "Asia/Kolkata", shard: 1, half: 0, stopAfter: 24, chosenAtMs: Date.UTC(2026, 10, 7), csp: "REPORT-ONLY", pinnedClock: "2026-10-08T08:00:00Z", selected, escaped: [], startedMs: 0, nowMs: 5000 };
   const driven = (ids: string[], ok = true) => ids.map((id) => ({ id, ok, error: ok ? null : "boom", problems: [] }));
   const partial = build({ ...base, complete: false, results: driven(["a"]) });
   assert.equal(partial.ok, false, "a report written part-way says ok");
@@ -413,7 +450,7 @@ test("a report written part-way is never ok, names what was not driven, and says
   assert.deepEqual(whole.not_driven, []);
   assert.equal(build({ ...base, complete: true, results: driven(["a", "b", "c"], false) }).ok, false, "a failed scenario leaves a complete report ok");
   assert.equal(build({ ...base, complete: true, escaped: ["example.com"], results: driven(["a", "b", "c"]) }).ok, false, "a blocked host leaves a complete report ok");
-  assert.deepEqual(whole.mode, { only: null, tz_matrix: true, zone: "Asia/Kolkata", shard: 1, stop_after_minutes: 24, chosen_at: "2026-11-07T00:00:00.000Z" }, "the report does not name what was driven, how long it was given and when the part was chosen");
+  assert.deepEqual(whole.mode, { only: null, browser: "chromium", width: 1440, tz_matrix: true, zone: "Asia/Kolkata", shard: 1, half: 0, stop_after_minutes: 24, chosen_at: "2026-11-07T00:00:00.000Z" }, "the report does not name what was driven, how long it was given and when the part was chosen");
 });
 
 test("the runner stops itself at its deadline, and what it leaves is a final report and a red exit", () => {
@@ -425,7 +462,7 @@ test("the runner stops itself at its deadline, and what it leaves is a final rep
   assert.match(RUNNER, /writeReport\(!stoppedAtDeadline, true\);/, "the final report does not say it was stopped");
   assert.match(RUNNER, /process\.exit\(failed\.length \|\| escaped\.size \|\| stoppedAtDeadline \? 1 : 0\);/, "a run stopped at its deadline exits 0");
   assert.match(RUNNER, /writeReport\(false\);\s*\}\s*\n\s*await browser\.close\(\);/, "the report is not written after each scenario");
-  assert.match(RUNNER, /reportOf\(\{\s*complete, stoppedAtDeadline, only, tzMatrix: !noTzMatrix, zone, shard, stopAfter, chosenAtMs: chosenAt,/,
+  assert.match(RUNNER, /reportOf\(\{\s*complete, stoppedAtDeadline, only, tzMatrix: !noTzMatrix, zone, shard, half, stopAfter, chosenAtMs: chosenAt,/,
     "the runner builds its report some other way than the one the test tries, or does not hand it whether the run was complete, whether it was stopped, what it drove and when the part was chosen");
   assert.match(RUNNER, /parseArgs\(process\.argv\.slice\(2\)\)/, "the runner reads its arguments some other way than the one the test tries");
   assert.match(RUNNER, /const SCENARIO_TIMEOUT_MS = 90_000;/, "a scenario in flight is bounded by another time than the arithmetic below assumes");
@@ -460,17 +497,54 @@ test("the deadline leaves the job room to end: the part before the drive, the de
   assert.ok(stops[1] < stops[0], "a night's deadline is not shorter than the whole matrix's");
 });
 
+/** The steps that ran before the drive on the nights WORST_SETUP_MINUTES was read from (5 and 6 November 2026), in order, and the two after it that FINISH_MINUTES timed. The 17 minutes and
+ *  the minute describe THESE steps: a step added among them was never timed, so the arithmetic above would go on passing while the job no longer fits. (The client-workspace pass of POST-A-036 was
+ *  first put between the walk and the drive, about two minutes of a slack of one and a half, and this file stayed green.) */
+const MEASURED_BEFORE_THE_DRIVE = [
+  "actions/checkout", "pnpm/action-setup", "actions/setup-node", "Install dependencies", "Add Playwright and the axe scanner to THIS job", "Drop third-party apt sources",
+  "Install Chromium", "Build the static export for the walk", "Walk every screen", "Keep the report",
+];
+const MEASURED_AFTER_THE_DRIVE = ["Keep the money-editor drive report", "Keep the screenshots of a failed walk"];
+
+/** The job's steps in order, each named by its `name:` or, for an unnamed one, by the action it uses. */
+function workflowSteps(): Array<{ name: string; body: string }> {
+  const at = WORKFLOW.indexOf("    steps:");
+  assert.ok(at > 0, "the workflow no longer has a steps list");
+  return WORKFLOW.slice(at).split(/\n(?=      - (?:name|uses):)/).slice(1).map((body) => ({
+    name: (/^\s*- name:\s*(.+)/.exec(body)?.[1] ?? /^\s*- uses:\s*([^@\s]+)/.exec(body)?.[1] ?? "").trim(),
+    body,
+  }));
+}
+
+test("nothing runs before the drive, or between it and the uploads the arithmetic counts, that the arithmetic did not time; a command after those has a bound of its own", () => {
+  const steps = workflowSteps();
+  const drive = steps.findIndex((s) => s.name === "Drive the money editors");
+  assert.ok(drive > 0, "the workflow no longer has the drive step");
+  assert.deepEqual(steps.slice(0, drive).map((s) => s.name), MEASURED_BEFORE_THE_DRIVE,
+    `the steps before the drive are not the ones the ${WORST_SETUP_MINUTES} minutes measured: time a new one on a runner and raise WORST_SETUP_MINUTES (and lower the deadline to match), or run it after the drive's report is kept`);
+  const after = drive + 1 + MEASURED_AFTER_THE_DRIVE.length;
+  assert.deepEqual(steps.slice(drive + 1, after).map((s) => s.name), MEASURED_AFTER_THE_DRIVE,
+    `the steps straight after the drive are not the uploads the ${FINISH_MINUTES} minute measured: the drive's report and the walk's pictures must be kept before anything else runs`);
+  // What comes after them is what a slow night may cut at the allowance, and only that. A command there that can hang still needs a bound, or one screen that never goes quiet takes the run to
+  // the allowance every night.
+  for (const s of steps.slice(after)) {
+    if (/\n\s+run:/.test(s.body)) assert.match(s.body, /\n\s+timeout-minutes: \d+\n/, `${s.name} runs after the drive's report is kept and has no timeout-minutes of its own`);
+  }
+});
+
 test("the estimated drive of the worst night fits what its deadline leaves, and so does the whole matrix", async () => {
   const scenarios = await everyScenario();
   const { stops } = workflowNumbers();
+  // The worst night: every zone with every part of the date group and either half of the other groups (more combinations than the rotation ever makes, so none it does make is missed).
   let night = 0;
-  for (const zone of ZONES) for (let k = 0; k < SHARDS; k++) night = Math.max(night, minutesOf(scenarios, zone, k));
+  for (const zone of ZONES) for (let k = 0; k < SHARDS; k++) for (let h = 0; h < HALVES; h++) night = Math.max(night, minutesOf(scenarios, zone, k, h));
   const matrix = minutesOf(scenarios, "all", "all");
   const budgetNight = stops[1] - MARGIN_MINUTES;
   const budgetMatrix = stops[0] - MARGIN_MINUTES;
   assert.ok(night <= budgetNight,
     `A NIGHT'S DRIVE IS NOW ESTIMATED AT ${night.toFixed(1)} MINUTES, over the ${budgetNight} that its ${stops[1]}-minute deadline leaves after a margin of ${MARGIN_MINUTES}: a night would be stopped at its deadline with scenarios undriven. `
-    + "Cut the drive further (raise SHARDS in scripts/drive/kit.mjs: every scenario is then visited less often) or ask the owner for a longer allowance, which spends their GitHub Actions minutes and is theirs to decide. Do not delete a scenario to fit.");
+    + "Cut the drive further (raise SHARDS or HALVES in scripts/drive/kit.mjs: every scenario is then visited less often) or ask the owner for a longer allowance, which spends their GitHub Actions minutes and is theirs to decide. Do not delete a scenario to fit. "
+    + "And read the seconds a run really takes off the last night's log first: this estimate is only as good as SECONDS_PER_DATE_RUN and SECONDS_PER_OTHER_RUN.");
   assert.ok(matrix <= budgetMatrix,
     `the whole matrix is estimated at ${matrix.toFixed(1)} minutes of drive, over the ${budgetMatrix} its ${stops[0]}-minute deadline leaves after a margin of ${MARGIN_MINUTES}: a run asked for by name would be stopped at its deadline`);
 });

@@ -4,18 +4,28 @@
  * The firm's own reading of the state professional-tax notifications.
  *
  * WHY THIS SCREEN EXISTS
- *   Professional tax is levied by twenty-two states, each setting its own slabs
- *   by its own notification on its own cycle. The software models FOUR of them
- *   and reports the rest as gaps rather than deducting zero — which is right,
- *   because Article 276 makes the employer liable to deduct and deposit it, so
- *   a silent nil is a shortfall with interest, not an absence of liability.
+ *   Professional tax is set by each state, by its own notification on its own
+ *   cycle. The software has slabs built in for FOUR states and, for any other
+ *   state it lists as levying the tax, reports a gap on the payroll run rather
+ *   than deducting zero in silence: a nil nobody can see is the fault.
  *
  *   Correct, and not a product: the only remedy on offer was that somebody
- *   edits Python. Writing the other eighteen states' slabs from memory would
- *   put eighteen confidently wrong deductions into people's pay, and
- *   maintaining them against notification cycles is a compliance research desk
- *   with no revenue behind it. So the CA records what they READ — once per
- *   firm, reused across every client of that firm.
+ *   edits Python. Writing the other states' slabs from memory would put
+ *   confidently wrong deductions into people's pay, and maintaining them
+ *   against notification cycles is a compliance research desk with no revenue
+ *   behind it. So the CA records what they READ — once per firm, reused across
+ *   every client of that firm.
+ *
+ * WHAT THE PAGE SAYS, AND WHAT IT NO LONGER SAYS (POST-A-539, 21-11-2026)
+ *   The owner, shown this page on the live Test Firm, could not tell what it was
+ *   for, and two of its sentences stated things nobody had confirmed: that
+ *   twenty-two states levy the tax (the list is this product's own, graded [S],
+ *   and probably one or two too long) and that Article 276 makes the employer
+ *   liable (a legal reading that was never checked against the text; the duty to
+ *   deduct is each state's own Act). The page now says what it is for in its
+ *   first sentence, says only what the product does, says the list of states is
+ *   the product's own and unconfirmed, and counts nothing but what it holds.
+ *   The two questions are on the owner's list (S9) for a practising CA.
  *
  * THE WHOLE SET IN ONE SAVE
  *   The bands must start at zero and meet end to start, and the endpoint
@@ -28,9 +38,11 @@
  * effective-date selection and whether a recorded set may be used at all. This
  * page shows the state of play and posts what the CA typed.
  */
+import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Trash2, Scale, X, AlertTriangle } from "lucide-react";
-import { RoleGuard } from "@/components/RoleGuard";
+import { Plus, Trash2, Scale, AlertTriangle } from "lucide-react";
+import { ReadOnlyNotice, useMayChange } from "@/components/settings/ChangePart";
 import { api, type PTSlabRow } from "@/lib/api/index";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
@@ -58,6 +70,8 @@ const REQUIRED_SENTENCE =
   + "screen exists to replace.";
 
 export default function StatutoryValuesPage() {
+  // Who may record or remove a set of slabs: the pair the server asks for those writes (POST-A-545).
+  const mayChange = useMayChange("payroll", "write");
   const [rows, setRows] = useState<PTSlabRow[]>([]);
   const [levying, setLevying] = useState<Record<string, string>>({});
   const [modelled, setModelled] = useState<string[]>([]);
@@ -149,6 +163,14 @@ export default function StatutoryValuesPage() {
         setFormError(`Band ${i + 1}: the amounts must be plain figures in rupees, without commas.`);
         return;
       }
+      // The server's own sentences for a band's bounds (models/payroll.PTSlabSetIn, POST-A-392), said here before anything is sent:
+      // the server used to refuse these in its framework's words, naming no band.
+      if (from < 0) { setFormError(`Band ${i + 1}: the wage it starts from cannot be below zero.`); return; }
+      if (to !== null && to <= from) {
+        setFormError(`Band ${i + 1}: the wage it runs up to must be more than the wage it starts from, or left blank for the top band.`);
+        return;
+      }
+      if (amount < 0) { setFormError(`Band ${i + 1}: the tax cannot be negative.`); return; }
       parsed.push({ from_paise: from, to_paise: to, amount_paise: amount });
     }
 
@@ -217,10 +239,10 @@ export default function StatutoryValuesPage() {
   const stillMissing = levyingCodes.filter(
     c => !modelled.includes(c) && !recorded.includes(c));
 
-  // payroll:read is Manager+ (core/permissions.py), and recording one of these
-  // deducts from every client of the firm with staff in that state.
+  // The page opens on `payroll` `read` (the one table, lib/access/screenAccess.ts) and its two writes ask `payroll`
+  // `write`: recording one of these deducts from every client of the firm with staff in that state.
   return (
-    <RoleGuard allowed={["Partner", "Manager"]}>
+    <>
       <div className="p-6 max-w-ps-data mx-auto">
         <PageHeader
           back={{ href: "/settings", label: "Settings" }}
@@ -228,22 +250,25 @@ export default function StatutoryValuesPage() {
           title="Statutory values"
           subtitle={
             <>
-              Your firm&apos;s reading of the state professional-tax notifications, recorded
-              once and used for every client with staff in that state. Twenty-two states levy
-              it; {modelled.length} are built in and verified against the state Act, and the
-              rest are reported as gaps on a run until you record them here.
+              Professional tax is set by each state. PracticeSync has the slabs of{" "}
+              {modelled.length} state{modelled.length === 1 ? "" : "s"} built in. For any other state,
+              payroll deducts no professional tax and names the gap on the run, until you record
+              that state&apos;s slabs here from its own notification. What you record is used for
+              every client of your firm with staff in that state.
             </>
           }
-          actions={
+          actions={mayChange ? (
             <button
               onClick={() => { if (showForm) return; reset(); refusal.clear(); setShowForm(true); }}
               className="inline-flex items-center gap-1.5 px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark"
             >
               <Plus size={15} />Record a notification
             </button>
-          }
+          ) : undefined}
           className="mb-5"
         />
+
+        <ReadOnlyNotice resource="payroll" action="write" page="Statutory values" className="mb-4" />
 
         {msg && (
           <div className={`mb-4 px-3 py-2 rounded-lg text-sm ${
@@ -303,11 +328,13 @@ export default function StatutoryValuesPage() {
                           </p>
                           {first.note && <p className="text-xs text-ps-hint mt-0.5">{first.note}</p>}
                         </div>
-                        <button disabled={actionInFlight} onClick={() => remove(first)}
-                          className="text-ps-hint hover:text-red-600 shrink-0"
-                          aria-label="Remove this version">
-                          <Trash2 size={15} />
-                        </button>
+                        {mayChange && (
+                          <Button variant="plain" size="none" spinner={false} disabled={actionInFlight} onClick={() => remove(first)}
+                            className="text-ps-hint hover:text-red-600 shrink-0"
+                            aria-label="Remove this version">
+                            <Trash2 size={15} />
+                          </Button>
+                        )}
                       </div>
                       <table className="w-full text-sm">
                         <thead>
@@ -348,8 +375,11 @@ export default function StatutoryValuesPage() {
                   deduct nothing
                 </p>
                 <p className="text-xs text-ps-label mt-0.5">
-                  An employee in one of these is reported as a gap on the run and has no
-                  professional tax withheld. Article 276 makes the employer liable either way.
+                  PracticeSync lists these as levying professional tax and has no slabs for
+                  them, so an employee in one of them has none withheld and the payroll run
+                  names the gap. Record a state&apos;s slabs above if your firm has staff there.
+                  The list is PracticeSync&apos;s own and has not been confirmed against each
+                  state&apos;s current law, so check your state before relying on it.
                 </p>
                 <div className="flex flex-wrap gap-1.5 mt-2">
                   {stillMissing.map(code => (
@@ -364,16 +394,18 @@ export default function StatutoryValuesPage() {
         )}
 
         {showForm && (
-          <div className="fixed inset-0 bg-black/30 flex items-start justify-center p-6 overflow-y-auto z-50">
-            <div className="bg-white rounded-xl w-full max-w-2xl my-8">
-              <div className="px-5 py-4 flex items-center justify-between border-b border-ps-border">
-                <h2 className="text-sm font-semibold text-ps-ink">Record a notification</h2>
-                <button onClick={() => setShowForm(false)} disabled={saving} aria-label="Close" className="text-ps-hint hover:text-ps-ink disabled:opacity-50">
-                  <X size={16} />
-                </button>
-              </div>
+          // The shared dialog (POST-A-130). Its close is held while the notification is being recorded.
+          <Modal title="Record a notification" maxWidthClass="max-w-2xl" onClose={() => { if (!saving) setShowForm(false); }}
+            footer={<>
+              <button onClick={() => setShowForm(false)} disabled={saving}
+                className="px-4 py-1.5 text-sm text-ps-label hover:bg-ps-bg rounded-lg disabled:opacity-50">Cancel</button>
+              <Button variant="plain" size="none" spinner={false} onClick={save} disabled={actionInFlight}
+                className="px-4 py-1.5 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark disabled:opacity-50">
+                {saving ? "Saving…" : "Record"}
+              </Button>
+            </>}>
 
-              <div className="p-5 space-y-4">
+              <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="State code" value={state} onChange={v => setState(v.toUpperCase().slice(0, 2))} placeholder="GJ" />
                   <div>
@@ -440,7 +472,7 @@ export default function StatutoryValuesPage() {
                         <input aria-label={`Band ${i + 1}: tax (₹)`} value={band.amount} placeholder="Tax ₹"
                           onChange={e => setBands(b => b.map((x, j) => j === i ? { ...x, amount: e.target.value } : x))}
                           className="border border-ps-border rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-brand" />
-                        <button type="button" disabled={bands.length === 1}
+                        <button type="button" disabled={bands.length === 1} aria-label={`Remove band ${i + 1}`}
                           onClick={() => setBands(b => b.filter((_, j) => j !== i))}
                           className="text-ps-hint hover:text-red-600 disabled:opacity-30">
                           <Trash2 size={14} />
@@ -456,19 +488,10 @@ export default function StatutoryValuesPage() {
                 )}
               </div>
 
-              <div className="px-5 py-4 flex items-center justify-end gap-2 border-t border-ps-border">
-                <button onClick={() => setShowForm(false)} disabled={saving}
-                  className="px-4 py-1.5 text-sm text-ps-label hover:bg-ps-bg rounded-lg disabled:opacity-50">Cancel</button>
-                <button onClick={save} disabled={actionInFlight}
-                  className="px-4 py-1.5 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark disabled:opacity-50">
-                  {saving ? "Saving…" : "Record"}
-                </button>
-              </div>
-            </div>
-          </div>
+          </Modal>
         )}
       </div>
-    </RoleGuard>
+    </>
   );
 }
 

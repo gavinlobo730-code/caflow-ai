@@ -18,14 +18,22 @@
  * is a fact about the count date.
  */
 import { useCallback, useEffect, useState } from "react";
-import { X, ClipboardCheck, AlertTriangle, Check } from "lucide-react";
+import { AlertTriangle, Check } from "lucide-react";
 import { api, type StockCountSheet as Sheet, type StockCountLine,
          type StockCountPostResult } from "@/lib/api";
 import { parseQuantity } from "@/lib/money/rupeeInput";
 import { Callout } from "@/components/ui/callout";
-import { objectWithLists } from "@/lib/api/shape";
+import { objectOrNull, objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { formatDate } from "@/lib/dates/format";
+
+/** The sheet is read for `session.status`, `session.reference_no` and `session.count_date` (POST-A-360): a sheet without its session is
+ *  no sheet, so it is checked where it is loaded and not thrown on at the first read. */
+function readableSheet(data: unknown): Sheet | null {
+  const sh = objectWithLists<Sheet>(data, "gaps", "lines");
+  return sh && objectOrNull(sh.session) ? sh : null;
+}
 
 export function StockCountSheetPanel({
   clientId, sessionId, onClose, onPosted,
@@ -49,7 +57,9 @@ export function StockCountSheetPanel({
     try {
       const res = await api.inventory.countSession(sessionId);
       if (!res.success || !res.data) throw new Error(res.error ?? "Couldn't load the count sheet.");
-      setSheet(objectWithLists<Sheet>(res.data, "gaps", "lines"));
+      const sh = readableSheet(res.data);
+      if (!sh) throw new Error("The count sheet came back in a shape this screen cannot read.");
+      setSheet(sh);
       setError("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't load the count sheet.");
@@ -82,10 +92,12 @@ export function StockCountSheetPanel({
       if (!entries.length) { setBusy(false); return; }
       const res = await api.inventory.saveCountSession(sessionId, { client_id: clientId, entries });
       if (!res.success || !res.data) throw new Error(res.error ?? "Couldn't save the sheet.");
-      setSheet(objectWithLists<Sheet>(res.data, "gaps", "lines"));
       setTyped({});
       setItc({});
-      setError("");
+      const sh = readableSheet(res.data);
+      if (sh) { setSheet(sh); setError(""); }
+      // The save happened; only its answer is unreadable, so the sheet is read again rather than the save reported as failed.
+      else { setError("The counts were saved, but the sheet came back in a shape this screen cannot read. Reading it again."); void load(); }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't save the sheet.");
     } finally {
@@ -111,24 +123,12 @@ export function StockCountSheetPanel({
   const open = sheet?.session.status === "open";
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-5xl max-h-[92vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white flex items-center justify-between px-5 py-4 border-b">
-          <div className="flex items-center gap-2">
-            <ClipboardCheck size={16} className="text-emerald-600" />
-            <div>
-              <p className="text-sm font-semibold text-ps-ink">
-                Physical stock count — {sheet?.session.reference_no ?? ""}
-              </p>
-              <p className="text-2xs text-ps-hint">
-                Counted as at {formatDate(sheet?.session.count_date)} · {sheet?.session.status ?? ""}
-              </p>
-            </div>
-          </div>
-          <button onClick={onClose} aria-label="Close"><X size={16} className="text-ps-hint" /></button>
-        </div>
-
-        <div className="px-5 py-4 space-y-3">
+    // The shared dialog (POST-A-130): named for the count, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it,
+    // its ×) is held over a save or a post, not over the first read: the sheet is null until it has been read.
+    <Modal title={`Physical stock count — ${sheet?.session.reference_no ?? ""}`} maxWidthClass="max-w-5xl"
+      note={<>Counted as at {formatDate(sheet?.session.count_date)} · {sheet?.session.status ?? ""}</>}
+      onClose={() => { if (!(busy && sheet !== null)) onClose(); }}>
+        <div className="space-y-3">
           {error && <Callout tone="problem">{error}</Callout>}
 
           {result && (
@@ -279,7 +279,6 @@ export function StockCountSheetPanel({
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

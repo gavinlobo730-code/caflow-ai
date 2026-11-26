@@ -40,9 +40,10 @@
  * the exposure is the fast submitter and a fast returning visitor.)
  *
  * NOTHING HERE IMPORTS `@/…`, so `node --experimental-strip-types` can load it:
- * apps/marketing has no test runner, and
  * apps/api/tests/test_the_demo_form_does_not_look_dead_while_the_api_wakes.py
- * drives this file from the side that does.
+ * drives this file under Node from the Python side (it was written before this
+ * app had `pnpm test`, and the blind spot that leaves is recorded in
+ * apps/api/tests/_marketing_claims.py).
  */
 
 /** When the email fallback appears beside the running request. */

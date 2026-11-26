@@ -9,8 +9,12 @@ import {
   FolderOpen,
   Search,
   ListChecks,
+  Plus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { usePermissions } from "@/lib/auth/AuthContext";
+import { ADD_CLIENT_HREF, ADD_CLIENT_LABEL } from "@/lib/clients/addClient";
+import { useScreenAccess } from "@/lib/access/useScreenAccess";
 
 const CLIENTS_ITEMS = [
   { href: "/clients", label: "All Clients", icon: Users },
@@ -20,8 +24,8 @@ const CLIENTS_ITEMS = [
   // SIGNUP wizard at /onboarding — which matched `AppShell`'s NO_SHELL entry
   // for that wizard and left it with no shell at all until both that entry
   // and the public-path one were made exact (see lib/auth/public-paths.ts).
-  // It now lives under /clients, whose onboarding it tracks; the old URL is
-  // a redirect stub kept for bookmarks (app/onboarding/checklist/page.tsx).
+  // It now lives under /clients, whose onboarding it tracks; the forwarding
+  // page left at the old URL was deleted by POST-A-562, nothing linking to it.
   { href: "/clients/onboarding", label: "Client Onboarding", icon: ListChecks },
   { href: "/client-portal", label: "Client Portal", icon: ExternalLink },
   // Two distinct document surfaces: /documents is the OCR/intelligence
@@ -36,6 +40,14 @@ interface ClientsPanelProps {
 
 export function ClientsPanel({ onOpenSearch }: ClientsPanelProps) {
   const pathname = usePathname();
+  // Offered to those the server lets add a client (a Manager or a Partner), by the permission map and not a role list here
+  // (POST-A-488): a tester who looked here for a way to add a company found none.
+  const { can } = usePermissions();
+  const canAdd = can("client", "write");
+  // The pipeline is every lead of the firm and is read with pipeline:read (POST-A-543): the entry is offered to whoever holds
+  // it. `can()` answers false until the permissions are known, so the entry appears once they are and never flashes away.
+  const { offered } = useScreenAccess();
+  const items = CLIENTS_ITEMS.filter((item) => offered(item.href) && (item.href !== "/pipeline" || can("pipeline", "read")));
 
   return (
     <div className="flex flex-col h-full">
@@ -57,13 +69,25 @@ export function ClientsPanel({ onOpenSearch }: ClientsPanelProps) {
         </button>
       </div>
 
+      {canAdd && (
+        <div className="px-2 pt-2 shrink-0">
+          <Link
+            href={ADD_CLIENT_HREF}
+            className="flex items-center justify-center gap-2 w-full px-2.5 py-1.5 rounded-[7px] bg-brand text-xs font-medium text-white hover:bg-brand-dark transition-colors"
+          >
+            <Plus size={13} className="shrink-0" />
+            <span>{ADD_CLIENT_LABEL}</span>
+          </Link>
+        </div>
+      )}
+
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-2 px-2">
         <p className="text-3xs font-semibold uppercase tracking-[0.08em] text-ps-hint px-2 mb-1.5 mt-1">
           Navigate
         </p>
         <div className="space-y-0.5">
-          {CLIENTS_ITEMS.map(({ href, label, icon: Icon }) => {
+          {items.map(({ href, label, icon: Icon }) => {
             const active =
               href === "/clients"
                 ? pathname === "/clients" || pathname.startsWith("/clients/")

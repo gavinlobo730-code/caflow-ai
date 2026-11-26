@@ -3,14 +3,16 @@ from pydantic import BaseModel, field_validator
 from typing import Optional
 from models.common import api_response
 from core.permissions import rbac
+from services.named_row_ownership import NOT_ASSIGNED_TO_THE_CLIENT
 from core.authz import (
-    filter_by_client, assert_client_access, assert_firmwide_job,
+    filter_by_client, assert_client_access, assert_firmwide_job, member_reaches_client,
 )
 from repositories.task_repository import task_repo
 from repositories.client_repository import client_repo
 from services.task_service import is_valid_transition, group_tasks_by_status
 from services.activity_service import log_activity
 from services.audit_service import log_event
+from core.observability import capture_soft_failure
 from domain.practice import task_estimate
 import logging
 from datetime import date, datetime, timezone
@@ -146,6 +148,9 @@ def create_task(body: TaskCreate, current_user: dict = Depends(rbac("task", "wri
         assignee = user_repo.find_by_id(body.assigned_to, firm_id=current_user.get("firm_id"))
         if not assignee or assignee.get("firm_id") != current_user.get("firm_id"):
             raise HTTPException(status_code=422, detail="Assignee not found in this firm")
+        # POST-A-451: and can open the task's client. The task-assigned mail names the client, and the work is done inside it.
+        if not member_reaches_client(assignee, body.client_id, current_user.get("firm_id")):
+            raise HTTPException(status_code=422, detail=NOT_ASSIGNED_TO_THE_CLIENT)
     now = datetime.now(timezone.utc).isoformat()
     fields = body.model_dump()
     if fields.get("assigned_to"):
@@ -188,8 +193,8 @@ def create_task(body: TaskCreate, current_user: dict = Depends(rbac("task", "wri
                 actor_email=current_user.get("email"),
                 new_data={"assigned_to": body.assigned_to},
             )
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="tasks.create_audit", firm_id=current_user.get("firm_id"), task_id=task["id"])
     try:
         from repositories.task_extras_repository import task_extras_repo
         task_extras_repo.log_event(
@@ -209,8 +214,8 @@ def create_task(body: TaskCreate, current_user: dict = Depends(rbac("task", "wri
                 actor_name=current_user.get("full_name") or current_user.get("email"),
                 new_value={"assigned_to": body.assigned_to},
             )
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="tasks.create_timeline", firm_id=current_user.get("firm_id"), task_id=task["id"])
 
     # Send notification if task is assigned
     if body.assigned_to:
@@ -220,10 +225,29 @@ def create_task(body: TaskCreate, current_user: dict = Depends(rbac("task", "wri
             assignee = user_repo.find_by_id(body.assigned_to, firm_id=current_user.get("firm_id"))
             if assignee:
                 notification_service.notify_task_assigned(task, assignee, current_user)
-        except Exception:
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="tasks.assign_notify", firm_id=current_user.get("firm_id"), task_id=task["id"])
 
     return api_response(True, {"task": task, "activity": activity})
+
+
+def _assignee_can_open_the_client(task: dict, updates: dict, firm_id: str) -> None:
+    """POST-A-451: the person the task will be assigned to can open the client it will belong to. Asked when either changes: a new
+    assignee on the same client, or the same assignee carried to a client the task is moved to (they may not be assigned to that one).
+    A person the firm no longer holds is left to the membership check above, which has already answered for a new one."""
+    # An assignee equal to the one already held is not a change: a form sends the whole task, and refusing a title edit because the
+    # existing assignee has since lost the assignment would stop the work on a task that already names them. `client_id` has been
+    # pruned in `_changes_in` when it is the held one, so its presence is a move.
+    assignee_changed = "assigned_to" in updates and updates["assigned_to"] != task.get("assigned_to")
+    if not assignee_changed and "client_id" not in updates:
+        return
+    after_assignee = updates["assigned_to"] if "assigned_to" in updates else task.get("assigned_to")
+    if not after_assignee:
+        return
+    from repositories.user_repository import user_repo
+    person = user_repo.find_by_id(after_assignee, firm_id=firm_id)
+    if person and not member_reaches_client(person, updates.get("client_id", task.get("client_id")), firm_id):
+        raise HTTPException(status_code=422, detail=NOT_ASSIGNED_TO_THE_CLIENT)
 
 
 def _changes_in(body: "TaskUpdate", task: dict, current_user: dict, firm_id: str) -> dict:
@@ -273,8 +297,8 @@ def _notify_reassignment(task: dict, updated: dict, updates: dict, firm_id: str,
                 else:
                     # This is a new assignment
                     notification_service.notify_task_assigned(updated, new_assignee, current_user)
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="tasks.reassign_notify", firm_id=firm_id, task_id=task.get("id"))
 
 
 @router.patch("/{task_id}")
@@ -298,6 +322,7 @@ def update_task(task_id: str, body: TaskUpdate, current_user: dict = Depends(rba
         assignee = user_repo.find_by_id(updates["assigned_to"], firm_id=firm_id)
         if not assignee or assignee.get("firm_id") != firm_id:
             raise HTTPException(status_code=422, detail="Assignee not found in this firm")
+    _assignee_can_open_the_client(task, updates, firm_id)
 
     if "status" in updates:
         if not is_valid_transition(task["status"], updates["status"]):
@@ -356,8 +381,8 @@ def update_task(task_id: str, body: TaskUpdate, current_user: dict = Depends(rba
                 old_value={"priority": task.get("priority")},
                 new_value={"priority": updates["priority"]},
             )
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="tasks.priority_timeline", firm_id=firm_id, task_id=task_id)
 
     # H10: immutable audit_log records for assignment + completion transitions
     # (the task_extras_repo events above write task_timeline_events, a different store).
@@ -399,8 +424,8 @@ def update_task(task_id: str, body: TaskUpdate, current_user: dict = Depends(rba
                     old_data={"status": old_status},
                     new_data={"status": updates["status"]},
                 )
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="tasks.reopen_audit", firm_id=firm_id, task_id=task_id)
 
     _notify_reassignment(task, updated, updates, firm_id, current_user)
 

@@ -19,7 +19,6 @@ import {
   Download,
   FileCheck,
   Info,
-  X,
   Building2,
   Globe,
   Users,
@@ -52,7 +51,10 @@ import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { selectAll } from "@/lib/supabase/selectAll";
 
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { istToday } from "@/lib/dateMath";
+import { usePermissions } from "@/lib/auth/AuthContext";
+import { LoadingRegion } from "@/components/ui/skeleton";
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function r(rupees: number): string {
@@ -91,6 +93,12 @@ type ActiveTab = "summary" | "b2b" | "b2cs" | "b2cl" | "cdnr" | "exp" | "hsn" | 
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function GSTR1Page() {
+  // CA Approve and Mark as Filed ask `gst` `approve` (a Manager or a Partner) and were drawn to every member, who was
+  // refused (POST-A-455).
+  const { can: canDo, resolved: permissionsRead } = usePermissions();
+  const mayApprove = canDo("gst", "approve");
+  // Building the return asks `gst` `compute`, which a Reviewer's access does not hold (POST-A-455).
+  const mayCompute = canDo("gst", "compute");
   const [clients, setClients] = useState<{ id: string; name: string; gstin: string | null }[]>([]);
   const [clientId, setClientId] = useState("");
   // Built when the screen opens, not when its code loads: a tab left open across a month end kept the old list and defaulted to the wrong month.
@@ -137,6 +145,9 @@ export default function GSTR1Page() {
   // refuses a submit without it in its own words, shown in the modal.
   const [filedDate, setFiledDate] = useState("");
   const [filedError, setFiledError] = useState<string | null>(null);
+  // While the filing is being recorded. The dialog had no flag for this, so it could be closed (Cancel, its ×) over a request still out:
+  // a refusal then arrived on a closed dialog and was never read, and the person did not know whether the return was recorded.
+  const [filedSaving, setFiledSaving] = useState(false);
   // The server's sentence when recording this filing did NOT also close the compliance obligation (POST-A-264).
   const [filingNote, setFilingNote] = useState<string | null>(null);
   // Text that is not a date must not read as "no date" and leave the answer to
@@ -194,6 +205,7 @@ export default function GSTR1Page() {
   async function handleMarkFiled() {
     if (!clientId || !yearMonth || !arn.trim() || dates.first) return;
     setFiledError(null);
+    setFiledSaving(true);
     try {
       setFilingNote(await markGSTR1Filed(clientId, toPeriod(yearMonth), arn.trim(), filedDate, result?.gstin));
       setFilingStatus("submitted");
@@ -203,6 +215,8 @@ export default function GSTR1Page() {
       // server's sentence (a missing, future or pre-period date) is the thing
       // the CA has to read next to the field it is about.
       setFiledError(e instanceof Error ? e.message : "Failed to mark as filed");
+    } finally {
+      setFiledSaving(false);
     }
   }
 
@@ -329,17 +343,31 @@ export default function GSTR1Page() {
             Untick to build the return without them.
           </span>
         </label>
-        <Button variant="plain" size="none"
-          onClick={handleBuild}
-          disabled={actionInFlight || !clientId || !yearMonth}
-          className="flex items-center gap-2 px-5 py-2.5 bg-brand hover:bg-brand-dark disabled:bg-ps-disabled text-white text-sm font-medium rounded-lg transition-colors"
-        >
-          <FileText className="w-4 h-4" />
-          {loading ? "Building…" : "Build GSTR-1"}
-        </Button>
+        {mayCompute && (
+          <Button variant="plain" size="none"
+            onClick={handleBuild}
+            disabled={actionInFlight || !clientId || !yearMonth}
+            className="flex items-center gap-2 px-5 py-2.5 bg-brand hover:bg-brand-dark disabled:bg-ps-disabled text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            <FileText className="w-4 h-4" />
+            {loading ? "Building…" : "Build GSTR-1"}
+          </Button>
+        )}
+        {permissionsRead && !mayCompute && (
+          <p className="text-xs text-ps-label">
+            Building a return from the books needs permission to compute GST returns, so the button is not shown to you.
+          </p>
+        )}
       </div>
 
       {error && <Callout tone="problem">{error}</Callout>}
+      {/* A read the button starts (POST-A-449): the button keeps its own label, and the place the return will be drawn says
+          what is being read, and that the server may be waking up, while the read is out. */}
+      {loading && !result && (
+        <LoadingRegion label="Building GSTR-1 from the books" className="bg-white rounded-xl border border-ps-border p-8 text-center" noticeClassName="justify-center text-center">
+          <p className="text-sm text-ps-hint">Building GSTR-1 from the books…</p>
+        </LoadingRegion>
+      )}
       {filingNote && (
         <Callout tone="note" title="Recorded as filed. The compliance calendar was not marked filed.">
           <span>{filingNote}</span>{" "}
@@ -399,7 +427,10 @@ export default function GSTR1Page() {
                   File (demo)
                 </button>
               )}
-              {filingStatus === "ca_approved" && (
+              {(filingStatus === "draft" || filingStatus === "validated" || filingStatus === "ca_approved") && permissionsRead && !mayApprove && (
+                <span className="text-xs text-ps-label">Approving this return and recording the filing need permission to approve GST returns, so those buttons are not shown to you</span>
+              )}
+              {filingStatus === "ca_approved" && mayApprove && (
                 <button
                   onClick={() => setShowFiledModal(true)}
                   className="flex items-center gap-2 px-4 py-2 bg-ps-muted hover:bg-ps-bg text-ps-body text-sm font-medium rounded-lg transition-colors"
@@ -408,7 +439,7 @@ export default function GSTR1Page() {
                   Mark as Filed
                 </button>
               )}
-              {(filingStatus === "draft" || filingStatus === "validated") && (
+              {(filingStatus === "draft" || filingStatus === "validated") && mayApprove && (
                 <Button variant="plain" size="none"
                   onClick={handleApprove}
                   disabled={actionInFlight}
@@ -815,19 +846,30 @@ export default function GSTR1Page() {
 
       {/* Mark as Filed modal */}
       {showFiledModal && (
-        <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-ps-ink">Mark GSTR-1 as Filed</h3>
-              <button aria-label="Close" onClick={closeFiledModal}>
-                <X className="w-5 h-5 text-ps-hint hover:text-ps-label" />
-              </button>
-            </div>
-            <p className="text-sm text-ps-label mb-4">
+        // The shared dialog (POST-A-130): named, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it, its ×) and
+        // its Cancel are held while the filing is being recorded.
+        <Modal title="Mark GSTR-1 as Filed" maxWidthClass="max-w-md" onClose={() => { if (!filedSaving) closeFiledModal(); }}
+          footer={<>
+            <button
+              onClick={closeFiledModal}
+              disabled={filedSaving}
+              className="px-4 py-2 text-sm text-ps-label hover:text-ps-ink border border-gray-300 rounded-lg disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <Button variant="plain" size="none"
+              onClick={handleMarkFiled}
+              disabled={!arn.trim() || !!dates.first || filedSaving}
+              className="px-4 py-2 text-sm font-medium bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white rounded-lg"
+            >
+              {filedSaving ? "Saving…" : "Confirm Filed"}
+            </Button>
+          </>}>
+            <p className="text-sm text-ps-label">
               After uploading the JSON to <strong>gst.gov.in</strong> and receiving the ARN,
               enter it and the date you filed it below to record the filing in PracticeSync.
             </p>
-            <div className="mb-4">
+            <div>
               <label className="block text-sm font-medium text-ps-body mb-1">
                 ARN (Acknowledgment Reference Number)
               </label>
@@ -839,7 +881,7 @@ export default function GSTR1Page() {
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-brand"
               />
             </div>
-            <div className="mb-4">
+            <div>
               <label htmlFor="gstr1-filed-date" className="block text-sm font-medium text-ps-body mb-1">
                 Date filed on the portal
               </label>
@@ -858,27 +900,11 @@ export default function GSTR1Page() {
               </p>
             </div>
             {filedError && (
-              <p role="alert" className="text-xs text-state-problem bg-state-problem-surface rounded px-2 py-1.5 mb-4">
+              <p role="alert" className="text-xs text-state-problem bg-state-problem-surface rounded px-2 py-1.5">
                 {filedError}
               </p>
             )}
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={closeFiledModal}
-                className="px-4 py-2 text-sm text-ps-label hover:text-ps-ink border border-gray-300 rounded-lg"
-              >
-                Cancel
-              </button>
-              <Button variant="plain" size="none"
-                onClick={handleMarkFiled}
-                disabled={!arn.trim() || !!dates.first}
-                className="px-4 py-2 text-sm font-medium bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white rounded-lg"
-              >
-                Confirm Filed
-              </Button>
-            </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

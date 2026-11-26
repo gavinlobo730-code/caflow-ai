@@ -1,13 +1,14 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { useState, useEffect, useCallback } from "react";
 import { Link2, Search, Check, Loader2, ShieldAlert } from "lucide-react";
 import { api, type ApiResp } from "@/lib/api";
 import type { ClientSummary } from "@/lib/api";
 import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 import { usePermissions } from "@/lib/auth/AuthContext";
-import { PageLoader } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/ui/page-header";
+import { SectionPlaceholder, pageFrameClass } from "@/components/ui/page-frame";
 
 interface Member { id: string; full_name?: string; email?: string; role?: string }
 // The row shape is `ClientSummary` from lib/api — the endpoint's own type.
@@ -20,7 +21,7 @@ type Client = ClientSummary;
 // Partner assigns clients to staff; this controls what each user can discover,
 // view, search, be notified about, and use as AI context (enforced server-side).
 export default function AssignmentsPage() {
-  // assignment:write is Partner-only in the matrix; assignment:read is Manager+.
+  // assignment:write is a Partner's by default and assignment:read a Manager's; either can be ticked for one member (migration 403).
   // Named after the permission rather than the role so a matrix change moves the
   // UI with it — this page is the administration surface for exactly that grant.
   const { can } = usePermissions();
@@ -91,23 +92,23 @@ export default function AssignmentsPage() {
     !filter || (c.client_name ?? "").toLowerCase().includes(filter.toLowerCase()));
 
   return (
-    <div className="p-6 max-w-5xl">
+    <div className={pageFrameClass("data")}>
       <PageHeader
         icon={<Link2 size={18} className="text-brand" />}
         title="Client Assignments"
-        subtitle="Assign clients to staff. A user can only see, search, and be notified about clients assigned to them (Partners have firm-wide access and are not listed here)."
+        subtitle="Assign clients to staff. A member who is not a Partner sees and searches only the clients assigned to them, is told about only those clients, and can be newly named on a client's work only once assigned to it; work that already names them stays theirs until it is reassigned. Shared across the whole practice whatever the assignment: the people and companies register under Relationships, the DSC tracker and the leads that are not yet clients. Partners see every client and are not listed here."
         className="mb-4"
       />
 
       {!canAssign && (
         <div className="flex items-center gap-2 text-xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2 mb-4">
-          <ShieldAlert size={14} /> View only — only a Partner can change assignments.
+          <ShieldAlert size={14} /> View only. Changing assignments needs the permission to change who is assigned to which client.
         </div>
       )}
       {error && <div className="text-xs text-red-600 mb-3">{error}</div>}
 
       {loading ? (
-        <PageLoader />
+        <SectionPlaceholder label="Loading assignments" shape="table" cols={3} />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-4">
           {/* Staff list */}
@@ -150,7 +151,7 @@ export default function AssignmentsPage() {
                   {shownClients.map((c) => {
                     const on = assigned.has(c.id);
                     return (
-                      <button
+                      <Button variant="plain" size="none" spinner={false}
                         key={c.id}
                         disabled={!canAssign || busy === c.id}
                         onClick={() => toggle(c.id)}
@@ -165,7 +166,7 @@ export default function AssignmentsPage() {
                         }`}>
                           {busy === c.id ? <Loader2 size={12} className="animate-spin" /> : on ? <Check size={12} /> : null}
                         </span>
-                      </button>
+                      </Button>
                     );
                   })}
                   {shownClients.length === 0 && <p className="px-4 py-6 text-xs text-ps-hint">No clients.</p>}

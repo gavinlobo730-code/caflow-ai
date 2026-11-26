@@ -165,9 +165,9 @@ class CreateFilingRequest(BaseModel):
             return None
         from domain.compliance_record_service import clean_filed_date
         try:
-            return clean_filed_date(v)
+            return clean_filed_date(v, "The earlier return's filing date")
         except ValueError as refusal:
-            raise ValueError(str(refusal).replace("filed_date", "original_filing_date")) from None
+            raise ValueError(str(refusal)) from None
 
     @model_validator(mode="after")
     def _years_are_a_pair(self):
@@ -204,9 +204,9 @@ class AcknowledgementRequest(BaseModel):
     def _date_is_a_filing_date(cls, v: str) -> str:
         from domain.compliance_record_service import clean_filed_date
         try:
-            return clean_filed_date(v)
+            return clean_filed_date(v, "The filing date")
         except ValueError as refusal:
-            raise ValueError(str(refusal).replace("filed_date", "filing_date")) from None
+            raise ValueError(str(refusal)) from None
 
 
 class SnapshotRequest(BaseModel):
@@ -367,6 +367,51 @@ def create_snapshot(
         status, sentence = _database_refusal(
             e, action="save the computation snapshot")
         raise HTTPException(status, detail=sentence)
+
+
+class SeasonComputeRequest(BaseModel):
+    financial_year: FYLabel
+    chosen_clients: list[str] = Field(..., min_length=1, description="The clients to run again (at most the server's stated limit)")
+
+
+@router.get("/season")
+def filing_season(
+    financial_year: Annotated[FYLabel, Query(...)],
+    stage: Optional[str] = Query(None, description="Only the clients at this stage"),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    current_user: dict = Depends(rbac("income_tax", "read")),
+):
+    """Every client of the caller's own book with the stage of their return for the year (POST-A-068): not started, computed, and the
+    return's own status up to filed. The counts are the whole year's; the rows are a window. Documents received and e-verification are
+    NOT stages (nothing records them) and the answer says so. Read-only."""
+    from services import filing_season_service
+    from core.exceptions import ValidationError
+    try:
+        return api_response(True, filing_season_service.season(
+            db_provider.service_db(), current_user, financial_year, stage=stage, limit=limit, offset=offset))
+    except ValidationError as refusal:
+        raise HTTPException(422, detail=refusal.message) from None
+
+
+@router.post("/season/compute")
+def filing_season_compute(
+    req: SeasonComputeRequest,
+    current_user: dict = Depends(rbac("income_tax", "compute")),
+):
+    """Run the saved inputs of each chosen client's latest computation again, at today's rates and records (POST-A-068).
+
+    Only what can be computed from RECORDED inputs: the books hold no salary and no deduction, so a client with no saved computation, or
+    one saved before inputs were kept, is answered in words and nothing is run for it. A result that differs is saved as the next
+    version, a DRAFT; the same result saves nothing. No return moves status, nothing is reviewed and nothing goes to a portal.
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT"""
+    from services import filing_season_service
+    from core.exceptions import ValidationError
+    try:
+        return api_response(True, filing_season_service.bulk_compute(
+            db_provider.service_db(), current_user, req.financial_year, req.chosen_clients))
+    except ValidationError as refusal:
+        raise HTTPException(422, detail=refusal.message) from None
 
 
 @router.get("/snapshots")

@@ -4,9 +4,9 @@
 // THE DEFECT (frontend_ux-14, POST-A-130)
 //   147 hand-built overlays (`fixed inset-0`) lived in 85 files against a handful of uses of the shared `Modal` and `Drawer`. The shared
 //   ones give a dialog its name, close it on Escape, move focus in and give it back and, since this change, keep Tab inside and the page
-//   behind it still; a hand-built one has to do each of those itself and almost none does. Migrating them is months of work, file by
-//   file, and each migration is a screen to read and drive. What this holds is the direction: NO NEW OVERLAY, and a migrated file leaves
-//   the list.
+//   behind it still; a hand-built one has to do each of those itself and almost none does. They were migrated file by file, each a screen
+//   read and driven, between 31-10-2026 and 23-11-2026, and the list below is EMPTY. What this holds now is that it stays so: NO NEW
+//   OVERLAY.
 //
 // THE RULE
 //   Outside `components/ui/` (which is where the primitives live), no source file builds a full-screen fixed overlay unless it is listed
@@ -106,92 +106,27 @@ export function problems(found: Record<string, number>, frozen: Record<string, n
 }
 
 /**
- * THE FROZEN LIST: file -> the number of hand-built overlays it still holds. Each is waiting to move onto `Modal` or `Drawer`, one file at
- * a time (POST-A-130). It never gains a file or a count.
+ * THE FROZEN LIST: file -> the number of hand-built overlays it still holds. EMPTY SINCE 23-11-2026: the last two (the search box and the
+ * Products and Services panel) moved onto `Modal` and `Drawer` that day, and POST-A-130 closed. It never gains a file or a count, so it
+ * stays empty: a new full-window layer is a `Modal` or a `Drawer`, or a primitive in `components/ui/` that says why it is neither.
  */
 const FROZEN: Record<string, number> = {
-  "app/accounting/account-groups/page.tsx": 1,
-  "app/accounting/loans/page.tsx": 2,
-  "app/accounting/lock-year/page.tsx": 1,
-  "app/accounting/recurring/page.tsx": 1,
-  "app/accounting/retainer/page.tsx": 1,
-  "app/accounting/suppliers/page.tsx": 1,
-  "app/billing/page.tsx": 2,
-  "app/client-portal/page.tsx": 1,
-  "app/clients/[id]/accounting/page.tsx": 3,
-  "app/clients/[id]/compliance/gst/page.tsx": 1,
-  "app/clients/[id]/documents/page.tsx": 1,
-  "app/clients/[id]/health/page.tsx": 1,
-  "app/clients/[id]/inventory/page.tsx": 3,
-  "app/clients/[id]/lifecycle/page.tsx": 1,
-  "app/clients/[id]/portal/page.tsx": 1,
-  "app/clients/[id]/purchases/page.tsx": 7,
-  "app/clients/[id]/relationships/page.tsx": 1,
-  "app/clients/[id]/sales/page.tsx": 15,
-  "app/clients/documents/page.tsx": 1,
-  "app/clients/page.tsx": 3,
-  "app/documents/page.tsx": 1,
-  "app/engagements/page.tsx": 3,
-  "app/gst/gstr1/page.tsx": 1,
-  "app/gst/gstr3b/page.tsx": 1,
-  "app/gst/page.tsx": 3,
-  "app/health/[client_id]/HealthDetailClient.tsx": 1,
-  "app/income-tax/capital-gains/page.tsx": 2,
-  "app/income-tax/notices/page.tsx": 1,
-  "app/income-tax/page.tsx": 3,
-  "app/income-tax/section-32/page.tsx": 1,
-  "app/income-tax/tax-audit/page.tsx": 1,
-  "app/mca/page.tsx": 3,
-  "app/payroll/page.tsx": 1,
-  "app/pipeline/page.tsx": 2,
-  "app/platform/page.tsx": 2,
-  "app/relationships/[entity_id]/EntityDetailClient.tsx": 1,
-  "app/relationships/page.tsx": 1,
-  "app/settings/dsc-tracker/page.tsx": 3,
-  "app/settings/firm-hsn-library/page.tsx": 1,
-  "app/settings/invoice-templates/page.tsx": 1,
-  "app/settings/scheduled-reports/page.tsx": 1,
-  "app/settings/statutory-values/page.tsx": 1,
-  "app/tasks/page.tsx": 1,
-  "app/tasks/templates/page.tsx": 2,
-  "app/tds/page.tsx": 2,
-  "app/tds/returns/page.tsx": 1,
-  "app/team/page.tsx": 1,
-  "app/team/workload/page.tsx": 1,
-  "app/time/page.tsx": 2,
-  "components/ClientFormModal.tsx": 1,
-  "components/CsvImportModal.tsx": 1,
-  "components/FilingDemoWizard.tsx": 1,
-  "components/LazyCsvImportModal.tsx": 1,
-  "components/SearchModal.tsx": 1,
-  "components/TaskFormModal.tsx": 1,
-  "components/accounting/OpeningBalancesTab.tsx": 1,
-  "components/banking/AccountsPanel.tsx": 2,
-  "components/banking/EntriesTab.tsx": 1,
-  "components/banking/ReconcileTab.tsx": 1,
-  "components/catalogue/ProductServiceManagerPanel.tsx": 1,
-  "components/gst/RegistrationsTab.tsx": 1,
-  "components/inventory/LocationsAndBatches.tsx": 2,
-  "components/inventory/StockCountSheet.tsx": 1,
-  "components/payroll/ApplyStructureModal.tsx": 1,
-  "components/payroll/DisburseModal.tsx": 1,
-  "components/payroll/EmployeeDrawer.tsx": 1,
-  "components/payroll/PortalAccessModal.tsx": 1,
-  "components/purchases/AllocatePaymentModal.tsx": 1,
-  "components/purchases/BillsOfEntryTab.tsx": 1,
-  "components/purchases/LandedCostPanel.tsx": 1,
-  "components/purchases/RcmDocumentPanel.tsx": 1,
-  "components/purchases/RecurringBills.tsx": 2,
-  "components/sales/AllocateReceiptModal.tsx": 1,
-  "components/shell/ClientTopBar.tsx": 1,
-  "components/shell/UtilityCluster.tsx": 1,
-  "components/shell/WorkspaceTopBar.tsx": 1,
-  "components/team/MemberAccessDrawer.tsx": 1,
 };
 
 test("no source file builds a full-screen overlay that is not on the frozen list", () => {
   assert.deepEqual(problems(foundInTree(), FROZEN), [],
     "A new overlay is a Modal or a Drawer from components/ui; a migrated file lowers its count here.");
+});
+
+test("the frozen list is empty, and stays empty", () => {
+  assert.deepEqual(Object.keys(FROZEN), [],
+    "Every hand-built overlay was migrated by 23-11-2026 (POST-A-130). Do not add one here: use the shared Modal or Drawer.");
+  // The tree is really being read: the primitives themselves are overlays, and they are outside what the list covers.
+  assert.ok(SOURCES.length > 300, `only ${SOURCES.length} source files were read`);
+  // With nothing listed, the "can only shrink" half of the equality has no live entry to prove itself on, so it is proved on a made-up one.
+  const stale = problems({}, { "app/gone/page.tsx": 1 });
+  assert.equal(stale.length, 1);
+  assert.match(stale[0], /can only shrink/);
 });
 
 test("the detector finds an overlay in every spelling and spares what is not one", () => {

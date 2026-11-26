@@ -73,13 +73,18 @@ NOT_FORECAST: tuple[str, ...] = (
     "How long anything takes, except where the task itself carries an "
     "estimate (copied from its template or workflow step when it was made). "
     "Nothing is averaged across the tasks that carry none, and a filing that is "
-    "not worked as a task has none at all.",
+    "not worked as a task has one only where the practice has stated how long that kind of filing takes.",
     "Who is available. Leave, notice periods and a new joiner's ramp-up are "
     "facts no table here holds, so the team figures are a headcount and a "
     "configured week, not an availability forecast.",
     "Anything about a task with no due date. It is counted in the backlog "
     "figure and falls in no week, because putting it in this week would make "
     "the first bar wrong every time somebody forgets a date.",
+    "The obligations listed on Deadlines and on each client's Compliance tab. "
+    "The forecast counts the filing calendar the firm-level GST and income-tax "
+    "trackers show; the obligations generated from an engagement are kept in a "
+    "second list it does not read yet, so they fall in no week here and no "
+    "filing time stated for their kind reaches them.",
 )
 
 

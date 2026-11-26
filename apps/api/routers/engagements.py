@@ -11,6 +11,7 @@ from models.fy import OptionalFYLabel
 from core import db_provider
 from services import named_row_ownership
 from models.iso_date import IsoDate, OptionalIsoDate, PatchIsoDate
+from core.observability import capture_soft_failure
 
 router = APIRouter(prefix="/api/engagements", tags=["engagements"])
 
@@ -162,10 +163,14 @@ def create_engagement(
     # `assigned_to`, `reviewer_id` and `partner_id` are all bare uuids on `fee_engagements` (migration 108: the production guard snapshot holds
     # no key on any of them, only on the client and the firm), so nothing in the database asks about them and this check is the only one:
     # each named person is asked about here, before the row is written.
+    # And each can open the client the engagement is for (POST-A-451): they do its work inside the client.
     _db = db_provider.request_db_or_none()
     named_row_ownership.member_is_the_firms(_db, firm_id, body.assigned_to)
     named_row_ownership.member_is_the_firms(_db, firm_id, body.reviewer_id)
     named_row_ownership.member_is_the_firms(_db, firm_id, body.partner_id)
+    named_row_ownership.member_reaches_client(_db, firm_id, body.assigned_to, body.client_id)
+    named_row_ownership.member_reaches_client(_db, firm_id, body.reviewer_id, body.client_id)
+    named_row_ownership.member_reaches_client(_db, firm_id, body.partner_id, body.client_id)
 
     engagement = engagement_repo.create({
         **body.model_dump(),
@@ -200,9 +205,16 @@ def update_engagement(
             raise HTTPException(status_code=404, detail="Client not found")
 
     _db = db_provider.request_db_or_none()
+    # POST-A-451: each person the engagement will name can open the client it will be for. A person carried over to a client moved in
+    # is asked too, and a person newly named on the same client.
     named_row_ownership.member_is_the_firms(_db, firm_id, updates.get("assigned_to"))
     named_row_ownership.member_is_the_firms(_db, firm_id, updates.get("reviewer_id"))
     named_row_ownership.member_is_the_firms(_db, firm_id, updates.get("partner_id"))
+    after_client = updates.get("client_id", (engagement or {}).get("client_id"))
+    for column in ("assigned_to", "reviewer_id", "partner_id"):
+        if column in updates or "client_id" in updates:
+            named_row_ownership.member_reaches_client(
+                _db, firm_id, updates.get(column, (engagement or {}).get(column)), after_client)
 
     updated = engagement_repo.update(engagement_id, updates)
     return api_response(True, {"engagement": updated})
@@ -271,15 +283,15 @@ def transition_engagement(
         log_event(firm_id, "engagement", engagement_id, "status_change",
                   actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
                   old_data={"status": old_status}, new_data={"status": body.status})
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="engagements.transition_audit", firm_id=firm_id, engagement_id=engagement_id)
     try:
         from services.timeline_service import timeline_service
         timeline_service.log(engagement.get("client_id", ""), "compliance", "Engagement Updated",
                              f"{engagement.get('service_type', 'Engagement')}: {old_status} → {body.status}",
                              "info", firm_id=firm_id, entity_type="engagement", entity_id=engagement_id)
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="engagements.transition_timeline", firm_id=firm_id, engagement_id=engagement_id)
     return api_response(True, {"engagement": updated})
 
 

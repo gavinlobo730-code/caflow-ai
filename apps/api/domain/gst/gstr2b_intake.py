@@ -101,6 +101,7 @@ def _valid(period: Optional[str]) -> bool:
     try:
         parse_month(str(period or "").strip())
     except ValueError:
+        # Not a return period: the answer to whether it is a valid one is no.
         return False
     return True
 

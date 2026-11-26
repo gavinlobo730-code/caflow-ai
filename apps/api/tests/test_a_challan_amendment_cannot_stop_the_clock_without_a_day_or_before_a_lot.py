@@ -308,7 +308,8 @@ _WRITERS = {("services/sales_cycle_service.py", "_write_an_amendment"): {"update
 #: The three database functions of migration 585 (POST-A-419) and the one module that may call them (`tests/test_the_challan_writes_go_through_the_database_functions.py` holds the rest): they write a
 #: challan's header and lines, a job-work lot with its stamp, and a draft's corrections, each in one transaction, and none of them writes the status `issued` (the migration's own tests say so), so the
 #: service holds no insert of the table and no stamp of the lot door's own. Any other module naming a function with "challan" in it is a second door.
-_CHALLAN_FUNCTIONS = {"services/delivery_challan_writes.py": {"create_delivery_challan_atomic", "record_challan_lot_atomic", "correct_draft_challan_lines_atomic"}}
+_CHALLAN_FUNCTIONS = {"services/delivery_challan_writes.py": {"create_delivery_challan_atomic", "record_challan_lot_atomic", "correct_draft_challan_lines_atomic",
+                                                                    "retract_challan_lot_atomic", "issue_delivery_challan_atomic"}}
 #: Helpers that take the table's name to READ it.
 _READ_HELPERS = {"_one", "_refuse_duplicate", "row_of_client"}
 #: Modules that list the table's name as data (the tables a delete counts), never as a client.
@@ -475,7 +476,9 @@ def test_no_migration_other_than_the_three_that_made_or_wrote_the_table_touches_
     allowed = {"392_the_sales_cycle_before_the_tax_invoice.sql", "392_the_sales_cycle_before_the_tax_invoice_rollback.sql",
                "462_job_work_comes_back_in_lots_and_itc_04_reports_each_return.sql", "462_job_work_comes_back_in_lots_and_itc_04_reports_each_return_rollback.sql",
                "585_a_delivery_challan_is_written_in_one_transaction_and_says_when_it_was_issued.sql",
-               "585_a_delivery_challan_is_written_in_one_transaction_and_says_when_it_was_issued_rollback.sql"}
+               "585_a_delivery_challan_is_written_in_one_transaction_and_says_when_it_was_issued_rollback.sql",
+               "651_a_lot_recorded_on_itc_04_can_be_retracted.sql", "651_a_lot_recorded_on_itc_04_can_be_retracted_rollback.sql",
+               "652_issuing_a_delivery_challan_locks_its_order_and_holds_the_over_delivery_rule.sql"}
     assert named <= allowed, f"a migration touches delivery_challans: {sorted(named - allowed)}. Read it: if it issues a challan, a draft is no longer the state the product makes."
 
 
@@ -489,6 +492,17 @@ def test_migration_585_names_the_table_and_issues_no_challan():
     assert "coalesce(p_header ->> 'status', 'draft') <> 'draft'" in code, "the create no longer refuses a header that names a status other than draft"
     assert "IF v_status IS DISTINCT FROM 'draft' THEN" in code, "the correction no longer refuses a challan that is not a draft"
     assert not re.search(r"\bINSERT\s+INTO\s+public\.delivery_challans\b[^;]*'issued'", code, flags=re.I | re.S), "a function of migration 585 inserts an issued challan"
+
+
+def test_migration_651_puts_a_challan_back_to_issued_only_from_received_back_and_issues_no_draft():
+    """Retracting the lot that marked a challan received back puts it back to `issued`: the one place a migration SETs that status. It is not an issue (a draft is never made issued here): the update is held
+    to `status = 'received_back'`, and the function refuses any challan that is not issued or received back."""
+    text = (API / "migrations" / "651_a_lot_recorded_on_itc_04_can_be_retracted.sql").read_text(encoding="utf-8")
+    code = re.sub(r"--[^\n]*", "", text)
+    sets = [st for st in code.split(";") if re.search(r"\bSET\b(?:(?!\bWHERE\b)[^;])*?\bstatus\s*=\s*'issued'", st, flags=re.I | re.S)]
+    assert len(sets) == 1 and "AND status = 'received_back'" in sets[0], sets
+    assert "IF v_status NOT IN ('issued', 'received_back') THEN" in code
+    assert not re.search(r"\bINSERT\s+INTO\s+public\.delivery_challans\b", code, flags=re.I)
 
 
 def _balanced_call_arguments(text: str, name: str):

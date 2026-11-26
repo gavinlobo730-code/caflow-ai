@@ -1,248 +1,274 @@
-import { Shield } from "../../icons";
+import { CheckCircle, ChevronLeft, Info } from "../../icons";
+import { GSTR3B } from "./productWords";
 
 /**
- * The GSTR-3B Review workspace, recreated.
+ * The GSTR-3B Review workspace, redrawn.
  *
- * Verbatim from apps/web/app/gst/gstr3b/page.tsx: the title, the statute line,
- * the CA-review banner, every table caption and column header, and the
- * §2(82)/§49(4) footnote under Table 3.1's total — which is the sentence that
- * makes this screen worth showing at all, because it is the thing competitors
- * get wrong.
+ * Copied on 16-11-2026 from apps/web/app/gst/gstr3b/page.tsx: the back link,
+ * the title and statute line, the CA-review banner, the status row of a return
+ * that has been computed and not yet approved (a Draft chip and CA Approve),
+ * and Tables 3.1, 4 and 6 with every caption, column header, row label and
+ * note the page renders for figures like these. A figure is printed the way the
+ * page's own `r()` prints it, so a nil the page prints as ₹0.00 is ₹0.00 here
+ * and a cell the page dashes is dashed. The wording comes from `GSTR3B` in
+ * `productWords.ts`, which a test holds to that page. Left out, because the drawing is the
+ * return and not the form that asks for it: the client, period and registration
+ * pickers, Table 3.2 (shown only when there is something to declare), and the
+ * Rule 37, 37A and 43 panels beneath Table 6.
+ *
+ * WHAT CHANGED SINCE THE DRAWING OF 16-09-2026: 3.1(d) carries no taxable value
+ * on this working (the reverse-charge tax is carried as cash, not as turnover);
+ * the zero-rated row's note appears only on an export made on payment of tax,
+ * so an export under an undertaking has none; 4(C) is the plain green total;
+ * and Table 6 is now the four heads after set-off, the reverse charge payable
+ * in cash, the challan figure, and how much credit was available, used and
+ * carried forward.
  *
  * THE FIGURES ARE INVENTED AND THEY FOOT. Anyone who reads a GSTR-3B for a
- * living will add these up, so the §49(5) set-off below is worked properly
- * rather than decorated:
+ * living will add these up, so the set-off is worked rather than decorated
+ * (CGST Act s.49(5) with Rule 88A, IGST credit first; no opening balance in the
+ * credit ledger):
  *
  *   output       IGST 2,84,400   CGST 1,72,566   SGST 1,72,566
  *   4(C) credit  IGST 1,99,400   CGST 1,27,740   SGST 1,27,740
  *
- *   §49(5)(a)  IGST credit pays IGST: 1,99,400 → 85,000 IGST left, credit spent
- *   §49(5)(b)  CGST credit pays CGST: 1,27,740 → 44,826 CGST left, credit spent
- *   §49(5)(c)  SGST credit pays SGST: 1,27,740 → 44,826 SGST left, credit spent
- *              nothing is left to reach the residual IGST under Rule 88A
+ *   IGST credit pays IGST: 1,99,400 → 85,000 IGST left, credit spent
+ *   CGST credit pays CGST: 1,27,740 → 44,826 CGST left, credit spent
+ *   SGST credit pays SGST: 1,27,740 → 44,826 SGST left, credit spent
+ *   nothing is left to reach the residual IGST
  *
- *   cash on output tax                       1,74,652
- *   reverse charge — always cash, §2(82)        37,800
+ *   after set-off                            1,74,652
+ *   reverse charge — always cash, s.2(82)       37,800
  *   TOTAL PAYABLE IN CASH                     2,12,452
+ *   credit available 4,54,880 · set off 4,54,880 · carried forward 0
  *
- * The reverse-charge row being excluded from the output-tax total and added
- * back as cash is the whole point: §2(82) defines output tax as EXCLUDING tax
- * payable on reverse charge, so the credit ledger cannot pay it.
+ * The reverse-charge row being kept out of the output-tax total and added back
+ * as cash is the point of the screen: s.2(82) defines output tax as EXCLUDING
+ * tax payable on reverse charge, so the credit ledger cannot pay it.
  */
 
-const T31 = [
-  {
-    label: "(a) Taxable supplies (B2B + B2C + B2CL)",
-    note: "Includes ₹2,36,000.00 of advances — GSTR-1 Table 11A less 11B, taxable on receipt under CGST s.13(2).",
-    taxable: "42,18,600.00",
-    igst: "2,84,400.00",
-    cgst: "1,72,566.00",
-    sgst: "1,72,566.00",
-  },
-  {
-    label: "(b) Zero-rated supplies (Exports / SEZ)",
-    note: "Under LUT — CGST s.16(3)(a). No tax charged.",
-    taxable: "8,40,000.00",
-    igst: null,
-    cgst: null,
-    sgst: null,
-  },
-  { label: "(c) Nil-rated / Exempt", taxable: "1,26,000.00", igst: null, cgst: null, sgst: null },
-  {
-    label: "(d) Inward supplies liable to reverse charge",
-    taxable: "2,10,000.00",
-    igst: null,
-    cgst: "18,900.00",
-    sgst: "18,900.00",
-  },
-  { label: "(e) Non-GST outward supplies", taxable: null, igst: null, cgst: null, sgst: null },
-];
+const DASH = <span className="text-[#64748B]">—</span>;
 
-const T4 = [
-  {
-    label: "4(A) ITC available",
-    sub: "All credit availed, including credit reversed below",
-    igst: "2,11,800.00",
-    cgst: "1,34,220.00",
-    sgst: "1,34,220.00",
-    strong: true,
-  },
-  {
-    label: "4(B)(1) Reversed — permanent",
-    sub: "Rules 38, 42 and 43, and Section 17(5) blocked credit",
-    igst: null,
-    cgst: "6,480.00",
-    sgst: "6,480.00",
-  },
-  {
-    label: "4(B)(2) Reversed — reclaimable later",
-    sub: "Rule 37 / 37A and Section 16(2)(b), (c). Comes back through 4(A)(5)",
-    igst: "12,400.00",
-    cgst: null,
-    sgst: null,
-  },
-  {
-    label: "4(C) Net ITC available",
-    sub: "4(A) less 4(B). This is what Table 6 may set off — never 4(A)",
-    igst: "1,99,400.00",
-    cgst: "1,27,740.00",
-    sgst: "1,27,740.00",
-    strong: true,
-    total: true,
-  },
-];
+function Rs({ v, className }: { v: string; className: string }) {
+  return <span className={`font-mono ${className}`}>₹{v}</span>;
+}
 
-function Money({ value, bold }: { value: string | null; bold?: boolean }) {
-  if (!value) return <span className="text-[#94A3B8]">—</span>;
+function SectionHead({ title, note }: { title: string; note: string }) {
   return (
-    <span className={`font-mono ${bold ? "font-semibold text-[#0F172A]" : "text-[#334155]"}`}>
-      ₹{value}
-    </span>
+    <div className="border-b border-[#E2E8F0] bg-[#F8FAFC] px-5 py-3">
+      <p className="text-sm font-semibold text-[#0D1635]">{title}</p>
+      <p className="mt-0.5 max-w-[80ch] text-xs text-[#475569]">{note}</p>
+    </div>
   );
 }
 
 export function Gstr3bReview() {
   return (
-    <div className="min-w-[760px] space-y-5 bg-[#F8FAFC] p-6 text-[#0F172A]">
+    <div className="min-w-[760px] space-y-5 bg-[#F8FAFC] p-6 text-[#0D1635]">
       <div>
-        <h3 className="text-[19px] font-bold leading-tight text-[#0F172A]">GSTR-3B Review</h3>
-        <p className="mt-0.5 text-[12.5px] text-[#64748B]">
-          CGST Act Section 39 — Monthly summary return. Due 20th of following month.
+        <span className="mb-1 inline-flex items-center gap-1 text-xs text-[#64748B]">
+          <ChevronLeft size={13} /> {GSTR3B.back}
+        </span>
+        <p className="text-xl font-semibold text-[#0D1635]">{GSTR3B.title}</p>
+        <p className="mt-0.5 max-w-3xl text-sm text-[#475569]">
+          {GSTR3B.subtitle}
         </p>
       </div>
 
       <div className="flex items-start gap-2 rounded-lg border border-[#FDE68A] bg-[#FFFBEB] p-3">
-        <Shield size={15} className="mt-0.5 shrink-0 text-[#D97706]" />
-        <p className="text-[12.5px] leading-relaxed text-[#92400E]">
-          <span className="font-semibold">CA Review Required.</span> Verify all figures
-          before downloading JSON for portal upload. Do not upload to gst.gov.in without CA
-          approval.
+        <Info size={16} className="mt-0.5 shrink-0 text-[#D97706]" />
+        <p className="text-sm text-[#92400E]">
+          <strong>{GSTR3B.reviewLead}</strong> {GSTR3B.review}
         </p>
       </div>
 
+      {/* Status row */}
+      <div className="flex items-center justify-between">
+        <span className="rounded-full bg-[#F1F5F9] px-2.5 py-1 text-xs font-semibold text-[#334155]">
+          {GSTR3B.draft}
+        </span>
+        <span className="flex items-center gap-2 rounded-lg bg-[#182350] px-4 py-2 text-sm font-medium text-white">
+          <CheckCircle size={16} />
+          {GSTR3B.approve}
+        </span>
+      </div>
+
       {/* Table 3.1 */}
-      <div className="overflow-hidden rounded-xl border border-[#E2E8F0] bg-white">
-        <div className="border-b border-[#E2E8F0] bg-[#F8FAFC] px-5 py-3">
-          <p className="text-[13px] font-semibold text-[#1E293B]">
-            Table 3.1 — Outward Taxable Supplies
-          </p>
-          <p className="mt-0.5 text-[11px] text-[#64748B]">
-            Net of credit notes. CGST Act Section 37.
-          </p>
-        </div>
-        <table className="w-full text-left">
+      <section className="overflow-hidden rounded-xl border border-[#E2E8F0] bg-white">
+        <SectionHead
+          title={GSTR3B.t31}
+          note={GSTR3B.t31Note}
+        />
+        <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-[#F1F5F9] text-[10px] uppercase tracking-wide text-[#64748B]">
-              <th className="px-5 py-2.5 font-semibold">Supply Type</th>
-              <th className="px-3 py-2.5 text-right font-semibold">Taxable value</th>
-              <th className="px-3 py-2.5 text-right font-semibold">IGST</th>
-              <th className="px-3 py-2.5 text-right font-semibold">CGST</th>
-              <th className="px-5 py-2.5 text-right font-semibold">SGST</th>
+            <tr className="border-b border-[#E2E8F0] text-xs uppercase text-[#475569]">
+              {GSTR3B.t31Columns.map((c, i) => (
+                <th key={c} className={`px-5 py-2.5 font-medium ${i === 0 ? "text-left" : "text-right"}`}>
+                  {c}
+                </th>
+              ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-[#F8FAFC] text-[12px]">
-            {T31.map((r) => (
-              <tr key={r.label}>
-                <td className="px-5 py-2.5 text-[#334155]">
-                  {r.label}
-                  {r.note ? (
-                    <span className="mt-0.5 block max-w-[46ch] text-[10px] leading-snug text-[#64748B]">
-                      {r.note}
-                    </span>
-                  ) : null}
-                </td>
-                <td className="px-3 py-2.5 text-right"><Money value={r.taxable} /></td>
-                <td className="px-3 py-2.5 text-right"><Money value={r.igst} /></td>
-                <td className="px-3 py-2.5 text-right"><Money value={r.cgst} /></td>
-                <td className="px-5 py-2.5 text-right"><Money value={r.sgst} /></td>
-              </tr>
-            ))}
-            <tr className="bg-[#EFF6FF] font-semibold">
-              <td className="px-5 py-3 text-[#1E293B]">
-                Total output tax — rows (a) and (b)
-                <span className="mt-1 block max-w-[52ch] text-[10px] font-normal leading-snug text-[#64748B]">
-                  Reverse charge (d) is excluded — s.2(82) puts it outside output tax, and
-                  s.49(4) makes it cash. It is on the challan below.
+          <tbody className="divide-y divide-[#E2E8F0]">
+            <tr>
+              <td className="px-5 py-3 text-[#334155]">
+                {GSTR3B.rowA}
+                <span className="mt-0.5 block max-w-[52ch] text-[10px] text-[#475569]">
+                  Includes ₹2,36,000.00 {GSTR3B.advances}
                 </span>
               </td>
-              <td className="px-3 py-3 text-right"><span className="text-[#94A3B8]">—</span></td>
-              <td className="px-3 py-3 text-right"><Money value="2,84,400.00" bold /></td>
-              <td className="px-3 py-3 text-right"><Money value="1,72,566.00" bold /></td>
-              <td className="px-5 py-3 text-right"><Money value="1,72,566.00" bold /></td>
+              <td className="px-5 py-3 text-right"><Rs v="42,18,600.00" className="text-[#334155]" /></td>
+              <td className="px-5 py-3 text-right"><Rs v="2,84,400.00" className="text-[#0D1635]" /></td>
+              <td className="px-5 py-3 text-right"><Rs v="1,72,566.00" className="text-[#0D1635]" /></td>
+              <td className="px-5 py-3 text-right"><Rs v="1,72,566.00" className="text-[#0D1635]" /></td>
+            </tr>
+            <tr>
+              <td className="px-5 py-3 text-[#334155]">{GSTR3B.rowB}</td>
+              <td className="px-5 py-3 text-right"><Rs v="8,40,000.00" className="text-[#334155]" /></td>
+              <td className="px-5 py-3 text-right font-mono">{DASH}</td>
+              <td className="px-5 py-3 text-right font-mono">{DASH}</td>
+              <td className="px-5 py-3 text-right font-mono">{DASH}</td>
+            </tr>
+            <tr>
+              <td className="px-5 py-3 text-[#334155]">{GSTR3B.rowC}</td>
+              <td className="px-5 py-3 text-right"><Rs v="1,26,000.00" className="text-[#334155]" /></td>
+              <td className="px-5 py-3 text-right font-mono">{DASH}</td>
+              <td className="px-5 py-3 text-right font-mono">{DASH}</td>
+              <td className="px-5 py-3 text-right font-mono">{DASH}</td>
+            </tr>
+            <tr>
+              <td className="px-5 py-3 text-[#334155]">{GSTR3B.rowD}</td>
+              <td className="px-5 py-3 text-right font-mono">{DASH}</td>
+              <td className="px-5 py-3 text-right"><Rs v="0.00" className="text-[#334155]" /></td>
+              <td className="px-5 py-3 text-right"><Rs v="18,900.00" className="text-[#334155]" /></td>
+              <td className="px-5 py-3 text-right"><Rs v="18,900.00" className="text-[#334155]" /></td>
+            </tr>
+            <tr>
+              <td className="px-5 py-3 text-[#334155]">{GSTR3B.rowE}</td>
+              <td className="px-5 py-3 text-right"><Rs v="0.00" className="text-[#334155]" /></td>
+              <td className="px-5 py-3 text-right font-mono">{DASH}</td>
+              <td className="px-5 py-3 text-right font-mono">{DASH}</td>
+              <td className="px-5 py-3 text-right font-mono">{DASH}</td>
+            </tr>
+            <tr className="bg-[#EFF6FF] font-semibold">
+              <td className="px-5 py-3 text-[#1E40AF]">
+                {GSTR3B.total}
+                <span className="mt-0.5 block max-w-[52ch] text-[10px] font-normal text-[#1D4ED8]">
+                  {GSTR3B.totalNote}
+                </span>
+              </td>
+              <td className="px-5 py-3 text-right font-mono">{DASH}</td>
+              <td className="px-5 py-3 text-right"><Rs v="2,84,400.00" className="text-[#1E3A8A]" /></td>
+              <td className="px-5 py-3 text-right"><Rs v="1,72,566.00" className="text-[#1E3A8A]" /></td>
+              <td className="px-5 py-3 text-right"><Rs v="1,72,566.00" className="text-[#1E3A8A]" /></td>
             </tr>
           </tbody>
         </table>
-      </div>
+      </section>
 
       {/* Table 4 */}
-      <div className="overflow-hidden rounded-xl border border-[#E2E8F0] bg-white">
-        <div className="border-b border-[#E2E8F0] bg-[#F8FAFC] px-5 py-3">
-          <p className="text-[13px] font-semibold text-[#1E293B]">Table 4 — Input Tax Credit</p>
-          <p className="mt-0.5 max-w-[78ch] text-[11px] leading-snug text-[#64748B]">
-            Notification 14/2022 with Circular 170/02/2022-GST. 4(A) is gross — the portal
-            populates it from GSTR-2B — and the reversals are declared separately in 4(B).
-          </p>
-        </div>
-        <table className="w-full text-left">
+      <section className="overflow-hidden rounded-xl border border-[#E2E8F0] bg-white">
+        <SectionHead
+          title={GSTR3B.t4}
+          note={GSTR3B.t4Note}
+        />
+        <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-[#F1F5F9] text-[10px] uppercase tracking-wide text-[#64748B]">
-              <th className="px-5 py-2.5 font-semibold">Row</th>
-              <th className="px-3 py-2.5 text-right font-semibold">IGST</th>
-              <th className="px-3 py-2.5 text-right font-semibold">CGST</th>
-              <th className="px-5 py-2.5 text-right font-semibold">SGST</th>
+            <tr className="border-b border-[#E2E8F0] text-xs uppercase text-[#475569]">
+              <th className="px-5 py-2.5 text-left font-medium">{GSTR3B.t4Row}</th>
+              {GSTR3B.t31Columns.slice(2).map((c) => (
+                <th key={c} className="px-5 py-2.5 text-right font-medium">
+                  {c}
+                </th>
+              ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-[#F8FAFC] text-[12px]">
-            {T4.map((r) => (
-              <tr key={r.label} className={r.total ? "bg-[#EFF6FF]" : undefined}>
-                <td className="px-5 py-2.5">
-                  <span className={r.strong ? "font-semibold text-[#1E293B]" : "text-[#475569]"}>
-                    {r.label}
-                  </span>
-                  <span className="mt-0.5 block max-w-[54ch] text-[10px] leading-snug text-[#64748B]">
-                    {r.sub}
-                  </span>
-                </td>
-                <td className="px-3 py-2.5 text-right"><Money value={r.igst} bold={r.strong} /></td>
-                <td className="px-3 py-2.5 text-right"><Money value={r.cgst} bold={r.strong} /></td>
-                <td className="px-5 py-2.5 text-right"><Money value={r.sgst} bold={r.strong} /></td>
-              </tr>
-            ))}
+          <tbody className="divide-y divide-[#E2E8F0]">
+            <tr>
+              <td className="px-5 py-3 text-[#334155]">
+                {GSTR3B.a4}
+                <span className="block text-xs text-[#64748B]">{GSTR3B.a4Note}</span>
+              </td>
+              <td className="px-5 py-3 text-right"><Rs v="2,11,800.00" className="text-[#0D1635]" /></td>
+              <td className="px-5 py-3 text-right"><Rs v="1,34,220.00" className="text-[#0D1635]" /></td>
+              <td className="px-5 py-3 text-right"><Rs v="1,34,220.00" className="text-[#0D1635]" /></td>
+            </tr>
+            <tr>
+              <td className="px-5 py-3 text-xs text-[#475569]">
+                {GSTR3B.b41}
+                <span className="block text-[#64748B]">{GSTR3B.b41Note}</span>
+              </td>
+              <td className="px-5 py-3 text-right text-xs"><Rs v="0.00" className="text-[#475569]" /></td>
+              <td className="px-5 py-3 text-right text-xs"><Rs v="6,480.00" className="text-[#475569]" /></td>
+              <td className="px-5 py-3 text-right text-xs"><Rs v="6,480.00" className="text-[#475569]" /></td>
+            </tr>
+            <tr>
+              <td className="px-5 py-3 text-xs text-[#475569]">
+                {GSTR3B.b42}
+                <span className="block text-[#64748B]">{GSTR3B.b42Note}</span>
+              </td>
+              <td className="px-5 py-3 text-right text-xs"><Rs v="12,400.00" className="text-[#475569]" /></td>
+              <td className="px-5 py-3 text-right text-xs"><Rs v="0.00" className="text-[#475569]" /></td>
+              <td className="px-5 py-3 text-right text-xs"><Rs v="0.00" className="text-[#475569]" /></td>
+            </tr>
+            <tr className="bg-[#F0FDF4] font-semibold">
+              <td className="px-5 py-3 text-[#166534]">{GSTR3B.c4}</td>
+              <td className="px-5 py-3 text-right"><Rs v="1,99,400.00" className="text-[#14532D]" /></td>
+              <td className="px-5 py-3 text-right"><Rs v="1,27,740.00" className="text-[#14532D]" /></td>
+              <td className="px-5 py-3 text-right"><Rs v="1,27,740.00" className="text-[#14532D]" /></td>
+            </tr>
           </tbody>
         </table>
-      </div>
+      </section>
 
       {/* Table 6 */}
-      <div className="overflow-hidden rounded-xl border border-[#E2E8F0] bg-white">
-        <div className="border-b border-[#E2E8F0] bg-[#F8FAFC] px-5 py-3">
-          <p className="text-[13px] font-semibold text-[#1E293B]">Table 6 — Net Tax Payable</p>
-          <p className="mt-0.5 max-w-[80ch] text-[11px] leading-snug text-[#64748B]">
-            Section 49(5) with Rule 88A, in order: IGST credit, then CGST, then SGST. Credit
-            pays output tax only — reverse charge is always cash.
-          </p>
-        </div>
-        <div className="grid grid-cols-2 gap-px bg-[#F1F5F9] md:grid-cols-4">
+      <section className="overflow-hidden rounded-xl border border-[#E2E8F0] bg-white">
+        <SectionHead
+          title={GSTR3B.t6}
+          note={GSTR3B.t6Note}
+        />
+        <div className="grid grid-cols-4 divide-x divide-[#E2E8F0] text-center">
           {[
-            ["Output tax", "6,29,532.00", false],
-            ["Credit set off — 4(C)", "4,54,880.00", false],
-            ["After set-off", "1,74,652.00", false],
-            ["Reverse charge — cash", "37,800.00", false],
-          ].map(([label, value]) => (
-            <div key={label as string} className="bg-white px-5 py-4">
-              <p className="text-[10.5px] font-medium uppercase tracking-wide text-[#64748B]">
-                {label as string}
-              </p>
-              <p className="mt-1.5 font-mono text-[15px] font-semibold text-[#0F172A]">
-                ₹{value as string}
-              </p>
+            [GSTR3B.t31Columns[2], "85,000.00", "text-[#1D4ED8]"],
+            [GSTR3B.t31Columns[3], "44,826.00", "text-[#2563EB]"],
+            [GSTR3B.t31Columns[4], "44,826.00", "text-[#7E22CE]"],
+            [GSTR3B.afterSetOff, "1,74,652.00", "font-bold text-[#0D1635]"],
+          ].map(([label, value, tone]) => (
+            <div key={label} className="px-4 py-5">
+              <p className="mb-1 text-xs font-medium text-[#475569]">{label}</p>
+              <p className={`font-mono text-lg font-semibold ${tone}`}>₹{value}</p>
             </div>
           ))}
         </div>
-        <div className="flex items-center justify-between border-t border-[#E2E8F0] bg-[#0F172A] px-5 py-4">
-          <span className="text-[12.5px] font-semibold text-white">Total payable in cash</span>
-          <span className="font-mono text-[18px] font-bold text-white">₹2,12,452.00</span>
+        <div className="divide-y divide-[#E2E8F0] border-t border-[#E2E8F0]">
+          <div className="flex items-baseline justify-between px-5 py-3">
+            <div>
+              <p className="text-sm text-[#334155]">{GSTR3B.rcm}</p>
+              <p className="mt-0.5 text-[10px] text-[#475569]">{GSTR3B.rcmNote}</p>
+            </div>
+            <p className="font-mono text-lg font-semibold text-[#7E22CE]">₹37,800.00</p>
+          </div>
+          <div className="flex items-baseline justify-between bg-[#FEF2F2] px-5 py-4">
+            <div>
+              <p className="text-sm font-semibold text-[#0D1635]">{GSTR3B.cash}</p>
+              <p className="mt-0.5 text-[10px] text-[#475569]">{GSTR3B.cashNote}</p>
+            </div>
+            <p className="font-mono text-xl font-bold text-[#B91C1C]">₹2,12,452.00</p>
+          </div>
         </div>
-      </div>
+        <div className="grid grid-cols-3 gap-3 border-t border-[#E2E8F0] bg-[#F8FAFC] px-5 py-3 text-center">
+          {[
+            [GSTR3B.available, "4,54,880.00"],
+            [GSTR3B.setOff, "4,54,880.00"],
+            [GSTR3B.carried, "0.00"],
+          ].map(([label, value]) => (
+            <div key={label}>
+              <p className="text-[11px] text-[#64748B]">{label}</p>
+              <p className="font-mono text-sm font-semibold">₹{value}</p>
+            </div>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }

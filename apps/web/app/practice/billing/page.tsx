@@ -18,6 +18,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { formatDate } from "@/lib/dates/format";
+import { PagePlaceholder, pageFrameClass } from "@/components/ui/page-frame";
 
 interface Schedule {
   id: string; client_id: string; arrangement: string; cadence: string;
@@ -112,8 +113,8 @@ function Billing() {
   } finally { setRowBusy(false); }
   }
 
-  if (loading) return <div className="p-8 text-sm text-gray-500">Loading billing…</div>;
-  if (error) return <div className="p-8 text-sm text-red-600">{error}</div>;
+  if (loading) return <PagePlaceholder label="Loading billing schedules" shape="table" />;
+  if (error) return <div role="alert" className={pageFrameClass("data", "text-sm text-state-problem")}>{error}</div>;
 
   // Where the practice's own fee invoices are checked, numbered, issued and paid.
   // Null until the server has named the practice client: a null renders no link.
@@ -121,7 +122,7 @@ function Billing() {
   const draftHref = practiceSalesHref(internalClientId, { invoiceId: msgInvoice?.id });
 
   return (
-    <div className="p-6 max-w-4xl">
+    <div className={pageFrameClass("data")}>
       <PageHeader
         icon={<Receipt size={18} className="text-brand" />}
         title="Billing Schedules"

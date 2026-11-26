@@ -787,6 +787,8 @@ export interface TeamWorkload {
   overloaded_count: number;
   underutilised_count: number;
   avg_utilisation_pct: number;
+  /** What the utilisation counts, in the server's words (POST-A-453): every client's hours, not only the caller's. Absent from an older server. */
+  utilisation_counts?: string;
   unassigned?: UnassignedWork;
 }
 

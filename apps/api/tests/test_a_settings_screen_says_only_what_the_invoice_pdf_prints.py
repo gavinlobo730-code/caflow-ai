@@ -60,6 +60,7 @@ SCREENS = ROOT / "apps" / "web" / "app" / "settings"
 BRANDING_PAGE = SCREENS / "branding" / "page.tsx"
 TEMPLATES_PAGE = SCREENS / "invoice-templates" / "page.tsx"
 HUB_PAGE = SCREENS / "page.tsx"
+GROUPS = SCREENS.parent.parent / "lib" / "settings" / "groups.ts"
 INVOICE_SETTINGS_PAGE = SCREENS / "invoice-settings" / "page.tsx"
 PDF = API / "services" / "invoice_pdf_service.py"
 MIGRATIONS = API / "migrations"
@@ -319,11 +320,12 @@ def test_neither_screen_promises_a_document_that_does_not_read_it():
     branding = _page(BRANDING_PAGE)
     for promise in ("all documents", "client communications", "client documents"):
         assert promise not in branding, f"the Branding screen promises '{promise}': only the practice's own fee invoice reads it"
-    hub = _page(HUB_PAGE)
+    # The settings hub's link sentences are one list since PRE-A-023 (lib/settings/groups.ts), which the hub renders.
+    hub = _page(HUB_PAGE) + "\n" + _page(GROUPS)
     assert "applied to all client documents" not in hub, "the settings hub says the branding is applied to all client documents"
     assert "Layout styles: Classic, Modern, Professional CA, Corporate, Minimal." not in hub, "the settings hub lists five layout styles by name"
-    assert "Logo, tagline and primary colour for your practice&apos;s own invoices; the other settings are kept on file." in hub
-    assert "Where the logo and the signature sit on your practice&apos;s own invoices." in hub
+    assert "Logo, tagline and primary colour for your practice's own invoices; the other settings are kept on file." in hub
+    assert "Where the logo and the signature sit on your practice's own invoices." in hub
     settings = _page(INVOICE_SETTINGS_PAGE)
     assert "appear on every invoice" not in settings, "the payment details are said to appear on every invoice: a client's own invoice carries none"
     assert "A client&apos;s own invoices do not carry them." in settings

@@ -23,14 +23,46 @@ trigger's refusal, so that a lost race is a 409 in the API's own sentence and no
 
 THE CODES. The functions raise `P0001` with a word for a refusal a person can act on, `P0002` for a row that is not there, and `22023` for a call made wrongly (a caller bug, which is not worded: it
 is raised and logged as it is). The words are read off the error's text, as `services/draft_document_lines` reads its own.
+
+THE ONE READ THAT WAITS ON A MIGRATION (`read_live_lots`). Every reader of lots leaves a retracted one out (migration 651, POST-A-418) by filtering on `retracted_at`, a column 651 adds. The API is live
+some minutes before the migration job applies 651, and in those minutes a read that names the column fails. A reader asks through `read_live_lots`, which reads again without the filter when, and only
+when, the database says that column does not exist: before 651 no lot can be retracted, so every lot is live and the unfiltered read is the same answer. Deleted, with the call sites' `live` argument,
+once 651 has been in production (the ledger line of POST-A-421 says so).
 """
 from __future__ import annotations
 
-from typing import Callable
+import logging
+from typing import Callable, Optional, TypeVar
 
 from fastapi import HTTPException
 
 from core.db_provider import privileged_for
+
+_logger = logging.getLogger("caflow.delivery_challan_writes")
+_T = TypeVar("_T")
+
+
+def _names_the_missing_retraction_column(error: Exception) -> bool:
+    """Whether a database error is a read naming `retracted_at` on a database that has no such column yet (42703, migration 651 not applied). Nothing else: any other failure is raised as it came."""
+    text = _text(error).lower()
+    return "retracted_at" in text and (getattr(error, "code", None) == "42703" or "42703" in text or "does not exist" in text)
+
+
+def live_only(query, live: bool):
+    """`query` with the retracted lots left out, or as it is when `live` is False (the database has no retraction columns yet: see `read_live_lots`)."""
+    return query.is_("retracted_at", "null") if live else query
+
+
+def read_live_lots(read: Callable[[bool], _T]) -> _T:
+    """`read(True)`, the read of the live lots (built with `live_only(query, live)`); `read(False)` only when the database has no `retracted_at` yet (migration 651 not applied), when every lot is live.
+    The fallback is logged at ERROR, as the issue door's is, so the minutes it runs are seen."""
+    try:
+        return read(True)
+    except Exception as e:  # noqa: BLE001 — only the missing column is answered; anything else is raised as it came
+        if not _names_the_missing_retraction_column(e):
+            raise
+        _logger.error("read_live_lots: migration 651 is not applied to this database; lots are read without the retraction filter (none can be retracted yet)")
+        return read(False)
 
 
 def _text(error: Exception) -> str:
@@ -85,6 +117,60 @@ def record_lot(db, firm_id: str, client_id: str, challan_id: str, lot: dict, *, 
                 "Only goods sent for JOB WORK are returned on ITC-04. This challan was issued for another reason, whose own clock (if any) is stopped on the challan itself.")) from e
         if "challan_not_found" in text or "line_not_found" in text:
             raise HTTPException(status_code=404, detail="That challan line was not found for this client.") from e
+        raise
+    return (got[0] if isinstance(got, list) and got else got) or {}
+
+
+def issue_in_one_transaction(db, firm_id: str, client_id: str, challan_id: str, issued_at: str, *, document_no: object) -> Optional[dict]:
+    """Returns None when the database has no `issue_delivery_challan_atomic` (migration 652 is not applied yet: raised only for the missing-function signature, so the caller can issue with the
+    compare-and-set it had for the minutes between a deploy of the API and the migration, and for no other reason). Otherwise: issue a draft challan in one transaction that locks the challan and the order it names and asks the order's over-delivery rule (migration 652, POST-A-421); the challan as stored.
+
+    The caller has asked everything in words first; what is worded here is a request that lost a race: another challan of the order was issued between that read and this write, or this one was
+    changed. Nothing is written in either."""
+    try:
+        got = privileged_for(db).rpc("issue_delivery_challan_atomic", {
+            "p_firm_id": firm_id, "p_client_id": client_id, "p_challan_id": challan_id, "p_issued_at": issued_at}).execute().data
+    except Exception as e:  # noqa: BLE001
+        text = _text(e)
+        if "order_over_delivered" in text:
+            raise HTTPException(status_code=422, detail=(
+                f"Another challan against the same order was issued while challan {document_no} was being issued, so the order no longer has that much undelivered, and nothing was written. "
+                "Reload the order to see what is left to deliver.")) from e
+        if "order_line_not_of_order" in text:
+            raise HTTPException(status_code=422, detail=f"Challan {document_no} names an order line that is not on its order, so it was not issued.") from e
+        if "challan_not_draft" in text:
+            raise HTTPException(status_code=409, detail=f"Challan {document_no} was changed while it was being issued. Reload it and look at its status.") from e
+        if "challan_not_found" in text:
+            raise HTTPException(status_code=404, detail="Delivery challan not found") from e
+        low = text.lower()
+        if "pgrst202" in low or ("issue_delivery_challan_atomic" in low and ("does not exist" in low or "could not find the function" in low)):
+            return None
+        raise
+    return (got[0] if isinstance(got, list) and got else got) or {}
+
+
+def retract_lot(db, firm_id: str, client_id: str, challan_id: str, lot_id: str, reason: str, by: object, *, document_no: object) -> dict:
+    """Retract one lot of goods back from a job worker, in one transaction (migration 651, POST-A-418); `{"lot": <the row>, "challan_back_to_issued": bool}`.
+
+    The function takes the challan's lock first, so a retraction and a new lot, a cancel or another retraction of the same lot act one after the other; the second of two retractions of one lot
+    is the 404 a lot that is not there gets."""
+    try:
+        got = privileged_for(db).rpc("retract_challan_lot_atomic", {
+            "p_firm_id": firm_id, "p_client_id": client_id, "p_challan_id": challan_id, "p_lot_id": lot_id, "p_reason": reason, "p_by": by}).execute().data
+    except Exception as e:  # noqa: BLE001
+        text = _text(e)
+        if "challan_not_issued" in text:
+            raise HTTPException(status_code=409, detail=(
+                f"Challan {document_no} is not an issued challan (it is a draft or cancelled), so it has no lot to retract. Reload the challan and look at its status.")) from e
+        if "lot_not_found" in text or "challan_not_found" in text:
+            raise HTTPException(status_code=404, detail="That lot was not found on this client's challan, or it has already been retracted.") from e
+        if "retraction_needs_reason" in text:
+            raise HTTPException(status_code=422, detail="Say why the lot is being retracted: the reason is kept with it.") from e
+        low = text.lower()
+        if "pgrst202" in low or ("retract_challan_lot_atomic" in low and ("does not exist" in low or "could not find the function" in low)):
+            # The API is live some minutes before migration 651 is applied; until it is there is nothing to retract with (and no lot can have been retracted).
+            raise HTTPException(status_code=503, detail=(
+                "Retracting a lot needs a database change that is still being applied after this release, so nothing was retracted. Try again in a few minutes.")) from e
         raise
     return (got[0] if isinstance(got, list) and got else got) or {}
 

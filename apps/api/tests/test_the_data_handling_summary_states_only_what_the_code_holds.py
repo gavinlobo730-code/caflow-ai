@@ -43,7 +43,7 @@ name field; and everything a person types or uploads, which the other card cover
 
 THE PYTHON PORT OF A TYPESCRIPT RULE. "No session-replay or screen-recording tool" is held for the product by
 `apps/web/scripts/the-browser-reports-crashes-without-recording-screens.test.ts`, a TypeScript test. The
-claims ledger names only Python tests as proof, and the marketing app has no test runner at all, so the rule
+claims ledger names only Python tests as proof (the marketing app's own `pnpm test` is not one it can name), so the rule
 is restated here over BOTH apps: no replay integration or sample rate in the source, no replay or recording
 package in either `package.json`. It is a scan of what is in the repository. It cannot see a tool injected at
 the edge or switched on in a dashboard, and the ledger's `not_proved` says so.
@@ -89,6 +89,8 @@ ASSISTANT_FIGURES = "test_the_assistant_is_given_a_clients_rupee_figures_and_not
 NO_CLIENT_NAME = "test_no_client_name_is_attached_to_a_figure_the_product_sends"
 UNNAMED = "test_the_services_the_summary_leaves_unnamed_are_in_the_product"
 SUPPORT_LINK = "test_the_support_page_the_summary_points_to_exists_and_the_page_prints_no_address"
+SIGN_IN_RECORD = "test_a_sign_in_is_recorded_with_its_address_and_browser_and_read_by_partners_and_managers"
+SIGN_IN_ADDRESS = "test_the_address_a_sign_in_records_is_our_servers_and_is_sent_nowhere"
 
 HEADING = "heading"
 
@@ -125,7 +127,11 @@ PAGE_FACTS: dict[str, str] = {
     "The form sends what you type to our team by email.": DEMO_FORM,
     "It does not write to the product's database.": DEMO_FORM,
     "It does not name every service the product uses; email delivery and error reporting are two it leaves out.": UNNAMED,
-    "For a question about your data, see how to reach us on the Support page.": SUPPORT_LINK,
+    # what a sign-in leaves behind (POST-A-486)
+    "The product records the address and the browser that people sign in from, and keeps them with the sign-in history that your firm's Partners and Managers can read.": SIGN_IN_RECORD,
+    "The address is the one our own server saw; it is not turned into a place.": SIGN_IN_ADDRESS,
+    "There is no public email address or phone line yet.": SUPPORT_LINK,
+    "When there is one, the Support page lists it.": SUPPORT_LINK,
 }
 
 
@@ -843,7 +849,15 @@ def test_the_support_page_the_summary_points_to_exists_and_the_page_prints_no_ad
     support = MARKETING / "app" / "(site)" / "support" / "page.tsx"
     assert support.is_file()
     assert 'href="/support"' in _code(PAGE), "the page's closing sentence no longer links to the Support page"
-    assert "CONTACT.email" in _code(support), "the Support page no longer offers a way to reach us"
+    # The Support page prints the mailbox when there is one and says plainly that there is none when there
+    # is not (PRE-A-026): either way a person sent there from this page learns how to reach us, or that they
+    # cannot yet. The summary's own sentence says the same.
+    support_code = _code(support)
+    assert "CONTACT.email" in support_code, "the Support page no longer prints the mailbox when one is set"
+    assert "There is no public email address or phone line yet." in support_code, (
+        "the Support page no longer says when there is no public contact")
+    assert "There is no public email address or phone line yet." in _code(PAGE), (
+        "the summary sends a person to the Support page without saying there is no contact yet")
 
 
 # ═══ the Python port of the replay rule ═══════════════════════════════════════════════════════════
@@ -1048,3 +1062,56 @@ def test_the_footer_rule_fails_on_the_mistakes_it_exists_for(footer, expect):
 def test_the_footer_rule_passes_a_correct_footer():
     good = '{ label: "Support", href: "/support" },<Link href="/privacy" className="x">Privacy</Link>'
     assert footer_problems(footer_links(good)) == []
+
+
+# ── what a sign-in leaves behind (POST-A-486) ────────────────────────────────────────────────────────────
+
+def test_a_sign_in_is_recorded_with_its_address_and_browser_and_read_by_partners_and_managers(monkeypatch):
+    """The sentence: the product records the address and the browser that people sign in from and keeps them with the sign-in history
+    that the firm's Partners and Managers can read. Drives the real route, then asks who the history is open to. (It says 'people sign
+    in from', not 'each sign-in': a sign-in by an invitation or a reset link leaves no history row, only a session row.)"""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    import repositories.login_events_repository as le
+    import repositories.login_sessions_repository as ls
+    import routers.identity as idmod
+    from core.auth import get_current_user
+    from core.permissions import PERMISSIONS, Role
+
+    le._MOCK_EVENTS.clear()
+    ls._MOCK_ROWS.clear()
+    monkeypatch.setenv("TRUSTED_PROXY_HOPS", "1")
+    monkeypatch.setattr(idmod.login_devices_service, "user_repo", type("U", (), {"find_all": staticmethod(lambda firm_id=None: [])}))
+    app = FastAPI()
+    app.include_router(idmod.router)
+    me = {"id": "m1", "auth_user_id": "a-m1", "firm_id": "F1", "role": "Manager", "email": "m@f", "full_name": "M",
+          "session_id": "sess-1"}
+    app.dependency_overrides[get_current_user] = lambda: me
+    r = TestClient(app, raise_server_exceptions=False).post(
+        "/api/identity/login-event", json={"event": "login"},
+        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0) Chrome/130.0 Safari/537.36", "X-Forwarded-For": "203.0.113.9"})
+    assert r.status_code == 200
+    (event,) = le._MOCK_EVENTS
+    assert event["ip"] == "203.0.113.9" and "Chrome" in event["user_agent"] and event["event"] == "login"
+    le._MOCK_EVENTS.clear()
+    ls._MOCK_ROWS.clear()
+
+    readers = {role.value if hasattr(role, "value") else str(role) for role in PERMISSIONS["team"]["read"]}
+    assert readers == {Role.PARTNER.value, Role.MANAGER.value}, (
+        "the sentence says Partners and Managers read the sign-in history; if the team:read tier changes, the sentence is wrong")
+
+
+def test_the_address_a_sign_in_records_is_our_servers_and_is_sent_nowhere():
+    """The sentence: the address is the one our own server saw and it is not turned into a place. Two halves: the address comes from
+    core.client_ip (the right-hand end the proxy wrote, never the caller's own first entry), and nothing in the modules that handle
+    it imports an HTTP client or a lookup library that could send it to a third party to be turned into a town."""
+    ident = (API / "routers" / "identity.py").read_text(encoding="utf-8")
+    assert "from core.client_ip import client_ip" in ident and "client_ip(request)" in ident
+    assert "x-forwarded-for" not in ident.lower(), "the route reads the address through core.client_ip and no other way"
+    banned = re.compile(r"^\s*(?:import|from)\s+(requests|httpx|urllib\.request|aiohttp|geoip2|maxminddb|ipinfo|ip2location)\b", re.M)
+    for rel in ("routers/identity.py", "services/login_devices_service.py", "domain/identity/devices.py",
+                "repositories/login_sessions_repository.py", "repositories/login_events_repository.py"):
+        text = (API / rel).read_text(encoding="utf-8")
+        assert not banned.search(text), f"{rel} imports something that could send an address elsewhere to be looked up"
+

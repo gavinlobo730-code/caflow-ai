@@ -114,18 +114,8 @@ def test_notice_scope_returns_none_for_a_missing_row(deny, monkeypatch):
     assert deny == []   # can_access_client never reached — nothing to check
 
 
-def test_getting_another_clients_notice_is_refused(deny, monkeypatch):
-    monkeypatch.setattr(di, "_MOCK_NOTICES", {"N1": {"id": "N1", "client_id": THEIRS}})
-    out = di.get_notice("N1", current_user=USER)
-    assert out["success"] is False
-    assert out["error"] == "Notice not found"
-
-
-def test_getting_your_own_notice_still_works(deny, monkeypatch):
-    row = {"id": "N1", "client_id": MINE}
-    monkeypatch.setattr(di, "_MOCK_NOTICES", {"N1": row})
-    out = di.get_notice("N1", current_user=USER)
-    assert out["data"]["id"] == "N1"
+# `get_notice` (read one notice) was deleted on 21-11-2026 (POST-A-547): no screen opened it. The scope helper it used is held above, and by
+# the three routes that act on one notice, below.
 
 
 def test_updating_status_of_another_clients_notice_is_refused(deny, monkeypatch):

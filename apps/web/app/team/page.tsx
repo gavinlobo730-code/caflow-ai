@@ -2,18 +2,29 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
-import { Users, UserPlus, Shield, Mail, MoreVertical, AlertCircle, Lock, SlidersHorizontal, Smartphone } from "lucide-react";
+import { Users, UserPlus, Shield, Mail, MoreVertical, AlertCircle, Lock, SlidersHorizontal, Smartphone, Send } from "lucide-react";
+import { RowMenu } from "@/components/ui/row-menu";
+import { rowMenuAt, type RowMenuPlace } from "@/lib/ui/rowMenuPosition";
 import MemberAccessDrawer from "@/components/team/MemberAccessDrawer";
 import ResetAuthenticatorModal from "@/components/team/ResetAuthenticatorModal";
-import { usePermissions } from "@/lib/auth/AuthContext";
+import { useAuth, usePermissions } from "@/lib/auth/AuthContext";
+import { StaffLinksPanel } from "@/components/payroll/StaffLinksPanel";
+import { AddEmployeeModal } from "@/components/payroll/AddEmployeeModal";
+import { useStaffLinks } from "@/lib/payroll/useStaffLinks";
+import { employeeOfMember } from "@/lib/payroll/staffLinks";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { api } from "@/lib/api";
-import { formatDate } from "@/lib/dates/format";
-import { inviteEmailNotSentMessage, inviteEmailProblem } from "@/lib/auth/authErrorMessage";
+import { formatDate, formatDateTime } from "@/lib/dates/format";
+import {
+  countsAsActive, hasJoined, memberBadge, offersResend, resendNotice, switchActionLabel,
+  type MemberBadge, type TeamNotice,
+} from "@/lib/team/memberState";
+import { inviteEmailNotSentMessage } from "@/lib/auth/authErrorMessage";
 import { PageHeader } from "@/components/ui/page-header";
 import { Modal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { SectionPlaceholder } from "@/components/ui/page-frame";
 
 // Module 9.0 / M1 — canonical staff roles (single source of truth = backend Role enum).
 // Client is external (uses the portal) and is not a team member here.
@@ -89,10 +100,21 @@ interface TeamMember {
   email: string;
   role: Role;
   is_active?: boolean;
+  /** The server's word for the member (PRE-A-020): active, invited, invite_expired or inactive. */
+  member_state?: string;
+  invite_expires_at?: string | null;
   created_at?: string;
   auth_user_id?: string;
   firm_id?: string;
 }
+
+/** The badge's colours by tone; the words come from `lib/team/memberState`. */
+const BADGE_TONE: Record<MemberBadge["tone"], string> = {
+  ready: "bg-state-ready-surface text-state-ready",
+  attention: "bg-state-attention-surface text-state-attention",
+  muted: "bg-ps-muted text-ps-label",
+  unknown: "bg-ps-muted text-ps-label",
+};
 
 const ROLES: Role[] = ["Partner", "Manager", "Executive", "Reviewer"];
 
@@ -104,20 +126,45 @@ const ROLE_COLORS: Record<Role, string> = {
 };
 
 // ---- Invite Modal ----
-interface InviteModalProps {
-  onClose: () => void;
-  // Resolves to why the invite EMAIL did not go, or null when it did.
-  onInvite: (name: string, email: string, role: Role) => Promise<string | null>;
+/** What became of an invitation's email, from the SERVER's answer (POST-A-445): `problem` is null when it went. */
+interface InviteOutcome {
+  problem: string | null;
+  /** When the invitation's link stops working, as stored. */
+  expiresAt: string | null;
+  /** The new member's id, for the offer to add them to the firm's own payroll (POST-A-540). */
+  memberId: string | null;
 }
 
-function InviteModal({ onClose, onInvite }: InviteModalProps) {
+interface InviteModalProps {
+  onClose: () => void;
+  onInvite: (name: string, email: string, role: Role) => Promise<InviteOutcome>;
+  /** Present only for a Partner whose firm runs its own payroll here (POST-A-540): once somebody is invited, the result
+   *  offers to add them to that payroll, linked to the sign-in just made. The Team record is already written either way. */
+  onAddToPayroll?: (member: { id: string; name: string }) => void;
+}
+
+function InviteModal({ onClose, onInvite, onAddToPayroll }: InviteModalProps) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<Role>("Executive");
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
   const [emailProblem, setEmailProblem] = useState<string | null>(null);
+  const [expiresAt, setExpiresAt] = useState<string | null>(null);
+  const [memberId, setMemberId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const payrollOffer = onAddToPayroll && memberId ? (
+    <div data-payroll-offer className="border-t border-ps-border pt-3 text-left">
+      <p className="text-xs text-ps-label mb-2">
+        {name} now has a sign-in. If the firm also pays them here, add them to the firm&apos;s own payroll: the two records are kept
+        separate and linked.
+      </p>
+      <button type="button" onClick={() => onAddToPayroll({ id: memberId, name: name.trim() })}
+        className="w-full border border-ps-border text-ps-body text-sm py-2 rounded-lg hover:bg-ps-bg">
+        Add to the firm&apos;s payroll
+      </button>
+    </div>
+  ) : null;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -125,7 +172,10 @@ function InviteModal({ onClose, onInvite }: InviteModalProps) {
     setSaving(true);
     setError(null);
     try {
-      setEmailProblem(await onInvite(name.trim(), email.trim(), role));
+      const outcome = await onInvite(name.trim(), email.trim(), role);
+      setEmailProblem(outcome.problem);
+      setExpiresAt(outcome.expiresAt);
+      setMemberId(outcome.memberId);
       setSuccess(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to send invitation");
@@ -150,6 +200,7 @@ function InviteModal({ onClose, onInvite }: InviteModalProps) {
         <button onClick={onClose} autoFocus className="w-full bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark">
           Close
         </button>
+        {payrollOffer}
       </Modal>
     );
   }
@@ -162,11 +213,14 @@ function InviteModal({ onClose, onInvite }: InviteModalProps) {
             <Mail className="w-6 h-6 text-green-600" />
           </div>
           <p className="text-xs text-ps-label">
-            Invite sent! {name} will receive a magic link at {email}. They&apos;ll be added as {role}.
+            The invitation went to {email}. Its link signs {name} in
+            {expiresAt ? ` until ${formatDateTime(expiresAt)}` : ""}. They will be added as {role} once they accept.
+            If it does not arrive, use Resend invite on their row.
           </p>
           <button onClick={onClose} autoFocus className="w-full bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark">
             Done
           </button>
+          {payrollOffer}
         </div>
       </Modal>
     );
@@ -295,26 +349,32 @@ interface ActionsMenuProps {
   member: TeamMember;
   onEdit: () => void;
   onDeactivate: () => void;
+  /** Present only for somebody still waiting to join (`offersResend`). */
+  onResend?: () => void;
   /** Present only for a Partner and a member who has signed in: someone who never has no authenticator to reset. */
   onResetAuthenticator?: () => void;
 }
 
-function ActionsMenu({ member, onEdit, onDeactivate, onResetAuthenticator }: ActionsMenuProps) {
-  const [open, setOpen] = useState(false);
+function ActionsMenu({ member, onEdit, onDeactivate, onResend, onResetAuthenticator }: ActionsMenuProps) {
+  // The shared row menu (POST-A-130): no layer over the window behind it, so it opens from the keyboard, takes focus, closes on Escape
+  // and gives focus back, and a click on another row's button opens that row's menu at once.
+  const [place, setPlace] = useState<RowMenuPlace | null>(null);
+  const setOpen = (open: false) => { if (!open) setPlace(null); };
   const isActive = member.is_active !== false;
+  const switchLabel = switchActionLabel(member);
 
   return (
     <div className="relative">
       <button
-        onClick={() => setOpen(o => !o)}
+        onClick={(e) => setPlace(rowMenuAt(e, 192))}
+        aria-haspopup="true" aria-expanded={place !== null}
+        aria-label={`Actions for ${member.full_name}`}
         className="p-1 rounded hover:bg-ps-muted text-ps-hint hover:text-ps-label"
       >
         <MoreVertical className="w-4 h-4" />
       </button>
-      {open && (
-        <>
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 mt-1 w-48 bg-white border border-ps-border rounded-lg shadow-lg z-20 py-1">
+      {place && (
+          <RowMenu place={place} widthClass="w-48" onClose={() => setPlace(null)}>
             <button
               onClick={() => { setOpen(false); onEdit(); }}
               className="w-full text-left px-3 py-2 text-xs text-ps-body hover:bg-ps-bg flex items-center gap-2"
@@ -322,6 +382,15 @@ function ActionsMenu({ member, onEdit, onDeactivate, onResetAuthenticator }: Act
               <Shield className="w-3.5 h-3.5" />
               Edit Role
             </button>
+            {onResend && (
+              <button
+                onClick={() => { setOpen(false); onResend(); }}
+                className="w-full text-left px-3 py-2 text-xs text-ps-body hover:bg-ps-bg flex items-center gap-2"
+              >
+                <Send className="w-3.5 h-3.5" />
+                Resend invite
+              </button>
+            )}
             {onResetAuthenticator && (
               <button
                 onClick={() => { setOpen(false); onResetAuthenticator(); }}
@@ -338,10 +407,9 @@ function ActionsMenu({ member, onEdit, onDeactivate, onResetAuthenticator }: Act
               }`}
             >
               <Users className="w-3.5 h-3.5" />
-              {isActive ? "Deactivate" : "Activate"}
+              {switchLabel}
             </button>
-          </div>
-        </>
+          </RowMenu>
       )}
     </div>
   );
@@ -391,7 +459,7 @@ function RolePermissionsCard() {
       </div>
 
       {error && <p className="text-xs text-state-problem">{error}</p>}
-      {!matrix && !error && <p className="text-xs text-ps-hint">Loading…</p>}
+      {!matrix && !error && <SectionPlaceholder label="Loading the role permissions" shape="table" cols={6} />}
 
       {matrix && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -433,6 +501,10 @@ interface PermissionsMatrixProps {
 }
 
 function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
+  // Changing a person's access is `team` `write` on the server, a Partner's by default. A Manager reads this tab and was
+  // offered Edit and a Save that the server then refused (POST-A-543): the button is behind the permission the save asks.
+  const { can } = usePermissions();
+  const mayEditAccess = can("team", "write");
   // THE MATRIX IS SERVED, AND THE GRID IS READ-ONLY.
   //
   // It used to be a per-member toggle grid backed by localStorage, under a
@@ -450,6 +522,8 @@ function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
   // template rather than to an empty row, because every box unticked reads as
   // "this person can reach nothing" and that is a statement.
   const [effective, setEffective] = useState<Record<string, Record<string, string[]>>>({});
+  // The members whose own answer did not come: their row is their role's template, which may not be what they actually have.
+  const [unreadMembers, setUnreadMembers] = useState<string[]>([]);
   const [accessFor, setAccessFor] = useState<string | null>(null);
 
   useEffect(() => {
@@ -472,13 +546,16 @@ function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
     return () => { cancelled = true; };
   }, []);
 
-  const activeMembers = members.filter(m => m.is_active !== false);
+  const activeMembers = members.filter(countsAsActive);
 
   // One request per active member. A firm has a handful of staff, so this is
   // proportional to the ANSWER rather than to anything that grows — the rule
   // this codebase applies to reports, applied to a screen. A member whose
-  // request fails is simply absent from the map and renders against their role
-  // template, which is what they had before anybody overrode anything.
+  // request fails is absent from the map and renders against their role
+  // template. That is NOT "what they had before anybody overrode anything":
+  // overrides are real now, so the template can show access the person does
+  // not have (or hide access they do), and the grid says whose row it is
+  // (POST-A-515 (d); `unreadMembers` below).
   const loadEffective = useCallback(async () => {
     const ids = activeMembers.map(m => m.id);
     if (ids.length === 0) return;
@@ -486,8 +563,9 @@ function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
       try {
         const r = await api.identity.memberPermissions(id);
         return r.success && r.data ? ([id, r.data.effective] as const) : null;
-      } catch { return null; }
+      } catch { return null; /* null is "not read": the member is listed as unread below, never drawn as read */ }
     }));
+    setUnreadMembers(ids.filter((_, i) => answers[i] === null));
     setEffective(Object.fromEntries(answers.filter(Boolean) as [string, Record<string, string[]>][]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeMembers.map(m => m.id).join(",")]);
@@ -528,9 +606,7 @@ function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
   }
   if (!matrix) {
     return (
-      <div className="bg-white rounded-xl border border-ps-border p-6 text-center">
-        <p className="text-sm text-ps-hint">Loading access matrix…</p>
-      </div>
+      <SectionPlaceholder label="Loading the access matrix" shape="table" cols={6} />
     );
   }
 
@@ -546,6 +622,13 @@ function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
             that person alone. An <span className="text-orange-600 font-medium">amber</span> cell
             differs from what their role gives them.
           </p>
+          {unreadMembers.length > 0 && (
+            <p role="status" className="mt-2 text-xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded px-3 py-2">
+              Access that could not be read, so the row shows only what the member&apos;s role gives, which may differ from
+              what has been allowed or blocked for that person: {unreadMembers.map(id => members.find(m => m.id === id)?.full_name).filter(Boolean).join(", ")}.
+              Reload this page to read it again.
+            </p>
+          )}
         </div>
 
         <div className="overflow-x-auto">
@@ -594,15 +677,17 @@ function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
                             <span className={`text-xs px-1.5 py-px rounded-full font-medium ${ROLE_COLORS[member.role]}`}>
                               {member.role}
                             </span>
-                            <button
-                              type="button"
-                              onClick={() => setAccessFor(member.id)}
-                              title={`Set what ${member.full_name} can reach`}
-                              className="inline-flex items-center gap-0.5 text-xs text-blue-700 hover:underline"
-                            >
-                              <SlidersHorizontal className="w-3 h-3" />
-                              Edit
-                            </button>
+                            {mayEditAccess && (
+                              <button
+                                type="button"
+                                onClick={() => setAccessFor(member.id)}
+                                title={`Set what ${member.full_name} sees on the menu and can open`}
+                                className="inline-flex items-center gap-0.5 text-xs text-blue-700 hover:underline"
+                              >
+                                <SlidersHorizontal className="w-3 h-3" />
+                                Edit
+                              </button>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -688,7 +773,10 @@ function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
           // was asked for and what took effect are not always the same, and a
           // screen that showed the request would be showing a change that did
           // not happen.
-          onSaved={(grid) => setEffective(e => ({ ...e, [grid.user_id]: grid.effective }))}
+          onSaved={(grid) => {
+            setEffective(e => ({ ...e, [grid.user_id]: grid.effective }));
+            setUnreadMembers(u => u.filter(id => id !== grid.user_id));
+          }}
         />
       )}
     </div>
@@ -705,16 +793,35 @@ export default function TeamPage() {
   const [showInvite, setShowInvite] = useState(false);
   const [editMember, setEditMember] = useState<TeamMember | null>(null);
   const [resetMember, setResetMember] = useState<TeamMember | null>(null);
+  /** What the last resend came to, in the server's words (POST-A-445). */
+  const [notice, setNotice] = useState<TeamNotice | null>(null);
+  /** The member whose invitation is being sent again: a second press while it is in flight sends nothing. */
+  const [resending, setResending] = useState<string | null>(null);
   // Asking for another person's authenticator to be reset is a Partner's act; the server enforces it, this only
   // decides whether to offer it. approval:approve is held by Partners alone.
   const { can } = usePermissions();
   const canResetAuthenticators = can("approval", "approve");
+  // POST-A-540. Who is in the firm's own payroll is a Partner's alone to read (guardrail G4), so the two reads are made for a
+  // Partner only; the server refuses them to anybody else whatever this screen does.
+  const { userRole } = useAuth();
+  const { links: staffLinks, reload: reloadStaffLinks } = useStaffLinks(userRole === "Partner");
+  const staffRoster = staffLinks.state === "ready" ? staffLinks.roster : null;
+  // The offer made when somebody is invited: only where the firm has a payroll of its own that is switched on.
+  const practicePayrollId = staffRoster?.payroll_enabled === true ? staffRoster.practice_client_id : null;
+  const [payrollFor, setPayrollFor] = useState<{ id: string; name: string } | null>(null);
+  // Inviting is team:write, a Partner's. The header's button was drawn for everybody, so a Manager (who reads this screen
+  // and cannot invite) was offered a form the server refuses. `can()` answers false until the permissions are known.
+  const canInvite = can("team", "write");
+  // True when the list of members could not be read. Kept apart from an empty list: "No team members yet" and four tiles
+  // reading 0 are statements about the firm, and after a failed read nothing is known about the firm.
+  const [listUnread, setListUnread] = useState(false);
   const [activeTab, setActiveTab] = useState<"members" | "permissions">("members");
 
   const loadTeam = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
+      setListUnread(false);
       const supabase = getSupabaseClient();
 
       // Get current session
@@ -747,6 +854,8 @@ export default function TeamPage() {
             email: currentUserRow.email ?? session.user.email ?? "",
             role: (currentUserRow.role as Role) ?? "Reviewer",
             is_active: currentUserRow.is_active !== false,
+            // The person reading this is signed in, so they have joined.
+            member_state: currentUserRow.is_active === false ? "inactive" : "active",
             created_at: currentUserRow.created_at,
             auth_user_id: authUserId,
             firm_id: currentUserRow.firm_id,
@@ -777,11 +886,14 @@ export default function TeamPage() {
         email: r.email ?? "",
         role: (r.role as Role) ?? "Reviewer",
         is_active: r.is_active !== false,
+        member_state: r.member_state,
+        invite_expires_at: r.invite_expires_at ?? null,
         created_at: r.created_at,
         auth_user_id: r.auth_user_id,
         firm_id: r.firm_id,
       })));
     } catch (e) {
+      setListUnread(true);
       setError(e instanceof Error ? e.message : "Failed to load team");
     } finally {
       setLoading(false);
@@ -792,27 +904,42 @@ export default function TeamPage() {
     loadTeam();
   }, [loadTeam]);
 
-  // M6: identity mutations now go through the audited, Partner-only backend
-  // (api.identity) instead of direct Supabase writes from the browser. The user
-  // row is created server-side; the magic link is still sent for self-onboarding.
-  // F21 fix: the join link now carries the server-issued, single-use invite
-  // token (never firm_id/role) — /join exchanges it via POST accept-invite.
-  async function handleInvite(name: string, email: string, role: Role): Promise<string | null> {
+  // M6: identity mutations go through the audited, Partner-only backend (api.identity), never a direct Supabase
+  // write from the browser. POST-A-445: the SERVER mails the invitation, naming the practice and the Partner, and
+  // answers what the mail service did with it; this screen never holds the invitation's token, so it sends nothing
+  // itself. A failed request throws and the modal shows why.
+  async function handleInvite(name: string, email: string, role: Role): Promise<InviteOutcome> {
     const created = await api.identity.createUser(name, email, role);
-    const joinUrl =
-      (typeof window !== "undefined" ? window.location.origin : "") +
-      "/join?token=" + encodeURIComponent(created.data.invite_token);
-    const supabase = getSupabaseClient();
-    // signInWithOtp RETURNS its error rather than throwing it, so both are read.
-    let emailProblem: string | null;
-    try {
-      const { error: sendError } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: joinUrl } });
-      emailProblem = inviteEmailProblem(sendError);
-    } catch (thrown) {
-      emailProblem = inviteEmailProblem(thrown ?? {});
-    }
+    if (!created.success || !created.data) throw new Error(created.error ?? "The invitation could not be created.");
     await loadTeam();
-    return emailProblem;
+    reloadStaffLinks();
+    const mail = created.data.invite_mail;
+    return {
+      problem: mail?.sent === true ? null : (mail?.problem ?? "The server did not say whether the email went."),
+      expiresAt: created.data.invite_expires_at ?? null,
+      memberId: created.data.id ?? null,
+    };
+  }
+
+  // Send a member's invitation again (POST-A-445). The server replaces the token, so the earlier link stops
+  // working, and says whether the new email went. The list is read again so the badge shows the new expiry.
+  async function handleResend(member: TeamMember) {
+    if (resending) return;
+    setResending(member.id);
+    setNotice(null);
+    try {
+      const res = await api.identity.resendInvite(member.id);
+      if (!res.success || !res.data) {
+        setNotice({ tone: "problem", text: res.error ?? `The invitation to ${member.email} could not be sent again.` });
+        return;
+      }
+      setNotice(resendNotice(member.full_name, member.email, res.data, formatDate));
+      await loadTeam();
+    } catch (e) {
+      setNotice({ tone: "problem", text: e instanceof Error ? e.message : `The invitation to ${member.email} could not be sent again.` });
+    } finally {
+      setResending(null);
+    }
   }
 
   async function handleEditRole(id: string, role: Role) {
@@ -825,15 +952,16 @@ export default function TeamPage() {
     try {
       if (reactivating) await api.identity.reactivate(member.id);
       else await api.identity.suspend(member.id);   // also revokes the user's sessions
-      setMembers(ms => ms.map(m => m.id === member.id ? { ...m, is_active: reactivating } : m));
-      setError(null);
+      // Read the list again rather than patching `is_active` here: the badge is the server's `member_state`, and a
+      // withdrawn invitation patched locally kept saying Invited until the page was reloaded.
+      await loadTeam();
     } catch (e) {
       setError(e instanceof Error ? e.message : `Failed to ${reactivating ? "reactivate" : "deactivate"} team member`);
     }
   }
 
   // Summary counts
-  const activeMembers = members.filter(m => m.is_active !== false);
+  const activeMembers = members.filter(countsAsActive);
   const partners = members.filter(m => m.role === "Partner").length;
   const managers = members.filter(m => m.role === "Manager").length;
   const articlesStaff = members.filter(m => m.role === "Executive" || m.role === "Reviewer").length;
@@ -844,7 +972,8 @@ export default function TeamPage() {
       value: members.length,
       icon: Users,
       gradient: "bg-gradient-to-br from-blue-600 to-blue-500",
-      sub: `${activeMembers.length} active`,
+      // A count is a statement about the firm: while the list is being read, or could not be, it is not made.
+      sub: loading || listUnread ? "Active members" : `${activeMembers.length} active`,
     },
     {
       label: "Partners",
@@ -875,7 +1004,7 @@ export default function TeamPage() {
       <PageHeader
         title="Team"
         subtitle="Manage your firm&apos;s team members and their roles"
-        actions={
+        actions={canInvite ? (
           <button
             onClick={() => setShowInvite(true)}
             className="flex items-center gap-1.5 bg-brand text-white text-sm px-3 py-2 rounded-lg hover:bg-brand-dark"
@@ -883,13 +1012,23 @@ export default function TeamPage() {
             <UserPlus className="w-4 h-4" />
             Invite Member
           </button>
-        }
+        ) : undefined}
       />
 
       {error && (
         <div role="alert" className="bg-state-problem-surface border border-state-problem-border rounded-lg px-4 py-3 flex gap-2 text-sm text-state-problem">
           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
           <span>{error}</span>
+        </div>
+      )}
+
+      {notice && (
+        <div role={notice.tone === "problem" ? "alert" : "status"} data-team-notice=""
+          className={`rounded-lg px-4 py-3 flex gap-2 text-sm border ${notice.tone === "problem"
+            ? "bg-state-problem-surface border-state-problem-border text-state-problem"
+            : "bg-state-ready-surface border-state-ready-border text-ps-body"}`}>
+          {notice.tone === "problem" ? <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" /> : <Mail className="w-4 h-4 shrink-0 mt-0.5" />}
+          <span>{notice.text}</span>
         </div>
       )}
 
@@ -903,7 +1042,7 @@ export default function TeamPage() {
               </div>
               <span className="text-xs text-ps-label">{card.label}</span>
             </div>
-            <p className="text-lg font-semibold text-ps-ink">{loading ? "—" : card.value}</p>
+            <p className="text-lg font-semibold text-ps-ink">{loading || listUnread ? "—" : card.value}</p>
             <p className="text-xs text-ps-hint mt-0.5">{card.sub}</p>
           </div>
         ))}
@@ -943,7 +1082,15 @@ export default function TeamPage() {
           </div>
 
           {loading ? (
-            <div className="px-5 py-10 text-center text-sm text-ps-hint">Loading…</div>
+            <SectionPlaceholder label="Loading team members" shape="list" className="p-4" />
+          ) : listUnread ? (
+            <div className="px-5 py-8 text-sm text-ps-body" data-team-unread="">
+              <p>The list of team members could not be read, so nothing is shown here. That is not the same as there being no team members.</p>
+              <button type="button" onClick={() => void loadTeam()}
+                className="mt-3 rounded-lg border border-ps-border px-3 py-1.5 text-sm font-medium text-ps-ink hover:border-brand focus:outline-none focus-visible:ring-2 focus-visible:ring-brand">
+                Try again
+              </button>
+            </div>
           ) : members.length === 0 ? (
             <EmptyState
               icon={<Users size={32} />}
@@ -981,7 +1128,8 @@ export default function TeamPage() {
                       .map(n => n[0])
                       .join("")
                       .toUpperCase();
-                    const joinedDate = formatDate(member.created_at);
+                    const joinedDate = hasJoined(member) ? formatDate(member.created_at) : "—";
+                    const badge = memberBadge(member, formatDate);
 
                     return (
                       <tr key={member.id} className={`hover:bg-ps-bg/50 ${!isActive ? "opacity-60" : ""}`}>
@@ -997,6 +1145,9 @@ export default function TeamPage() {
                                   <span className="ml-1.5 text-xs text-blue-500 font-normal">(You)</span>
                                 )}
                               </p>
+                              {employeeOfMember(staffRoster, member.id) && (
+                                <p data-on-payroll className="text-2xs text-ps-hint">In the firm&apos;s own payroll</p>
+                              )}
                             </div>
                           </div>
                         </td>
@@ -1012,8 +1163,8 @@ export default function TeamPage() {
                           </span>
                         </td>
                         <td className="px-3 py-3">
-                          <span className={`text-xs px-2 py-0.5 rounded-full ${isActive ? "bg-state-ready-surface text-state-ready" : "bg-ps-muted text-ps-label"}`}>
-                            {isActive ? "Active" : "Inactive"}
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${BADGE_TONE[badge.tone]}`}>
+                            {badge.label}
                           </span>
                         </td>
                         <td className="px-3 py-3 text-xs text-ps-label">{joinedDate}</td>
@@ -1023,6 +1174,7 @@ export default function TeamPage() {
                               member={member}
                               onEdit={() => setEditMember(member)}
                               onDeactivate={() => handleDeactivate(member)}
+                              onResend={offersResend(member) && resending !== member.id ? () => handleResend(member) : undefined}
                               onResetAuthenticator={canResetAuthenticators && member.auth_user_id
                                 ? () => setResetMember(member) : undefined}
                             />
@@ -1038,12 +1190,18 @@ export default function TeamPage() {
         </div>
       )}
 
+      {/* Not behind `loading`: the list above is read again after a link is written, and a panel taken off the screen for
+          that read would lose the sentence that says what was just done. The panel has its own three states. */}
+      {activeTab === "members" && (
+        <div className="mt-4">
+          <StaffLinksPanel links={staffLinks} side="team" onChanged={() => { void loadTeam(); reloadStaffLinks(); }} />
+        </div>
+      )}
+
       {/* Tab: Permissions */}
       {activeTab === "permissions" && (
         loading ? (
-          <div className="bg-white rounded-xl border border-ps-border px-5 py-10 text-center text-sm text-ps-hint">
-            Loading…
-          </div>
+          <SectionPlaceholder label="Loading team members" shape="list" />
         ) : (
           <PermissionsMatrix
             members={members}
@@ -1057,6 +1215,16 @@ export default function TeamPage() {
         <InviteModal
           onClose={() => setShowInvite(false)}
           onInvite={handleInvite}
+          onAddToPayroll={practicePayrollId ? (member) => { setShowInvite(false); setPayrollFor(member); } : undefined}
+        />
+      )}
+      {payrollFor && practicePayrollId && (
+        <AddEmployeeModal
+          clients={[{ id: practicePayrollId, client_name: "The firm's own payroll" }]}
+          lockedClientId={practicePayrollId}
+          teamMember={payrollFor}
+          onClose={() => setPayrollFor(null)}
+          onSaved={() => { setPayrollFor(null); reloadStaffLinks(); }}
         />
       )}
       {editMember && (

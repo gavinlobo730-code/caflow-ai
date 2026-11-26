@@ -1,7 +1,7 @@
 """
 R1.1 — unit coverage of the per-client sequence generator (finding F6).
 
-The real-Postgres proof (test_per_client_numbering.py) shows the widened UNIQUE
+The real-Postgres proof (test_per_client_numbering_pg.py) shows the widened UNIQUE
 constraint lets two clients share a number. This complements it by exercising the
 APPLICATION numbering path itself: _next_cn_seq must scope its count by
 client_id, so a fresh client always starts at 1 regardless of how many credit
@@ -15,7 +15,7 @@ here — invoice numbering is fully manual (the CA types it; Caflow only
 validates shape + per-client uniqueness, see routers/sales_invoices.py's
 _assert_invoice_no_available). The widened UNIQUE constraint itself (migration
 151) still applies to sales invoices too and remains covered by
-test_per_client_numbering.py's real-Postgres proof.
+test_per_client_numbering_pg.py's real-Postgres proof.
 """
 from __future__ import annotations
 

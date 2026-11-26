@@ -87,6 +87,33 @@ def member_is_the_firms(db, firm_id: str, member_id) -> None:
         raise _not_found("team member")
 
 
+#: What a door says when the person it names cannot open the client the row belongs to (POST-A-451). The person exists and is in
+#: the firm, so this is not the 404 of a stranger: it is a refusal the caller can act on, and only a Partner can act on it.
+NOT_ASSIGNED_TO_THE_CLIENT = (
+    "That team member is not assigned to this client, so they could not open the work or read what they would be sent "
+    "about it. A Partner can assign them to the client under Team, Assignments, and then they can be named here."
+)
+
+
+def member_reaches_client(db, firm_id: str, member_id, client_id) -> None:
+    """The question after `member_is_the_firms`, for a row that belongs to a client (POST-A-451): 422 unless the member named can
+    open that client (a Partner, or a member assigned to it). An obligation's preparer, reviewer and approver, a task's assignee
+    and an engagement's people are told about the client by name in the nightly mails, and they do the work inside it; naming
+    somebody the firm's own assignments keep out of the client handed them both a notice they should not read and work they could
+    not open. Asks nothing when no person or no client is named, or when there is no database (mock mode), like the others here.
+    A deleted member, a stranger or an invented id is the 404 `member_is_the_firms` gives, in its words."""
+    from core.authz import member_reaches_client as _reaches   # core.authz imports the database provider; kept out of import time
+    named = _named(member_id)
+    if db is None or named is None or not _named(client_id):
+        return
+    rows = _find(privileged_for(db).table("users").select("id, role").eq("id", named).eq("firm_id", firm_id)
+                 .is_("deleted_at", None).limit(1))
+    if not rows:
+        raise _not_found("team member")
+    if not _reaches({"id": named, "role": rows[0].get("role")}, str(client_id), firm_id):
+        raise HTTPException(status_code=422, detail=NOT_ASSIGNED_TO_THE_CLIENT)
+
+
 def member_auth_id_is_the_firms(db, firm_id: str, auth_user_id) -> None:
     """The same question for a column keyed to `auth.users(id)` (a lead's assignee): 404 unless `auth_user_id` is the auth id of a member of this
     firm who has not been deleted. Nothing named, nothing asked. A `users.id` is NOT an answer here: it is not an auth id, and the database
@@ -155,6 +182,86 @@ def sales_invoice_is_the_clients(db, firm_id: str, client_id: str, invoice_id) -
             .eq("firm_id", firm_id).eq("client_id", client_id).limit(1))
     if not rows:
         raise _not_found("invoice")
+
+
+#: What a note's route answers when the document it names belongs to ANOTHER customer or supplier of the same client (POST-A-553).
+ANOTHER_CUSTOMERS_INVOICE = ("That invoice was issued to another customer. A credit or debit note is raised against an invoice of the "
+                             "customer it is for: choose one of this customer's invoices, or none.")
+ANOTHER_SUPPLIERS_BILL = ("That bill is from another supplier. A debit or credit note is raised against a bill of the supplier it is for: "
+                          "choose one of this supplier's bills, or none.")
+
+
+def _link_left_behind(data: dict, stored: Optional[dict], party_key: str, link_key: str, cleared: bool) -> Optional[str]:
+    """The id of the document a DRAFT note still points at after its party was changed by a request that names no document, or None.
+
+    A document belongs to one party, so a draft whose party changes cannot keep the old party's document. The screens empty the box
+    and say so; a request that does not is answered here. Nothing is left behind when the note is not a draft (its party cannot
+    change), when the request names a document or clears it itself, or when the party sent is the party stored."""
+    if stored is None or cleared or link_key in data or stored.get("status") != "draft":
+        return None
+    party = _named(data.get(party_key))
+    if party is None or party == str(stored.get(party_key) or ""):
+        return None
+    return _named(stored.get(link_key))
+
+
+def note_invoice_is_its_customers(db, firm_id: str, client_id: str, data: dict, stored: Optional[dict] = None, *, cleared: bool = False) -> None:
+    """A sales credit or debit note is raised against an invoice of ITS OWN customer (POST-A-553).
+
+    `sales_invoice_is_the_clients` asked only whose CLIENT the invoice is, so a note for customer A could name customer B's invoice
+    of the same client. Issuing it allocates the note against that invoice: B's invoice has less open because of A's note, and both
+    statements, the ageing and the note tables of GSTR-1 carry a note against a recipient it was not issued to (CGST s.34 speaks of
+    the recipient of the original supply). The screens offer only the chosen customer's invoices; this is the API's answer.
+
+      * the request NAMES an invoice (a create, or an edit that sends one): 404 "That invoice was not found." unless it is this
+        client's, as before, and 422 in one sentence unless it is the note's customer's (the customer in the request, else the one
+        stored);
+      * an edit of a DRAFT changes the customer and names no invoice: the stored link is the old customer's, so it is written as
+        NULL with the same request (`data` is changed in place), unless that invoice is in fact the new customer's;
+      * anything else asks nothing. `cleared` says the request itself takes the link away (`models.clearable.draft_only_clears`).
+
+    One read, under the firm and the client. Nothing is asked in mock mode (no database)."""
+    if db is None:
+        return
+    named = _named(data.get("sales_invoice_id"))
+    asked = named or _link_left_behind(data, stored, "customer_id", "sales_invoice_id", cleared)
+    if asked is None:
+        return
+    party = _named(data.get("customer_id")) or _named((stored or {}).get("customer_id"))
+    rows = _find(db.table("client_sales_invoices").select("id, customer_id").eq("id", asked)
+            .eq("firm_id", firm_id).eq("client_id", client_id).limit(1))
+    theirs = bool(rows) and (party is None or str(rows[0].get("customer_id") or "") == party)
+    if named is None:
+        if not theirs:
+            data["sales_invoice_id"] = None
+        return
+    if not rows:
+        raise _not_found("invoice")
+    if not theirs:
+        raise HTTPException(status_code=422, detail=ANOTHER_CUSTOMERS_INVOICE)
+
+
+def note_bill_is_its_suppliers(db, firm_id: str, client_id: str, data: dict, stored: Optional[dict] = None, *, cleared: bool = False) -> None:
+    """A purchase debit or credit note is raised against a bill of ITS OWN supplier: `note_invoice_is_its_customers`, on the purchase
+    side, in the same three cases and the same order (POST-A-553)."""
+    if db is None:
+        return
+    named = _named(data.get("purchase_bill_id"))
+    asked = named or _link_left_behind(data, stored, "vendor_id", "purchase_bill_id", cleared)
+    if asked is None:
+        return
+    party = _named(data.get("vendor_id")) or _named((stored or {}).get("vendor_id"))
+    rows = _find(db.table("purchase_bills").select("id, vendor_id").eq("id", asked)
+            .eq("firm_id", firm_id).eq("client_id", client_id).limit(1))
+    theirs = bool(rows) and (party is None or str(rows[0].get("vendor_id") or "") == party)
+    if named is None:
+        if not theirs:
+            data["purchase_bill_id"] = None
+        return
+    if not rows:
+        raise _not_found("bill")
+    if not theirs:
+        raise HTTPException(status_code=422, detail=ANOTHER_SUPPLIERS_BILL)
 
 
 def client_document_is_the_clients(db, firm_id: str, client_id: str, document_id) -> None:

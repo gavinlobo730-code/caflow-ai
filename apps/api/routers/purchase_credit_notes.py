@@ -35,9 +35,11 @@ from typing import ClassVar, FrozenSet, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from pydantic import BaseModel, field_validator
 from models.iso_date import IsoDate, PatchIsoDate
-from models.clearable import patch_dict
+from models.clearable import draft_only_clears, patch_dict, put_back_on_a_draft, without
 from models.common import api_response
-from models.invoices import InvoiceLineIn
+from models.invoices import PurchaseNoteLineIn
+from domain.gst import note_blocked_credit
+from domain.gst import compensation_cess
 from domain.accounting import opening_documents as _opening
 from core.authz import assert_client_access, can_access_client
 from core.db_provider import privileged_for
@@ -70,7 +72,7 @@ class PurchaseCreditNoteIn(BaseModel):
     client_id: str
     vendor_id: str
     credit_note_date: IsoDate  # YYYY-MM-DD
-    lines: list[InvoiceLineIn]
+    lines: list[PurchaseNoteLineIn]
     purchase_bill_id: str | None = None
     reason: str | None = None
     is_interstate: bool = False
@@ -99,13 +101,16 @@ class PurchaseCreditNoteUpdateIn(BaseModel):
     request that sends it as null (or blank) takes it away (`models.clearable.patch_dict`). Everything else reads null as "not sent", and the
     attached copy of a purchase note (`document_url`) is evidence, so it is not clearable."""
     CLEARABLE: ClassVar[FrozenSet[str]] = frozenset({"notes"})
+    #: What a DRAFT may take away and an issued note may not (POST-A-399, the sixth slice): the document it is raised against and its reason.
+    #: A create takes neither, so a draft may be without them; on an issued note both are frozen and a null still reads "not sent".
+    CLEARABLE_ON_A_DRAFT: ClassVar[FrozenSet[str]] = frozenset({"purchase_bill_id", "reason"})
     vendor_id: str | None = None
     credit_note_date: PatchIsoDate = None
     purchase_bill_id: str | None = None
     reason: str | None = None
     is_interstate: bool | None = None
     is_reverse_charge: bool | None = None
-    lines: list[InvoiceLineIn] | None = None
+    lines: list[PurchaseNoteLineIn] | None = None
     notes: str | None = None
     document_url: str | None = None
 
@@ -178,14 +183,20 @@ def _compute_lines(lines_data: list, is_interstate: bool, owner: Optional[ItemOw
             gst_rate_bps = int(round(float(ln.get("gst_rate_percent")) * 100))
         taxable = int(Decimal(str(qty)) * rate_paise)
         cgst, sgst, igst = _compute_line_gst(taxable, gst_rate_bps, is_interstate)
+        # Compensation cess on the SAME value of supply the three heads are charged on, by the one derivation every line table
+        # that carries it uses (migration 615): a note adjusts a document whose lines were charged that way.
+        cess = compensation_cess.line_columns(ln, taxable_paise=taxable, quantity=qty)
         total_taxable += taxable; total_cgst += cgst; total_sgst += sgst; total_igst += igst
         computed.append({
             "description": ln.get("description", ""), "hsn_sac": ln.get("hsn_sac", ""),
             "quantity": qty, "unit": ln.get("unit") or "NOS", "rate_paise": rate_paise, "gst_rate_bps": gst_rate_bps,
             "taxable_amount_paise": taxable, "cgst_paise": cgst, "sgst_paise": sgst,
-            "igst_paise": igst, "line_total_paise": taxable + cgst + sgst + igst,
+            "igst_paise": igst, **cess,
+            "line_total_paise": taxable + cgst + sgst + igst + cess["cess_paise"],
             "service_catalogue_id": ln.get("service_catalogue_id"),
         })
+    # CGST Act s.17(5): each line keeps the blocked mark it was sent with (POST-A-459, migration 685).
+    computed = note_blocked_credit.mark_lines(computed, lines_data)
     return computed, total_taxable, total_cgst, total_sgst, total_igst
 
 
@@ -227,7 +238,8 @@ def create_purchase_credit_note(data: PurchaseCreditNoteIn, current_user: dict =
         computed, total_taxable, total_cgst, total_sgst, total_igst = _compute_lines(
             data.get("lines", []), is_interstate,
             owner=None if _USE_MOCK else ItemOwner.live(firm_id or "", client_id))
-        total_paise = total_taxable + total_cgst + total_sgst + total_igst
+        total_cess = compensation_cess.lines_cess(computed)
+        total_paise = total_taxable + total_cgst + total_sgst + total_igst + total_cess
         if total_paise <= 0:
             raise HTTPException(status_code=422, detail="Credit note total must be positive.")
         period_validation_service.validate_posting_date(firm_id or "", data["credit_note_date"])
@@ -257,10 +269,11 @@ def create_purchase_credit_note(data: PurchaseCreditNoteIn, current_user: dict =
             "notes": data.get("notes"), "document_url": data.get("document_url"),
             "is_interstate": is_interstate, "is_reverse_charge": bool(data.get("is_reverse_charge")),
             "taxable_amount_paise": total_taxable, "cgst_paise": total_cgst,
-            "sgst_paise": total_sgst, "igst_paise": total_igst, "total_paise": total_paise,
+            "sgst_paise": total_sgst, "igst_paise": total_igst, "cess_paise": total_cess, "total_paise": total_paise,
             "total_gst_paise": total_cgst + total_sgst + total_igst,
             "status": "draft", "created_at": datetime.now(timezone.utc).isoformat(),
         }
+        payload.update(note_blocked_credit.header_columns(computed))   # s.17(5), only when a line is blocked (POST-A-459)
         if _USE_MOCK:
             payload["id"] = str(uuid.uuid4())
             seq = sequence_after(
@@ -275,7 +288,7 @@ def create_purchase_credit_note(data: PurchaseCreditNoteIn, current_user: dict =
         db = get_supabase()
         # THE VENDOR IS THIS CLIENT'S (POST-A-338): the foreign key is not client-aware.
         named_row_ownership.vendor_is_the_clients(db, firm_id, client_id, data["vendor_id"])
-        named_row_ownership.purchase_bill_is_the_clients(db, firm_id, client_id, data.get("purchase_bill_id"))   # the bill it credits
+        named_row_ownership.note_bill_is_its_suppliers(db, firm_id, client_id, data)   # the bill it credits is this supplier's (POST-A-553)
         pcn = insert_numbered_document_with_lines(
             db, "purchase_credit_notes", payload, "credit_note_no",
             lambda s: f"PCN-{fy}-{s:04d}",
@@ -325,7 +338,9 @@ def update_purchase_credit_note(pcn_id: str, data: PurchaseCreditNoteUpdateIn, c
     identical draft/locked split."""
     _assert_pcn_scope(current_user, pcn_id)
     try:
-        data = patch_dict(data)
+        # What only a draft may take away (the document it is raised against, the reason): held aside until the stored note is read.
+        draft_clears = draft_only_clears(data)
+        data = without(patch_dict(data), draft_clears)
         lines_data = data.pop("lines", None)
         soft_fields = {"notes", "document_url"}
 
@@ -334,19 +349,22 @@ def update_purchase_credit_note(pcn_id: str, data: PurchaseCreditNoteUpdateIn, c
                 if d["id"] == pcn_id and not d.get("deleted_at"):
                     if d.get("status") != "draft" and (set(data.keys()) - soft_fields or lines_data is not None):
                         raise HTTPException(status_code=422, detail="Only a draft credit note can be edited — issue a new credit note to correct an issued one (CGST Act §34).")
+                    put_back_on_a_draft(data, draft_clears, d.get("status"))
                     computed = []
                     if lines_data is not None:
                         is_interstate = data.get("is_interstate", d.get("is_interstate", False))
                         computed, total_taxable, total_cgst, total_sgst, total_igst = _compute_lines(
                             lines_data, is_interstate, owner=None)   # mock mode has no catalogue
-                        total_paise = total_taxable + total_cgst + total_sgst + total_igst
+                        total_cess = compensation_cess.lines_cess(computed)
+                        total_paise = total_taxable + total_cgst + total_sgst + total_igst + total_cess
                         if total_paise <= 0:
                             raise HTTPException(status_code=422, detail="Credit note total must be positive.")
                         data.update({
                             "taxable_amount_paise": total_taxable, "cgst_paise": total_cgst,
-                            "sgst_paise": total_sgst, "igst_paise": total_igst, "total_paise": total_paise,
+                            "sgst_paise": total_sgst, "igst_paise": total_igst, "cess_paise": total_cess, "total_paise": total_paise,
                             "total_gst_paise": total_cgst + total_sgst + total_igst,
                         })
+                        data.update(note_blocked_credit.header_columns(computed, always=note_blocked_credit.carries_any(d)))   # s.17(5) (POST-A-459)
                         MOCK_PURCHASE_CREDIT_NOTE_LINES[:] = [l for l in MOCK_PURCHASE_CREDIT_NOTE_LINES if l.get("credit_note_id") != pcn_id]
                         for ln in computed:
                             MOCK_PURCHASE_CREDIT_NOTE_LINES.append({**ln, "credit_note_id": pcn_id})
@@ -363,13 +381,14 @@ def update_purchase_credit_note(pcn_id: str, data: PurchaseCreditNoteUpdateIn, c
             raise HTTPException(status_code=404, detail=f"Credit note {pcn_id} not found")
         d = resp.data[0]
         named_row_ownership.vendor_is_the_clients(db, firm_id, d.get("client_id"), data.get("vendor_id"))
-        named_row_ownership.purchase_bill_is_the_clients(db, firm_id, d.get("client_id"), data.get("purchase_bill_id"))
+        named_row_ownership.note_bill_is_its_suppliers(db, firm_id, d.get("client_id"), data, d, cleared="purchase_bill_id" in draft_clears)
         status = d.get("status")
         if status != "draft" and (set(data.keys()) - soft_fields or lines_data is not None):
             raise HTTPException(
                 status_code=422,
                 detail="Only a draft credit note can be edited — issue a new credit note to correct an issued one (CGST Act §34).",
             )
+        put_back_on_a_draft(data, draft_clears, status)
         if data.get("credit_note_date"):
             period_validation_service.validate_posting_date(firm_id or "", data["credit_note_date"])
             if not _USE_MOCK:
@@ -386,14 +405,16 @@ def update_purchase_credit_note(pcn_id: str, data: PurchaseCreditNoteUpdateIn, c
             computed, total_taxable, total_cgst, total_sgst, total_igst = _compute_lines(
                 lines_data, is_interstate,
                 owner=ItemOwner.live(current_user.get("firm_id") or "", d.get("client_id") or ""))
-            total_paise = total_taxable + total_cgst + total_sgst + total_igst
+            total_cess = compensation_cess.lines_cess(computed)
+            total_paise = total_taxable + total_cgst + total_sgst + total_igst + total_cess
             if total_paise <= 0:
                 raise HTTPException(status_code=422, detail="Credit note total must be positive.")
             data.update({
                 "taxable_amount_paise": total_taxable, "cgst_paise": total_cgst,
-                "sgst_paise": total_sgst, "igst_paise": total_igst, "total_paise": total_paise,
+                "sgst_paise": total_sgst, "igst_paise": total_igst, "cess_paise": total_cess, "total_paise": total_paise,
                 "total_gst_paise": total_cgst + total_sgst + total_igst,
             })
+            data.update(note_blocked_credit.header_columns(computed, always=note_blocked_credit.carries_any(d)))   # s.17(5) (POST-A-459)
             draft_document_lines.replace_draft_lines(db, "purchase_credit_note", pcn_id, firm_id or "", computed, edited_by=current_user)
 
         if data:

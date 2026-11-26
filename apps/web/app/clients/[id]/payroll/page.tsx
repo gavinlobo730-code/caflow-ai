@@ -2,20 +2,23 @@
 
 import { bpsFromPercentInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useFirstRead } from "@/lib/loading/firstRead";
 import { useSearchParams } from "next/navigation";
 import {
   Users, Plus, Play, CheckCircle,
   FileText, TrendingUp, IndianRupee, Download, Upload,
-  CreditCard, Settings, Scale, RefreshCw,
+  CreditCard, Settings, Scale, RefreshCw, History,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { supabase } from "@/lib/supabase/client";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
+import Link from "next/link";
+import { openedForHref } from "@/lib/payroll/openedFor";
 import { openedAt } from "@/lib/accounting/sourceDocument";
 import CsvImportModal from "@/components/LazyCsvImportModal";
 import type { ImportRow } from "@/components/CsvImportModal";
-import { EMPLOYEE_IMPORT_COLUMNS } from "@/lib/imports/mappers";
+import { EMPLOYEE_IMPORT_COLUMNS, EMPLOYEE_REIMPORT_NOTE } from "@/lib/imports/mappers";
 import { downloadCsv } from "@/components/ui/data-table";
 import { toCsv } from "@/lib/table/process";
 import { api } from "@/lib/api";
@@ -26,11 +29,14 @@ import EmployeeDrawer from "@/components/payroll/EmployeeDrawer";
 import RecordedSettlementDialog from "@/components/payroll/RecordedSettlement";
 import { AddEmployeeModal } from "@/components/payroll/AddEmployeeModal";
 import ApplyStructureModal from "@/components/payroll/ApplyStructureModal";
-import { usePermissions } from "@/lib/auth/AuthContext";
-import { MetricCardSkeleton, StatementSkeleton, TransactionListSkeleton, TableSkeleton, CardGridSkeleton, Skeleton } from "@/components/ui/skeleton";
+import { useAuth, usePermissions } from "@/lib/auth/AuthContext";
+import { StaffLinksPanel } from "@/components/payroll/StaffLinksPanel";
+import { useStaffLinks } from "@/lib/payroll/useStaffLinks";
+import { MetricCardSkeleton, StatementSkeleton, TransactionListSkeleton, TableSkeleton, CardGridSkeleton, Skeleton, LoadingRegion } from "@/components/ui/skeleton";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 import StatutoryHandoff from "@/components/payroll/StatutoryHandoff";
 import { BonusRegisterTab } from "@/components/payroll/BonusRegister";
+import { OpeningPositionsTab } from "@/components/payroll/OpeningPositions";
 import { Callout, GapList } from "@/components/ui/callout";
 import { YearPicker } from "@/components/ui/year-picker";
 import { formatPaise } from "@/lib/money/format";
@@ -40,9 +46,9 @@ import { explainMfaRefusal } from "@/lib/auth/mfaRefusal";
 import { Button } from "@/components/ui/button";
 import { promptDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/ui/page-header";
-import { EmptyState } from "@/components/ui/states";
+import { EmptyState, ErrorState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
-import { doingOf, errorPageSentence, failureSentence, fetchPlain, looksLikeMarkup, notOursSentence, plainFailure, PlainFailure, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, errorPageSentence, failureSentence, fetchBounded, looksLikeMarkup, notOursSentence, plainFailure, PlainFailure, type UntypedJson } from "@/lib/api/failureSentence";
 import { istToday } from "@/lib/dateMath";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -54,7 +60,7 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<{ data:
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
   const doing = doingOf(options?.method);
-  const res = await fetchPlain(`${API}${path}`, {
+  const res = await fetchBounded(`${API}${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -130,7 +136,7 @@ function refusalText(res: unknown): string | null {
  *  `setup` is deliberately NOT a verb and sits after them: the client's
  *  statutory registrations are a fact about the client, not a step in a month.
  */
-type Tab = "inputs" | "register" | "release" | "outputs" | "file" | "bonus" | "setup";
+type Tab = "inputs" | "register" | "release" | "outputs" | "file" | "bonus" | "opening" | "setup";
 
 /** The server refuses a shorter reason and so does migration 328's CHECK. Not a
  *  quality bar — a floor under "ok", "-" and ".", which is what a required
@@ -151,6 +157,8 @@ function fmt(paise: number) {
 interface Employee {
   id: string;
   name: string;
+  /** The team sign-in this employee of the firm's OWN payroll is linked to (POST-A-540); null or absent = none. */
+  staff_user_id?: string | null;
   pan?: string;
   aadhaar_last4?: string;
   designation?: string;
@@ -283,13 +291,13 @@ function DashboardTab({ clientId }: { clientId: string }) {
   useEffect(() => { load(); }, [load]);
 
   if (loading) return (
-    <div className="p-6 space-y-3">
+    <LoadingRegion label="Loading payroll" className="p-6 space-y-3">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[...Array(4)].map((_, i) => <MetricCardSkeleton key={i} />)}
       </div>
       <StatementSkeleton sections={1} rowsPerSection={3} />
       <TransactionListSkeleton rows={6} />
-    </div>
+    </LoadingRegion>
   );
 
   if (loadFailed) return (
@@ -383,7 +391,18 @@ const EMPLOYEE_EXPORT_COLUMNS: { key: string; header: string; accessor: (row: Em
 // always a value the backend ignored.
 function EmployeesTab({ clientId }: { clientId: string }) {
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [loading, setLoading] = useState(true);
+  // The skeleton for the first read of this client only (POST-A-400): the employee drawer records a change (a settlement,
+  // a status) and asks for this read again (`onChanged={load}`), and a read that replaced the tab unmounted the drawer.
+  const { loading, reader: firstRead } = useFirstRead(clientId);
+  // POST-A-540. On the practice's OWN payroll, a Partner is shown each employee beside their team sign-in (the two are linked,
+  // never merged). `client.is_internal` is the shell's answer for the client that is open; the server refuses the reads to
+  // anybody who is not a Partner whatever this tab does.
+  const { client: openClient } = useClientNav();
+  const { userRole } = useAuth();
+  const { links: staffLinks, reload: reloadStaffLinks } = useStaffLinks(openClient?.is_internal === true && userRole === "Partner");
+  /** The name on the team sign-in an employee is linked to, where the list of sign-ins was read and holds them. */
+  const teamSignIn = (staffUserId?: string | null): string | null =>
+    (staffUserId && staffLinks.state === "ready" ? staffLinks.members.find((m) => m.id === staffUserId)?.full_name : null) ?? null;
   const [showAdd, setShowAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
   // AddEmployeeModal shows the client as a fixed label when `lockedClientId`
@@ -404,18 +423,22 @@ function EmployeesTab({ clientId }: { clientId: string }) {
   const { can } = usePermissions();
 
   const load = useCallback(async () => {
-    setLoading(true);
+    const read = firstRead.begin();
     setLoadFailed(false);
     try {
       const res = await apiFetch<Employee[]>(`/api/payroll/employees?client_id=${clientId}`);
-      if (!res || (res as { success?: boolean }).success === false) { setLoadFailed(true); return; }
+      if (!firstRead.isLatest(read)) return;   // a later read has been asked for: its answer is the one to show
+      if (!res || (res as { success?: boolean }).success === false) { firstRead.failed(read); setLoadFailed(true); return; }
       setEmployees(res.data || []);
+      firstRead.landed(read);
     } catch {
+      if (!firstRead.isLatest(read)) return;
+      firstRead.failed(read);
       setLoadFailed(true);
     } finally {
-      setLoading(false);
+      firstRead.settled(read);
     }
-  }, [clientId]);
+  }, [clientId, firstRead]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -445,7 +468,7 @@ function EmployeesTab({ clientId }: { clientId: string }) {
         // re-import of twenty people read as importing zero.
         skipped: data?.updated ?? 0,
         skippedDetail: (data?.updated ?? 0) > 0
-          ? [`${data?.updated} existing employee(s) updated from their employee code`]
+          ? [`${data?.updated} existing employee(s) updated from their employee code`, EMPLOYEE_REIMPORT_NOTE]
           : undefined,
       };
     } catch (err) {
@@ -518,9 +541,11 @@ function EmployeesTab({ clientId }: { clientId: string }) {
           clients={clientsForModal}
           lockedClientId={clientId}
           onClose={() => setShowAdd(false)}
-          onSaved={() => { setShowAdd(false); load(); }}
+          onSaved={() => { setShowAdd(false); load(); reloadStaffLinks(); }}
         />
       )}
+
+      <StaffLinksPanel links={staffLinks} side="payroll" onChanged={() => { void load(); reloadStaffLinks(); }} />
 
       <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
         <table className="w-full text-sm">
@@ -551,7 +576,12 @@ function EmployeesTab({ clientId }: { clientId: string }) {
               </td></tr>
             ) : employees.map(e => (
               <tr key={e.id} className="hover:bg-ps-bg transition-colors">
-                <td className="px-4 py-3 font-medium text-ps-ink">{e.name}</td>
+                <td className="px-4 py-3 font-medium text-ps-ink">
+                  {e.name}
+                  {teamSignIn(e.staff_user_id) && (
+                    <span data-team-sign-in className="block text-2xs font-normal text-ps-hint">Team sign-in: {teamSignIn(e.staff_user_id)}</span>
+                  )}
+                </td>
                 <td className="px-4 py-3 text-ps-label">{e.designation || "—"}</td>
                 <td className="px-4 py-3 text-ps-label">{e.department || "—"}</td>
                 <td className="px-4 py-3 font-mono text-ps-ink">{fmt(e.basic_paise)}</td>
@@ -572,7 +602,9 @@ function EmployeesTab({ clientId }: { clientId: string }) {
 
       {openEmployee && (
         <EmployeeDrawer
-          employee={openEmployee}
+          // The row as the latest read has it (POST-A-400): the drawer stays drawn through the reload it asks for, so the
+          // heading (name, status) follows a profile save or a settlement instead of keeping the row it was opened on.
+          employee={employees.find((e) => e.id === openEmployee.id) ?? openEmployee}
           clientId={clientId}
           // Recording a settlement posts an immutable journal and closes the
           // employee, so it needs payroll:finalize — the same tier that
@@ -600,6 +632,8 @@ function RunsTab({ clientId, firmId, openDoc }:
   const [slips, setSlips] = useState<Slip[]>([]);
   const [loadingSlips, setLoadingSlips] = useState(false);
   const [finalizing, setFinalizing] = useState<string | null>(null);
+  const { can: canDo, resolved: permissionsRead } = usePermissions();
+  const mayFinalize = canDo("payroll", "finalize");                  // closed while the permissions are read
   // M17: a failed runs/slips fetch must not render as "No payroll runs yet" /
   // an empty slip table — both look identical to genuinely having no data.
   const [loadFailed, setLoadFailed] = useState(false);
@@ -800,7 +834,7 @@ function RunsTab({ clientId, firmId, openDoc }:
   async function fetchSlips(runId: string) {
     setLoadingSlips(true);
     setSlipsFailed(false);
-    const res = await apiFetch<Slip[]>(`/api/payroll/runs/${runId}/slips`).catch(() => null);
+    const res = await apiFetch<Slip[]>(`/api/payroll/runs/${runId}/slips`).catch(() => /* no answer: the check just below sets slipsFailed */ null);
     if (!res || (res as { success?: boolean }).success === false) { setSlipsFailed(true); setSlips([]); setLoadingSlips(false); return; }
     setSlips(res.data || []);
     setLoadingSlips(false);
@@ -813,7 +847,7 @@ function RunsTab({ clientId, firmId, openDoc }:
   }
 
   if (loading) return (
-    <div className="p-5 space-y-4">
+    <LoadingRegion label="Loading the payroll runs" className="p-5 space-y-4">
       <div className="bg-white rounded-xl border border-ps-border p-4">
         <Skeleton className="h-2.5 w-24 mb-3" />
         <div className="flex items-end gap-3">
@@ -822,7 +856,7 @@ function RunsTab({ clientId, firmId, openDoc }:
         </div>
       </div>
       <TransactionListSkeleton rows={3} />
-    </div>
+    </LoadingRegion>
   );
 
   return (
@@ -861,7 +895,9 @@ function RunsTab({ clientId, firmId, openDoc }:
             </ul>
             <p className="text-2xs text-state-attention mt-1.5">
               The run is a draft — nothing is posted or paid. Fix these and create it again,
-              or finalise it if the figures are right.
+              {mayFinalize
+                ? "or finalise it if the figures are right."
+                : "or, if the figures are right, ask someone who may finalise payroll runs to finalise it."}
             </p>
             {/* PAY-15: this panel NAMED the attendance nobody had entered and
                 offered no way to enter it, so the one instruction it gave —
@@ -973,11 +1009,15 @@ function RunsTab({ clientId, firmId, openDoc }:
                 <button onClick={() => loadSlips(r.id)} className="text-2xs text-blue-600 hover:text-blue-800 px-2 py-1 rounded hover:bg-blue-50">
                   {selectedRun === r.id ? "Hide Slips" : "View Slips"}
                 </button>
-                {r.status !== "finalized" && r.status !== "paid" && (
+                {/* Finalise asks `payroll` `finalize` (Partner only); it was offered to a Manager, who was refused (POST-A-455). */}
+                {r.status !== "finalized" && r.status !== "paid" && mayFinalize && (
                   <Button variant="plain" size="none" onClick={() => finalizeRun(r.id)} disabled={finalizing === r.id}
                     className="flex items-center gap-1 text-2xs px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50">
                     <CheckCircle size={11} /> {finalizing === r.id ? "Finalising…" : "Finalise"}
                   </Button>
+                )}
+                {r.status !== "finalized" && r.status !== "paid" && permissionsRead && !mayFinalize && (
+                  <span className="text-2xs text-ps-label">Finalising needs permission to finalise payroll runs, so the button is not shown to you</span>
                 )}
                 {(r.status === "finalized" || r.status === "paid") && (
                   <span className="text-2xs text-emerald-600 flex items-center gap-1"><CheckCircle size={11} /> {r.status === "paid" ? "Paid" : "Finalised"}</span>
@@ -1297,6 +1337,8 @@ function ReleaseTab({ clientId }: { clientId: string }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [disburseRun, setDisburseRun] = useState<PayrollRun | null>(null);
+  const { can: canDo, resolved: permissionsRead } = usePermissions();
+  const mayFinalize = canDo("payroll", "finalize");                  // closed while the permissions are read
 
   const load = useCallback(async () => {
     setLoading(true); setLoadFailed(false);
@@ -1383,6 +1425,11 @@ function ReleaseTab({ clientId }: { clientId: string }) {
           {msg.text}
         </p>
       )}
+      {permissionsRead && !mayFinalize && runs.length > 0 && (
+        <p className="text-xs text-ps-label">
+          Recording a run&apos;s payment, writing its loans down and reversing it need permission to finalise payroll runs, so those buttons are not shown to you.
+        </p>
+      )}
 
       {loadFailed ? (
         <div className="bg-white rounded-xl border border-ps-border p-8 text-center">
@@ -1432,20 +1479,21 @@ function ReleaseTab({ clientId }: { clientId: string }) {
                       {r.total_net_paise != null ? fmt(r.total_net_paise) : "—"}
                     </td>
                     <td className="px-3 py-2 text-right space-x-2 whitespace-nowrap">
-                      {(finalized || paid) && r.loan_writedown_owed_at && (
+                      {/* Write loans down, Record payment and Reverse ask `payroll` `finalize` (Partner only), as Finalise does (POST-A-455). */}
+                      {(finalized || paid) && r.loan_writedown_owed_at && mayFinalize && (
                         <Button variant="plain" size="none" onClick={() => writeDownLoans(r)} disabled={busy === r.id}
                           title="This run was released but its loan balances were not all written down"
                           className="px-3 py-1 border border-state-attention-border bg-state-attention-surface text-state-attention rounded-lg disabled:opacity-50">
                           {busy === r.id ? "Writing down…" : "Write loans down"}
                         </Button>
                       )}
-                      {finalized && (
+                      {finalized && mayFinalize && (
                         <button onClick={() => setDisburseRun(r)} disabled={busy === r.id}
                           className="px-3 py-1 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">
                           Record payment
                         </button>
                       )}
-                      {(finalized || paid) && (
+                      {(finalized || paid) && mayFinalize && (
                         // Never primary. It is a correction to posted books.
                         <Button variant="plain" size="none" onClick={() => reverse(r)} disabled={busy === r.id}
                           className="px-3 py-1 border border-ps-border rounded-lg text-ps-label hover:bg-state-problem-hover hover:text-red-600 disabled:opacity-50">
@@ -1453,7 +1501,9 @@ function ReleaseTab({ clientId }: { clientId: string }) {
                         </Button>
                       )}
                       {!finalized && !paid && (
-                        <span className="text-2xs text-ps-hint">Finalise it under Register</span>
+                        <span className="text-2xs text-ps-hint">
+                          {mayFinalize ? "Finalise it under Register" : "Someone who may finalise payroll runs finalises it under Register"}
+                        </span>
                       )}
                     </td>
                   </tr>
@@ -1488,7 +1538,7 @@ type ECRSequence = {
   months_known_from?: string | null;
   note?: string;
   filings?: { id: string; wage_month: string; return_type: string; status: string;
-              trrn?: string | null; submitted_on?: string; approved_on?: string | null }[];
+              return_file_id?: string | null; trrn?: string | null; submitted_on?: string; approved_on?: string | null }[];
 };
 
 function OutputsTab({ clientId }: { clientId: string }) {
@@ -1502,25 +1552,38 @@ function OutputsTab({ clientId }: { clientId: string }) {
   // only the server knows — a run being finalised says the books closed, not
   // that anybody uploaded anything.
   const [ecrSeq, setEcrSeq] = useState<ECRSequence | null>(null);
+  // A read that did not answer is not an empty list, and a queue that could not be read is not an empty queue (POST-A-515 (d)): the
+  // first used to draw "No payroll runs yet" and the second drew nothing, so a CA looking for the EPFO order saw no order and no reason.
+  const [runsFailed, setRunsFailed] = useState<string | null>(null);
+  const [sequenceFailed, setSequenceFailed] = useState(false);
 
   const loadSequence = useCallback(async () => {
+    setSequenceFailed(false);
     try {
       const res = (await api.payroll.ecrSequence(clientId)) as { data?: ECRSequence };
       setEcrSeq(objectWithLists<ECRSequence>(res?.data, "filings", "outstanding"));
-    } catch { /* the panel simply does not render */ }
+    } catch { setSequenceFailed(true); }
+  }, [clientId]);
+
+  // No `setLoading(true)` here: the screen blocks with "Loading…" for its first read only, and a retry is a read the failure sentence stays up
+  // through (clearing it first would draw "No payroll runs yet" while the retry is in flight, which is the false nothing this replaces).
+  const loadRuns = useCallback(async () => {
+    try {
+      const res = await apiFetch<PayrollRun[]>(`/api/payroll/runs?client_id=${clientId}`);
+      const list = res?.data ?? [];
+      setRuns(list);
+      setRunId(list[0]?.id ?? "");
+      setRunsFailed(null);
+    } catch (e) {
+      setRuns([]);
+      setRunsFailed(failureSentence(e, "The payroll runs could not be read.", "read"));
+    } finally { setLoading(false); }
   }, [clientId]);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await apiFetch<PayrollRun[]>(`/api/payroll/runs?client_id=${clientId}`);
-        const list = res?.data ?? [];
-        setRuns(list);
-        setRunId(list[0]?.id ?? "");
-      } catch { /* the empty state below says it */ } finally { setLoading(false); }
-    })();
+    loadRuns();
     loadSequence();
-  }, [clientId, loadSequence]);
+  }, [loadRuns, loadSequence]);
 
   const run = runs.find((r) => r.id === runId);
 
@@ -1532,6 +1595,9 @@ function OutputsTab({ clientId }: { clientId: string }) {
   }
 
   if (loading) return <div className="p-5"><TransactionListSkeleton rows={3} /></div>;
+  if (runsFailed) {
+    return <ErrorState className="m-5" title="The payroll runs could not be read" message={`${runsFailed} This is not a client with no runs; try again.`} onRetry={() => { loadRuns(); loadSequence(); }} />;
+  }
   if (runs.length === 0) {
     return (
       <EmptyState
@@ -1592,7 +1658,15 @@ function OutputsTab({ clientId }: { clientId: string }) {
           The sentence is composed on the server — it carries the limit that
           makes the list safe to read, and rebuilding it here would be the
           business logic this codebase keeps out of the browser. */}
-      {ecrSeq?.note && (
+      {sequenceFailed && (
+        <div role="status" className="rounded-xl border border-state-attention-border bg-state-attention-surface p-3">
+          <p className="text-2xs font-semibold text-ps-ink">EPFO filing order</p>
+          <p className="text-2xs text-ps-label mt-1">
+            The filing order could not be read, so it is not shown here. It is not empty; reopen this tab to read it again.
+          </p>
+        </div>
+      )}
+      {!sequenceFailed && ecrSeq?.note && (
         <div className={`rounded-xl border p-3 ${(ecrSeq.outstanding?.length ?? 0)
           ? "border-state-attention-border bg-state-attention-surface" : "border-ps-border bg-white"}`}>
           <p className="text-2xs font-semibold text-ps-ink">EPFO filing order</p>
@@ -2001,7 +2075,7 @@ function StatutoryIdentityTab({ clientId }: { clientId: string }) {
         <div>
           <h2 className="text-sm font-semibold text-ps-ink">Professional tax registrations</h2>
           <p className="text-2xs text-ps-label mt-0.5">
-            One per state — PT is a state levy under Article 276(2). The PTRC is the
+            One per state: professional tax is set by each state. The PTRC is the
             employer&apos;s authority to <em>deduct</em> from employees and deposit; the PTEC is the
             entity&apos;s own enrolment. A payroll run reports any state it deducts in with no PTRC here.
           </p>
@@ -2164,7 +2238,7 @@ function PayrollEnablementLine({ clientId }: { clientId: string }) {
     setReadError(null);
     setMsg(null);
     try {
-      const res = await api.payroll.payrollClientStates() as {
+      const res = await api.payroll.payrollClientStates(undefined, clientId) as {
         success?: boolean; error?: string | null; data?: unknown;
       };
       if (asked.current !== clientId) return;
@@ -2197,7 +2271,9 @@ function PayrollEnablementLine({ clientId }: { clientId: string }) {
         success?: boolean; error?: string | null; detail?: string;
       };
       if (res?.success === false) {
-        setMsg(res.error || res.detail || "Only a Partner can switch payroll on for a client.");
+        // A refusal that came without words is reported as what happened. It used to say "Only a Partner can switch payroll on", a reason
+        // nobody had read off the answer, and untrue since the switch is a permission a Partner can tick for somebody else.
+        setMsg(res.error || res.detail || "Payroll could not be switched on for this client.");
         return;
       }
       setEnabled(true);
@@ -2229,7 +2305,7 @@ function PayrollEnablementLine({ clientId }: { clientId: string }) {
           </button>
         </>
       ) : enabled === null ? (
-        <span className="text-ps-hint">Checking whether payroll is switched on…</span>
+        <LoadingRegion label="Checking whether payroll is switched on" className="text-ps-hint">Checking whether payroll is switched on…</LoadingRegion>
       ) : enabled ? (
         <span className="text-ps-body">Payroll is <strong>on</strong> for this client.</span>
       ) : (
@@ -2237,7 +2313,7 @@ function PayrollEnablementLine({ clientId }: { clientId: string }) {
           <span className="text-ps-body">
             Payroll is <strong>off</strong> for this client — nothing payroll can be
             created for them until it is switched on. Anything already recorded stays readable.
-            {resolved && !mayEnable && " A Partner switches it on here."}
+            {resolved && !mayEnable && " Switching it on needs the permission to switch payroll on, which a Partner holds and can give."}
           </span>
           {mayEnable && (
             <Button variant="plain" size="none" onClick={() => switchOn()} disabled={enableSaving}
@@ -2255,7 +2331,7 @@ function PayrollEnablementLine({ clientId }: { clientId: string }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function PayrollPage() {
-  const { clientId } = useClientNav();
+  const { clientId, client: openClient } = useClientNav();
   const [tab, setTab] = useState<Tab>("inputs");
   const [openDoc, setOpenDoc] = useState<string | null>(null);
   const [openDocTab, setOpenDocTab] = useState<string | null>(null);
@@ -2276,6 +2352,8 @@ export default function PayrollPage() {
     // panel under Outputs: §19 makes it due eight months after the year's
     // close, on a date nothing else in payroll shares.
     { id: "bonus",    label: "Bonus",    icon: Scale },
+    // OPENING — what a client that came over part-way through the year had already paid and withheld (POST-A-082).
+    { id: "opening",  label: "Opening",  icon: History },
     { id: "setup",    label: "Setup",    icon: Settings },
   ];
 
@@ -2319,6 +2397,18 @@ export default function PayrollPage() {
           className="mb-3"
         />
         <PayrollEnablementLine clientId={clientId} />
+        {/* POST-A-534. The firm's own practice is in no list of the firm's clients, so the firm-level payroll screens, whose
+            pickers are those lists, could not be opened for it. Each takes `?client=` and offers the practice only when opened
+            for it (lib/payroll/openedFor); these links are the way in, and they are shown on the practice's own page alone. */}
+        {openClient?.is_internal === true && (
+          <p data-own-payroll-screens className="mb-3 text-xs text-ps-label">
+            For the firm&apos;s own payroll:{" "}
+            <Link className="text-brand hover:underline" href={openedForHref("/payroll/attendance/", clientId)}>Attendance</Link>{" · "}
+            <Link className="text-brand hover:underline" href={openedForHref("/payroll/statutory/", clientId)}>Statutory position</Link>{" · "}
+            <Link className="text-brand hover:underline" href={openedForHref("/payroll/declarations/", clientId)}>Investment declarations</Link>{" · "}
+            <Link className="text-brand hover:underline" href={openedForHref("/payroll/reports/", clientId)}>Reports</Link>
+          </p>
+        )}
         <div className="flex items-center gap-0.5">
           {TABS.map(t => (
             <button
@@ -2373,6 +2463,7 @@ export default function PayrollPage() {
         {/* BONUS — the Payment of Bonus Act 1965 register for an accounting
             year. §10's minimum is a debt whether or not there is a surplus. */}
         {tab === "bonus"    && <BonusRegisterTab clientId={clientId} />}
+        {tab === "opening"  && <OpeningPositionsTab clientId={clientId} />}
         {tab === "setup"    && <StatutoryIdentityTab clientId={clientId} />}
       </div>
     </div>
@@ -2611,6 +2702,13 @@ function ReportsTab({ clientId, initialMonth }: { clientId: string; initialMonth
         </button>
       </div>
       {downloadError && <p className="text-2xs text-red-600">{downloadError}</p>}
+      {/* A read the Load button starts (POST-A-449): the button keeps its own label, and the place the register will be drawn
+          says what is being read, and that the server may be waking up, while the read is out. */}
+      {loading && (
+        <LoadingRegion label="Loading the salary register" className="text-xs text-ps-hint">
+          <p>Loading the salary register for {formatMonthYear(month)}…</p>
+        </LoadingRegion>
+      )}
       {(data?.slips?.length ?? 0) > 0 && (
         <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
           <div className="px-4 py-3 border-b border-ps-border flex items-center justify-between">

@@ -52,6 +52,12 @@ class InvoiceNoLongerADraft(Exception):
     Deliberately NOT a ValueError, which the issue route reads as 'an account is missing: seed the chart and retry'."""
 
 
+class InvoiceBillsMoreThanItsOrder(Exception):
+    """The database refused the issue because the issued invoices would together bill more of a sales-order line than was ordered
+    (migration 650, POST-A-440): another invoice billing the same line was issued a moment before, after the API's own check had read
+    it as a draft. Nothing was posted and the invoice stays a draft."""
+
+
 class AtomicIssueNotInstalled(Exception):
     """The database has no `issue_sales_invoice_atomic` (migration 577 is not applied to it yet). Raised only for the missing-function
     signature, never for the function's own refusals, so a caller can carry on with the two-statement issue for the minutes between a

@@ -39,12 +39,32 @@ WHY THE PF AND ESI COUNTS ARE READ AND NOT DERIVED
     "no ESI-applicable employees" for people the firm had deducted from. The
     slip is the record of what was deducted; a rule re-applied afterwards is a
     second opinion about a past month.
+
+EVERY READ HERE IS PAGED, AND A LIST OF RUNS IS SENT IN PIECES (POST-A-535)
+
+    The runs of a year, the runs of every year and the payslips of those runs
+    were each read in one request. The database answers at most a thousand rows
+    to one request and says nothing about the rest, so past that the year-end
+    report added up part of the year and the list of years lost its oldest
+    ones, with no word on the screen: a hundred clients reach a thousand runs
+    in under a year, and a hundred employees reach a thousand payslips in ten
+    months. And the run ids went into ONE `in.()` filter, which is part of the
+    address: a few hundred ids is a request the gateway refuses before the
+    database sees it. Each read goes through `core.db_paging` now (`fetch_all`
+    for the runs, `fetch_all_in` for the payslips of a list of runs), so every
+    projection names `id`, which is what the pager walks on.
+
+    WHAT THIS DOES NOT CHANGE: the year-end sums are still added up here from
+    the year's payslips, so the rows read grow with the payroll. They are all
+    read now; moving the sum into the database is the rest of that ledger line.
 """
 from __future__ import annotations
 
 import re
-from typing import Optional
+from typing import Callable, Optional
+from core.db_paging import fetch_all, fetch_all_in
 from core.db_provider import privileged_for
+from core.observability import capture_soft_failure
 
 _MONTH_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 
@@ -71,7 +91,9 @@ def months_of_fy(financial_year: str) -> list[str]:
     """The twelve 'YYYY-MM' months of a financial year, April first."""
     try:
         start = int(str(financial_year).split("-")[0])
-    except (ValueError, IndexError, AttributeError):
+    except (ValueError, IndexError, AttributeError) as unreadable:
+        # A financial year that cannot be read gives a report with no months: said, so an empty report is not mistaken for a quiet year (POST-A-505).
+        capture_soft_failure(unreadable, operation="payroll_report.months_of_fy_unreadable", financial_year=str(financial_year)[:20])
         return []
     return ([f"{start}-{m:02d}" for m in range(4, 13)]
             + [f"{start + 1}-{m:02d}" for m in range(1, 4)])
@@ -97,11 +119,12 @@ def run_summaries(db, firm_id: str, run_ids: list[str]) -> dict[str, dict]:
     """
     if not run_ids:
         return {}
-    rows = (privileged_for(db).table("payroll_slips")
-            .select("run_id, gross_paise, net_paise, tds_paise, "
-                    "pf_employee_paise, pf_employer_paise, "
-                    "esi_employee_paise, esi_employer_paise")
-            .in_("run_id", run_ids).execute().data) or []
+    rows = fetch_all_in(
+        lambda: (privileged_for(db).table("payroll_slips")
+                 .select("id, run_id, gross_paise, net_paise, tds_paise, "
+                         "pf_employee_paise, pf_employer_paise, "
+                         "esi_employee_paise, esi_employer_paise")),
+        "run_id", run_ids, label="payroll_report.run_summaries")
 
     out: dict[str, dict] = {
         rid: {"run_id": rid, "slip_count": 0, "gross_paise": 0, "net_paise": 0,
@@ -130,7 +153,8 @@ def run_summaries(db, firm_id: str, run_ids: list[str]) -> dict[str, dict]:
 
 
 def employee_year_totals(db, firm_id: str, financial_year: str,
-                        client_id: Optional[str] = None) -> list[dict]:
+                        client_id: Optional[str] = None, *,
+                        narrow: Callable[[list[dict]], list[dict]]) -> list[dict]:
     """One row per EMPLOYEE for a financial year — the year-end summary.
 
     This one has to be an aggregate rather than a narrowed slip read, and the
@@ -145,20 +169,24 @@ def employee_year_totals(db, firm_id: str, financial_year: str,
     months = months_of_fy(financial_year)
     if not months:
         return []
-    runs = (privileged_for(db).table("payroll_runs")
-            .select("id, client_id, month")
-            .eq("firm_id", firm_id).in_("month", months))
-    if client_id:
-        runs = runs.eq("client_id", client_id)
-    run_rows = runs.execute().data or []
+    def _runs():
+        q = (privileged_for(db).table("payroll_runs")
+             .select("id, client_id, month")
+             .eq("firm_id", firm_id).in_("month", months))
+        return q.eq("client_id", client_id) if client_id else q
+    # `narrow` is REQUIRED and has no default: the read above is the privileged client's, so it holds every client's
+    # runs, and the caller (the route, which knows who is asking) says which of them may be answered for. Each run
+    # carries its `client_id`, which is what the narrowing reads.
+    run_rows = narrow(fetch_all(_runs, label="payroll_report.year_runs", strict=True))
     if not run_rows:
         return []
 
-    rows = (privileged_for(db).table("payroll_slips")
-            .select("employee_id, gross_paise, net_paise, tds_paise, pt_paise, "
-                    "pf_employee_paise, esi_employee_paise, "
-                    "payroll_employees(name, pan, designation, department)")
-            .in_("run_id", [str(r["id"]) for r in run_rows]).execute().data) or []
+    rows = fetch_all_in(
+        lambda: (privileged_for(db).table("payroll_slips")
+                 .select("id, employee_id, gross_paise, net_paise, tds_paise, pt_paise, "
+                         "pf_employee_paise, esi_employee_paise, "
+                         "payroll_employees(name, pan, designation, department)")),
+        "run_id", [str(r["id"]) for r in run_rows], label="payroll_report.year_slips")
 
     out: dict[str, dict] = {}
     for r in rows:
@@ -177,15 +205,16 @@ def employee_year_totals(db, firm_id: str, financial_year: str,
                   key=lambda b: ((b["employee"] or {}).get("name") or "").lower())
 
 
-def financial_years(db, firm_id: str) -> list[str]:
+def financial_years(db, firm_id: str, *, narrow: Callable[[list[dict]], list[dict]]) -> list[str]:
     """Which years this firm has payroll for, newest first.
 
     Read off the RUNS, which are one per client-month, rather than off the
     payslips — the year picker used to derive its options from every payslip
     the firm had ever produced.
     """
-    rows = (privileged_for(db).table("payroll_runs").select("month")
-            .eq("firm_id", firm_id).execute().data) or []
+    rows = narrow(fetch_all(
+        lambda: privileged_for(db).table("payroll_runs").select("id, month, client_id").eq("firm_id", firm_id),
+        label="payroll_report.years_on_file", strict=True))
     years = {fy for fy in (fy_of_month(str(r.get("month") or "")) for r in rows) if fy}
     return sorted(years, reverse=True)
 

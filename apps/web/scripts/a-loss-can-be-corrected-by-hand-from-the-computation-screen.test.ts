@@ -48,7 +48,9 @@ test("the controls are offered to a person who may change loss records, once the
 
 test("the two calls go to the server's routes with the reason, and the uses are read again afterwards", () => {
   assert.ok(/`\/api\/itr\/bf-losses\/\$\{encodeURIComponent\(handEdit\.loss\.id\)\}\/year-use`/.test(PAGE), "the record call does not go to the year-use route");
-  assert.ok(/\/uses\/\$\{encodeURIComponent\(handEdit\.take\.entry_id\)\}\/take-back`/.test(PAGE), "the take-back call does not go to the take-back route");
+  assert.ok(/\/uses\/\$\{encodeURIComponent\(entryId\)\}\/take-back`/.test(PAGE), "the take-back call does not go to the take-back route");
+  assert.ok(/const entryId = handEdit\?\.take\?\.entry_id \?\? handEdit\?\.takeHand\?\.entry_id;/.test(PAGE),
+    "the take-back names an entry that is neither a use nor the part recorded by hand");
   assert.ok(/\{ financial_year: financialYear, amount_paise: amountPaise, reason \}/.test(PAGE), "the record call does not send the year, the paise and the reason");
   assert.ok(/\{ reason \}\)/.test(PAGE), "the take-back call does not send the reason");
   const send = PAGE.slice(PAGE.indexOf("async function sendHandEdit"), PAGE.indexOf("const recordYearUse"));
@@ -90,6 +92,19 @@ test("a use recorded by hand is its own kind and names no return", () => {
   assert.deepEqual([revised.return_type, revised.entry_id], ["revised", "F-1"]);
   assert.equal(older.entry_id, "F-2", "an older server's answer has no entry id: it is the filing's id");
   assert.equal(older.return_type, "original");
+});
+
+test("the part recorded by hand with no year can be taken back, by the id the server names, and only by a person who may change records", () => {
+  assert.ok(/const handId = view\.hand_recorded_entry_id;/.test(LIST), "the control does not take the id from the server's view");
+  assert.ok(/canEdit && onTakeBackHandRecorded && handId/.test(LIST), "the control is drawn without the compute tier, the callback or an id the server named");
+  assert.ok(/onTakeBackHandRecorded\(handId, handPaise\)/.test(LIST), "the control does not hand over the server's id and the amount it names");
+  assert.ok(!/"hand-recorded"|'hand-recorded'/.test(LIST + PAGE), "the browser holds the server's id for the part recorded by hand");
+  assert.ok(/onTakeBackHandRecorded=\{\(entryId, amountPaise\) => \{ setHandError\(null\); setHandEdit\(\{ loss: l, takeHand: \{ entry_id: entryId, amount_paise: amountPaise \} \}\); \}\}/.test(PAGE),
+    "the page does not open the dialog for the part recorded by hand");
+  assert.ok(/entryLabel: `the \$\{paise\(handEdit\.takeHand\.amount_paise\)\} recorded by hand with no year`, byAReturn: false/.test(PAGE),
+    "the dialog does not say which part is being taken back, or says it comes back with a return");
+  const view = lossUsesOf([{ id: "L1", hand_recorded_paise: 5000, hand_recorded_entry_id: "x-1", uses: [] }]);
+  assert.deepEqual([view!.L1.hand_recorded_paise, view!.L1.hand_recorded_entry_id], [5000, "x-1"]);
 });
 
 test("the page shows the dialog for a record or a take-back and closes it only when nothing is being sent", () => {

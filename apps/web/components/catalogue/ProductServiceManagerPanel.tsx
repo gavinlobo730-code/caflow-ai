@@ -13,8 +13,8 @@
  * buttons still work independently — DataTable's actions column already
  * stops click propagation). Omit it for pure management.
  */
+import { Button } from "@/components/ui/button";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { createPortal } from "react-dom";
 import { Plus, Pencil, Archive, RotateCcw, Trash2, BookMarked, Upload, X } from "lucide-react";
 import { api, type ApiResp } from "@/lib/api/index";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
@@ -25,6 +25,7 @@ import {
 import CsvImportModal from "@/components/LazyCsvImportModal";
 import type { ImportRow } from "@/components/CsvImportModal";
 import { Modal } from "@/components/ui/modal";
+import { Drawer } from "@/components/ui/drawer";
 import { buildServices, SERVICE_IMPORT_COLUMNS } from "@/lib/imports/mappers";
 import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
 import type { Column, FilterDef } from "@/lib/table/types";
@@ -70,10 +71,6 @@ export function ProductServiceManagerPanel({
   // all, so the button was never disabled and a second click sent it again.
   const [rowBusy, setRowBusy] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Set after the first client render; the overlay is portalled to <body>
-  // only then (see the return below).
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
 
   function showToast(msg: string, kind: "success" | "error" | "warning") {
     setToast({ msg, kind });
@@ -262,7 +259,7 @@ export function ProductServiceManagerPanel({
     // Fire-and-forget usage bump, same as ServiceCataloguePicker's direct
     // search-result pick — keeps recent/frequent ranking accurate regardless
     // of whether the CA picked via the fast dropdown or this panel.
-    api.serviceCatalogue.recordUsed(item.id).catch(() => {});
+    api.serviceCatalogue.recordUsed(item.id).catch(() => { /* a usage count nobody waits for; the pick itself has already been made */ });
     // A product created from an invoice or bill line is handed to that line and the panel closes, which would take the panel's own toast
     // with it: when the server has a sentence about the opening stock that was not recorded, the panel stays open so it can be read.
     if (!opts?.stayOpen) onClose();
@@ -404,11 +401,11 @@ export function ProductServiceManagerPanel({
             )}
             <button type="button" onClick={() => setEditing(s)} className="p-1.5 text-ps-label hover:text-emerald-600 hover:bg-emerald-50 rounded" aria-label="Edit"><Pencil size={14} /></button>
             {s.is_active ? (
-              <button type="button" disabled={rowBusy} onClick={() => setActive(s, false)} className="p-1.5 text-ps-label hover:text-amber-600 hover:bg-state-attention-hover rounded" aria-label="Archive"><Archive size={14} /></button>
+              <Button variant="plain" size="none" spinner={false} type="button" disabled={rowBusy} onClick={() => setActive(s, false)} className="p-1.5 text-ps-label hover:text-amber-600 hover:bg-state-attention-hover rounded" aria-label="Archive"><Archive size={14} /></Button>
             ) : (
-              <button type="button" disabled={rowBusy} onClick={() => setActive(s, true)} className="p-1.5 text-ps-label hover:text-emerald-600 hover:bg-emerald-50 rounded" aria-label="Restore"><RotateCcw size={14} /></button>
+              <Button variant="plain" size="none" spinner={false} type="button" disabled={rowBusy} onClick={() => setActive(s, true)} className="p-1.5 text-ps-label hover:text-emerald-600 hover:bg-emerald-50 rounded" aria-label="Restore"><RotateCcw size={14} /></Button>
             )}
-            <button type="button" disabled={rowBusy} onClick={() => deleteItem(s)} className="p-1.5 text-ps-label hover:text-red-600 hover:bg-state-problem-hover rounded" aria-label="Delete"><Trash2 size={14} /></button>
+            <Button variant="plain" size="none" spinner={false} type="button" disabled={rowBusy} onClick={() => deleteItem(s)} className="p-1.5 text-ps-label hover:text-red-600 hover:bg-state-problem-hover rounded" aria-label="Delete"><Trash2 size={14} /></Button>
           </div>
         )}
       />
@@ -475,42 +472,37 @@ export function ProductServiceManagerPanel({
     </div>
   );
 
-  // Half-screen slide-over from the right, backdrop closes it — same
-  // layering convention (fixed inset-0 backdrop + z-index) as every other
-  // modal in the app (ProductServiceFormModal, CsvImportModal, …).
+  // A side sheet from the right, and the shared one (POST-A-130): it has a name a screen reader announces, keeps Tab inside, closes on
+  // Escape and on a click beside it, holds the page behind it still and gives focus back to the picker that opened it. The hand-built
+  // layer this replaces did the click beside it and nothing else.
   //
-  // PORTALLED TO <body>, because a host may render this picker INSIDE its own
-  // <form> — /practice/billing does, around the new-schedule fields — and a
-  // button in a form's DOM subtree is that form's submit button unless it
-  // says otherwise. Enter in the create dialog's Name field then submitted
-  // the OUTER form, whose default button was this panel's Close: the panel
-  // vanished and nothing was saved, while clicking Create also submitted the
-  // host's schedule. `type="button"` on every button here is the second half;
-  // the portal is what covers the ones this file does not own (DataTable's
-  // toolbar, the CSV import modal). The nested Modal stays INSIDE this panel
-  // deliberately: portalled on its own at z-70 it would sit under this z-80
-  // overlay. React events still bubble through the React tree, so a host's
-  // onClick handlers see these clicks exactly as before — only native form
-  // submission stops. `mounted` keeps `document` out of the render path: the
-  // app is a static export and nothing may touch it before hydration.
-  if (!mounted) return null;
-  return createPortal(
-    <div className="fixed inset-0 z-[80] flex justify-end bg-brand-dark/50" onClick={onClose}>
-      <div
-        className="relative h-full w-full max-w-3xl overflow-y-auto bg-ps-bg p-6 pt-14 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+  // DRAWN IN <body> (the shared sheet is), because a host may render this picker INSIDE its own <form> — /practice/billing does, around
+  // the new-schedule fields — and a button in a form's DOM subtree is that form's submit button unless it says otherwise. Enter in the
+  // create dialog's Name field then submitted the OUTER form, whose default button was this panel's Close: the panel vanished and nothing
+  // was saved, while clicking Create also submitted the host's schedule. `type="button"` on every button here is the second half; the
+  // body is what covers the ones this file does not own (DataTable's toolbar, the CSV import dialog). React events still bubble through
+  // the React tree, so a host's onClick handlers see these clicks exactly as before — only native form submission stops.
+  //
+  // A dialog opened from here (the product form, the opening-stock date, the import, a confirmation) is drawn above this sheet whatever
+  // its own level (`lib/ui/inBody`), and Escape reaches only the one on top (`lib/ui/overlayStack`).
+  //
+  // HELD WHILE A ROW'S REQUEST IS OUT. Archive, Restore and Delete answer in this sheet's own notice; closed before the answer, a refusal
+  // was shown nowhere. So Escape, a click beside the sheet and its close button wait for the answer.
+  const close = () => { if (!rowBusy) onClose(); };
+  return (
+    <Drawer open onClose={close} ariaLabel="Products and Services" widthClass="sm:max-w-3xl">
+      <div className="relative min-h-full bg-ps-bg p-6 pt-14">
         <button
           type="button"
-          onClick={onClose}
+          onClick={close}
+          disabled={rowBusy}
           aria-label="Close"
-          className="absolute right-4 top-4 rounded-lg p-1.5 text-ps-hint hover:bg-white hover:text-ps-body"
+          className="absolute right-4 top-4 rounded-lg p-1.5 text-ps-hint hover:bg-white hover:text-ps-body disabled:opacity-40"
         >
           <X size={18} />
         </button>
         {body}
       </div>
-    </div>,
-    document.body,
+    </Drawer>
   );
 }

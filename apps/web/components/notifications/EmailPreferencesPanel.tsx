@@ -19,6 +19,7 @@
  * because showing only the effect makes an inherited default and a deliberate
  * choice look identical.
  */
+import { Button } from "@/components/ui/button";
 import { useCallback, useEffect, useState } from "react";
 import { Loader2, Mail } from "lucide-react";
 import { api } from "@/lib/api";
@@ -26,6 +27,7 @@ import type { EmailLogRow, EmailPreferenceEvent } from "@/lib/api";
 import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 import { Callout } from "@/components/ui/callout";
 import { formatDate } from "@/lib/dates/format";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 /** `true` or `false` only when the server said so; anything else is "not told". */
 function readMailEnabled(data: unknown): boolean | null {
@@ -104,7 +106,9 @@ export function EmailPreferencesPanel() {
         </Callout>
       )}
       {loading ? (
-        <p className="flex items-center gap-2 text-xs text-ps-hint"><Loader2 className="animate-spin" size={12} /> Loading…</p>
+        <LoadingRegion label="Loading email preferences">
+          <p className="flex items-center gap-2 text-xs text-ps-hint"><Loader2 className="animate-spin" size={12} /> Loading…</p>
+        </LoadingRegion>
       ) : (
         <ul className="divide-y divide-ps-border">
           {events.map((ev) => (
@@ -118,7 +122,7 @@ export function EmailPreferencesPanel() {
                   </span>
                 </p>
               </div>
-              <button
+              <Button variant="plain" size="none" spinner={false}
                 type="button"
                 role="switch"
                 aria-checked={ev.email_enabled}
@@ -134,7 +138,7 @@ export function EmailPreferencesPanel() {
                     ev.email_enabled ? "translate-x-4" : "translate-x-0.5"
                   }`}
                 />
-              </button>
+              </Button>
             </li>
           ))}
           {events.length === 0 && !error && (

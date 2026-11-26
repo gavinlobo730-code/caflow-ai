@@ -39,14 +39,15 @@
  */
 
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
-import { useState, useEffect, useCallback } from "react";
-import { Calculator, Info, BookOpen, Plus, X, Trash2, ShieldCheck, AlertTriangle } from "lucide-react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Calculator, Info, BookOpen, Plus, Trash2, AlertTriangle } from "lucide-react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
-import { TableSkeleton } from "@/components/ui/skeleton";
+import { TableSkeleton, LoadingRegion } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
 import {
   computeCapitalGains, listCapitalGains, createCapitalGain, deleteCapitalGain, getCiiTable,
@@ -341,7 +342,10 @@ export default function CapitalGainsPage() {
   const [sectionInfo, setSectionInfo] = useState<ReinvestmentSectionInfo[]>([]);
   const [exemptFor, setExemptFor] = useState<CapitalGainsRecord | null>(null);
   const [exemption, setExemption] = useState<CapitalGainExemption | null>(null);
-  const [exemptBusy, setExemptBusy] = useState(false);
+  // The working's READ (on opening, and again after a write) and its WRITES are two flags: the dialog is held only while a write is out, so a
+  // slow read never traps the person in it, and the write's flag is let go when the write returns, before the read that follows (POST-A-395).
+  const [exemptLoading, setExemptLoading] = useState(false);
+  const [exemptSaving, setExemptSaving] = useState(false);
   const [exemptError, setExemptError] = useState("");
   // Both dates in a reinvestment claim are optional and read as "not given" when blank: unreadable text is refused instead (frontend_ux-19).
   const claimDates = useDateProblems();
@@ -355,20 +359,29 @@ export default function CapitalGainsPage() {
       .catch(() => { /* the labels above stand in until the server answers */ });
   }, []);
 
+  // The dialog can be closed while its read is out, so a late answer can belong to a record that is no longer the open one. Each read takes
+  // a number, closing takes the next, and only the latest read's answer is shown: otherwise record A's gain and claims landed in record B's
+  // dialog (found by the independent review of the change that stopped holding this dialog over its read).
+  const exemptionSeq = useRef(0);
   const loadExemption = useCallback(async (recordId: string) => {
-    setExemptBusy(true);
+    const seq = ++exemptionSeq.current;
+    setExemptLoading(true);
     try {
-      setExemption(await getCapitalGainExemption(recordId));
+      const answer = await getCapitalGainExemption(recordId);
+      if (seq !== exemptionSeq.current) return;
+      setExemption(answer);
       setExemptError("");
     } catch (e) {
+      if (seq !== exemptionSeq.current) return;
       setExemption(null);
       setExemptError(e instanceof Error ? e.message : "Couldn't load the exemption working.");
     } finally {
-      setExemptBusy(false);
+      if (seq === exemptionSeq.current) setExemptLoading(false);
     }
   }, []);
 
   async function openExemption(r: CapitalGainsRecord) {
+    setExemption(null);
     setExemptFor(r);
     setClaimForm({ ...BLANK_CLAIM });
     setExemptError("");
@@ -385,7 +398,8 @@ export default function CapitalGainsPage() {
       setExemptError("Describe what was bought.");
       return;
     }
-    setExemptBusy(true);
+    setExemptSaving(true);
+    let saved = false;
     try {
       await addReinvestment(exemptFor.id, {
         section: claimForm.section,
@@ -401,25 +415,28 @@ export default function CapitalGainsPage() {
           claimForm.agri_use === "" ? null : claimForm.agri_use === "yes",
       });
       setClaimForm({ ...BLANK_CLAIM });
-      await loadExemption(exemptFor.id);
+      saved = true;
     } catch (e) {
       setExemptError(e instanceof Error ? e.message : "Couldn't record the claim.");
     } finally {
-      setExemptBusy(false);
+      setExemptSaving(false);
     }
+    if (saved) await loadExemption(exemptFor.id);
   }
 
   async function removeClaim(claimId: string) {
     if (!exemptFor) return;
-    setExemptBusy(true);
+    setExemptSaving(true);
+    let removed = false;
     try {
       await deleteReinvestment(exemptFor.id, claimId);
-      await loadExemption(exemptFor.id);
+      removed = true;
     } catch (e) {
       setExemptError(e instanceof Error ? e.message : "Couldn't delete the claim.");
     } finally {
-      setExemptBusy(false);
+      setExemptSaving(false);
     }
+    if (removed) await loadExemption(exemptFor.id);
   }
 
   const [regPreview, setRegPreview] = useState<CapitalGainsComputeResult | null>(null);
@@ -452,7 +469,7 @@ export default function CapitalGainsPage() {
 
   async function handleSaveRecord() {
     if (!selectedClientId) return;
-    if (regDates.first) { setRegError(regDates.first); return; }
+    if (regDates.first) { regDates.refuseWith(setRegError); return; }
     if (!regForm.asset_description.trim() || !regForm.purchase_date || !regForm.sale_date) {
       setRegError("Asset description, purchase date, and sale date are required");
       return;
@@ -652,12 +669,17 @@ export default function CapitalGainsPage() {
               {computeError && <Callout tone="problem">{computeError}</Callout>}
               {!result ? (
                 <div className="bg-white rounded-xl border border-ps-border p-5 flex items-center justify-center h-full min-h-[200px]">
-                  <div className="text-center">
-                    <Calculator className="w-8 h-8 text-ps-disabled mx-auto mb-2" />
-                    <p className="text-sm text-ps-hint">
-                      {computing ? "Computing…" : "Enter asset details to compute capital gains"}
-                    </p>
-                  </div>
+                  {computing ? (
+                    <LoadingRegion label="Computing the capital gain" className="text-center" noticeClassName="justify-center text-center">
+                      <Calculator className="w-8 h-8 text-ps-disabled mx-auto mb-2" />
+                      <p className="text-sm text-ps-hint">Computing…</p>
+                    </LoadingRegion>
+                  ) : (
+                    <div className="text-center">
+                      <Calculator className="w-8 h-8 text-ps-disabled mx-auto mb-2" />
+                      <p className="text-sm text-ps-hint">Enter asset details to compute capital gains</p>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -946,7 +968,7 @@ export default function CapitalGainsPage() {
                           <td className="px-4 py-3 text-right">
                             <div className="flex flex-col items-end gap-1">
                               <span className={`text-xs font-semibold ${gain >= 0 ? "text-state-ready" : "text-state-problem"}`}>{gain >= 0 ? "+" : ""}{fmtRs(gain)}</span>
-                              <Button variant="plain" size="none" onClick={() => handleDeleteRecord(r.id)} className="text-ps-disabled hover:text-state-problem transition-colors">
+                              <Button variant="plain" size="none" onClick={() => handleDeleteRecord(r.id)} aria-label={`Delete ${r.asset_description}`} className="text-ps-disabled hover:text-state-problem transition-colors">
                                 <Trash2 className="w-3 h-3" />
                               </Button>
                             </div>
@@ -981,21 +1003,11 @@ export default function CapitalGainsPage() {
               a claim is in time, s.54F's proportion and s.54EC's cap are all
               domain/income_tax/reinvestment_exemption.py's answers. */}
           {exemptFor && (
-            <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-              <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
-                <div className="flex items-center justify-between px-5 py-4 border-b sticky top-0 bg-white">
-                  <div className="flex items-center gap-2">
-                    <ShieldCheck className="w-4 h-4 text-state-ready" />
-                    <h2 className="text-sm font-semibold text-ps-ink">
-                      Reinvestment exemption — {exemptFor.asset_description}
-                    </h2>
-                  </div>
-                  <button onClick={() => { setExemptFor(null); setExemption(null); }} aria-label="Close">
-                    <X className="w-4 h-4 text-ps-hint" />
-                  </button>
-                </div>
-
-                <div className="px-5 py-4 space-y-4">
+            // The shared dialog (POST-A-130). Its close (Escape, a click beside it, its ×) is held while a claim is being saved or removed,
+            // and NOT while the working is only being read: leaving then drops the answer (the sequence number is moved on).
+            <Modal title={`Reinvestment exemption — ${exemptFor.asset_description}`} maxWidthClass="max-w-3xl"
+              onClose={() => { if (exemptSaving) return; exemptionSeq.current += 1; setExemptFor(null); setExemption(null); setExemptLoading(false); }}>
+                <div className="space-y-4">
                   {/* The newest answer is shown: saveClaim clears `exemptError` before it refuses a date, so one that is here came after the date's sentence (a refused delete, say). */}
                   {(exemptError || claimRefusal.shown) && <Callout tone="problem">{exemptError || claimRefusal.shown}</Callout>}
 
@@ -1053,7 +1065,7 @@ export default function CapitalGainsPage() {
                         <p key={`c${i}`} className="text-2xs text-ps-label italic">{v}</p>
                       ))}
                       {c.id && (
-                        <Button variant="plain" size="none" onClick={() => removeClaim(c.id as string)} disabled={exemptBusy}
+                        <Button variant="plain" size="none" onClick={() => removeClaim(c.id as string)} disabled={exemptSaving || exemptLoading}
                                 className="text-2xs text-ps-hint hover:text-state-problem transition-colors">
                           Delete this claim
                         </Button>
@@ -1061,7 +1073,7 @@ export default function CapitalGainsPage() {
                     </div>
                   ))}
 
-                  {exemption && exemption.caveats.map((v, i) => (
+                  {exemption && (exemption.caveats ?? []).map((v, i) => (
                     <p key={i} className="text-2xs text-ps-label italic">{v}</p>
                   ))}
 
@@ -1178,33 +1190,31 @@ export default function CapitalGainsPage() {
                     )}
 
                     <div className="flex justify-end gap-2">
-                      <Button size="sm" onClick={saveClaim} disabled={exemptBusy}>
-                        {exemptBusy ? "Saving…" : "Record claim"}
+                      <Button size="sm" onClick={saveClaim} disabled={exemptSaving || exemptLoading}>
+                        {exemptSaving ? "Saving…" : "Record claim"}
                       </Button>
                     </div>
                   </div>
 
                   <p className="text-2xs text-ps-hint border-t pt-3">
-                    Every figure and window here is written from knowledge rather than read
-                    off the bare Act — this environment cannot reach incometax.gov.in.
+                    Every figure and window here is written from knowledge and has not been
+                    read against the Act itself.
                     Check s. 54EC&apos;s ₹50 lakh, the six-month and two- and three-year
                     windows and the Finance Act 2023 ₹10 crore cap against the section
                     before relying on them.
                   </p>
                 </div>
-              </div>
-            </div>
+            </Modal>
           )}
 
           {/* Add Transaction Modal */}
           {showModal && (
-            <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-              <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-                <div className="flex items-center justify-between px-5 py-4 border-b">
-                  <h2 className="text-sm font-semibold text-ps-ink">Add Capital Gains Transaction</h2>
-                  <button onClick={() => setShowModal(false)}><X className="w-4 h-4 text-ps-hint" /></button>
-                </div>
-                <div className="px-5 py-4 space-y-4">
+            <Modal title="Add Capital Gains Transaction" maxWidthClass="max-w-lg" onClose={() => { if (!saving) setShowModal(false); }}
+              footer={<>
+                <Button disabled={saving} variant="outline" size="sm" onClick={() => setShowModal(false)}>Cancel</Button>
+                <Button size="sm" onClick={handleSaveRecord} disabled={saving}>{saving ? "Saving…" : "Save Transaction"}</Button>
+              </>}>
+                <div className="space-y-4">
                   {regError && <Callout tone="problem">{regError}</Callout>}
 
                   <div>
@@ -1382,12 +1392,7 @@ export default function CapitalGainsPage() {
                     </ul>
                   )}
                 </div>
-                <div className="flex justify-end gap-3 px-5 py-4 border-t">
-                  <Button variant="outline" size="sm" onClick={() => setShowModal(false)}>Cancel</Button>
-                  <Button size="sm" onClick={handleSaveRecord} disabled={saving}>{saving ? "Saving…" : "Save Transaction"}</Button>
-                </div>
-              </div>
-            </div>
+            </Modal>
           )}
         </div>
       )}

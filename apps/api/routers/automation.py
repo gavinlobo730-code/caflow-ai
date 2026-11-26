@@ -30,20 +30,6 @@ def toggle(rule_id: str, enabled: bool = True, current_user: dict = Depends(rbac
     return api_response(True, rule)
 
 
-@router.get("/executions")
-def executions(limit: int = 50, current_user: dict = Depends(rbac("automation", "read"))):
-    firm_id = current_user.get("firm_id")
-    log = automation_repo.get_executions(firm_id=firm_id, limit=limit)
-    return api_response(True, log)
-
-
-@router.get("/stats")
-def stats(current_user: dict = Depends(rbac("automation", "read"))):
-    firm_id = current_user.get("firm_id")
-    s = automation_repo.get_stats(firm_id=firm_id)
-    return api_response(True, s)
-
-
 @router.post("/trigger")
 def manual_trigger(body: TriggerBody, current_user: dict = Depends(rbac("automation", "write"))):
     firm_id = current_user.get("firm_id")

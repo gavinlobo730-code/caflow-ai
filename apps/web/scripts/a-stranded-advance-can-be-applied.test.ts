@@ -41,7 +41,7 @@ test("the screen offers it, and only where there is something to apply", () => {
   assert.match(PAGE, /AllocatePaymentModal/, "the modal is not rendered");
   // Offering "Apply" on a fully-applied payment would open a modal whose only
   // possible outcome is re-submitting what is already there.
-  assert.match(PAGE, /unallocatedOf\(p\) > 0 && \(/);
+  assert.match(PAGE, /unallocatedOf\(p\) > 0 && mayWriteBooks && \(/);
 });
 
 test("the unallocated figure is shown on the row, not only inside the form", () => {

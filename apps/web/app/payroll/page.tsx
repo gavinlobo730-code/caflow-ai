@@ -1,14 +1,14 @@
 "use client";
 
 /**
- * Payroll Module — IT Act Section 192 (TDS on Salary), ESI Act, EPF Act
+ * Payroll Module — IT Act Section 192 (TDS on Salary), Code on Social Security 2020 (PF, ESI)
  * All monetary values stored and computed in integer paise.
  */
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
-  X, AlertCircle, Users,
+  AlertCircle, Users,
   Download, CheckCircle, Clock, AlertTriangle, BarChart2,
   Receipt, CalendarDays, ArrowRight, CalendarCheck, ShieldCheck,
 } from "lucide-react";
@@ -28,8 +28,9 @@ import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/Fili
 // ECR each ended up implemented twice, with only one of them right.
 import {
   apiErr, fmtRs,
-  type Client, type PayrollRun, type PayrollSlip,
+  type Client, type PayrollRun,
 } from "@/components/payroll/shared";
+import { SectionPlaceholder, PagePlaceholder } from "@/components/ui/page-frame";
 
 // ── Statutory Returns helpers ─────────────────────────────────────────────
 
@@ -37,7 +38,7 @@ import {
  * Given today's date, compute the list of statutory return deadlines
  * relevant for the current month/quarter.
  *
- * PF ECR: monthly, due 15th of following month (EPF Act)
+ * PF ECR: monthly, due 15th of following month (Employees' Provident Funds Scheme, 2026 para 28(3))
  * ESI Return: half-yearly (Apr-Sep → Nov 11; Oct-Mar → May 11)
  * PT: monthly challan (Maharashtra example)
  * TDS 24Q: quarterly (IT Act Section 192)
@@ -342,7 +343,7 @@ function MonthQueueTab({ month, onMonthChange, clients }: {
         </CardHeader>
         <CardContent className="p-0">
           {loading ? (
-            <p className="text-center text-ps-hint py-12 text-sm">Loading the month…</p>
+            <SectionPlaceholder label="Loading the month" shape="table" rows={4} />
           ) : error ? (
             <div className="p-8 text-center">
               <p className="text-sm text-red-600 font-medium mb-2">{error}</p>
@@ -457,75 +458,6 @@ function MonthQueueTab({ month, onMonthChange, clients }: {
  *  This asks. It computes nothing and writes nothing; the server re-states what
  *  the file builders will say, early enough to do something about.
  */
-function PayslipModal({ slip, onClose }: { slip: PayrollSlip; onClose: () => void }) {
-  const emp = slip.employee!;
-  const run = slip.run!;
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="font-semibold">Payslip</h2>
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={() => window.print()}>Print</Button>
-            <button aria-label="Close" onClick={onClose}><X size={16} /></button>
-          </div>
-        </div>
-        <div className="border-b pb-3 mb-3">
-          <h3 className="font-bold text-lg text-ps-ink">{emp.name}</h3>
-          <p className="text-sm text-ps-label">{emp.designation} {emp.pan ? `• ${emp.pan}` : ""}</p>
-          <p className="text-sm text-ps-label">Month: {run.month}</p>
-        </div>
-        <table className="w-full text-sm">
-          <tbody>
-            <tr className="border-b">
-              <td className="py-1 text-ps-label">Gross Salary</td>
-              <td className="py-1 text-right font-medium">{fmtRs(slip.gross_paise)}</td>
-            </tr>
-            <tr>
-              {/* NOT "12% of Basic". The figure beside this is 12% of the
-                  Code on Social Security 2020 s.2(88) wage base (migration
-                  334, domain/payroll/wage_base.py): the listed exclusions are
-                  capped at half of total remuneration and the excess is deemed
-                  wages, so on ₹10,000 basic with ₹18,000 HRA the base is
-                  ₹14,000 and the deduction is ₹1,680, not ₹1,200. A label
-                  naming a base the number is not computed on is the thing a CA
-                  would reconcile against and fail. */}
-              <td className="py-1 text-ps-label">
-                PF Deduction (12% of PF wages)
-                {/* Stored on the slip by the run (migration 477), so this says
-                    what THIS month's contribution was computed on and not what
-                    the employee row says today. */}
-                {slip.pf_on_actual_wages && (
-                  <span className="block text-3xs text-ps-hint">
-                    PF on actual wages (elected) — not limited to the wage ceiling
-                  </span>
-                )}
-              </td>
-              <td className="py-1 text-right text-red-600">- {fmtRs(slip.pf_employee_paise)}</td>
-            </tr>
-            <tr>
-              <td className="py-1 text-ps-label">ESI Deduction (0.75%)</td>
-              <td className="py-1 text-right text-red-600">- {fmtRs(slip.esi_employee_paise)}</td>
-            </tr>
-            <tr>
-              <td className="py-1 text-ps-label">Professional Tax</td>
-              <td className="py-1 text-right text-red-600">- {fmtRs(slip.pt_paise)}</td>
-            </tr>
-            <tr className="border-b">
-              <td className="py-1 text-ps-label">TDS on Salary (IT Act Sec 192)</td>
-              <td className="py-1 text-right text-red-600">- {fmtRs(slip.tds_paise)}</td>
-            </tr>
-            <tr className="font-bold">
-              <td className="py-2 text-ps-ink">Net Pay</td>
-              <td className="py-2 text-right text-green-700">{fmtRs(slip.net_paise)}</td>
-            </tr>
-          </tbody>
-        </table>
-        <p className="text-3xs text-ps-hint mt-4 text-center">Generated by PracticeSync AI</p>
-      </div>
-    </div>
-  );
-}
 
 // ── Statutory Returns Tab ─────────────────────────────────────────────────
 
@@ -720,7 +652,9 @@ function StatutoryReturnsTab({ clients }: { clients: Client[] }) {
 
       downloadFile(
         content,
-        d.filename ?? `${what.toUpperCase()}_${run.month}.${what === "ecr" ? "txt" : "csv"}`,
+        // EPFO asks for letters and digits only in an upload's name (POST-A-519), so the ECR's fallback has none of the
+        // separators the ESIC file's has; the server always sends the real name for a filable file.
+        d.filename ?? (what === "ecr" ? `ECR${run.month.replace(/\D/g, "")}.txt` : `ESIC_${run.month}.csv`),
         what === "ecr" ? "text/plain" : "text/csv",
         // Both go to a government portal. Neither gets a BOM.
         { bom: false },
@@ -863,12 +797,13 @@ function StatutoryReturnsTab({ clients }: { clients: Client[] }) {
             </div>
           )}
 
-          {clientRuns.length === 0 ? (
+          {clientRuns.length === 0 && summariesLoading ? (
+            <SectionPlaceholder label="Loading this client's runs" shape="table" rows={4} />
+          ) : clientRuns.length === 0 ? (
             <p className="text-sm text-ps-hint py-6 text-center">
-              {summariesLoading ? "Loading this client's runs…"
-                : summaryError
-                  ? summaryError
-                  : "No payroll runs for this client. Run a Monthly Payroll first."}
+              {summaryError
+                ? summaryError
+                : "No payroll runs for this client. Run a Monthly Payroll first."}
             </p>
           ) : (
             <div className="space-y-3">
@@ -1015,7 +950,6 @@ export default function PayrollPage() {
   // control is right there to move it.
   const [queueMonth, setQueueMonth] = useState(() => todayIstISO().slice(0, 7));
 
-  const [viewSlip, setViewSlip] = useState<PayrollSlip | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1042,7 +976,7 @@ export default function PayrollPage() {
   useEffect(() => { load(); }, [load]);
 
   if (loading) {
-    return <div className="min-h-screen bg-ps-bg flex items-center justify-center"><p className="text-ps-label">Loading payroll...</p></div>;
+    return <PagePlaceholder label="Loading payroll" shape="table" />;
   }
 
   if (loadError) {
@@ -1066,12 +1000,11 @@ export default function PayrollPage() {
 
   return (
     <div className="min-h-screen bg-ps-bg p-8">
-      {viewSlip && <PayslipModal slip={viewSlip} onClose={() => setViewSlip(null)} />}
 
       <div className="max-w-ps-data mx-auto">
         <PageHeader
           title="Payroll"
-          subtitle="IT Act Section 192 &middot; EPF Act &middot; ESI Act"
+          subtitle="IT Act Section 192 &middot; Code on Social Security, 2020"
           actions={
             <div className="flex items-center gap-2 flex-wrap">
               {/* These five match the sidebar's "This month" / "Roster" /

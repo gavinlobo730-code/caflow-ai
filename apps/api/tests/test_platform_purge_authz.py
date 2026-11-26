@@ -12,6 +12,8 @@ Layer under test here — the API gate on DELETE /api/platform/firms/{id}/perman
   * platform admin WITH MFA         → reaches platform_purge_firm exactly once
 An unauthorized caller can therefore never reach the purge RPC at all.
 """
+import time
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -28,6 +30,7 @@ class _FakeQuery:
     def eq(self, *a, **k): return self
     def maybe_single(self): return self
     def insert(self, *a, **k): return self
+    def update(self, *a, **k): return self      # the members' sessions are ended before the purge (POST-A-482)
     def execute(self):
         class R:  # firms lookup returns the firm; platform_audit insert returns nothing
             data = self._firm
@@ -57,7 +60,7 @@ def _client(monkeypatch, *, is_admin: bool, aal: str = "aal2", fake_db: "_FakeDB
         monkeypatch.setattr(plat, "log_event", lambda *a, **k: None)
     app = FastAPI()
     app.include_router(plat.router)
-    app.dependency_overrides[get_jwt_user] = lambda: {"auth_user_id": "u1", "email": "x@y.z", "aal": aal}
+    app.dependency_overrides[get_jwt_user] = lambda: {"auth_user_id": "u1", "email": "x@y.z", "aal": aal, "last_authenticator_code_at": time.time()}
     return TestClient(app, raise_server_exceptions=False)
 
 

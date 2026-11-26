@@ -54,12 +54,14 @@ What it deliberately does not do:
 """
 from __future__ import annotations
 
+from domain.practice.compliance_overdue import is_filed, is_settled
 from dataclasses import dataclass
 from datetime import date
 from typing import Any, Optional
 
 from core.db_provider import privileged_for
 from core.db_paging import fetch_all
+from core.observability import capture_soft_failure
 from core.ist_clock import ist_today
 from domain.money_sentence import rupee_text
 from repositories.compliance_records_repository import compliance_records_repo
@@ -139,6 +141,8 @@ def _as_date(value: Any) -> Optional[date]:
     try:
         return date.fromisoformat(str(value or "")[:10])
     except ValueError:
+        # Not a date. A DATE or timestamp column always reads back as ISO text, so a stored one never lands here: this is an absent value or text that
+        # was never a date, and None says there is none.
         return None
 
 
@@ -173,7 +177,10 @@ def close_for_recorded_remittance(
     try:
         year, mon = int(wage_month[:4]), int(wage_month[5:7])
         month_start = date(year, mon, 1)
-    except (ValueError, IndexError):
+    except (ValueError, IndexError) as unreadable:
+        # A PAID ESI remittance whose wage month cannot be read: nothing can be said about its deposit obligation, so it is said here
+        # that nothing was (POST-A-505), and the answer stays "nothing to say".
+        capture_soft_failure(unreadable, operation="esi_deposit_closes_obligation.wage_month_unreadable", wage_month=wage_month[:20])
         return []
     what = _what(wage_month)
     if not firm_id or not client_id:
@@ -186,7 +193,7 @@ def close_for_recorded_remittance(
     if record is None:
         return [{**answer(NOT_ON_THE_CALENDAR, f"The client has no {what} on the compliance calendar, so none was closed."),
                  "month": wage_month, "needs_action": False}]
-    if record.get("status") in ("Filed", "Completed"):
+    if is_settled(record.get("status")):
         return []
     if not may_write_compliance:
         return [{**answer(NOT_ALLOWED, f"Your access does not include Compliance, so the {what} was left open. Someone with "
@@ -229,11 +236,12 @@ def note_after_retraction(*, db, firm_id: str, client_id: str, remittance: dict)
     try:
         month_start = date(int(wage_month[:4]), int(wage_month[5:7]), 1)
     except (ValueError, IndexError):
+        # No readable wage month on the remittance: there is no obligation to look up, so no sentence is added.
         return None
     record = next((r for r in compliance_records_repo.find_all(firm_id=firm_id, client_id=client_id, compliance_type=COMPLIANCE_TYPE)
                    if r.get("obligation_type") == OBLIGATION_TYPE and str(r.get("period_start") or "")[:10] == month_start.isoformat()),
                   None)
-    if record is None or record.get("status") not in ("Filed", "Completed"):
+    if record is None or not is_filed(record.get("status")):
         return None
     filed_on = str(record.get("filed_date") or "")[:10]
     return (f"The compliance calendar still shows the {_what(wage_month)} as filed"

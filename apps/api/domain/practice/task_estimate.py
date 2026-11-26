@@ -76,6 +76,7 @@ def clean_minutes(value: object) -> Optional[int]:
     try:
         whole = int(value)  # type: ignore[call-overload]
     except (TypeError, ValueError, OverflowError):
+        # Not a whole number: no estimate (docstring), never 0 minutes.
         return None
     return whole if whole > 0 and whole == value else None
 
@@ -105,6 +106,7 @@ def minutes_from_hours(hours: object) -> Optional[int]:
     try:
         h = Decimal(str(hours).strip())
     except (InvalidOperation, ValueError):
+        # Not a number: no usable figure (docstring).
         return None
     if not h.is_finite() or h <= 0:
         return None

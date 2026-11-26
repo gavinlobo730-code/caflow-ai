@@ -17,7 +17,7 @@ and the two totals become caches of it:
 
 `baseline` is whatever was recorded by hand with no year and no filing behind it (the route that did it, which carried no year, is gone: a use is
 now recorded by hand AS AN ENTRY, below). It is never
-stored: it is `utilized - sum(entries)`, so a hand edit and a filing cannot disagree about it, and the rule below leaves it exactly as found.
+stored: it is `utilized - sum(entries)`, so a hand edit and a filing cannot disagree about it, and the rule below leaves it exactly as found (a take-back of it by name, below, is the one thing that removes it).
 
 WHAT A COMPUTATION MAY USE is the loss less the uses of OTHER years: `remaining` plus whatever THIS year's filings already took. Computing
 2025-26 again offers back the 2025-26 use and keeps every other year's.
@@ -40,6 +40,17 @@ never added to. It ranks BELOW a filing: a filing's write for the same year repl
 stand-in), and it can never be written over a year a return already holds (`HeldByReturn`: the filing is the record, correct it there). Any entry,
 a filing's included, can be TAKEN BACK; a taken-back filing entry comes back the next time that filing's loss records are written.
 
+THE YEAR OF A HAND ENTRY IS HELD TO THE RECORD'S OWN YEARS (POST-A-368). A hand entry for a year whose assessment year is EARLIER than the
+loss's own assessment year (a year assessed before the year the loss arose in), or LATER than the record's stored `expiry_assessment_year` (the last
+year the record says it may be set off in, which is what `loss_set_off._is_available` refuses a computation past), is refused
+(`OutsideTheRecordsYears`). Both bounds are the record's own words, so nothing about the Act is decided here: the loss's own assessment year is
+NOT refused, because whether a carried-forward loss can first be used in that year or only in the next is a reading of the Act that has not been
+confirmed here, and a record with no readable year or no stored expiry is not checked on that side. The year is compared as an assessment year,
+FY + 1 (`core.ist_clock.assessment_year_for`'s rule).
+
+THE PART RECORDED BY HAND WITH NO YEAR CAN BE TAKEN BACK TOO (POST-A-368). It is not an entry, so it is named by `HAND_RECORDED`, an id no filing
+and no year's hand entry can have; taking it back sets the total to the entries alone and moves nothing else.
+
 Nothing here reads a database. The functions take a row and return the columns to store, so the same rule serves the compute route, the filing
 write-back and a real-Postgres test, and none of them can drift from the others.
 """
@@ -50,6 +61,10 @@ from typing import Any, Mapping, Optional
 
 #: The kind of an entry a person recorded by hand rather than a return writing it.
 MANUAL = "manual"
+
+#: The id that names the part recorded by hand with no year (the baseline) for a take-back. No filing id (a uuid) and no hand entry
+#: (`manual:<year>`) can be it.
+HAND_RECORDED = "hand-recorded"
 
 #: Which kind of return stands over which, for the same financial year. A higher kind replaces a lower one and a lower one never replaces a
 #: higher one. `updated` is absent on purpose: nothing writes an updated return's use (owner-list S21). A hand entry ranks below both, so a
@@ -81,6 +96,17 @@ class MoreThanTheRecordCanTake(ValueError):
         self.room_paise = room_paise
 
 
+class OutsideTheRecordsYears(ValueError):
+    """A hand entry for a year the record itself puts outside the loss: before the loss's own assessment year, or after the last year its stored
+    expiry allows. `first_ay` and `last_ay` are the record's own bounds (either may be None where the record does not say)."""
+
+    def __init__(self, first_ay: Optional[str], last_ay: Optional[str], too_early: bool):
+        super().__init__("the year is outside the years this loss record covers")
+        self.first_ay = first_ay
+        self.last_ay = last_ay
+        self.too_early = too_early
+
+
 class NoSuchEntry(KeyError):
     """The entry asked for is not on this record (it was never there, or somebody took it back first)."""
 
@@ -90,6 +116,7 @@ def _paise(value: Any) -> int:
     try:
         return max(0, int(value or 0))
     except (TypeError, ValueError):
+        # A stored integer count of paise; anything else is 0 (docstring): a missing or NULL column is not a negative.
         return 0
 
 
@@ -128,6 +155,31 @@ def _year_start(financial_year: str) -> int | None:
     return int(head) if len(head) == 4 and head.isdigit() else None
 
 
+def _ay_label(start: int) -> str:
+    return f"{start}-{str(start + 1)[-2:]}"
+
+
+def outside_the_records_years(row: Mapping[str, Any], financial_year: str) -> Optional[OutsideTheRecordsYears]:
+    """Why a use for `financial_year` falls outside the years the record itself gives the loss, or None.
+
+    The year's assessment year is FY + 1. It is too early when that is before the loss's own `assessment_year` (the loss's own year is not
+    refused: see the module docstring) and too late when it is after the stored `expiry_assessment_year`. A bound the record does not hold, or
+    holds in a form that cannot be read, is not checked."""
+    fy = _year_start(financial_year)
+    if fy is None:
+        return None
+    use_ay = fy + 1
+    own = _year_start(str(row.get("assessment_year") or ""))
+    last = _year_start(str(row.get("expiry_assessment_year") or ""))
+    first_label = _ay_label(own) if own is not None else None
+    last_label = _ay_label(last) if last is not None else None
+    if own is not None and use_ay < own:
+        return OutsideTheRecordsYears(first_label, last_label, too_early=True)
+    if last is not None and use_ay > last:
+        return OutsideTheRecordsYears(first_label, last_label, too_early=False)
+    return None
+
+
 def is_earlier_year(financial_year: str, than: str) -> bool:
     """True when `financial_year` starts in an earlier year than `than`. A label that cannot be read is neither earlier nor later."""
     a, b = _year_start(financial_year), _year_start(than)
@@ -157,7 +209,8 @@ def uses_view(row: Mapping[str, Any], filings: Optional[Mapping[str, Mapping[str
     An item whose return is not among the readable filings says `filing_found: False`. Nothing is added up here that the record does not
     already hold: the hand-recorded part is the stored total less the entries (`baseline_paise`), and an entry of no rupees is not a use (a
     revised return's is shown: it used none of the loss, and it holds its year).
-    Each item is `{"filing_id", "financial_year", "return_type", "amount_paise", "filing_found", "acknowledgement_number"}`."""
+    Each item is `{"entry_id", "filing_id", "financial_year", "return_type", "amount_paise", "filing_found", "acknowledgement_number"}`. The
+    hand-recorded part is named for a take-back by `hand_recorded_entry_id` (`HAND_RECORDED`), or None where there is no such part."""
     items = []
     for fid, e in entries_of(row).items():
         # An entry of no rupees is not a use, EXCEPT a revised return's: it is kept on purpose (it is what stops the original, acknowledged later,
@@ -175,7 +228,9 @@ def uses_view(row: Mapping[str, Any], filings: Optional[Mapping[str, Mapping[str
             "acknowledgement_number": str(ack) if ack else None,
         })
     items.sort(key=lambda item: (_year_start(item["financial_year"]) or 0, item["filing_id"]))
-    return {"hand_recorded_paise": baseline_paise(row), "uses": items}
+    hand = baseline_paise(row)
+    # The id a take-back of the hand-recorded part names, or None when there is none to take back.
+    return {"hand_recorded_paise": hand, "hand_recorded_entry_id": HAND_RECORDED if hand > 0 else None, "uses": items}
 
 
 def holds_entry_for(row: Mapping[str, Any], filing_id: str, financial_year: str, return_type: str = "original") -> bool:
@@ -262,6 +317,8 @@ def record_by_hand(row: Mapping[str, Any], financial_year: str, amount_paise: in
     """The columns to store once a person has recorded that `financial_year` used `amount_paise` of this loss (POST-A-368).
 
     - the year's hand entry is SET to the amount and never added to; an amount of nothing takes the entry away;
+    - a year the record itself puts outside the loss (before its own assessment year, or after its stored expiry) is refused
+      (`OutsideTheRecordsYears`); a nil is not, because a nil only takes away an entry made before this check existed;
     - a year that a return's entry holds (original or revised) is refused (`HeldByReturn`): the return is the record of that year's use and it is
       corrected there, so the two can never both stand for one year;
     - more than the record could still take is refused (`MoreThanTheRecordCanTake`), not stored as a smaller figure: the person typed a number
@@ -271,6 +328,9 @@ def record_by_hand(row: Mapping[str, Any], financial_year: str, amount_paise: in
     fy = (financial_year or "").strip()
     if _year_start(fy) is None:
         raise ValueError("that is not a financial year")
+    outside = outside_the_records_years(row, fy) if _paise(amount_paise) > 0 else None
+    if outside is not None:
+        raise outside
     entries = {k: dict(v) for k, v in entries_of(row).items()}
     for other, e in entries.items():
         if e["financial_year"] == fy and e["return_type"] != MANUAL:
@@ -288,8 +348,17 @@ def record_by_hand(row: Mapping[str, Any], financial_year: str, amount_paise: in
 
 def take_back(row: Mapping[str, Any], entry_id: str) -> dict:
     """The columns to store once the entry `entry_id` (a filing's id, or a hand entry's `manual:<year>`) is taken off this record. The baseline
-    and every other entry are untouched. `NoSuchEntry` when the record has no such entry."""
+    and every other entry are untouched. `NoSuchEntry` when the record has no such entry.
+
+    `HAND_RECORDED` names the part recorded by hand with no year: taking it back sets the total to the entries alone, every entry stays, and
+    `NoSuchEntry` when there is no such part."""
     entries = {k: dict(v) for k, v in entries_of(row).items()}
+    if str(entry_id) == HAND_RECORDED:
+        if baseline_paise(row) <= 0:
+            raise NoSuchEntry(HAND_RECORDED)
+        original = _paise(row.get("original_amount_paise"))
+        utilized = sum(e["amount_paise"] for e in entries.values())
+        return {"utilisations": entries, "utilized_amount_paise": utilized, "remaining_amount_paise": max(0, original - utilized)}
     if str(entry_id) not in entries:
         raise NoSuchEntry(str(entry_id))
     del entries[str(entry_id)]

@@ -2,7 +2,8 @@
 Payroll router — Employee master, salary structures, payroll runs, statutory, reports.
 
 IT Act §192: TDS on salary (monthly deduction, annual projected basis).
-EPF Act §6: Employer PF = 12% of (Basic + DA), capped at a ₹15,000 wage ceiling → ₹1,800 max employer contribution.
+Employees' Provident Funds Scheme, 2026 para 18 (which replaced EPF Act §6 and the 1952 Scheme on 29-06-2026): employer PF = 12% of the PF wage, capped
+at the NOTIFIED wage ceiling (Rs 25,000 from 17-09-2026, Rs 15,000 before; domain/payroll/statutory) → Rs 3,000 at most from October 2026.
 ESI Act: Employee ESI = 0.75% of gross; Employer ESI = 3.25% of gross (applicable when gross ≤ ₹21,000/month).
 PT: State-specific professional tax slab, keyed on the employee's pt_state; an
     unset/unrecognised state withholds nothing (no silent single-state default).
@@ -13,16 +14,17 @@ from datetime import datetime, timezone, date, timedelta
 from decimal import Decimal as _Decimal, ROUND_HALF_UP as _ROUND_HALF_UP
 import math
 
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, Field, ValidationError, field_validator
 
 import logging
 
 from models.common import api_response
-from models.payroll import (EmployeeIn, EmployeeUpdateIn, SalaryStructureIn, PayrollRunIn,
+from models.clearable import patch_dict, removed_identifier_problem
+from models.payroll import (EMPLOYEE_IDENTIFIER_WHY, EMPLOYEE_IDENTIFIERS, EmployeeIn, EmployeeUpdateIn, SalaryStructureIn, PayrollRunIn,
                            RunStatusIn, PayrollDisburseIn, DeclarationIn, DeclarationVerifyIn,
                            StatutoryIdentityIn, PTRegistrationIn,
                            AttendanceIn, LeaveBalanceIn, PayrollSettingsIn, PTSlabSetIn,
-                           OneTimeEarningsIn, PayrollEnablementIn,
+                           OneTimeEarningsIn, PayrollEnablementIn, OpeningPositionIn, OpeningPositionsIn, OpeningPositionsImportIn,
                            ReleaseIn, ApplyStructureIn, EmployeeImportIn)
 from core.authz import assert_client_access, filter_by_client
 from core.db_paging import fetch_all
@@ -32,11 +34,50 @@ from services import payroll_report_service
 from services.timeline_service import timeline_service
 from services import employee_portal_service
 from services import it_declaration_service
-from services.internal_client_service import assert_not_internal_for_payroll
+from services import practice_staff_link_service
+from services.internal_client_service import assert_practice_payroll_is_the_partners, get_internal_client_id, is_partner
+
+
+def _the_firms_clients_only(current_user: dict, rows: list[dict]) -> list[dict]:
+    """A payroll list that names no client is a list across the firm's CLIENTS: narrowed to the caller's own, and WITHOUT the
+    practice's own staff.
+
+    Guardrail G2 says the practice is not one of the firm's clients to list or count. That cost nothing here while the practice
+    could have no payroll (G4 was a cap until 21-11-2026). Now that the firm runs its own staff's payroll on the practice client
+    (POST-A-532), every list below that answers across clients (the roster with no client named, the runs, the attendance and
+    declaration boards, the hub, the exceptions) would have put a Partner's own colleagues among their clients' employees, under
+    a client name the screens cannot show because every client picker leaves the practice out. So the firm-wide answer leaves it
+    out too, for everybody, and the practice's payroll is reached by NAMING the practice (from My practice), where the door asks
+    whose it is. `filter_by_client` is the assignment narrowing, unchanged; this is that, and then G2."""
+    rows = filter_by_client(current_user, rows)
+    practice = get_internal_client_id(current_user.get("firm_id"))
+    if not practice:
+        return rows
+    return [r for r in rows if str(r.get("client_id") or "") != str(practice)]
+
+
+def _the_practice_when_named(current_user: dict, client_id: Optional[str]) -> Optional[str]:
+    """The practice's client id when a firm-wide payroll list was opened FOR the practice, by a Partner; None otherwise.
+
+    The firm-wide lists leave the practice out (`_the_firms_clients_only`, G2), and three of them are the only place a
+    thing about the firm's own staff can be read at all: the attendance sheet, the leave ledger, and the line on a
+    client's Payroll page that says whether payroll is switched on. Each takes the client its screen was opened for and
+    adds that one client's rows when it is the practice. Any OTHER id is ignored here and never refused: on these
+    lists it only preselects a picker, the list itself is already narrowed to the caller's clients, and a stale id in
+    a bookmarked address must not turn the whole sheet into a 404. The practice named by somebody who is not a Partner
+    IS refused, as not found (G1), by the same two checks every payroll door for one client makes."""
+    if not client_id:
+        return None
+    practice = get_internal_client_id(current_user.get("firm_id"))
+    if not practice or str(practice) != str(client_id):
+        return None
+    assert_client_access(current_user, client_id)
+    assert_practice_payroll_is_the_partners(client_id, current_user)
+    return str(practice)
 import calendar
 
 from domain.payroll import wage_base
-from domain.payroll.ecr import build_ecr
+from domain.payroll.ecr import build_ecr, ecr_file_name
 from domain.payroll import ecr_sequence
 from domain.tds import vocabulary as tds_vocabulary
 from domain.dpdp import retention as dpdp_retention
@@ -65,7 +106,7 @@ from domain.payroll.form24q import (
     build_24q_from_payroll, months_in_quarter, QUARTER_MONTHS)
 from domain.tds.tds_computer import TDSDeducteeRecord
 from domain.payroll.statutory import esi_contribution_period
-from domain.payroll.statutory import rates_for as payroll_rates_for
+from domain.payroll.statutory import rates_for as payroll_rates_for, pf_rates_for_month, wage_ceiling_gap
 from domain.payroll.statutory import admin_charge_for_establishment as payroll_admin_charge
 from domain.payroll import declarations as decl_domain
 from domain.payroll import gratuity as gratuity_domain
@@ -94,9 +135,11 @@ def _fy_for_month(month: str) -> Optional[str]:
     try:
         y, m = int(month[:4]), int(month[5:7])
     except (ValueError, IndexError):
+        # Not a YYYY-MM month: None, no financial year, never a guessed one.
         return None
     start = y if m >= 4 else y - 1
     return f"{start}-{str(start + 1)[2:]}"
+from domain.payroll import opening_position as opening_domain
 from domain.income_tax.statutory_rates import (
     rates_for, slab_tax_paise, apply_rebate_87a,
     apply_surcharge_with_marginal_relief, cess_paise, current_fy,
@@ -459,6 +502,26 @@ def _attendance_gap(emp: dict, attendance_entered: bool) -> list[str]:
             f"on the 26-day default. Enter it, or confirm the default is right."]
 
 
+def _opening_position_gap(emp: dict, month: str, fy: str, tds_ytd: dict) -> list[str]:
+    """A named gap for an employee this product has no earlier month for in the year and who was employed before this month
+    (POST-A-082). Listed with the run like the other statutory gaps; it blocks nothing, because a client that really started the
+    employee this month, or whose first run this is in April, is the ordinary case and has nothing to record. An opening position
+    of nil months is an answer and silences it. An unreadable joining date cannot rule an earlier month out, so it is named.
+
+    A `tds_ytd` whose read FAILED (`_UnreadYtd`) is not "nothing on file": the earlier months or the positions may well exist, so
+    every employee who could have had an earlier month is named with what could not be read, whether or not they are in it."""
+    if month[5:7] == "04":
+        return []
+    joined = str(emp.get("joining_date") or "")[:7]
+    if joined and joined >= month[:7] and len(joined) == 7:
+        return []
+    if getattr(tds_ytd, "unread", False):
+        return [opening_domain.unread_sentence(emp.get("name") or "An employee", month)]
+    if emp.get("id") in tds_ytd:
+        return []
+    return [opening_domain.gap_sentence(emp.get("name") or "An employee", month)]
+
+
 def _statutory_gaps(emp: dict, pt_covered: Optional[set] = None) -> list[str]:
     """Statutory deductions this employee's state levies that we did not compute.
 
@@ -477,8 +540,7 @@ def _statutory_gaps(emp: dict, pt_covered: Optional[set] = None) -> list[str]:
         # The EMPLOYEE-level question, not the state-level one (PAY-05). A
         # blank state is "not a gap" as a statement about a state code and is
         # exactly a gap once the CA has ticked pt_applicable: nothing is
-        # withheld, month after month, and Article 276 leaves the employer
-        # liable for it.
+        # withheld, month after month, with nothing to show it.
         pt = classify_pt_for_employee(True, emp.get("pt_state"))
         # A state the FIRM has recorded usable slabs for is no longer a gap —
         # the deduction was computed, from a notification somebody read
@@ -525,8 +587,10 @@ def _to_nearest_rupee(paise: int) -> int:
     EPFO requires each member's contributions to be rounded to the rupee, and
     the difference is not cosmetic: 8.33% of the ₹15,000 ceiling is ₹1,249.50,
     which is why every published EPF table says ₹1,250 EPS and ₹550 EPF rather
-    than ₹1,249.50 and ₹550.50. Carrying the paise through would put a figure
-    on the ECR that the portal does not accept and that no CA would recognise.
+    than ₹1,249.50 and ₹550.50, and 8.33% of the ₹25,000 ceiling (from
+    17-09-2026) is ₹2,082.50, which is ₹2,083 and not ₹2,082. Carrying the paise
+    through would put a figure on the ECR that the portal does not accept and
+    that no CA would recognise.
 
     Integer arithmetic throughout — CLAUDE.md's rule, and the reason this is not
     round(paise / 100) * 100.
@@ -548,6 +612,23 @@ def _members_contributing_earlier_this_period(db, firm_id: str, client_id: str,
     in past the ceiling) rather than the one that over-deducts from people who
     were never covered.
     """
+    # An opening position that SAYS the employee contributed earlier in the period the position's first month falls in
+    # (POST-A-082). Only an explicit TRUE counts: an unknown is not a contribution. Read in its OWN try, so a position table
+    # that cannot be read (before migration 641 is applied, or any failure) costs only what the positions say and never the
+    # coverage the released runs below establish. And a first month of April or October opens its period, so a TRUE there
+    # describes the previous period and is not counted (the validation refuses it; this holds a row written before it did).
+    try:
+        period = esi_contribution_period(month)
+        opening_covered = {str(r["employee_id"]) for r in
+                           _opening_positions(db, firm_id, client_id, _fy_for_month(month) or "")
+                           if r.get("esi_contributed_earlier_in_period") is True
+                           and opening_domain.applies(r, month)
+                           and esi_contribution_period(str(r["first_month_here"])[:7]) == period
+                           and opening_domain.esi_answer_can_be_yes(
+                               date.fromisoformat(f"{str(r['first_month_here'])[:7]}-01"))}
+    except Exception:
+        _logger.exception("could not read the opening positions for ESI coverage %s %s", client_id, month)
+        opening_covered = set()
     try:
         period = esi_contribution_period(month)
         # RELEASED RUNS ONLY (PAY-04). A draft run has deducted nothing and
@@ -564,11 +645,11 @@ def _members_contributing_earlier_this_period(db, firm_id: str, client_id: str,
                    if r.get("month") and r["month"] < month
                    and esi_contribution_period(r["month"]) == period]
         if not earlier:
-            return set()
+            return opening_covered
         slips = (db.table("payroll_slips").select("employee_id, esi_employee_paise")
                  .in_("run_id", earlier).execute().data) or []
-        return {s["employee_id"] for s in slips
-                if int(s.get("esi_employee_paise") or 0) > 0}
+        return opening_covered | {s["employee_id"] for s in slips
+                                  if int(s.get("esi_employee_paise") or 0) > 0}
     except Exception:
         _logger.exception("could not read ESI coverage history for %s %s", client_id, month)
         return set()
@@ -598,7 +679,11 @@ def _months_employed_in_fy(joining_date, fy: Optional[str]) -> int:
     try:
         joined = date.fromisoformat(str(joining_date)[:10])
         fy_start_year = int(str(fy)[:4])
-    except (ValueError, TypeError):
+    except (ValueError, TypeError) as unreadable:
+        # A joining date or year that cannot be read keeps the twelve-month projection (the direction §192(1) leaves the employer safe in), and
+        # says so: the employee keeps their money only when the date is readable (POST-A-505).
+        from core.observability import capture_soft_failure
+        capture_soft_failure(unreadable, operation="payroll.months_employed_unreadable", joining_date=str(joining_date)[:40], fy=str(fy)[:12])
         return 12
     fy_start = date(fy_start_year, 4, 1)
     if joined <= fy_start:
@@ -1214,7 +1299,7 @@ def _tds_already_deducted_this_fy(db, firm_id: str, client_id: str,
                    if r.get("month") and r["month"] < month
                    and _fy_for_month(r["month"]) == fy]
         if not earlier:
-            return {}
+            return _with_opening_positions(db, firm_id, client_id, month, fy, {})
         # gross_paise IS SELECTED. It was not, and the accumulator two lines
         # below has always read `sl.get("gross_paise")` — which on a row that
         # never carried the column is None, so every month's
@@ -1240,53 +1325,104 @@ def _tds_already_deducted_this_fy(db, firm_id: str, client_id: str,
             out[sl["employee_id"]] = (tds + int(sl.get("tds_paise") or 0),
                                       months + 1,
                                       gross + int(sl.get("gross_paise") or 0))
-        return out
+        return _with_opening_positions(db, firm_id, client_id, month, fy, out)
     except Exception:
         _logger.exception("could not read YTD TDS for %s %s", client_id, month)
-        return {}
+        return _UnreadYtd()
+
+
+class _UnreadYtd(dict):
+    """A year-to-date mapping that is not the whole answer, because a read behind it failed. It behaves as the dict every caller
+    expects (empty, or the released runs without the opening positions), and `_opening_position_gap` reads the mark so a failed
+    read is named as one and never reported as "nothing is on file" (POST-A-082)."""
+    unread = True
+
+
+def _employees_whose_opening_position_covers(db, firm_id: str, client_id: str, month: str, run_id: str) -> list[str]:
+    """The names of the employees on run `run_id` whose opening position for the month's financial year starts AFTER `month`,
+    so that the position already holds this month (POST-A-082). Read failures raise: the release door must not let a run
+    through on a read it could not make, any more than it lets one through on a gap."""
+    fy = _fy_for_month(month)
+    if not fy:
+        return []
+    later = {str(r["employee_id"]) for r in _opening_positions(db, firm_id, client_id, fy)
+             if str(r.get("first_month_here"))[:7] > month[:7]}
+    if not later:
+        return []
+    on_run = {str(sl["employee_id"]) for sl in (db.table("payroll_slips").select("employee_id")
+                                                 .eq("run_id", run_id).execute().data) or []}
+    hit = on_run & later
+    if not hit:
+        return []
+    names = {str(e["id"]): e.get("name") for e in (db.table("payroll_employees").select("id, name")
+                                                    .eq("firm_id", firm_id).eq("client_id", client_id)
+                                                    .in_("id", sorted(hit)).execute().data) or []}
+    return sorted(names.get(i) or i for i in hit)
+
+
+def _opening_positions(db, firm_id: str, client_id: str, fy: str) -> list[dict]:
+    """The client's opening positions for a financial year (migration 641), through the API's privileged client."""
+    return (db.table("payroll_opening_positions")
+            .select("id, employee_id, first_month_here, financial_year, months_paid, gross_paise, tds_paise, pf_employee_paise, pf_employer_paise, esi_employee_paise, esi_employer_paise, pt_paise, esi_contributed_earlier_in_period, source_note")
+            .eq("firm_id", firm_id).eq("client_id", client_id).eq("financial_year", fy)
+            .execute().data) or []
+
+
+def _with_opening_positions(db, firm_id: str, client_id: str, month: str, fy: str, ytd: dict) -> dict:
+    """`ytd` with each employee's opening position added on, for a run month on or after the position's first month (POST-A-082).
+
+    A failed read leaves `ytd` as it was, which is the over-deducting direction (the whole year's tax is spread over the months
+    left of twelve) and is logged: it must not fail a run, and it must not be mistaken for "there is no position"."""
+    try:
+        rows = [r for r in _opening_positions(db, firm_id, client_id, fy) if opening_domain.applies(r, month)]
+    except Exception:
+        _logger.exception("could not read the opening positions for %s %s", client_id, fy)
+        return _UnreadYtd(ytd)
+    return opening_domain.add_to_ytd(ytd, {str(r["employee_id"]): opening_domain.as_opening(r) for r in rows})
 
 
 def _compute_pf(pf_wages_paise: int, fy: Optional[str] = None,
                 eps_eligible: bool = True,
-                on_actual_wages: bool = False) -> dict:
+                on_actual_wages: bool = False,
+                month: Optional[int] = None) -> dict:
     """
-    PF per EPF & MP Act 1952 §6, SPLIT as the Employees' Pension Scheme requires.
+    PF per the Employees' Provident Funds Scheme, 2026 para 18 (G.S.R. 525(E), in force from 29-06-2026, replacing §6 of the 1952 Act and
+    the 1952 Scheme), SPLIT as the Employees' Pension Scheme, 2026 requires.
 
-    §6 sets the employee's contribution at 12% of "basic wages, dearness
-    allowance and retaining allowance (if any)", and the employer matches it.
-    The ₹15,000 ceiling applies to that same Basic+DA base, not Basic alone —
-    task #229 fixed a caller that passed basic_paise only and silently
-    under-computed both halves for anyone with a nonzero da_percent. No
-    retaining allowance is modelled here (it is not on the employee master), so
-    pf_wages_paise is Basic + DA.
+    Para 18 sets the employee's contribution at 12% of the "wages payable", and the employer matches it. The wage ceiling applies to
+    that same PF wage, not to Basic alone — task #229 fixed a caller that passed basic_paise only and silently under-computed both
+    halves for anyone with a nonzero da_percent. THE CEILING IS THE NOTIFIED ONE, FOR THE WAGE MONTH (POST-A-516): Rs 15,000 up to
+    August 2026 and Rs 25,000 from October 2026, resolved by domain/payroll/statutory.pf_rates_for_month from `month`; the month the
+    change falls inside (September 2026) keeps the ceiling at its start and is named in the run's gaps. No retaining allowance is
+    modelled here (it is not on the employee master), so pf_wages_paise is the wage base wage_base.py works out.
 
     WHAT CHANGED, AND WHY IT MATTERS BEYOND THE LEDGER
 
     This used to return a flat {"employee": 12%, "employer": 12%}. The
-    employee's 12% is indeed all EPF, but the EMPLOYER's 12% is not: EPS 1995 ¶3
-    diverts 8.33% of PF wages — capped at 8.33% of ₹15,000, i.e. ₹1,250 — to the
-    pension fund, and only the remainder stays in EPF. At or below the ceiling
-    that is 8.33% pension + 3.67% provident fund; above it the pension amount
-    stops rising and the EPF half absorbs the rest.
+    employee's 12% is indeed all EPF, but the EMPLOYER's 12% is not: the Employees' Pension Scheme, 2026 para 4(1) takes 8.33% of the
+    wages, up to the notified wage ceiling, out of it for the pension fund (Rs 1,250 at Rs 15,000, Rs 2,083 at Rs 25,000), and only
+    the remainder stays in EPF. At or below the ceiling that is 8.33% pension + 3.67% provident fund; above it the pension amount stops
+    rising and the EPF half absorbs the rest. (The Central Government's own 1.16%, limited to Rs 15,000 by G.S.R. 890(E), is not the
+    employer's and is posted by nobody here.)
 
     Lumping the two together is not merely an imprecise trial balance. The
     EPFO's ECR return carries EPF wages, EPS wages, the EPF contribution, the
     EPS contribution and the difference between them as separate columns per
     member, so a single employer figure cannot produce a valid return at all.
 
-    EDLI (0.5%, EDLI 1976) and administrative charges (0.5%) are returned too.
+    EDLI (0.5%, the insurance rate being "as notified": owner list S49) and administrative charges (0.5%) are returned too.
     Both are employer costs OUTSIDE the 12% and are deducted from nobody. The
     admin charge carries a minimum of ₹500 per ESTABLISHMENT per month, which no
     single payslip can settle — the per-employee 0.5% is computed here and the
     floor is applied when the run is totalled. EDLI admin has been nil since
     01-04-2017.
 
-    Rates and ceilings come from domain/payroll/statutory.py, versioned by FY.
+    Rates come from domain/payroll/statutory.py, versioned by FY, and the three ceilings by wage month.
 
     `on_actual_wages` (payroll-22) is the employer's recorded ELECTION to
-    contribute on the whole PF wage rather than on the ceiling — EPF Scheme 1952
-    para 26(6), a joint request of employee and employer, `[S]`: the reading is
-    unverified and nothing here checks the request exists. It is decided by
+    contribute on the whole PF wage rather than on the ceiling — paragraph 9(4) of the Employees' Provident Funds Scheme, 2026 (which
+    replaced para 26(6) of the 1952 Scheme), a joint option in writing of employee and employer: nothing here checks that the option
+    exists. It is decided by
     domain/payroll/pf_wage_election.applies and never inferred from the wage.
     ONLY THE EPF BASE MOVES with it: the employee's 12%, the employer's 12% (so
     the EPF half, which absorbs everything above the pension diversion) and the
@@ -1295,7 +1431,11 @@ def _compute_pf(pf_wages_paise: int, fy: Optional[str] = None,
     they are separate figures in the statute — and the rounding is the same
     line it always was. With the flag False nothing below differs from before.
     """
-    r = payroll_rates_for(fy).pf
+    # The ceilings for the WAGE MONTH, not the year: the wage ceiling moves by notification (Rs 25,000 from 17-09-2026) and all three
+    # 2026 schemes follow it, so EPF wages, the employer's EPS wages and EDLI wages are capped at one figure that changes inside a
+    # financial year (POST-A-516, domain/payroll/statutory.pf_rates_for_month). `month` is the calendar month number inside `fy`;
+    # without it the year's own figures are used, as before.
+    r = pf_rates_for_month(fy, month)
     # The wage the EPF contributions and the administrative charge are computed
     # on. Everything that follows reads this and not `capped`, so the election
     # cannot reach EPS or EDLI by a stray use of the uncapped figure.
@@ -1307,7 +1447,7 @@ def _compute_pf(pf_wages_paise: int, fy: Optional[str] = None,
 
     # Employer's share splits. EPS is computed on its OWN ceiling, which is why
     # it is not simply 8.33% of `capped` — the two ceilings are separate figures
-    # in the statute even though both are ₹15,000 today.
+    # in the statute even though both follow the one notified ceiling today.
     employer_total = _to_nearest_rupee(capped * r.employer_rate_bps // 10000)
     eps_wages = min(pf_wages_paise, r.eps_ceiling_paise)
     employer_eps = _to_nearest_rupee(eps_wages * r.eps_rate_bps // 10000)
@@ -1315,11 +1455,11 @@ def _compute_pf(pf_wages_paise: int, fy: Optional[str] = None,
     # notification moved the ceilings apart, the subtraction below must not go
     # negative and quietly credit EPF with a negative contribution.
     employer_eps = min(employer_eps, employer_total)
-    # EPS 1995 para 6, as amended by GSR 609(E) w.e.f. 01-09-2014: someone who
-    # joined EPF on or after that date with pay above the ceiling at JOINING is
-    # not a pension-scheme member at all, and the whole employer share stays in
-    # EPF. Carried on the employee master rather than derived — see migration
-    # 295 for why pay-today cannot answer a question about pay-at-joining.
+    # Employees' Pension Scheme, 2026 para 7(1) (which replaced para 6 of the 1995 Scheme as amended by GSR 609(E) w.e.f.
+    # 01-09-2014; sub-para (iii) was added by G.S.R. 847(E)): someone who joined EPF on or after 01-09-2014 with pay above the
+    # ceiling at JOINING, and still above it on 17-09-2026, is not a pension-scheme member, and the whole employer share stays in
+    # EPF. Carried on the employee master rather than derived — see migration 295 for why pay-today cannot answer a question
+    # about pay-at-joining.
     if not eps_eligible:
         employer_eps = 0
     employer_epf = employer_total - employer_eps
@@ -1361,7 +1501,7 @@ def _pf_for_slip(emp: dict, pf_wages_paise: int, fy: Optional[str],
     elected = pf_election.applies(emp, fy_label=fy, month=month)
     return _compute_pf(pf_wages_paise, fy,
                        eps_eligible=emp.get("eps_eligible", True),
-                       on_actual_wages=elected), elected
+                       on_actual_wages=elected, month=month), elected
 
 
 def _compute_esi(gross_paise: int, fy: Optional[str] = None,
@@ -2011,7 +2151,7 @@ def list_employees(
     rows = fetch_all(_query, "id", label="payroll_employees")
     rows.sort(key=lambda r: (str(r.get("name") or "").casefold(), str(r.get("id") or "")))
     if not client_id:
-        rows = filter_by_client(current_user, rows)
+        rows = _the_firms_clients_only(current_user, rows)
     return api_response(True, [_with_full_month_gross(r) for r in rows])
 
 
@@ -2024,8 +2164,8 @@ def create_employee(
     db = _db()
     if not db:
         return api_response(True, {"id": "mock-id", **data.model_dump()})
-    # Guardrail G4: no payroll/HR for the internal practice client.
-    assert_not_internal_for_payroll(data.client_id, current_user["firm_id"])
+    # Guardrail G4: the practice's own payroll is the Partner's alone (a non-Partner is told 404).
+    assert_practice_payroll_is_the_partners(data.client_id, current_user)
     assert_payroll_enabled(db, current_user["firm_id"], data.client_id)
     payload = data.model_dump()
     payload["firm_id"] = current_user["firm_id"]
@@ -2036,21 +2176,96 @@ def create_employee(
     if payload.get(pf_election.ELECTION) is None:
         for key in pf_election.ALL_KEYS:
             payload.pop(key, None)
+    # The same for fixed-term employment (migration 770): an employee created without it never names its columns, so the insert is the
+    # one it always was, and a deploy that reaches production a few minutes before the migration does cannot break an ordinary create.
+    for key in ("fixed_term_employment", "fixed_term_end_date"):
+        if payload.get(key) is None:
+            payload.pop(key, None)
+    # The same again for the link to a team member (migration 776): an employee created without one never names the column. One created
+    # WITH one is asked the three rules of a link first (the member is the firm's, the payroll is the firm's own, one person is one employee).
+    if not payload.get("staff_user_id"):
+        payload.pop("staff_user_id", None)
+    else:
+        practice_staff_link_service.the_member_may_be_linked(db, current_user["firm_id"], data.client_id, data.staff_user_id)
     row = db.table("payroll_employees").insert(payload).execute()
     emp = (row.data or [{}])[0]
     if payload.get(pf_election.ELECTION) is not None:
         _log_pf_election_change(current_user, emp.get("id"), None, payload)
+    if payload.get("staff_user_id"):
+        from services.audit_service import log_event
+        log_event(
+            current_user["firm_id"], "payroll_employee", str(emp.get("id") or ""), "create",
+            actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+            old_data=None, new_data={"staff_user_id": payload["staff_user_id"]},
+            metadata={"what": "team_member_link"},
+        )
     timeline_service.log(data.client_id, "work", "Employee Added",
         f"{data.name} added to payroll", "info")
     return api_response(True, emp)
+
+
+class StaffLinkIn(BaseModel):
+    """The team member an employee of the firm's own payroll is, or null to remove the link (POST-A-540)."""
+    staff_user_id: Optional[str] = None
+
+
+@router.get("/practice-staff")
+def practice_staff(current_user: dict = Depends(rbac("payroll", "read"))):
+    """The firm's OWN payroll as the Team screen needs it (POST-A-540): whether there is one, whether it is switched on, and each
+    employee with the team member they are linked to. A Partner's alone, and a non-Partner is told 404, the answer guardrail G1
+    gives for everything of the practice: who the firm pays, and that it runs its own payroll at all, is not theirs to learn.
+    No pay, no identifier and no bank detail is in the answer."""
+    if not is_partner(current_user):
+        raise HTTPException(status_code=404, detail="Not found")
+    # The same two doors every payroll route for one client asks, of the one client this answer is about: the caller may open
+    # it, and it is the practice's own payroll (G4). A firm with no practice has nothing to ask of.
+    practice = get_internal_client_id(current_user.get("firm_id"))
+    if practice:
+        assert_client_access(current_user, practice, detail="Not found")
+        assert_practice_payroll_is_the_partners(practice, current_user)
+    return api_response(True, practice_staff_link_service.roster(_db(), current_user["firm_id"]))
+
+
+@router.put("/employees/{employee_id}/staff-link")
+def link_employee_to_team_member(
+    employee_id: str,
+    data: StaffLinkIn,
+    current_user: dict = Depends(rbac("payroll", "write"))
+):
+    """Say which team member an employee of the firm's own payroll is, or (null) that they are none (POST-A-540).
+
+    A link, never a merge: neither record is changed otherwise. Not asked of the per-client payroll switch, because the link says
+    who somebody is and pays nobody; an employee of a payroll that has been switched off is still a person."""
+    db = _db()
+    client_id = _assert_employee_scope(db, current_user, employee_id)
+    if not db:
+        return api_response(True, {"id": employee_id, "staff_user_id": data.staff_user_id})
+    # Guardrail G4: the practice's own payroll is the Partner's alone (a non-Partner is told 404).
+    assert_practice_payroll_is_the_partners(client_id, current_user)
+    firm_id = current_user["firm_id"]
+    if not data.staff_user_id and str(get_internal_client_id(firm_id) or "") != str(client_id or ""):
+        # Removing a link from a client's employee: there is none to remove, and the door says whose payroll it is for.
+        raise HTTPException(status_code=422, detail=practice_staff_link_service.A_CLIENTS_EMPLOYEE)
+    before = (db.table("payroll_employees").select("staff_user_id")
+              .eq("id", employee_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute().data) or [{}]
+    row = practice_staff_link_service.set_link(db, firm_id, employee_id, client_id, data.staff_user_id)
+    from services.audit_service import log_event
+    log_event(
+        firm_id, "payroll_employee", str(employee_id), "update",
+        actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+        old_data={"staff_user_id": before[0].get("staff_user_id")},
+        new_data={"staff_user_id": row.get("staff_user_id")},
+        metadata={"what": "team_member_link"},
+    )
+    return api_response(True, row)
 
 
 def _log_pf_election_change(current_user: dict, employee_id, old: Optional[dict],
                             new: dict) -> None:
     """Write the employer's PF election to the edit log, old values beside new.
 
-    The election is the EMPLOYER'S ASSERTION that a joint request exists (EPF
-    Scheme para 26(6), `[S]`), and it decides money in somebody's pay and the
+    The election is the EMPLOYER'S ASSERTION that a joint option exists (paragraph 9(4) of the Employees' Provident Funds Scheme,
+    2026), and it decides money in somebody's pay and the
     EPF wage on a statutory return. WHO recorded it and WHEN is the fact an
     inspector asks for, and the withdrawal clears the date and reference from
     the row (the database holds them only beside an election that is true), so
@@ -2104,19 +2319,27 @@ def import_employees(
         result = importer.validate(data.rows, existing_by_code={})
         return api_response(True, result.summary())
 
-    assert_not_internal_for_payroll(data.client_id, current_user["firm_id"])
+    assert_practice_payroll_is_the_partners(data.client_id, current_user)
     assert_payroll_enabled(db, current_user["firm_id"], data.client_id)
 
     # ONE query for every code already on file, not one per row — the whole
     # reason this endpoint exists is that the per-row shape crossed a region
     # boundary fifty times.
-    existing = (db.table("payroll_employees").select("id, employee_code")
+    # The identifiers come in the same read, so a row that would empty one on file is refused without a second query (POST-A-472).
+    existing = (db.table("payroll_employees").select("id, employee_code, " + ", ".join(EMPLOYEE_IDENTIFIERS))
                 .eq("firm_id", current_user["firm_id"])
                 .eq("client_id", data.client_id).execute().data) or []
-    existing_by_code = {str(r["employee_code"]).lower(): r["id"]
-                        for r in existing if r.get("employee_code")}
+    existing_by_code = importer.code_index(existing)
 
     result = importer.validate(data.rows, existing_by_code=existing_by_code)
+    # An update row is the edit of an employee, so a blank cell over an identifier on file is refused in the edit's own sentence, keyed to
+    # the spreadsheet row, and the whole file with it (POST-A-472). A column the file does not carry is not written at all (the importer).
+    stored_by_id = {r["id"]: r for r in existing}
+    for n, employee_id, emptied in result.emptied_identifiers:
+        removed = removed_identifier_problem(EmployeeUpdateIn.model_construct(**{k: None for k in emptied}),
+                                             stored_by_id.get(employee_id) or {}, EMPLOYEE_IDENTIFIERS, why=EMPLOYEE_IDENTIFIER_WHY)
+        if removed:
+            result.problems.append(f"Row {n}: {removed}")
     if not result.ok:
         # 422, not 400: the request is well-formed and the CONTENT is what is
         # refused. Every problem comes back at once, keyed to the row number the
@@ -2225,9 +2448,18 @@ def update_employee(
 ):
     _assert_employee_scope(_db(), current_user, employee_id)
     db = _db()
-    update = data.model_dump(exclude_none=True)
+    # POST-A-399. A designation or a department the person emptied is cleared (written NULL); every other null still reads "not sent".
+    update = patch_dict(data)
     if not db:
         return api_response(True, update)
+    # An identifier emptied over a stored one is refused in a sentence rather than kept while the screen says "saved". The row is read only when
+    # the request sent one of them empty.
+    if any(k in data.model_fields_set and not str(getattr(data, k) or "").strip() for k in EMPLOYEE_IDENTIFIERS):
+        held = (db.table("payroll_employees").select(", ".join(EMPLOYEE_IDENTIFIERS))
+                .eq("id", employee_id).eq("firm_id", current_user["firm_id"]).maybe_single().execute().data) or {}
+        removed = removed_identifier_problem(data, held, EMPLOYEE_IDENTIFIERS, why=EMPLOYEE_IDENTIFIER_WHY)
+        if removed:
+            raise HTTPException(status_code=422, detail=removed)
     # The PF election (payroll-22) is judged against the row it lands on: a
     # request that switches PF off beside a recorded election, or hangs a date
     # on an election that is not made, is refused in a sentence rather than by
@@ -2244,6 +2476,15 @@ def update_employee(
         if plan.problems:
             raise HTTPException(status_code=422, detail=" ".join(plan.problems))
         update.update(plan.changes)
+    # FIXED-TERM EMPLOYMENT (POST-A-526, migration 770). Withdrawing it clears the contract's end date with it, and an end date sent alone
+    # lands only on an employee who IS on a fixed term, in a sentence rather than by the database's CHECK. The row is read only then.
+    if update.get("fixed_term_employment") is False:
+        update["fixed_term_end_date"] = None
+    elif update.get("fixed_term_end_date") and update.get("fixed_term_employment") is not True:
+        held = (db.table("payroll_employees").select("fixed_term_employment")
+                .eq("id", employee_id).eq("firm_id", current_user["firm_id"]).maybe_single().execute().data) or {}
+        if held.get("fixed_term_employment") is not True:
+            raise HTTPException(status_code=422, detail="A contract end date belongs to a fixed-term employee: tick fixed-term employment, or leave the date out.")
     row = db.table("payroll_employees").update(update).eq("id", employee_id).eq("firm_id", current_user["firm_id"]).execute()
     if stored is not None and any(k in update for k in pf_election.ALL_KEYS):
         after = (row.data or [{}])[0]
@@ -2282,6 +2523,7 @@ def _payroll_retention_refusal(db, firm_id: str, slips: list[dict]) -> str:
             year, month = str(run.get("month") or "").split("-")[:2]
             starts.append(date(int(year), int(month), 1))
         except (ValueError, TypeError):
+            # An unreadable month is dropped rather than guessed (the note above the loop says why it is parsed).
             continue
 
     fy = ist_fy_label(max(starts)) if starts else None
@@ -2357,8 +2599,8 @@ def create_salary_structure(
     db = _db()
     if not db:
         return api_response(True, {"id": "mock-id", **data.model_dump()})
-    # Guardrail G4: no payroll/HR for the internal practice client.
-    assert_not_internal_for_payroll(data.client_id, current_user["firm_id"])
+    # Guardrail G4: the practice's own payroll is the Partner's alone (a non-Partner is told 404).
+    assert_practice_payroll_is_the_partners(data.client_id, current_user)
     assert_payroll_enabled(db, current_user["firm_id"], data.client_id)
     payload = data.model_dump()
     payload["firm_id"] = current_user["firm_id"]
@@ -2404,7 +2646,7 @@ def apply_salary_structure(
                                    "preview": data.preview, "employees": [],
                                    "notes": []})
 
-    assert_not_internal_for_payroll(data.client_id, firm_id)
+    assert_practice_payroll_is_the_partners(data.client_id, current_user)
     assert_payroll_enabled(db, firm_id, data.client_id)
 
     structure = (db.table("salary_structures")
@@ -2541,7 +2783,7 @@ def list_runs(
     rows.sort(key=lambda r: str(r.get("id") or ""))
     rows.sort(key=lambda r: str(r.get("month") or ""), reverse=True)
     if not client_id:
-        rows = filter_by_client(current_user, rows)
+        rows = _the_firms_clients_only(current_user, rows)
     return api_response(True, rows)
 
 
@@ -2624,6 +2866,8 @@ def _compute_and_store_slips(db, firm_id: str, client_id: str, month: str,
     # The income-tax rates §192 is withheld at, when the registry has not
     # confirmed them for this year. Once per run: it is a fact about the year.
     statutory_gaps.extend(_withholding_rate_gap(fy))
+    # A wage month a notified change of the wage ceiling falls inside (September 2026): named, never settled by a guess.
+    statutory_gaps.extend(_wage_ceiling_gap(month))
     # Employees for whom NOBODY entered attendance this month. Reported with
     # the run, never silently defaulted — see _attendance_gap.
     attendance_gaps: list[str] = []
@@ -2670,6 +2914,7 @@ def _compute_and_store_slips(db, firm_id: str, client_id: str, month: str,
         statutory_gaps.extend(_statutory_gaps(emp, pt_covered))
         statutory_gaps.extend(
             _age_gap(emp, declarations.get(emp["id"]), fy))
+        statutory_gaps.extend(_opening_position_gap(emp, month, fy, tds_ytd))
         attendance_gaps.extend(_attendance_gap(emp, attendance is not None))
         slip["run_id"]      = run_id
         slip["employee_id"] = emp["id"]
@@ -2776,8 +3021,8 @@ def create_run(
     if not db:
         return api_response(True, {"id": "mock-run", "month": month, "status": "draft"})
 
-    # Guardrail G4: no payroll/HR for the internal practice client.
-    assert_not_internal_for_payroll(client_id, current_user["firm_id"])
+    # Guardrail G4: the practice's own payroll is the Partner's alone (a non-Partner is told 404).
+    assert_practice_payroll_is_the_partners(client_id, current_user)
     assert_payroll_enabled(db, current_user["firm_id"], client_id)
 
     # Check for duplicate run
@@ -3033,6 +3278,8 @@ def _parse_timestamp(value) -> Optional[datetime]:
     try:
         return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
     except ValueError:
+        # Not a timestamp. A timestamptz column always reads back as ISO text, so a stored instant never lands here: this is an absent value or a
+        # hand-built one, and None says there is no instant.
         return None
 
 
@@ -3068,6 +3315,7 @@ def _stamp_attendance_staleness(db, run: dict, slips: list[dict]) -> None:
     try:
         year, month = int(month_str[:4]), int(month_str[5:7])
     except (ValueError, IndexError):
+        # The run's month cannot be read: every slip keeps the False set above (no staleness is claimed).
         return
 
     emp_ids = [s.get("employee_id") for s in slips if s.get("employee_id")]
@@ -3140,19 +3388,26 @@ def get_run_summaries(
     if not db:
         return api_response(True, {"runs": []})
 
-    q = (db.table("payroll_runs")
-         .select("id, client_id, month, status")
-         .eq("firm_id", current_user["firm_id"]))
-    if client_id:
-        q = q.eq("client_id", client_id)
-    if financial_year:
-        # payroll_runs has NO financial_year column — it carries `month`, and
-        # the year is derived from it. April to March, so January to March
-        # belong to the year that started the previous April.
-        q = q.in_("month", payroll_report_service.months_of_fy(financial_year))
-    runs = q.order("month", desc=True).execute().data or []
+    def _runs():
+        q = (db.table("payroll_runs")
+             .select("id, client_id, month, status")
+             .eq("firm_id", current_user["firm_id"]))
+        if client_id:
+            q = q.eq("client_id", client_id)
+        if financial_year:
+            # payroll_runs has NO financial_year column — it carries `month`, and
+            # the year is derived from it. April to March, so January to March
+            # belong to the year that started the previous April.
+            q = q.in_("month", payroll_report_service.months_of_fy(financial_year))
+        return q
+
+    # Paged (POST-A-535): with no client and no year named this is every run the firm has, and one request answers at
+    # most a thousand rows, so the oldest months dropped off the table with no word. The pager walks on `id`; the
+    # newest-month-first order the table shows is put back here.
+    runs = sorted(fetch_all(_runs, label="payroll.run_summaries", strict=True),
+                  key=lambda r: (str(r.get("month") or ""), str(r.get("id") or "")), reverse=True)
     if not client_id:
-        runs = filter_by_client(current_user, runs)
+        runs = _the_firms_clients_only(current_user, runs)
 
     summaries = payroll_report_service.run_summaries(
         db, current_user["firm_id"], [str(r["id"]) for r in runs])
@@ -3207,7 +3462,7 @@ def get_slips(
         rq = rq.eq("client_id", client_id)
     runs = rq.execute().data or []
     if not client_id:
-        runs = filter_by_client(current_user, runs)
+        runs = _the_firms_clients_only(current_user, runs)
     if not runs:
         return api_response(True, {"slips": [], "runs": []})
 
@@ -3238,11 +3493,21 @@ def get_year_end_summary(
     db = _db()
     if not db:
         return api_response(True, {"rows": [], "financial_years": []})
+    if client_id:
+        assert_practice_payroll_is_the_partners(client_id, current_user)
+
+    # WITH NO CLIENT NAMED THIS IS A LIST ACROSS CLIENTS, AND IT WAS NOT NARROWED AT ALL (found by the review of
+    # POST-A-532): the service reads every run of the firm through the privileged client, so a Manager assigned to
+    # nothing read the name, PAN, gross, net and TDS of every employee of every client. The runs are narrowed here, in
+    # the handler where the scope audit reads it, to the caller's clients and without the practice's own staff (G2).
+    def _runs_in_reach(runs: list[dict]) -> list[dict]:
+        return runs if client_id else _the_firms_clients_only(current_user, runs)
+
     return api_response(True, {
         "rows": payroll_report_service.employee_year_totals(
-            db, current_user["firm_id"], financial_year, client_id),
+            db, current_user["firm_id"], financial_year, client_id, narrow=_runs_in_reach),
         "financial_years": payroll_report_service.financial_years(
-            db, current_user["firm_id"]),
+            db, current_user["firm_id"], narrow=_runs_in_reach),
     })
 
 
@@ -3350,6 +3615,24 @@ def _withholding_rate_gap(fy: str) -> list[str]:
             f"nobody has confirmed. {gap}"]
 
 
+def _wage_ceiling_gap(month: str) -> list[str]:
+    """The wage month a ceiling change falls INSIDE (September 2026), named in the run's gaps (POST-A-516).
+
+    The sentence is the registry's (`statutory.wage_ceiling_gap`): no text read says which ceiling applies to a month in which a
+    notification took effect, so the run says so instead of settling it, and finalising needs the typed reason the gap list demands.
+    A month the change does not fall inside adds nothing.
+    """
+    try:
+        m = int(month[5:7])
+    except (ValueError, TypeError, IndexError) as unreadable:
+        # The run's month cannot be read, so a ceiling change that falls inside it cannot be named in the run's gaps: said (POST-A-505).
+        from core.observability import capture_soft_failure
+        capture_soft_failure(unreadable, operation="payroll.wage_ceiling_gap_month_unreadable", month=str(month)[:20])
+        return []
+    note = wage_ceiling_gap(_fy_for_month(month), m)
+    return [f"Provident fund, pension and insurance wages for {month}: {note}"] if note else []
+
+
 # ── The defensible release ───────────────────────────────────────────────────
 # Migration 328. create_run returns two lists of things it could not establish —
 # statutory_gaps and attendance_gaps — and both were advice. Nothing stopped a
@@ -3399,6 +3682,7 @@ def _release_gaps(db, firm_id: str, run: dict) -> list[str]:
     # The FY of the payroll period, not today's — the same date the run was
     # computed against, so the gap a CA saw on the draft is the gap asked again.
     gaps.extend(_withholding_rate_gap(current_fy(on)))
+    gaps.extend(_wage_ceiling_gap(month))
     gaps.extend(identity_domain.pt_registration_gaps(
         {(e.get("pt_state") or "").strip().upper() for e in emps
          if e.get("pt_applicable") and (e.get("pt_state") or "").strip()},
@@ -3727,6 +4011,16 @@ def finalize_run(
     # instead of building an empty journal that the kernel rejects (would 500).
     if int(run.get("total_gross_paise") or 0) <= 0:
         raise HTTPException(status_code=400, detail="Cannot finalize an empty payroll run (no computed salary).")
+
+    # A MONTH INSIDE AN OPENING POSITION (POST-A-082). The position already counts this month's pay and tax, so releasing a
+    # slip for it here counts them twice in every later month's §192(3) spread, the projection and a settlement. The PUT that
+    # records a position refuses the same overlap the other way round (a released month before its first month).
+    clash = _employees_whose_opening_position_covers(db, firm_id, client_id, str(run.get("month") or ""), run_id)
+    if clash:
+        raise HTTPException(status_code=409, detail=(
+            f"{', '.join(clash)}: {run.get('month')} is before the first month of their opening position, so its pay and tax "
+            f"are already counted in that position; releasing this run would count them twice. Move the position's first "
+            f"month back to {run.get('month')} (and take this month out of its figures), or remove the position."))
 
     # BEFORE the journal, because a refusal after posting would be a run that is
     # not finalized carrying an entry that says it is.
@@ -4448,8 +4742,8 @@ def payroll_bank_advice_csv(
 # ── The firm's own reading of the state PT slabs ─────────────────────────────
 # Migration 327. domain/payroll/professional_tax.py models four of the
 # twenty-two states that levy PT and reports the rest as gaps. That refusal is
-# right — Article 276 makes the employer liable, so a silent nil is a shortfall
-# with interest — and it is also not a product: the only remedy on offer was
+# right (a nil nobody can see is the fault; who is liable for it is each state's
+# own Act, not read here) and it is also not a product: the only remedy on offer was
 # that somebody edits Python.
 #
 # So the CA records what they READ, once per firm, with the notification it came
@@ -4684,7 +4978,7 @@ def assert_payroll_enabled(db, firm_id: str, client_id: str) -> None:
     run, so this cannot switch off a payroll somebody is already running.
 
     Mock mode has no database and no settings; the guard is a no-op there, the
-    same way assert_not_internal_for_payroll's lookup is.
+    same way assert_practice_payroll_is_the_partners's lookup is.
     """
     if not db:
         return
@@ -4885,6 +5179,8 @@ def _firm_employees(db, firm_id: str) -> list[dict]:
 @router.get("/attendance-board")
 def attendance_board(
     month: str = Query(..., description='Payroll month, e.g. "2026-08"'),
+    # `Annotated` with a real default, so a direct call (a test, another handler) gets None and not the `Query` object.
+    client_id: Annotated[Optional[str], Query(description="The client the screen was opened for, whose roster is included even when it is the firm's own practice")] = None,
     current_user: dict = Depends(rbac("payroll", "read")),
 ):
     """The firm-wide attendance sheet for one month: every employee the caller may see, and the attendance rows entered.
@@ -4892,16 +5188,26 @@ def attendance_board(
     The Attendance screen used to read `payroll_employees` and `attendance` straight from PostgREST (POST-A-010). This is
     exactly what it loaded: the employees (leavers included, four columns) and the month's rows, both in the server's own
     pages and both narrowed to the clients the caller is assigned to. A row is an entered month; an employee with no row
-    has none entered, and the screen says so (the per-client `GET /attendance` is the one that reports `entered`)."""
+    has none entered, and the screen says so (the per-client `GET /attendance` is the one that reports `entered`).
+
+    THE PRACTICE'S OWN STAFF ARE ON THE SHEET ONLY WHEN THE PRACTICE IS NAMED (POST-A-532). The firm-wide sheet is the firm's
+    clients' and leaves the practice out (guardrail G2). But this screen is the one editor of attendance, and a client's Payroll
+    page links to it with its own client and month; opened that way for the practice, by a Partner, it must show the practice's
+    roster or the firm's own staff could have no attendance entered at all. `client_id` adds that one client's roster to the
+    sheet, after the scope check and the practice check, and the answer says so (`practice_client_id`) so the screen can name it."""
     try:
         year, mon = attendance_domain.parse_month(month)
     except attendance_domain.AttendanceError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
     db = _db()
     if not db:
-        return api_response(True, {"month": month, "employees": [], "attendance": []})
+        return api_response(True, {"month": month, "employees": [], "attendance": [], "practice_client_id": None})
     firm_id = current_user["firm_id"]
-    employees = filter_by_client(current_user, _firm_employees(db, firm_id))
+    everyone = _firm_employees(db, firm_id)
+    employees = _the_firms_clients_only(current_user, everyone)
+    practice_client_id = _the_practice_when_named(current_user, client_id)
+    if practice_client_id:
+        employees = employees + [e for e in everyone if str(e.get("client_id") or "") == practice_client_id]
     reach = {str(e["id"]) for e in employees}
     rows = fetch_all(
         lambda: db.table("attendance").select(
@@ -4912,12 +5218,16 @@ def attendance_board(
         "month": month,
         "employees": employees,
         "attendance": [r for r in rows if str(r.get("employee_id")) in reach],
+        # The practice's client id when its roster was added because the practice was named, else null. Always present.
+        "practice_client_id": practice_client_id,
     })
 
 
 @router.get("/leave-ledger")
 def leave_ledger(
     year: int = Query(..., ge=2000, le=2100, description="The calendar year the rows are kept under, e.g. 2026"),
+    *,
+    client_id: Annotated[Optional[str], Query(description="The client the screen was opened for, whose staff are included even when it is the firm's own practice")] = None,
     current_user: dict = Depends(rbac("payroll", "read")),
 ):
     """One line per employee the caller may see: the leave entitlement recorded for the year, and the leave taken in it.
@@ -4931,7 +5241,13 @@ def leave_ledger(
     if not db:
         return api_response(True, {"year": year, "rows": []})
     firm_id = current_user["firm_id"]
-    employees = filter_by_client(current_user, _firm_employees(db, firm_id))
+    everyone = _firm_employees(db, firm_id)
+    employees = _the_firms_clients_only(current_user, everyone)
+    # The practice's own staff, when the sheet was opened for the practice by a Partner (see `attendance_board`): the Leave
+    # tab draws only the lines it is sent, so without this the firm's own staff could have no entitlement recorded.
+    practice_client_id = _the_practice_when_named(current_user, client_id)
+    if practice_client_id:
+        employees = employees + [e for e in everyone if str(e.get("client_id") or "") == practice_client_id]
     # The lines are built from the employees in reach, so a balance or an attendance row of anyone else is never looked up.
     balances = {
         str(b.get("employee_id")): b
@@ -5003,6 +5319,7 @@ def put_attendance(
     db = _db()
     firm_id = current_user["firm_id"]
 
+    assert_practice_payroll_is_the_partners(body.client_id, current_user)
     assert_payroll_enabled(db, firm_id, body.client_id)
 
     if db:
@@ -5124,6 +5441,233 @@ def put_leave_balance(
     return api_response(True, row)
 
 
+#: What an opening position carries and what it does not, in words the screen shows beside the form (POST-A-082).
+_OPENING_CARRIES = ("The months already paid, the gross, the tax withheld, the employee's and employer's PF and ESI and the "
+                    "professional tax, for the part of the financial year before this product ran payroll for the client, "
+                    "as read off the old system. The tax calculation, the s.192(3) spread and the ESI coverage rule read it.")
+_OPENING_DOES_NOT_CARRY = (
+    "It is not a payroll run: nothing is posted to the ledger, no payslip is made and nothing is remitted from it. It holds no "
+    "previous-employer salary or tax (Form 12B): that is a different fact, not built yet. It holds no gratuity or leave-"
+    "encashment exemption already used. It is not yet printed in Annexure II, the 24Q source or Form 16, which still show "
+    "only the months run here. A payroll run already released keeps the figures it was computed with.")
+
+
+def _roster_all(db, firm_id: str, client_id: str) -> dict:
+    return {str(e["id"]): e for e in (db.table("payroll_employees")
+                                      .select("id, name, status, joining_date")
+                                      .eq("firm_id", firm_id).eq("client_id", client_id).execute().data) or []}
+
+
+@router.get("/opening-positions")
+def get_opening_positions(
+    client_id: str,
+    financial_year: Annotated[FYLabel, Query()],
+    current_user: dict = Depends(rbac("payroll", "read")),
+):
+    """The client's opening positions for a financial year, the employees who have none, and what a position does and does not carry."""
+    assert_client_access(current_user, client_id)
+    db = _db()
+    firm_id = current_user["firm_id"]
+    if not db:
+        return api_response(True, {"client_id": client_id, "financial_year": financial_year, "rows": [], "without": [],
+                                   "carries": _OPENING_CARRIES, "does_not_carry": _OPENING_DOES_NOT_CARRY})
+    roster = _roster_all(db, firm_id, client_id)
+    rows = _opening_positions(db, firm_id, client_id, financial_year)
+    have = {str(r["employee_id"]) for r in rows}
+    return api_response(True, {
+        "client_id": client_id, "financial_year": financial_year,
+        "rows": [{**r, "employee_name": (roster.get(str(r["employee_id"])) or {}).get("name")} for r in rows],
+        "without": [{"employee_id": i, "employee_name": e.get("name"), "joining_date": e.get("joining_date")}
+                    for i, e in roster.items() if i not in have and e.get("status") == "active"],
+        "carries": _OPENING_CARRIES, "does_not_carry": _OPENING_DOES_NOT_CARRY,
+    })
+
+
+@router.put("/opening-positions")
+def put_opening_positions(
+    body: OpeningPositionsIn,
+    current_user: dict = Depends(rbac("payroll", "write")),
+):
+    """Record (or replace) each named employee's opening position. Refused whole, with every problem at once.
+
+    Validated by `domain/payroll/opening_position.validate` against the employee's joining date, and refused for an employee who
+    already has a released payslip in a month before the first month (that month would be counted twice). Posts nothing.
+    """
+    assert_client_access(current_user, body.client_id)
+    db = _db()
+    firm_id = current_user["firm_id"]
+    if not db:
+        return api_response(True, {"client_id": body.client_id, "saved": len(body.rows)})
+    assert_practice_payroll_is_the_partners(body.client_id, current_user)
+    assert_payroll_enabled(db, firm_id, body.client_id)
+    roster = _roster_all(db, firm_id, body.client_id)
+    # An employee id the request names is refused unless it is on this client's roster (read by firm and client above).
+    strangers = [f"Row {i}: that employee is not on this client's roster." for i, r in enumerate(body.rows, start=1)
+                 if str(r.employee_id) not in roster]
+    if strangers:
+        raise HTTPException(status_code=422, detail=" ".join(strangers))
+    problems, prepared = _opening_problems(roster, list(enumerate(body.rows, start=1)), by_row=False)
+    if problems:
+        raise HTTPException(status_code=422, detail=" ".join(problems))
+    clashes = _opening_clashes_with_released_runs(db, firm_id, body.client_id, roster, prepared)
+    if clashes:
+        raise HTTPException(status_code=409, detail=clashes[0])
+    _write_opening_positions(db, current_user, body.client_id, prepared)
+    return api_response(True, {"client_id": body.client_id, "saved": len(prepared), "does_not_carry": _OPENING_DOES_NOT_CARRY})
+
+
+def _opening_problems(roster: dict, numbered: list, *, by_row: bool) -> tuple[list[str], list[dict]]:
+    """Every problem with these positions, and the rows to write. `numbered` is [(row number, OpeningPositionIn)]. The form names an
+    employee by name; the file (`by_row`) by its spreadsheet row and the name, so the CA can find the line."""
+    problems: list[str] = []
+    prepared: list[dict] = []
+    seen: set = set()
+    for i, r in numbered:
+        name = (roster.get(str(r.employee_id)) or {}).get("name")
+        who = (f"Row {i} ({name})" if name else f"Row {i}") if by_row else (name or f"row {i}")
+        if str(r.employee_id) not in roster:
+            problems.append(f"Row {i}: that employee is not on this client's roster.")
+            continue
+        fy = _fy_for_month(r.first_month_here[:7])
+        if not fy or len(r.first_month_here) != 7:
+            problems.append(f"{who}: the first month is not a month (use YYYY-MM).")
+            continue
+        if (str(r.employee_id), fy) in seen:
+            problems.append(f"{who}: named twice for {fy}.")
+            continue
+        seen.add((str(r.employee_id), fy))
+        data = r.model_dump()
+        for msg in opening_domain.validate(data, fy=fy, joining_date=roster[str(r.employee_id)].get("joining_date")):
+            problems.append(f"{who}: {msg}")
+        prepared.append({**data, "financial_year": fy, "first_month_here": f"{r.first_month_here}-01"})
+    return problems, prepared
+
+
+def _opening_clashes_with_released_runs(db, firm_id: str, client_id: str, roster: dict, prepared: list[dict]) -> list[str]:
+    """A month this product has already RELEASED for the employee, before the first month, would be counted twice."""
+    out: list[str] = []
+    for fy in sorted({p["financial_year"] for p in prepared}):
+        runs = (db.table("payroll_runs").select("id, month").eq("firm_id", firm_id).eq("client_id", client_id)
+                .in_("status", list(_PAYROLL_RELEASED)).execute().data) or []
+        by_run = {r["id"]: r["month"] for r in runs if r.get("month") and _fy_for_month(r["month"]) == fy}
+        if not by_run:
+            continue
+        slips = (db.table("payroll_slips").select("run_id, employee_id").in_("run_id", list(by_run)).execute().data) or []
+        for p in prepared:
+            if p["financial_year"] != fy:
+                continue
+            clash = sorted(by_run[sl["run_id"]] for sl in slips
+                           if str(sl["employee_id"]) == str(p["employee_id"]) and by_run[sl["run_id"]] < p["first_month_here"][:7])
+            if clash:
+                out.append(
+                    f"{roster[str(p['employee_id'])].get('name')} already has a released payslip for {', '.join(clash)}, before "
+                    f"the first month {p['first_month_here'][:7]}: those months would be counted twice. Make the first month the "
+                    f"earliest month this product ran, or leave this employee's position out.")
+    return out
+
+
+def _write_opening_positions(db, current_user: dict, client_id: str, prepared: list[dict]) -> None:
+    firm_id = current_user["firm_id"]
+    stamped = datetime.now(timezone.utc).isoformat()
+    for p in prepared:
+        before = (db.table("payroll_opening_positions").select("id, first_month_here, months_paid, gross_paise, tds_paise").eq("firm_id", firm_id).eq("client_id", client_id)
+                  .eq("employee_id", p["employee_id"]).eq("financial_year", p["financial_year"]).limit(1).execute().data) or []
+        db.table("payroll_opening_positions").upsert(
+            {"firm_id": firm_id, "client_id": client_id, "employee_id": p["employee_id"],
+                           "financial_year": p["financial_year"], "first_month_here": p["first_month_here"],
+                           "months_paid": p["months_paid"], "gross_paise": p["gross_paise"], "tds_paise": p["tds_paise"],
+                           "pf_employee_paise": p["pf_employee_paise"], "pf_employer_paise": p["pf_employer_paise"],
+                           "esi_employee_paise": p["esi_employee_paise"], "esi_employer_paise": p["esi_employer_paise"],
+                           "pt_paise": p["pt_paise"],
+                           "esi_contributed_earlier_in_period": p["esi_contributed_earlier_in_period"],
+                           "source_note": p["source_note"], "entered_by": current_user.get("id"), "updated_at": stamped},
+            on_conflict="firm_id,client_id,employee_id,financial_year").execute()
+        from services.audit_service import log_event
+        log_event(firm_id, "payroll_opening_position", str(p["employee_id"]), "update" if before else "create",
+                  actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+                  old_data=before[0] if before else None, new_data=p,
+                  metadata={"client_id": client_id, "financial_year": p["financial_year"]})
+    timeline_service.log(
+        client_id, "work", "Payroll Opening Positions Recorded",
+        f"{len(prepared)} payroll opening position(s) recorded", "info", firm_id=firm_id,
+        entity_type="client", entity_id=client_id, actor_id=current_user.get("auth_user_id"))
+
+
+@router.post("/opening-positions/import")
+def import_opening_positions(
+    body: OpeningPositionsImportIn,
+    current_user: dict = Depends(rbac("payroll", "write")),
+):
+    """A spreadsheet of opening positions, read and decided here as a whole and refused as a whole (POST-A-082, part 2).
+
+    The browser sends the file's cells as text; `domain/payroll/opening_position_import.read` turns them into the rows the form's own
+    PUT takes, naming each employee by its code, and then the file is asked exactly what the form is asked (the months against the
+    joining date, tax against gross, the ESI answer against its period, a released month before the first month). One problem
+    anywhere and nothing is written; every problem comes back at once, keyed to the spreadsheet row. A dry run says what would be
+    recorded and writes nothing. Posts nothing, makes no payslip and remits nothing, like the form.
+    """
+    assert_client_access(current_user, body.client_id)
+    from domain.payroll import opening_position_import as reader
+
+    db = _db()
+    firm_id = current_user["firm_id"]
+    if not db:
+        result = reader.read(body.rows, employee_by_code={})
+        return api_response(True, {"ok": result.ok, "problems": result.problems, "would_record": len(result.rows)})
+    assert_practice_payroll_is_the_partners(body.client_id, current_user)
+    assert_payroll_enabled(db, firm_id, body.client_id)
+    roster_rows = (db.table("payroll_employees").select("id, name, status, joining_date, employee_code")
+                   .eq("firm_id", firm_id).eq("client_id", body.client_id).execute().data) or []
+    roster = {str(e["id"]): e for e in roster_rows}
+    from domain.payroll.employee_import import code_index
+    result = reader.read(body.rows, employee_by_code=code_index(roster_rows))
+    problems = list(result.problems)
+    numbered = []
+    for n, row in result.rows:
+        try:
+            numbered.append((n, OpeningPositionIn(**row)))
+        except ValidationError as exc:
+            problems.append(f"Row {n}: " + "; ".join(str(e.get("msg")) for e in exc.errors()))
+    more, prepared = _opening_problems(roster, numbered, by_row=True)
+    problems.extend(more)
+    if not problems:
+        problems.extend(_opening_clashes_with_released_runs(db, firm_id, body.client_id, roster, prepared))
+    if problems:
+        raise HTTPException(status_code=422, detail={
+            "message": f"{len(problems)} problem(s); nothing was recorded.", "problems": problems})
+    if body.dry_run:
+        return api_response(True, {"ok": True, "problems": [], "would_record": len(prepared), "dry_run": True})
+    _write_opening_positions(db, current_user, body.client_id, prepared)
+    return api_response(True, {"ok": True, "problems": [], "recorded": len(prepared), "does_not_carry": _OPENING_DOES_NOT_CARRY})
+
+
+@router.delete("/opening-positions/{employee_id}")
+def delete_opening_position(
+    employee_id: str,
+    client_id: str,
+    financial_year: Annotated[FYLabel, Query()],
+    current_user: dict = Depends(rbac("payroll", "write")),
+):
+    """Take an employee's opening position back. A released run keeps what it was computed with; a draft is recomputed."""
+    assert_client_access(current_user, client_id)
+    db = _db()
+    firm_id = current_user["firm_id"]
+    if not db:
+        return api_response(True, {"deleted": 0})
+    assert_practice_payroll_is_the_partners(client_id, current_user)
+    assert_payroll_enabled(db, firm_id, client_id)
+    _employee_of_client(db, current_user, employee_id, client_id)
+    gone = (db.table("payroll_opening_positions").delete().eq("firm_id", firm_id).eq("client_id", client_id)
+            .eq("employee_id", employee_id).eq("financial_year", financial_year).execute().data) or []
+    if not gone:
+        raise HTTPException(status_code=404, detail="No opening position for that employee and year")
+    from services.audit_service import log_event
+    log_event(firm_id, "payroll_opening_position", employee_id, "delete",
+              actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+              old_data=gone[0], new_data=None, metadata={"client_id": client_id, "financial_year": financial_year})
+    return api_response(True, {"deleted": len(gone)})
+
+
 @router.get("/one-time-earnings")
 def get_one_time_earnings(
     client_id: str,
@@ -5196,6 +5740,7 @@ def put_one_time_earnings(
     db = _db()
     firm_id = current_user["firm_id"]
 
+    assert_practice_payroll_is_the_partners(body.client_id, current_user)
     assert_payroll_enabled(db, firm_id, body.client_id)
 
     if db:
@@ -5361,9 +5906,16 @@ def put_payroll_settings(
 def payroll_client_states(
     month: Optional[str] = Query(None, description='Payroll month, e.g. "2026-08". '
                                                    'Defaults to the current IST month.'),
+    *,
+    client_id: Annotated[Optional[str], Query(description="The client whose Payroll page is asking, whose line is included even when it is the firm's own practice")] = None,
     current_user: dict = Depends(rbac("payroll", "read"))
 ):
     """Where every client of this firm stands on one payroll month.
+
+    THE PRACTICE'S OWN LINE IS IN THE ANSWER ONLY WHEN THE PRACTICE ASKS (POST-A-532). A client's Payroll page reads its
+    own line here to say whether payroll is switched on. The list leaves the practice out (G2), so the practice's own
+    page found no line and said "Payroll is off" while every write succeeded. Named by a Partner, the practice's line
+    is added; the firm-wide queue (no client named) never carries it.
 
     THE FIRM GRAIN. Every other payroll read in this router answers for ONE
     client, because that is where a month is completed. This one answers for the
@@ -5437,8 +5989,11 @@ def payroll_client_states(
             "headcount": (run or {}).get("headcount"),
             "total_net_paise": (run or {}).get("total_net_paise"),
         })
-    return api_response(True, {"month": month,
-                               "clients": filter_by_client(current_user, out)})
+    clients = _the_firms_clients_only(current_user, out)
+    practice_client_id = _the_practice_when_named(current_user, client_id)
+    if practice_client_id:
+        clients = clients + [c for c in out if c["client_id"] == practice_client_id]
+    return api_response(True, {"month": month, "clients": clients})
 
 
 @router.get("/employee-exceptions")
@@ -5532,7 +6087,7 @@ def payroll_employee_exceptions(
             gap["client_name"] = names.get(str(emp.get("client_id"))) or ""
             out.append(gap)
 
-    out = filter_by_client(current_user, out)
+    out = _the_firms_clients_only(current_user, out)
     return api_response(True, {
         "financial_year": fy,
         "exceptions": out,
@@ -5540,7 +6095,7 @@ def payroll_employee_exceptions(
         # The denominator. "14 employees need a UAN" means something different
         # out of 20 than out of 400, and a list with no total invites the first
         # reading.
-        "employees_checked": len(filter_by_client(
+        "employees_checked": len(_the_firms_clients_only(
             current_user, [{"client_id": str(e.get("client_id"))} for e in employees])),
     })
 
@@ -5570,7 +6125,7 @@ def put_payroll_enablement(
     are refused. A switch that lost history would be one nobody dared use.
     """
     assert_client_access(current_user, body.client_id)
-    assert_not_internal_for_payroll(body.client_id, current_user["firm_id"])
+    assert_practice_payroll_is_the_partners(body.client_id, current_user)
 
     db = _db()
     firm_id = current_user["firm_id"]
@@ -5738,6 +6293,7 @@ def put_statutory_identity(
     # TAN, so its 26Q could never be computed — and the 422 telling the CA to
     # record it here sent them to a door that was locked (sweep-tds-mca-05).
     if set(update) - _NOT_PAYROLL_REGISTRATIONS:
+        assert_practice_payroll_is_the_partners(body.client_id, current_user)
         assert_payroll_enabled(db, firm_id, body.client_id)
     if not db:
         row = {**_MOCK_IDENTITY.get((firm_id, body.client_id), {}), **update}
@@ -5793,6 +6349,7 @@ def put_pt_registration(
 
     db = _db()
     firm_id = current_user["firm_id"]
+    assert_practice_payroll_is_the_partners(body.client_id, current_user)
     assert_payroll_enabled(db, firm_id, body.client_id)
     key = (firm_id, body.client_id, body.state)
     if not db:
@@ -5905,7 +6462,9 @@ def _build_run_ecr(db, current_user: dict, run_id: str, inputs=None):
     run, month, days_in_month, slips, by_id = (
         inputs or _finalised_run_inputs(db, current_user, run_id, what="ECR"))
 
-    pf_rates = payroll_rates_for(_fy_for_month(month)).pf
+    # The ceiling of the wage month the run is FOR (a run for August keeps Rs 15,000, one for October takes Rs 25,000), the same figure
+    # the slips were computed on, so the file's wage columns and its contributions agree (POST-A-516).
+    pf_rates = pf_rates_for_month(_fy_for_month(month), int(month[5:7]))
     return run, month, build_ecr(slips=slips, employees_by_id=by_id,
                                  days_in_month=days_in_month,
                                  wage_ceiling_paise=pf_rates.wage_ceiling_paise,
@@ -5986,7 +6545,7 @@ def run_ecr(
     return api_response(True, {
         "run_id": run_id,
         "month": month,
-        "filename": f"ECR_{month.replace('-', '')}.txt",
+        "filename": ecr_file_name(month),
         "lines": ecr.to_text(),
         "members": [m.to_line() for m in ecr.members],
         "problems": ecr.problems,
@@ -6034,6 +6593,9 @@ class ECRFiledIn(BaseModel):
     status: str = ecr_sequence.SUBMITTED
     submitted_on: Optional[str] = None
     approved_on: Optional[str] = None
+    #: The RETURN's reference, the Return File ID the portal gives when the file passes its checks (POST-A-518, migration 769).
+    return_file_id: Optional[str] = Field(default=None, max_length=64)
+    #: The CHALLAN's reference, issued when the dues are prepared for payment after the return is approved.
     trrn: Optional[str] = None
 
     @field_validator("submitted_on", "approved_on")
@@ -6077,7 +6639,7 @@ def record_ecr_filed(
             db, firm_id=current_user["firm_id"], client_id=run.get("client_id"),
             wage_month=month, return_type=body.return_type, status=body.status,
             submitted_on=body.submitted_on, approved_on=body.approved_on,
-            trrn=body.trrn, run_id=run_id,
+            trrn=body.trrn, return_file_id=body.return_file_id, run_id=run_id,
             members=ecr_filings.members_from_ecr(ecr),
             recorded_by=current_user.get("id"))
     except ecr_filings.ECRFilingError as exc:
@@ -6386,8 +6948,8 @@ def client_ecr_sequence(
     known = ecr_filings.finalised_months(db, firm_id=firm_id, client_id=client_id)
     prior = ecr_filings.read_filings(db, firm_id=firm_id, client_id=client_id)
     rows = (db.table("epfo_ecr_filings")
-            .select("id, wage_month, return_type, status, trrn, submitted_on, "
-                    "approved_on, run_id")
+            .select("id, wage_month, return_type, status, return_file_id, trrn, "
+                    "submitted_on, approved_on, run_id")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .is_("deleted_at", "null").execute().data) or []
     # apex-payroll-yearend-11: asked ONLY to tell `outstanding_note` apart a
@@ -6678,8 +7240,13 @@ def run_handoff(
         filings=prior)
     decision = ecr_sequence.decide_returns(
         month, members=ecr_filings.members_from_ecr(ecr), filings=prior)
-    epf_recorded = next((dict(f) for f in prior
-                         if str(f.get("wage_month")) == month), None)
+    # THE MONTH'S SETTLED RETURN, as a row, and only when the month needs nothing further. `prior` is a list of RecordedFiling
+    # dataclasses, which have no `.get`: this line called it, so the hand-off raised AttributeError for every client the moment
+    # any return was recorded for it, and the panel could never show one (found under POST-A-518). A Regular that is submitted
+    # but not approved, or a month that still needs a Supplementary or a Revised, keeps the record form on the screen.
+    epf_recorded = (ecr_filings.settled_filing_for_month(
+        db, firm_id=firm_id, client_id=client_id, wage_month=month)
+        if decision.nothing_to_file else None)
 
     # What has already been recorded for this month, so the screen shows a
     # settled obligation as settled rather than asking for it again.
@@ -6725,13 +7292,15 @@ def run_handoff(
             admin_paise=int(run.get("total_pf_admin_paise") or 0),
             problems=list(ecr.problems),
             filable=bool(ecr.is_filable),
-            filename=f"ECR_{month.replace('-', '')}.txt",
+            filename=ecr_file_name(month),
             blocking_months=list(sequence.blocking),
             sequence_note=sequence.note,
             required_returns=list(decision.required_returns),
             return_type_reason=decision.reason,
             interest_note=ecr_sequence.INTEREST_AND_DAMAGES_NOTE,
             recorded=epf_recorded,
+            # The rate the payslips (and so the file) were built at, for the upload form's rate box (POST-A-520).
+            employee_rate_bps=pf_rates_for_month(_fy_for_month(month), int(month[5:7])).employee_rate_bps,
         ),
         handoff_domain.esic_obligation(
             wage_month=month,
@@ -7138,7 +7707,7 @@ def statutory_summary(
     # are two more amounts remitted on the SAME challan, which migration 329
     # added and this summary never learned about:
     #
-    #   EDLI          0.5% of PF wages, EDLI 1976
+    #   EDLI          0.5% of PF wages (the insurance rate is "as notified": owner list S49)
     #   admin charge  0.5%, floored at Rs 500 per ESTABLISHMENT per month
     #
     # So a CA reconciling this screen against the challan they are about to pay
@@ -7220,11 +7789,11 @@ def invite_employee_portal(
     data: EmployeePortalInviteIn,
     current_user: dict = Depends(rbac("payroll", "write"))
 ):
-    """Issue a single-use activation link for one employee.
+    """Invite one employee to the payslip portal: the server mails them a single-use activation link.
 
-    The plaintext token is returned ONCE, here — only its sha256 is stored — so
-    the caller can deliver the link if the email does not arrive. It is not
-    retrievable afterwards; re-inviting mints a new one and invalidates this.
+    THE LINK IS RETURNED TO NOBODY (POST-A-552). It signs its holder in as the invitation's address, so it exists only
+    in the mail the server sends; the answer says whether that mail went (`mail.sent`, and `mail.problem` in one
+    sentence when it did not). Re-inviting mints a new link and the earlier one stops working.
     """
     _assert_employee_scope(_db(), current_user, employee_id)
     result = employee_portal_service.invite_employee(
@@ -7285,7 +7854,7 @@ def upsert_declaration(
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
     """
     assert_client_access(current_user, body.client_id)
-    assert_not_internal_for_payroll(body.client_id, current_user["firm_id"])
+    assert_practice_payroll_is_the_partners(body.client_id, current_user)
 
     candidate = decl_domain.Declaration(
         employee_id=body.employee_id,
@@ -7661,10 +8230,15 @@ def compute_tds_projection(db, *, firm_id: str, client_id: str,
     # §192(3) spreads what is left over the months that remain, so that single
     # figure IS the projection for every remaining month — computing each one
     # separately would re-spread an already-spread number.
-    next_month = next((mo for mo in months if mo not in actual), None)
+    # AN OPENING POSITION covers the months before the product ran payroll for this client (POST-A-082): they are not
+    # "to come", they have no slip, and what they carried is added to what was deducted and paid.
+    opening = next((opening_domain.as_opening(r) for r in _opening_positions(db, firm_id, client_id, fy)
+                    if str(r["employee_id"]) == str(employee_id)), None)
+    opening_first = opening.first_month if opening else None
+    next_month = next((mo for mo in months if mo not in actual and (opening_first is None or mo >= opening_first)), None)
 
-    deducted = sum(a["tds_paise"] for a in actual.values())
-    months_paid = len(actual)
+    deducted = sum(a["tds_paise"] for a in actual.values()) + (opening.tds_paise if opening else 0)
+    months_paid = len(actual) + (opening.months_paid if opening else 0)
 
     projected_monthly = 0
     projected_gross = 0
@@ -7690,7 +8264,7 @@ def compute_tds_projection(db, *, firm_id: str, client_id: str,
             declaration=decl,
             tds_already_deducted_paise=deducted,
             months_already_paid=months_paid,
-            gross_already_paid_paise=sum(a["gross_paise"] for a in actual.values()),
+            gross_already_paid_paise=sum(a["gross_paise"] for a in actual.values()) + (opening.gross_paise if opening else 0),
             months_employed_in_fy=_months_employed_in_fy(emp.get("joining_date"), fy),
             firm_pt_slabs=_read_firm_pt_slabs(db, firm_id),
             pt_on=date(y, m, calendar.monthrange(y, m)[1]),
@@ -7713,11 +8287,16 @@ def compute_tds_projection(db, *, firm_id: str, client_id: str,
     rows = []
     for mo in months:
         a = actual.get(mo)
+        before_opening = opening_first is not None and mo < opening_first and a is None
         rows.append({
             "month": mo,
-            "actual": a is not None,
-            "gross_paise": a["gross_paise"] if a else projected_gross,
-            "tds_paise": a["tds_paise"] if a else projected_monthly,
+            "actual": a is not None or before_opening,
+            # A month before the product ran carries no figure of its own: its pay is the opening position's, IN TOTAL, so
+            # the month's own gross and tax are unknown and are sent as null, never as a paid zero. A screen shows the
+            # position's totals (`opening_position`) once, beside the months it covers.
+            "opening": before_opening,
+            "gross_paise": a["gross_paise"] if a else (None if before_opening else projected_gross),
+            "tds_paise": a["tds_paise"] if a else (None if before_opening else projected_monthly),
         })
 
     remaining = sum(1 for r in rows if not r["actual"])
@@ -7733,7 +8312,9 @@ def compute_tds_projection(db, *, firm_id: str, client_id: str,
         # will withhold — NOT twelve times the monthly figure, which double
         # counts the months already run.
         "estimated_annual_tds_paise": deducted + projected_monthly * remaining,
-        "estimated_annual_gross_paise": sum(r["gross_paise"] for r in rows),
+        "estimated_annual_gross_paise": sum(r["gross_paise"] for r in rows if not r["opening"]) + (opening.gross_paise if opening else 0),
+        "opening_position": ({"first_month_here": opening.first_month, "months_paid": opening.months_paid,
+                              "gross_paise": opening.gross_paise, "tds_paise": opening.tds_paise} if opening else None),
         "gaps": gaps,
     }
 
@@ -7914,6 +8495,7 @@ def statutory_position(
             joining=date.fromisoformat(str(joining)) if joining else None,
             leaving=as_at,
             covered_by_the_act=bool(emp.get("gratuity_act_covered", True)),
+            **_fixed_term_for_gratuity(emp, as_at),
         )
         for r in grat.reasons:
             # Not eligible yet is the ordinary case, not a problem worth
@@ -8002,6 +8584,10 @@ class SettlementIn(BaseModel):
     client_id: str
     leaving_date: IsoDate                      # ISO
     on_death_or_disablement: bool = False
+    # A fixed-term employee's five years are waived on the EXPIRY of the term (section 53(1), second proviso), so the person recording
+    # the settlement says whether that is why the employment ended; a recorded contract end date that has been reached says it too
+    # (POST-A-526, `_fixed_term_for_gratuity`). Meaningless for an employee not recorded as on fixed-term employment.
+    fixed_term_contract_expired: bool = False
     on_retirement: bool = True             # decides §10(10AA) entirely
     is_government_employee: bool = False
 
@@ -8045,6 +8631,26 @@ def _parse_leaving_date(value: str) -> date:
                             detail="leaving_date must be ISO (YYYY-MM-DD)")
 
 
+def _fixed_term_for_gratuity(emp: dict, on: date, stated_expired: bool = False) -> dict:
+    """The two facts `gratuity.compute` takes about fixed-term employment, read off the employee row (POST-A-526).
+
+    `fixed_term` is the record. `fixed_term_expired` is true only for a recorded fixed-term employee whose term has expired: stated by the
+    person recording the settlement, or the contract's recorded end date reached on `on`. Both callers of the computation read it here so
+    a third cannot forget one.
+    """
+    recorded = bool(emp.get("fixed_term_employment"))
+    end = emp.get("fixed_term_end_date")
+    try:
+        end_date = date.fromisoformat(str(end)[:10]) if end else None
+    except ValueError:
+        # fixed_term_end_date is a DATE column; unreadable text is no recorded end date, so expiry rests on what the person stated.
+        end_date = None
+    return {
+        "fixed_term": recorded,
+        "fixed_term_expired": recorded and (bool(stated_expired) or gratuity_domain.fixed_term_has_expired(end_date, on)),
+    }
+
+
 def _compose_settlement(emp: dict, body: "SettlementIn"):
     """(settlement, gratuity result, leaving date) from an employee and the facts.
 
@@ -8063,6 +8669,7 @@ def _compose_settlement(emp: dict, body: "SettlementIn"):
         joining=date.fromisoformat(str(joining)) if joining else None,
         leaving=leaving,
         covered_by_the_act=bool(emp.get("gratuity_act_covered", True)),
+        **_fixed_term_for_gratuity(emp, leaving, body.fixed_term_contract_expired),
         on_death_or_disablement=body.on_death_or_disablement,
         amount_actually_paid_paise=body.gratuity_amount_actually_paid_paise,
         exemption_already_used_paise=body.gratuity_exemption_already_used_paise,
@@ -8249,7 +8856,7 @@ def record_settlement(
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
     """
     assert_client_access(current_user, body.client_id)
-    assert_not_internal_for_payroll(body.client_id, current_user["firm_id"])
+    assert_practice_payroll_is_the_partners(body.client_id, current_user)
 
     if body.new_status not in ("resigned", "terminated"):
         raise HTTPException(
@@ -8703,7 +9310,7 @@ def record_perquisites(
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
     """
     assert_client_access(current_user, body.client_id)
-    assert_not_internal_for_payroll(body.client_id, current_user["firm_id"])
+    assert_practice_payroll_is_the_partners(body.client_id, current_user)
     db = _db()
     assert_payroll_enabled(db, current_user["firm_id"], body.client_id)
     if not db:
@@ -8810,7 +9417,7 @@ def add_salary_revision(
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
     """
     assert_client_access(current_user, body.client_id)
-    assert_not_internal_for_payroll(body.client_id, current_user["firm_id"])
+    assert_practice_payroll_is_the_partners(body.client_id, current_user)
     try:
         effective = date.fromisoformat(body.effective_from)
     except ValueError:
@@ -8907,7 +9514,7 @@ def add_employee_loan(
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
     """
     assert_client_access(current_user, body.client_id)
-    assert_not_internal_for_payroll(body.client_id, current_user["firm_id"])
+    assert_practice_payroll_is_the_partners(body.client_id, current_user)
     if body.principal_paise <= 0:
         raise HTTPException(status_code=422, detail="principal must be positive")
     if body.monthly_instalment_paise <= 0:

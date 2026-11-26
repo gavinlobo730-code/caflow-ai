@@ -25,12 +25,12 @@ test("isValidPurchaseCreditNoteLine requires positive qty, positive rate and a P
 
 test("previewPurchaseCreditNoteTotals: intra-state splits 18% into 9% CGST + 9% SGST", () => {
   const t = previewPurchaseCreditNoteTotals([line({ qty: "2", rate: "500", gst_rate: 18 })], false);
-  assert.deepEqual(t, { taxable_paise: 100000, cgst_paise: 9000, sgst_paise: 9000, igst_paise: 0, gst_paise: 18000, grand_total_paise: 118000 });
+  assert.deepEqual(t, { taxable_paise: 100000, cgst_paise: 9000, sgst_paise: 9000, igst_paise: 0, gst_paise: 18000, cess_paise: 0, grand_total_paise: 118000 });
 });
 
 test("previewPurchaseCreditNoteTotals: inter-state applies the full rate as IGST", () => {
   const t = previewPurchaseCreditNoteTotals([line({ qty: "2", rate: "500", gst_rate: 18 })], true);
-  assert.deepEqual(t, { taxable_paise: 100000, cgst_paise: 0, sgst_paise: 0, igst_paise: 18000, gst_paise: 18000, grand_total_paise: 118000 });
+  assert.deepEqual(t, { taxable_paise: 100000, cgst_paise: 0, sgst_paise: 0, igst_paise: 18000, gst_paise: 18000, cess_paise: 0, grand_total_paise: 118000 });
 });
 
 test("previewPurchaseCreditNoteTotals sums multiple valid lines and skips invalid ones", () => {
@@ -51,4 +51,11 @@ test("validatePurchaseCreditNoteEditor: passes with a vendor, date and one valid
   const v = validatePurchaseCreditNoteEditor({ vendorId: "VEND1", creditNoteDate: "2026-07-17", lines: [line()] });
   assert.equal(v.ok, true);
   assert.deepEqual(v.errors, {});
+});
+
+test("previewPurchaseCreditNoteTotals: a line's compensation cess is its own figure and in the total (migration 615)", () => {
+  const t = previewPurchaseCreditNoteTotals([line({ qty: "3", rate: "1000", gst_rate: 18, cessPercent: "12", cessPerUnit: "4" })], true);
+  assert.equal(t.cess_paise, 37200);
+  assert.equal(t.igst_paise, 54000);
+  assert.equal(t.grand_total_paise, 300000 + 54000 + 37200);
 });

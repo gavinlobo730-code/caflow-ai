@@ -18,6 +18,7 @@ from typing import Optional
 import uuid
 from core.ist_clock import ist_date_of, ist_today
 from domain.practice.compliance_overdue import is_overdue, is_settled
+from core.observability import capture_soft_failure
 
 # THE DAY THE FIXTURES BELOW WERE BUILT, AND NOTHING ELSE. A module-level
 # `today = ist_today()` is evaluated ONCE, when the module is imported — so on
@@ -228,8 +229,8 @@ def generate_insights_for_client(client_id: str, firm_id: Optional[str] = None) 
                     "recommendation": "Expedite filing process to avoid late fees.",
                     "status": "open",
                 }, stem=f"{record['compliance_type']} due in ")
-        except Exception:
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="ai_insight.deadline_insight", firm_id=firm_id, client_id=client_id)
 
     health = compliance_record_service.get_client_health_score(client_id, firm_id=firm_id)
     if health["health_score"] < 50:

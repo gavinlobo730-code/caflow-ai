@@ -18,6 +18,7 @@ from fastapi import (APIRouter, Depends, HTTPException, Path, Query, UploadFile,
 from fastapi.responses import Response
 from typing import Annotated, Optional
 
+from models.clearable import patch_dict
 from models.common import api_response
 from services import bank_erasure
 from services.audit_service import log_event
@@ -60,7 +61,7 @@ from models.banking import (
     ReconcileItemsIn,
     ReconciliationReopenIn, EntriesRedraftIn, EntriesPassReadyIn, PassEntryIn,
 )
-from core.permissions import rbac
+from core.permissions import can_user, rbac
 from services.banking_service import banking_service
 from services.bank_matching_service import bank_matching_service
 from services.bank_posting_service import bank_posting_service
@@ -74,7 +75,7 @@ from services.bank_candidate_search_service import bank_candidate_search_service
 from services.bank_entry_service import bank_entry_service, REDRAFT_CHUNK
 from services.trusted_rule_authority import WAITING_SENTENCE
 from domain.banking import file_hash, StatementParseError, PdfPasswordError
-from domain.banking.normalizer import parse_statement_detailed
+from domain.banking.normalizer import parse_statement_detailed, unread_sentence
 from domain.banking.tie_out import statement_check, totals_agreement
 from domain.banking import account_kind
 from domain.banking.register import opening_balance_gap, OPENING_DATE_REQUIRED
@@ -232,6 +233,22 @@ def _bank_ledger_conflict(db, firm_id: str, client_id: str, coa_account_id: str,
     return None
 
 
+def _ledger_problem(db, firm_id: str, client_id: Optional[str], coa_account_id: str) -> Optional[str]:
+    """Why this chart row cannot be the linked ledger of a bank account of this client, or None (POST-A-492).
+
+    It must exist, be this client's own or a firm-level one (never another client's), and be a ledger a bank can sit on
+    (`account_kind.ledger_problem_for_a_bank`: an asset or a liability, and not a cash ledger). Read with the privileged
+    client after the caller's right to the client has been asserted by the route."""
+    rows = (privileged_for(db).table("chart_of_accounts").select("id, client_id, account_type, account_subtype, is_active")
+            .eq("firm_id", firm_id).eq("id", coa_account_id).limit(1).execute().data or [])
+    row = rows[0] if rows else None
+    if not row or (row.get("client_id") and str(row["client_id"]) != str(client_id)):
+        return "That ledger account was not found for this client. Choose another, or let a new one be created."
+    if row.get("is_active") is False:
+        return "That ledger account is not active. Choose another, or let a new one be created."
+    return account_kind.ledger_problem_for_a_bank(row.get("account_type"), row.get("account_subtype"))
+
+
 def _next_bank_account_code(db, firm_id: str) -> str:
     """The next free 4-digit code in the bank block (1101 upwards).
 
@@ -310,8 +327,7 @@ def _ensure_bank_ledger(db, firm_id: str, client_id: str, bank_name: str,
     same "HDFC Bank — 7890", and so does one client re-adding an account after
     deactivating it. Each attempt re-reads the codes and disambiguates the name."""
     _typ, _sub = ledger_shape_for_bank(account_type)
-    last4 = str(account_no or "")[-4:]
-    base = f"{bank_name.strip()} — {last4}" if last4 else bank_name.strip()
+    base = account_kind.new_ledger_name(bank_name, account_no)
     for attempt in range(1, 6):
         name = base if attempt == 1 else f"{base} ({attempt})"
         try:
@@ -550,6 +566,45 @@ def list_bank_accounts(
     return api_response(True, _annotate_accounts(db, current_user["firm_id"], rows))
 
 
+@router.get("/accounts/ledger-choices")
+def bank_ledger_choices(
+    client_id: str = Query(...),
+    account_id: Optional[str] = Query(None, description="The account being edited: its own ledger stays on the list"),
+    bank_name: str = Query("", description="With account_no, names the ledger a new account would get"),
+    account_no: str = Query(""),
+    current_user: dict = Depends(rbac("banking", "read")),
+):
+    """The ledgers a bank account of this client may be linked to, and the name a new one would be given (POST-A-492).
+
+    The form used to read the whole chart and offer every asset and liability ledger, "Cash in Hand" among them, and said
+    nothing of the ledger it would create if none was picked. The rule for what a bank can sit on is
+    `account_kind.ledger_problem_for_a_bank`, applied HERE and not in the browser: this client's own and firm-level ledgers,
+    never another bank account's (one ledger per bank), never a cash ledger. The account being edited keeps its own current
+    ledger on the list whatever it is, so the form can show what is on file."""
+    assert_client_access(current_user, client_id)
+    db = _db()
+    new_name = account_kind.new_ledger_name(bank_name, account_no) or None
+    if not db:
+        return api_response(True, {"ledgers": [], "new_ledger_name": new_name})
+    firm_id = current_user["firm_id"]
+    taken = {str(a["coa_account_id"]): str(a["id"]) for a in
+             (privileged_for(db).table("bank_accounts").select("id, coa_account_id")
+              .eq("firm_id", firm_id).eq("client_id", client_id).execute().data or [])
+             if a.get("coa_account_id")}
+    rows = fetch_all(lambda: (privileged_for(db).table("chart_of_accounts")
+                              .select("id, account_code, account_name, account_type, account_subtype")
+                              .eq("firm_id", firm_id).eq("is_active", True)
+                              .or_(f"client_id.eq.{client_id},client_id.is.null")),
+                     key="id", label="the ledgers a bank account may use")
+    ledgers = []
+    for c in sorted(rows, key=lambda x: (str(x.get("account_code") or ""), str(x.get("id")))):
+        owner = taken.get(str(c["id"]))
+        own_current = bool(account_id) and owner == str(account_id)
+        if own_current or (owner is None and not account_kind.ledger_problem_for_a_bank(c.get("account_type"), c.get("account_subtype"))):
+            ledgers.append({k: c.get(k) for k in ("id", "account_code", "account_name", "account_type", "account_subtype")})
+    return api_response(True, {"ledgers": ledgers, "new_ledger_name": new_name})
+
+
 @router.post("/accounts")
 def create_bank_account(
     data: BankAccountIn,
@@ -590,10 +645,29 @@ def create_bank_account(
                 detail=f"That ledger account is already linked to {taken}. Each bank "
                        f"account needs its own ledger, or their balances merge into one "
                        f"line and neither can be reconciled.")
+        unsuitable = _ledger_problem(db, firm_id, payload["client_id"], chosen_coa)
+        if unsuitable:
+            raise HTTPException(status_code=422, detail=unsuitable)
     else:
+        # The new ledger is inserted as the CALLER, so the chart's own role gate (a Manager or a Partner, `accounting:write`)
+        # applies to it: an Executive may add a bank account but not create a chart row, and used to be saved unlinked without a word;
+        # said now, before anything is tried (found by the independent review of the change that stopped saving unlinked).
+        if not can_user(current_user, "accounting", "write"):
+            raise HTTPException(
+                status_code=422,
+                detail="Adding a bank account also creates its ledger, which needs a Manager or a Partner. Ask one to add it, "
+                       "or choose an existing bank ledger for it.")
         payload["coa_account_id"] = _ensure_bank_ledger(
             db, firm_id, payload["client_id"], payload["bank_name"],
             payload["account_no"], payload.get("account_type"))
+        # POST-A-492. An account that was meant to get a ledger of its own and did not is NOT saved unlinked and said nothing
+        # about: its postings would fall back and its balance would sit nowhere. The form stays open with its fields, so
+        # nothing typed is lost, and the sentence says what to do.
+        if not payload["coa_account_id"]:
+            raise HTTPException(
+                status_code=422,
+                detail="A ledger for this bank account could not be created, so the account was not saved. Try again, "
+                       "or pick an existing bank ledger for it.")
 
     row = privileged_for(db).table("bank_accounts").insert(payload).execute()
     account = (row.data or [{}])[0]
@@ -620,7 +694,8 @@ def update_bank_account(
     current_user: dict = Depends(rbac("banking", "write")),
 ):
     db = _db()
-    update = data.model_dump(exclude_none=True)
+    # POST-A-399: an IFSC the request sent empty is a clear (written NULL); every other null still reads "not sent".
+    update = patch_dict(data)
     if not db:
         return api_response(True, update)
     firm_id = current_user["firm_id"]
@@ -658,12 +733,18 @@ def update_bank_account(
                 detail=f"That ledger account is already linked to {taken}. Each bank "
                        f"account needs its own ledger, or their balances merge into one "
                        f"line and neither can be reconciled.")
+        # Only when the link CHANGES: an account already on a ledger this rule would refuse can still be edited otherwise.
+        if update["coa_account_id"] != prior.get("coa_account_id"):
+            unsuitable = _ledger_problem(db, firm_id, prior.get("client_id"), update["coa_account_id"])
+            if unsuitable:
+                raise HTTPException(status_code=422, detail=unsuitable)
     # BANK-27, on the MERGED state. BankAccountUpdateIn cannot see it: a PATCH
     # carries only what changed, so "set a non-zero opening balance" on an
     # account whose stored date is null looks valid field by field and lands
-    # the very pair the model refuses at creation. (`exclude_none=True` means
-    # the date cannot be CLEARED through here at all, which is why only the
-    # balance side needs merging.)
+    # the very pair the model refuses at creation. (The date is not in the
+    # model's CLEARABLE set, so a null for it still reads "not sent" and it
+    # cannot be CLEARED through here at all, which is why only the balance
+    # side needs merging.)
     if opening_balance_gap(update.get("opening_balance_paise", prior.get("opening_balance_paise")),
                            update.get("opening_balance_date") or prior.get("opening_balance_date")):
         raise HTTPException(status_code=422, detail=OPENING_DATE_REQUIRED)
@@ -841,11 +922,21 @@ def _statement_refusal(e: StatementParseError) -> HTTPException:
     return HTTPException(status_code=422, detail=str(e))
 
 
+def _unread_as_answered(unread) -> dict:
+    """The two keys every statement answer carries for the rows that could not be read (POST-A-551): each row as the bank printed it,
+    and the one sentence that names them (None when there is none). One function, so the import, its refusal and the check of a column
+    mapping cannot word it three ways."""
+    return {"unread_rows": [u.to_dict() for u in unread], "unread_note": unread_sentence(unread)}
+
+
 def _read_statement_file(filename: str, content: bytes, mapping, *,
                          allow_vision: bool, has_balances: bool,
                          rate_key: Optional[tuple] = None,
                          pdf_password: Optional[str] = None):
-    """(transactions, source_format, used_vision, printed_totals) for an upload.
+    """(transactions, source_format, used_vision, printed_totals, unread_rows) for an upload.
+
+    `unread_rows` are the rows of a CSV, a workbook or a text PDF that look like transactions and could not be read (a date or
+    an amount that is not one, POST-A-551); a statement read by a model has none to name, because nothing there is a cell.
 
     `printed_totals` is the "Grand Total" row the bank printed on the statement,
     when it printed one — the evidence, already inside the file, that every line
@@ -886,7 +977,7 @@ def _read_statement_file(filename: str, content: bytes, mapping, *,
             parsed = parse_statement_detailed(filename or "", content, mapping,
                                               pdf_password=pdf_password)
             fmt = "pdf" if name.endswith(".pdf") else "xlsx" if name.endswith(".xlsx") else "csv"
-            return parsed.transactions, fmt, False, parsed.printed_totals
+            return parsed.transactions, fmt, False, parsed.printed_totals, parsed.unread_rows
         except StatementParseError as e:
             # Only a PDF with no readable text is a candidate for the model. A
             # malformed CSV is a malformed CSV and a picture will not help — and
@@ -945,7 +1036,7 @@ def _read_statement_file(filename: str, content: bytes, mapping, *,
                 "proves every line was read.")
 
         txns = vision.read_statement(images, call_model=statement_vision.call, mime=mime)
-    return txns, ("image" if is_image else "pdf-scan"), True, printed
+    return txns, ("image" if is_image else "pdf-scan"), True, printed, ()
 
 
 @router.post("/statements/import")
@@ -1084,7 +1175,7 @@ def upload_statement(
     has_balances = (opening_balance_paise is not None
                     and closing_balance_paise is not None)
     try:
-        txns, fmt, used_vision, printed = _read_statement_file(
+        txns, fmt, used_vision, printed, unread = _read_statement_file(
             file.filename or "", content, mapping,
             allow_vision=allow_vision, has_balances=has_balances,
             rate_key=(current_user.get("firm_id") or "", current_user.get("id")),
@@ -1146,12 +1237,17 @@ def upload_statement(
             detail="There is nothing to acknowledge: this statement's own "
                    "totals were not checked, or they agree with the lines read "
                    "from it. Import it without a note.")
+    # Rows that look like transactions and could not be read (POST-A-551). They are in none of the figures below, so a
+    # refusal that says "the lines do not add up" names them: without that the CA is sent to the column mapping, or to
+    # the bank, for a row this reader left out.
+    named = _unread_as_answered(unread)
     if check["refusal"]:
         # A dict, so a screen can offer the way past without matching on the
         # wording of a sentence written for a human. lib/api errorMessage()
         # already flattens {message: ...} for display.
         raise HTTPException(status_code=422, detail={
-            "message": check["refusal"], "code": check["refusal_code"]})
+            "message": check["refusal"] + (f" {named['unread_note']}" if named["unread_note"] else ""),
+            "code": check["refusal_code"], "unread_rows": named["unread_rows"]})
     if used_vision and not check["verified"]:
         # Belt and braces, and deliberately kept. Between them the two refusals
         # above should already cover this path — _read_statement_file refuses a
@@ -1181,6 +1277,7 @@ def upload_statement(
                                    "verified": check["verified"],
                                    "verification_gap": check["gap"],
                                    "totals_mismatch_acknowledged": check["acknowledged"],
+                                   **named,
                                    "read_with_ai": used_vision})
     file_meta = {
         "file_name": file.filename, "file_size_bytes": len(content),
@@ -1245,6 +1342,9 @@ def upload_statement(
     result["verified"] = check["verified"]
     result["verification_gap"] = check["gap"]
     result["totals_mismatch_acknowledged"] = check["acknowledged"]
+    # What was NOT read, beside what was: a row with a figure in it that could not be read as a transaction is not in
+    # `imported`, and an import that says "42 imported" over a file of 43 has to say which one is missing (POST-A-551).
+    result.update(named)
     # Say when a model read the statement. A CA reviewing these lines later is
     # entitled to know they came off a picture rather than a file, and the
     # source_format on the statement row records the same thing durably.
@@ -1358,6 +1458,10 @@ def preview_statement_with_mapping(
         # "quietly" into a number a CA can judge: 3 of 200 is a footer, 180 of
         # 200 is a wrong date column.
         "skipped_count": max(0, info["total_rows"] - len(txns)),
+        # ...and the skipped rows that are NOT a footer: a row with a description and a figure whose date or amount could
+        # not be read. Named, with the cell as printed, so the CA can correct the file or the mapping before importing
+        # (POST-A-551).
+        **_unread_as_answered(parsed.unread_rows),
         "rows": [{
             "transaction_date": t.transaction_date,
             "description": t.description,
@@ -2264,6 +2368,7 @@ def pass_ready_entries(
         db, current_user["firm_id"], data.client_id, limit=data.limit,
         only_trusted=data.only_trusted, bank_account_id=data.bank_account_id,
         txn_ids=data.transaction_ids,
+        batch_gst=None if data.only_trusted else {"rate": data.gst_rate_bps, "interstate": bool(data.is_interstate)},
         actor_id=current_user.get("id"), actor_auth_id=current_user.get("auth_user_id"))
     if passed.get("rules_not_posting"):       # the reason names a colleague's status; the run summary keeps it, a caller gets this
         passed["rules_not_posting"] = [{"rule_id": x["rule_id"], "reason": WAITING_SENTENCE} for x in passed["rules_not_posting"]]
@@ -2788,11 +2893,14 @@ def update_rule(
     fields change. client_id is NOT editable — moving a rule between clients
     would silently re-target every suggestion it has ever made."""
     db = _db()
+    # POST-A-399. The rule form sends an emptied box as null (a narration phrase, an amount bound, the proposed ledger, category, narration or
+    # GST rate), and the route read its body with `exclude_none`, so none of them could be taken away while the screen said "Rule saved".
+    # `patch_dict` writes NULL for the fields MatchingRuleUpdateIn names in CLEARABLE; every other null still reads "not sent".
     if not db:
-        return api_response(True, {"id": rule_id, **data.model_dump(exclude_none=True)})
+        return api_response(True, {"id": rule_id, **patch_dict(data)})
     rule = _rule_or_404(db, current_user["firm_id"], rule_id)
     assert_client_access(current_user, rule["client_id"])
-    fields = data.model_dump(exclude_none=True)
+    fields = patch_dict(data)
     # TRUSTED is the one place the product acts without a click (migration
     # 322, 09-bank-entries.md). Promoting needs banking.approve — a Manager or
     # Partner — and records WHO, because that person is the journal's
@@ -2815,15 +2923,16 @@ def update_rule(
         else:
             fields["trusted_by"] = None
             fields["trusted_at"] = None
-    # exclude_none means a null normally reads as "field omitted", so no field on
-    # this endpoint can be cleared. For the GST rate that is not survivable: a
-    # rule stamped 18% by mistake would keep proposing an input credit forever,
-    # and 0 is NOT the escape hatch (0 positively means "this charge carries no
-    # GST"). An EXPLICIT null clears it; an omitted one still means "leave it".
-    if "suggested_gst_rate_bps" in data.model_fields_set and data.suggested_gst_rate_bps is None:
-        fields["suggested_gst_rate_bps"] = None
+    # An EXPLICIT null clears a CLEARABLE field (the GST rate among them: a rule stamped 18% by mistake would otherwise keep proposing an
+    # input credit forever, and 0 is NOT the escape hatch, it positively means "this charge carries no GST"); an omitted one still means
+    # "leave it".
     if not fields:
         return api_response(True, rule)
+    # A TRUSTED rule must keep naming a ledger, which only promotion used to ask: emptying the ledger box of one is refused (POST-A-399).
+    if "suggested_account_id" in fields and not fields["suggested_account_id"] and fields.get("is_trusted", rule.get("is_trusted")):
+        raise HTTPException(status_code=422, detail=(
+            "A trusted rule must name a ledger — it cannot pass an entry without one. Stop trusting the rule first, or choose a ledger."))
+    _refuse_a_cleared_rule_that_no_longer_holds(rule, fields)
     # The GST-rate/account pairing can only be judged against the MERGED rule —
     # the model sees the patch alone, and "rate supplied, account already stored"
     # is perfectly valid. Same rule as MatchingRuleIn and migration 254's CHECK:
@@ -2861,6 +2970,29 @@ def update_rule(
                                  "flags_tds_decision")):
         bank_entry_service.mark_stale(db, current_user["firm_id"], rule["client_id"])
     return api_response(True, (row.data or [{}])[0])
+
+
+def _refuse_a_cleared_rule_that_no_longer_holds(rule: dict, fields: dict) -> None:
+    """A clear is judged against the MERGED rule by the create door's own shape (POST-A-399).
+
+    Taking a box away can leave a rule the create door would never have accepted: no condition at all (it would fire on every line, and a
+    trusted one would post them), nothing proposed, or a GST rate with no ledger. (A TRUSTED rule keeping its ledger is asked in
+    `update_rule` itself, the one edit-side reader of the trusted flag.) Asked when the edit clears something or changes a condition, so a rule stored before a check existed stays editable otherwise.
+    """
+    # Asked when the edit clears something OR changes a condition (an emptied list of patterns, a type set back to "any"): either can leave
+    # the rule with nothing to fire on (found by the independent review of POST-A-399's slice 4).
+    touches_a_condition = any(k in fields for k in ("description_pattern", "description_patterns", "amount_min_paise", "amount_max_paise", "txn_type"))
+    if not (touches_a_condition or any(v is None for k, v in fields.items() if k in MatchingRuleUpdateIn.CLEARABLE)):
+        return
+    from types import SimpleNamespace
+    from models.banking import _validate_rule_shape
+    merged = {**rule, **fields}
+    keys = ("description_pattern", "description_patterns", "amount_min_paise", "amount_max_paise", "txn_type", "suggested_category",
+            "suggested_account_id", "suggested_narration", "suggested_gst_rate_bps")
+    try:
+        _validate_rule_shape(SimpleNamespace(**{k: merged.get(k) for k in keys}))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
 
 
 def _refuse_an_unresolvable_party(rule: dict) -> None:

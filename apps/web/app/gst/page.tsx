@@ -14,14 +14,11 @@ import {
   AlertCircle,
   Clock,
   Plus,
-  X,
   Calendar,
   FileText,
   Receipt,
 } from "lucide-react";
 import Link from "next/link";
-import { getSupabaseClient } from "@/lib/supabase/client";
-import { selectAll } from "@/lib/supabase/selectAll";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
@@ -34,6 +31,7 @@ import { formatDate, formatMonthYear, todayIstISO } from "@/lib/dates/format";
 import { MONTH_NAMES, buildMonthOptions, parsePeriodOption, periodBounds } from "@/lib/gst/filingPeriod";
 import { useToast } from "@/components/ui/use-toast";
 import { api, type GstDueDates } from "@/lib/api";
+import { usePermissions } from "@/lib/auth/AuthContext";
 import { Callout } from "@/components/ui/callout";
 import { BulkGstr2bPanel } from "@/components/gst/BulkGstr2bPanel";
 import { Button } from "@/components/ui/button";
@@ -145,12 +143,11 @@ const STATUS_STYLE: Record<FilingStatus, string> = {
 
 interface AddFilingModalProps {
   clients: Client[];
-  firmId: string;
   onClose: () => void;
   onAdded: (filing: GSTFiling) => void;
 }
 
-function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalProps) {
+function AddFilingModal({ clients, onClose, onAdded }: AddFilingModalProps) {
   const [clientId, setClientId] = useState(clients[0]?.id ?? "");
   const [returnType, setReturnType] = useState<ReturnType>("GSTR-1");
   const [period, setPeriod] = useState(MONTH_OPTIONS[MONTH_OPTIONS.length - 1]?.value ?? "");
@@ -202,8 +199,8 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
   }, [returnType, period]);
 
   async function handleSave() {
-    if (dates.first) { setErr(dates.first); return; }
-    if (status === "Filed" && filedDates.first) { setErr(filedDates.first); return; }
+    if (dates.first) { dates.refuseWith(setErr); return; }
+    if (status === "Filed" && filedDates.first) { filedDates.refuseWith(setErr); return; }
     if (!clientId || !period) {
       setErr("Please fill all required fields.");
       return;
@@ -225,37 +222,27 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
     setSaving(true);
     setErr(null);
     try {
-      const sb = getSupabaseClient();
       const selectedClient = clients.find((c) => c.id === clientId);
       const filedDate = status === "Filed" ? filedOn : null;
 
       // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
       // Map ReturnType to compliance_calendar compliance_type values
-      const complianceTypeMap: Record<string, string> = { "GSTR-1": "GSTR1", "GSTR-3B": "GSTR3B", "GSTR-9": "GSTR9" };
+      const complianceTypeMap: Record<string, "GSTR1" | "GSTR3B" | "GSTR9"> = { "GSTR-1": "GSTR1", "GSTR-3B": "GSTR3B", "GSTR-9": "GSTR9" };
       const bounds = periodBounds(period);
       if (!bounds) throw new Error("Pick a filing period.");
       const { start: periodStart, end: periodEnd } = bounds;
-      const { data, error } = await sb
-        .from("compliance_calendar")
-        .insert({
-          firm_id: firmId,
-          client_id: clientId,
-          compliance_type: complianceTypeMap[returnType] ?? returnType,
-          period_start: periodStart,
-          period_end: periodEnd,
-          due_date: dueDate,
-          // The row is created PENDING even when the CA says it is already
-          // filed. Creating it "filed" here would be a third path recording a
-          // filing that never reaches public.filings, so the period would not
-          // lock — the same defect the mark-filed buttons had. The filing is
-          // recorded a line below, through the API that writes both.
-          filing_status: "pending",
-          filed_date: null,
-        })
-        .select()
-        .single();
+      const compType = complianceTypeMap[returnType];
+      if (!compType) throw new Error("Pick a return type.");
+      // Added through the API (POST-A-208): the route asks `compliance_record:write` and the client, writes an audit event and answers a
+      // second row for the same period in a sentence. The row is created PENDING even when the CA says it is already filed. Creating it
+      // "filed" here would be a third path recording a filing that never reaches public.filings, so the period would not lock. The filing
+      // is recorded a line below, through the API that writes both.
+      const created = await api.compliance.addCalendarEntry({
+        client_id: clientId, compliance_type: compType, period_start: periodStart, period_end: periodEnd, due_date: dueDate,
+      });
+      if (!created.success || !created.data) throw new Error(created.error ?? "The filing was not added.");
+      const data = created.data;
 
-      if (error) throw new Error(error.message);
       // The row exists and is pending. If the server declines to record it as filed (a date before the period ended is its to refuse), the
       // dialog must not stay open over a row that now exists: the next Save would insert it again and the database would answer in its own words.
       // So the row is added as it is, and the sentence is said where the page can show it (the MCA form does the same).
@@ -301,15 +288,25 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
   }
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-ps-ink">Add GST Filing</h3>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-label">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
+    // The shared dialog (POST-A-130): named, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it, its ×) is held
+    // while the save is out, and its two buttons are the shared footer, which stays in view on a short window (POST-A-395).
+    <Modal title="Add GST Filing" maxWidthClass="max-w-md" onClose={() => { if (!saving) onClose(); }}
+      footer={<>
+        <button
+          onClick={onClose}
+          disabled={saving}
+          className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg disabled:opacity-50"
+        >
+          Cancel
+        </button>
+        <Button variant="plain" size="none"
+          onClick={handleSave}
+          disabled={saving}
+          className="flex-1 bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50"
+        >
+          {saving ? "Saving…" : "Save Filing"}
+        </Button>
+      </>}>
         {err && <Callout tone="problem">{err}</Callout>}
 
         {/* Client */}
@@ -425,28 +422,11 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
           </div>
         )}
 
-        <div className="flex gap-2 pt-2">
-          <button
-            onClick={onClose}
-            className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg"
-          >
-            Cancel
-          </button>
-          <Button variant="plain" size="none"
-            onClick={handleSave}
-            disabled={saving}
-            className="flex-1 bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50"
-          >
-            {saving ? "Saving…" : "Save Filing"}
-          </Button>
-        </div>
-
         <p className="text-3xs text-amber-600 bg-state-attention-surface rounded px-2 py-1.5">
           {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
           PracticeSync never auto-submits to the GST portal. Always file manually after CA review.
         </p>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -481,7 +461,7 @@ function BatchMarkFiledModal({ selected, onClose, onSuccess }: BatchMarkFiledMod
   const canSubmit = allArnsFilled && !!filedDate && !submitting;
 
   async function handleSubmit() {
-    if (dates.first) { setFormError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setFormError); return; }
     if (!canSubmit) return;
     setSubmitting(true);
     setFormError(null);
@@ -560,18 +540,25 @@ function BatchMarkFiledModal({ selected, onClose, onSuccess }: BatchMarkFiledMod
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between px-6 py-5 border-b border-ps-border">
-          <h3 className="text-base font-semibold text-ps-ink">
-            Mark {rows.length} Filing{rows.length > 1 ? "s" : ""} as Filed
-          </h3>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-label transition-colors">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="px-6 py-5 space-y-4 overflow-y-auto">
+    // The shared dialog (POST-A-130). Its close (Escape, a click beside it, its ×) is held while the filings are out.
+    <Modal title={`Mark ${rows.length} Filing${rows.length > 1 ? "s" : ""} as Filed`} maxWidthClass="max-w-lg" onClose={() => { if (!submitting) onClose(); }}
+      footer={<>
+        <button
+          onClick={onClose}
+          disabled={submitting}
+          className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors disabled:opacity-50"
+        >
+          Cancel
+        </button>
+        <Button variant="plain" size="none"
+          onClick={handleSubmit}
+          disabled={!canSubmit}
+          className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+        >
+          {submitting ? "Saving…" : `Confirm ${rows.length} Filing${rows.length > 1 ? "s" : ""}`}
+        </Button>
+      </>}>
+        <div className="space-y-4">
           <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-4 py-3">
             <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">CA Confirmation Required</p>
             <p className="text-xs text-state-attention mt-1">
@@ -623,34 +610,17 @@ function BatchMarkFiledModal({ selected, onClose, onSuccess }: BatchMarkFiledMod
 
           {formError && <Callout tone="problem">{formError}</Callout>}
         </div>
-
-        <div className="px-6 py-4 border-t border-ps-border flex gap-3 justify-end">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors"
-          >
-            Cancel
-          </button>
-          <Button variant="plain" size="none"
-            onClick={handleSubmit}
-            disabled={!canSubmit}
-            className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
-          >
-            {submitting ? "Saving…" : `Confirm ${rows.length} Filing${rows.length > 1 ? "s" : ""}`}
-          </Button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function GSTPage() {
+  const { can } = usePermissions();
   const { toast } = useToast();
   const [filings, setFilings] = useState<GSTFiling[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
-  const [firmId, setFirmId] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -671,8 +641,6 @@ export default function GSTPage() {
     async function load() {
       try {
         setLoading(true);
-        const sb = getSupabaseClient();
-
         // Resolve firm_id from authenticated user
         // lib/data/getFirmId is the one firm-id lookup, and it caches for five
         // minutes; this was another of the twelve hand-rolled copies. It throws where this
@@ -680,30 +648,28 @@ export default function GSTPage() {
         // "no firm, render nothing" — so the throw is caught rather than the
         // helper changed.
         const resolvedFirmId = await getFirmId().catch(() => "");
-        setFirmId(resolvedFirmId);
 
         const cls = await getClients().catch(() => [] as Client[]);
         setClients(cls);
 
         // Load from compliance_calendar with client join for GST types
         if (resolvedFirmId) {
-          // One row per return per client per period, every year: 25 a year for a client filing monthly, 1,250 a year
-          // for fifty of them. PostgREST cuts an unpaged read at ~1000 rows without a word, and this one is ordered
-          // oldest first, so what went missing was the NEWEST filings, the ones the counts above the table are about.
-          const { data, error: dbErr } = await selectAll(() => sb
-            .from("compliance_calendar")
-            .select("id, firm_id, client_id, compliance_type, period_start, period_end, due_date, filing_status, filed_date, created_at, clients(client_name, gstin)")
-            .eq("firm_id", resolvedFirmId)
-            .in("compliance_type", ["GSTR1", "GSTR3B", "GSTR9"])
-            .order("due_date", { ascending: true })
-            .order("id"));
+          // The calendar's GST rows through the API (POST-A-208): the server reads every page (one row per return per client per period,
+          // every year, is more than one PostgREST answer holds, and the newest filings are what the counts above the table are about)
+          // and narrows to the caller's clients. The list is still the calendar, not the obligation store, and the sentence under the
+          // heading says so.
+          let dbErr: { message: string } | null = null;
+          let data: Array<Record<string, unknown>> | null = null;
+          try {
+            const res = await api.compliance.trackerRows("gst");
+            if (res.success) data = res.data ?? [];
+            else dbErr = { message: res.error ?? "The GST filings could not be read." };
+          } catch (e) {
+            dbErr = { message: e instanceof Error ? e.message : "The GST filings could not be read." };
+          }
 
           if (dbErr) {
-            if (dbErr.code === "42P01" || dbErr.message?.includes("does not exist")) {
-              setFilings([]);
-            } else {
-              throw new Error(dbErr.message);
-            }
+            throw new Error(dbErr.message);
           } else {
             const returnTypeMap: Record<string, ReturnType> = { GSTR1: "GSTR-1", GSTR3B: "GSTR-3B", GSTR9: "GSTR-9" };
             const rows: GSTFiling[] = (data ?? []).map((r: Record<string, unknown>) => {
@@ -745,7 +711,7 @@ export default function GSTPage() {
 
   async function handleMarkFiled() {
     if (!filedModal) return;
-    if (filedDates.first) { setFiledError(filedDates.first); return; }
+    if (filedDates.first) { filedDates.refuseWith(setFiledError); return; }
     if (!filedForm.arn.trim()) {
       setFiledError("Acknowledgement number is required");
       return;
@@ -939,13 +905,16 @@ export default function GSTPage() {
               <Receipt className="w-3.5 h-3.5" />
               GSTR-3B
             </Link>
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-2 rounded-lg hover:bg-brand-dark"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Add GST Filing
-            </button>
+            {/* The add route asks `compliance_record` write (POST-A-208), so the button is offered only to someone it admits. */}
+            {can("compliance_record", "write") && (
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-2 rounded-lg hover:bg-brand-dark"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add GST Filing
+              </button>
+            )}
           </div>
         }
       />
@@ -1094,7 +1063,6 @@ export default function GSTPage() {
       {showAddModal && clients.length > 0 && (
         <AddFilingModal
           clients={clients}
-          firmId={firmId}
           onClose={() => setShowAddModal(false)}
           onAdded={(filing) => setFilings((prev) => [...prev, filing])}
         />
@@ -1119,16 +1087,24 @@ export default function GSTPage() {
       {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT                            */}
       {/* ================================================================== */}
       {filedModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-ps-border">
-              <h3 className="text-base font-semibold text-ps-ink">Mark {filedModal.filing.return_type} as Filed</h3>
-              <button onClick={() => setFiledModal(null)} className="text-ps-hint hover:text-ps-label transition-colors">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="px-6 py-5 space-y-4">
+        <Modal title={`Mark ${filedModal.filing.return_type} as Filed`} maxWidthClass="max-w-md" onClose={() => { if (!filedLoading) setFiledModal(null); }}
+          footer={<>
+            <button
+              onClick={() => setFiledModal(null)}
+              disabled={filedLoading}
+              className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <Button variant="plain" size="none"
+              onClick={handleMarkFiled}
+              disabled={filedLoading}
+              className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+            >
+              {filedLoading ? "Saving…" : "Confirm Filing"}
+            </Button>
+          </>}>
+            <div className="space-y-4">
               <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-4 py-3">
                 <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">CA Confirmation Required</p>
                 <p className="text-xs text-state-attention mt-1">
@@ -1173,24 +1149,7 @@ export default function GSTPage() {
 
               {filedError && <Callout tone="problem">{filedError}</Callout>}
             </div>
-
-            <div className="px-6 py-4 border-t border-ps-border flex gap-3 justify-end">
-              <button
-                onClick={() => setFiledModal(null)}
-                className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors"
-              >
-                Cancel
-              </button>
-              <Button variant="plain" size="none"
-                onClick={handleMarkFiled}
-                disabled={filedLoading}
-                className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
-              >
-                {filedLoading ? "Saving…" : "Confirm Filing"}
-              </Button>
-            </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ================================================================== */}

@@ -7,12 +7,13 @@ import logging
 import os
 import time
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Mapping, Optional
 from fastapi import Header, HTTPException, status, Depends
 import jwt
 
 _logger = logging.getLogger("caflow.auth")
 from jwt import PyJWKClient
+from core import auth_time
 from core.env import env_or_default
 from core.supabase_client import get_service_supabase
 from core.request_actor import bind as bind_actor
@@ -89,6 +90,42 @@ def _permission_overrides(supabase, user_id, firm_id) -> dict:
     return out
 
 
+#: PostgreSQL's "undefined_column", which PostgREST passes through as the error's code.
+_UNDEFINED_COLUMN = "42703"
+
+
+def _read_user_row(supabase, auth_user_id: str):
+    """The caller's `users` row, asking for the two columns migration 765 added (`other_sessions_revoked_at`,
+    `other_sessions_kept_session_id`).
+
+    The API can go live a few minutes before the migration job has applied a migration (they are separate jobs on the same push), and
+    a select naming a column that does not exist yet is refused for EVERY request, which would lock everybody out of everything.
+    So THAT one answer, and only that one (undefined column), reads the row again without the two columns: until the migration has
+    run nobody can have signed out their other sessions, so there is no mark to miss. Any other failure still raises, and the caller
+    answers 503 as it always has: a check that fails open on an error it cannot name is not a check. Both selects are written out
+    whole, not built from a variable, so the column check (`tests/test_backend_columns_exist_pg.py`) can read them.
+    """
+    try:
+        return (
+            supabase.table("users")
+            .select("id, firm_id, role, full_name, is_active, sessions_revoked_at, other_sessions_revoked_at, other_sessions_kept_session_id")
+            .eq("auth_user_id", auth_user_id)
+            .maybe_single()
+            .execute()
+        )
+    except Exception as exc:                                  # noqa: BLE001
+        if getattr(exc, "code", None) != _UNDEFINED_COLUMN:
+            raise
+        _logger.warning("users.other_sessions_* columns are not there yet (migration 765 not applied); reading without them")
+        return (
+            supabase.table("users")
+            .select("id, firm_id, role, full_name, is_active, sessions_revoked_at")
+            .eq("auth_user_id", auth_user_id)
+            .maybe_single()
+            .execute()
+        )
+
+
 def _get_user_and_firm(supabase, auth_user_id: str) -> tuple[Optional[dict], Optional[dict]]:
     cached = _user_lookup_cache.get(auth_user_id)
     if cached is not None and (time.monotonic() - cached[0]) < _USER_LOOKUP_CACHE_TTL_SECONDS:
@@ -104,13 +141,7 @@ def _get_user_and_firm(supabase, auth_user_id: str) -> tuple[Optional[dict], Opt
         # zero-row case without raising, so an exception here now means the
         # query itself broke — worth logging, not silently treating as a
         # missing account.
-        result = (
-            supabase.table("users")
-            .select("id, firm_id, role, full_name, is_active, sessions_revoked_at")
-            .eq("auth_user_id", auth_user_id)
-            .maybe_single()
-            .execute()
-        )
+        result = _read_user_row(supabase, auth_user_id)
         user_data = result.data
     except Exception as exc:
         # The lookup itself broke — Supabase unreachable, rate-limited, a
@@ -271,6 +302,10 @@ def decode_supabase_jwt(token: str) -> dict:
     )
 
 
+def _token_predates_revocation(payload: dict, revoked_epoch: float) -> bool:
+    return auth_time.issued_before_revocation(payload, revoked_epoch)
+
+
 def _instant_epoch(value) -> float:
     """A stored timestamp as POSIX seconds. Raises on anything it cannot read.
 
@@ -287,6 +322,132 @@ def _instant_epoch(value) -> float:
     if moment.tzinfo is None:
         moment = moment.replace(tzinfo=timezone.utc)
     return moment.timestamp()
+
+
+def _refuse_a_session_signed_out_from_elsewhere(user_data: dict, payload: dict, auth_user_id: str) -> None:
+    """POST-A-486 — "sign out my other sessions": the person ended every session but one. A token of a session that began before that
+    instant and is not the kept one is refused, the kept session and any later sign-in are not. Fails closed like the revocation in
+    `get_current_user`: a mark nobody can read is not evidence it was withdrawn."""
+    other_at = user_data.get("other_sessions_revoked_at")
+    if not other_at:
+        return
+    try:
+        ended = auth_time.ended_by_other_sessions_sign_out(
+            payload, _instant_epoch(other_at), user_data.get("other_sessions_kept_session_id"))
+    except Exception as exc:                                 # noqa: BLE001
+        _logger.error(
+            "other_sessions_revoked_at for user %s could not be compared with the token; refusing the request",
+            auth_user_id, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Your session could not be verified. Please sign in again.",
+        ) from exc
+    if ended:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="This session was signed out from another device. Please sign in again.",
+        )
+
+
+def _refuse_a_closed_firms_person(supabase, auth_user_id: str, payload: dict) -> None:
+    """A signed-in account with no member row, from a firm that was permanently deleted (POST-A-499).
+
+    The purge deletes the member rows and leaves the sign-in accounts, so a session that was open at the time reached "User not found in
+    firm" and the browser opened the new-practice wizard. `closed_account_markers` (migration 772) remembers who they were and when it
+    happened; a session that BEGAN before then is answered 403 "Firm unavailable", the words the browser already reads as "the firm is
+    closed" (it signs the person out and says so). A session that began after it is a new sign-in by a person who may start a practice,
+    and is left to the ordinary refusal. A marker that cannot be read leaves the ordinary refusal too: that is what this path did before,
+    and a read that fails must not turn a person mid-sign-up into someone who is signed out."""
+    try:
+        row = (supabase.table("closed_account_markers").select("closed_at")
+               .eq("auth_user_id", auth_user_id).maybe_single().execute()).data
+    except Exception:                                    # noqa: BLE001 — the ordinary refusal follows
+        _logger.warning("closed-account marker lookup failed for auth_user_id=%s", auth_user_id, exc_info=True)
+        return
+    if not row or not row.get("closed_at"):
+        return
+    try:
+        began_before = auth_time.issued_before_revocation(payload, _instant_epoch(row["closed_at"]))
+    except Exception:                                    # noqa: BLE001 — an unreadable instant is judged as the ordinary refusal
+        _logger.warning("closed_at for auth_user_id=%s could not be compared with the token", auth_user_id, exc_info=True)
+        return
+    if began_before:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Firm unavailable")
+
+
+def _refuse_an_ended_session(user_data: dict, firm_row: Optional[dict], payload: Mapping[str, Any], auth_user_id: str) -> None:
+    """The four refusals a member's token meets before any route runs, as ONE function (POST-A-498): a disabled account, a firm that was deleted
+    or suspended, a revocation of every session (a suspension, a force sign-out), and a session signed out from elsewhere. `get_current_user` asks
+    it for every route behind it, and `refuse_a_member_whose_session_has_ended` asks it for the one route that answers from a member's row without
+    that dependency, so what a route behind the dependency refuses and what the invitation's repeat-accept refuses are the same set, in the same
+    words, from one place. The order is the order they were always made in."""
+    # M1 — Active-user enforcement: a disabled account must not continue to
+    # operate through a still-valid (unexpired) JWT. is_active defaults True so
+    # rows predating the column are unaffected; only an explicit False blocks.
+    if user_data.get("is_active") is False:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account disabled. Contact your firm administrator.",
+        )
+
+    # Platform Admin enforcement: a suspended or soft-deleted firm blocks ALL of
+    # its users. Enforced centrally here so every firm endpoint is gated at once.
+    if firm_row:
+        if firm_row.get("deleted_at"):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Firm unavailable")
+        if firm_row.get("is_active") is False:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Firm suspended")
+
+    # M6 — Session revocation / forced logout: reject any token issued before the
+    # account's sessions_revoked_at instant (set by suspend / force-logout / global
+    # logout). Compares the JWT 'iat' (issued-at) against the stored timestamp.
+    #
+    # FAILS CLOSED (SECURITY-PRIVACY-21). This used to `except Exception: pass`
+    # around the comparison, on the reasoning that "an unparseable timestamp must
+    # never hard-fail auth" — so a sessions_revoked_at nobody could read let a
+    # token through that the account's own owner had revoked, and silently: the
+    # one request that should have been refused answered 200. A revocation is a
+    # security decision somebody made; a value the code cannot read is not
+    # evidence it was withdrawn. The comparison is also no longer skipped for a
+    # token with no `iat` (now a required claim, but `iat: 0` is falsy and a test
+    # double can omit it): if a revocation exists and the token cannot show when
+    # it was issued, it cannot show it was issued after.
+    revoked_at = user_data.get("sessions_revoked_at")
+    if revoked_at:
+        try:
+            revoked_epoch = _instant_epoch(revoked_at)
+            # By `iat` AND by when the session began (core/auth_time.py): a renewed token has a
+            # new `iat` and would otherwise walk straight back past a revocation.
+            issued_before_revocation = _token_predates_revocation(payload, revoked_epoch)
+        except Exception as exc:                             # noqa: BLE001
+            _logger.error(
+                "sessions_revoked_at for user %s could not be compared with the "
+                "token's iat; refusing the request", auth_user_id, exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Your session could not be verified. Please sign in again.",
+            ) from exc
+        if issued_before_revocation:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Session revoked. Please sign in again.",
+            )
+
+    _refuse_a_session_signed_out_from_elsewhere(user_data, payload, auth_user_id)
+
+
+def refuse_a_member_whose_session_has_ended(auth_user_id: str, claims: Mapping[str, Any]) -> None:
+    """For a route that answers from a member's own row WITHOUT `get_current_user` (the invitation's repeat-accept, which authenticates with the
+    token alone because the caller may have no row yet): read the member and their firm as `get_current_user` reads them and refuse as it does
+    (POST-A-498). Nothing happens for a sign-in that has no member row, so a stranger's answer is unchanged. `claims` are the token's session
+    claims (`get_jwt_user` returns them as `session_claims`); absent claims are read as a token showing nothing, which fails closed wherever a
+    revocation exists. In the development fallback (no SUPABASE_URL) there is no member table to ask, which is what `get_current_user` does too."""
+    if not os.environ.get("SUPABASE_URL"):
+        return
+    user_data, firm_row = _get_user_and_firm(get_service_supabase(), auth_user_id)
+    if not user_data:
+        return
+    _refuse_an_ended_session(user_data, firm_row, claims or {}, auth_user_id)
 
 
 def get_current_user(
@@ -349,60 +510,15 @@ def get_current_user(
     user_data, firm_row = _get_user_and_firm(supabase, auth_user_id)
 
     if not user_data:
+        _refuse_a_closed_firms_person(supabase, auth_user_id, payload)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User not found in firm. Contact your firm administrator.",
         )
 
-    # M1 — Active-user enforcement: a disabled account must not continue to
-    # operate through a still-valid (unexpired) JWT. is_active defaults True so
-    # rows predating the column are unaffected; only an explicit False blocks.
-    if user_data.get("is_active") is False:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account disabled. Contact your firm administrator.",
-        )
-
-    # Platform Admin enforcement: a suspended or soft-deleted firm blocks ALL of
-    # its users. Enforced centrally here so every firm endpoint is gated at once.
-    if firm_row:
-        if firm_row.get("deleted_at"):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Firm unavailable")
-        if firm_row.get("is_active") is False:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Firm suspended")
-
-    # M6 — Session revocation / forced logout: reject any token issued before the
-    # account's sessions_revoked_at instant (set by suspend / force-logout / global
-    # logout). Compares the JWT 'iat' (issued-at) against the stored timestamp.
-    #
-    # FAILS CLOSED (SECURITY-PRIVACY-21). This used to `except Exception: pass`
-    # around the comparison, on the reasoning that "an unparseable timestamp must
-    # never hard-fail auth" — so a sessions_revoked_at nobody could read let a
-    # token through that the account's own owner had revoked, and silently: the
-    # one request that should have been refused answered 200. A revocation is a
-    # security decision somebody made; a value the code cannot read is not
-    # evidence it was withdrawn. The comparison is also no longer skipped for a
-    # token with no `iat` (now a required claim, but `iat: 0` is falsy and a test
-    # double can omit it): if a revocation exists and the token cannot show when
-    # it was issued, it cannot show it was issued after.
-    revoked_at = user_data.get("sessions_revoked_at")
-    if revoked_at:
-        try:
-            revoked_epoch = _instant_epoch(revoked_at)
-            issued_before_revocation = float(payload["iat"]) < revoked_epoch
-        except Exception:                                    # noqa: BLE001
-            _logger.error(
-                "sessions_revoked_at for user %s could not be compared with the "
-                "token's iat; refusing the request", auth_user_id, exc_info=True)
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Your session could not be verified. Please sign in again.",
-            )
-        if issued_before_revocation:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Session revoked. Please sign in again.",
-            )
+    # The four refusals every route behind this dependency makes (a disabled account, a closed or suspended firm, a revocation of every session,
+    # a session signed out from elsewhere), in one function that the invitation's repeat-accept asks as well (POST-A-498).
+    _refuse_an_ended_session(user_data, firm_row, payload, auth_user_id)
 
     # M1 — default to least-privileged staff role (not silently Executive) when a
     # row somehow has no role; never silently grant elevated access.
@@ -426,6 +542,9 @@ def get_current_user(
         # M6 — MFA assurance level from the Supabase JWT (aal1 = password only,
         # aal2 = MFA satisfied). Used by require_mfa() when REQUIRE_MFA is enabled.
         "aal": payload.get("aal", "aal1"),
+        # POST-A-486 — the sign-in service's id for THIS session (None for a token that carries none), so a sign-in can be told
+        # from the person's other devices and "sign out my other sessions" can keep this one.
+        "session_id": auth_time.session_id_of(payload),
         "access_token": token,
         # Per-person access overrides (migration 403). `core.permissions.can_user`
         # reads this key, so it must be present on EVERY principal rbac() can
@@ -466,7 +585,15 @@ def get_jwt_user(authorization: Optional[str] = Header(default=None)) -> dict:
     if not auth_user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token missing sub claim")
 
-    return {"auth_user_id": auth_user_id, "email": payload.get("email", ""), "aal": payload.get("aal", "aal1")}
+    return {
+        "auth_user_id": auth_user_id, "email": payload.get("email", ""), "aal": payload.get("aal", "aal1"),
+        # When an authenticator code was last entered in this session (POST-A-484): the platform admin's destructive
+        # actions ask for one entered in the last five minutes.
+        "last_authenticator_code_at": auth_time.last_authenticator_code_epoch(payload),
+        # The claims the session rules read and nothing else of the token (POST-A-498): the one route that answers from a member's row
+        # with this dependency asks `refuse_a_member_whose_session_has_ended` with them.
+        "session_claims": {k: payload[k] for k in ("iat", "amr", "session_id") if k in payload},
+    }
 
 
 def require_mfa(current_user: dict = Header(default=None)) -> dict:  # pragma: no cover - thin wrapper

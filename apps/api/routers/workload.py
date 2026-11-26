@@ -4,7 +4,9 @@ from typing import Optional
 from models.common import api_response
 from core.permissions import rbac
 from core.authz import filter_by_client
-from domain.practice import task_estimate
+from domain.practice import obligation_estimate, task_estimate
+from repositories.compliance_effort_repository import compliance_effort_repo
+from core.db_paging import fetch_all
 from repositories.capacity_repository import capacity_repo, DEFAULT_WEEKLY_HOURS, DEFAULT_MAX_TASKS
 from services import capacity_risk_service
 
@@ -83,6 +85,85 @@ def set_capacity(body: CapacityUpdate, current_user: dict = Depends(rbac("worklo
         # Not a member of this firm: the same answer for a person who does not exist and one who belongs to another firm.
         raise HTTPException(status_code=404, detail="User not found") from None
     return api_response(True, {"capacity": record})
+
+
+#: What the utilisation on Team Overview and Team Workload counts, served with it so the card says it (POST-A-453). A person's
+#: capacity is the same whoever's client the hour was for, so the hours are every client's; a member who can open only some
+#: clients is told that rather than reading the figure as their clients' alone. No client is named in it.
+UTILISATION_COUNTS = (
+    "For a person who logged time since Monday, counts every hour they logged, on every client of the practice, "
+    "not only the clients you can open. For a person who logged none, counts their open tasks against their task limit, "
+    "on the clients you can open."
+)
+
+
+class ObligationEstimateIn(BaseModel):
+    compliance_type: str
+    estimated_minutes: int
+
+
+def _refuse_type(value: str) -> str:
+    cleaned = obligation_estimate.clean_type(value)
+    if cleaned is None:
+        raise HTTPException(status_code=422, detail=obligation_estimate.TYPE_PROBLEM)
+    return cleaned
+
+
+@router.get("/obligation-estimates")
+def list_obligation_estimates(current_user: dict = Depends(rbac("workload", "read"))):
+    """What this practice says one filing of each obligation type takes (POST-A-212), with the types its calendar holds that have no
+    figure yet, so a screen can ask for them. Nothing is defaulted: a type with no figure is an unknown, and the forecast counts it as
+    an item without an estimate. Firm-wide names only (no client, no count per client), read for the firm's own calendar."""
+    firm_id = current_user["firm_id"]
+    rows = compliance_effort_repo.find_all(firm_id=firm_id)
+    recorded = {r["compliance_type"] for r in rows}
+    calendar = fetch_all(
+        lambda: _get_db().table("compliance_calendar").select("id, compliance_type, client_id").eq("firm_id", firm_id),
+        label="workload.obligation_estimate_types")
+    seen = sorted({str(o["compliance_type"]) for o in filter_by_client(current_user, calendar)
+                   if o.get("compliance_type")} - recorded)
+    return api_response(True, {
+        "estimates": [{"compliance_type": r["compliance_type"], "estimated_minutes": r["estimated_minutes"],
+                       "updated_at": r.get("updated_at")} for r in rows],
+        "types_without_an_estimate": seen,
+        "max_minutes": obligation_estimate.MAX_MINUTES,
+    })
+
+
+@router.put("/obligation-estimates")
+def set_obligation_estimate(body: ObligationEstimateIn, current_user: dict = Depends(rbac("workload", "write"))):
+    """Record how long one filing of an obligation type takes here, in whole minutes (> 0). The firm's own statement; it changes the
+    capacity forecast only, and no due date, filing or figure of any client."""
+    kind = _refuse_type(body.compliance_type)
+    try:
+        minutes = obligation_estimate.check_minutes(body.estimated_minutes)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    row = compliance_effort_repo.upsert(current_user["firm_id"], kind, minutes, current_user.get("id"))
+    _audit(current_user, "obligation_estimate_set", row.get("id") or kind, {"compliance_type": kind, "estimated_minutes": minutes})
+    return api_response(True, {"estimate": {"compliance_type": kind, "estimated_minutes": minutes}})
+
+
+@router.delete("/obligation-estimates")
+def clear_obligation_estimate(compliance_type: str = Query(...), current_user: dict = Depends(rbac("workload", "write"))):
+    """Take a figure back: the type is an unknown again, not zero minutes."""
+    kind = _refuse_type(compliance_type)
+    if not compliance_effort_repo.delete(current_user["firm_id"], kind):
+        raise HTTPException(status_code=404, detail="No figure is recorded for that kind of filing.")
+    _audit(current_user, "obligation_estimate_cleared", kind, {"compliance_type": kind})
+    return api_response(True, {"cleared": kind})
+
+
+def _audit(current_user: dict, event: str, entity_id: str, data: dict) -> None:
+    """The audit row names the person by their sign-in id (`audit_log.actor_id` takes the auth id). A lost row is reported, not raised:
+    the figure is a planning aid and the row is kept by the database either way."""
+    try:
+        from services.audit_service import log_event
+        log_event(current_user["firm_id"], "compliance_effort_estimate", str(entity_id), event,
+                  actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"), new_data=data)
+    except Exception as exc:  # noqa: BLE001
+        from core.observability import capture_soft_failure
+        capture_soft_failure(exc, operation="workload.obligation_estimate.audit", firm_id=current_user.get("firm_id"))
 
 
 def _minutes_logged_this_week(db, firm_id: str) -> dict[str, int]:
@@ -265,6 +346,7 @@ def get_team_workload(current_user: dict = Depends(rbac("workload", "read"))):
         "overloaded_count": len(overloaded),
         "underutilised_count": len(underutilised),
         "avg_utilisation_pct": avg_util,
+        "utilisation_counts": UTILISATION_COUNTS,
         "unassigned": {
             "count": len(unassigned_tasks),
             "estimated_minutes": unassigned_expected.minutes,

@@ -63,11 +63,18 @@ EVERY ROW, PAGED (reports-documents-04)
     REPORT. It is the stop-gap that makes the figures complete; the proper
     shape is a server-side answer per report: the outstanding report filtered
     in the query on `outstanding_paise > 0` (the `ar_aging` shape migration 278
-    enabled), and the P&L off `account_period_balances`.
+    enabled). The P&L Statement no longer reads this feed: since migration
+    745 its sums by party are public.report_party_totals (`party_totals`
+    below), with the Python rule as the fallback (POST-A-469).
 """
 from typing import Any, Optional
 
+import logging
+
 from core.db_paging import fetch_all, fetch_all_in
+from domain.reporting import party_totals as party_totals_rule
+
+_logger = logging.getLogger("caflow.reports.party_totals")
 
 
 # Statuses that represent a real transaction, per source table. Kept as explicit
@@ -75,6 +82,9 @@ from core.db_paging import fetch_all, fetch_all_in
 # closed — it is excluded until someone decides where it belongs.
 _SALES_COUNTED = {"issued", "partially_paid", "paid"}
 _PURCHASE_COUNTED = {"received", "partially_paid", "paid"}
+# A CGST section 34 note counts once issued (a credit note's CHECK also allows "applied"); a draft is not yet a document
+# and a soft-deleted one is gone. The same rule public.report_party_totals applies (migration 766).
+_NOTE_COUNTED = {"issued", "applied"}
 
 
 def _party_names(db, table: str, ids: set[str], firm_id: str) -> dict[str, str]:
@@ -107,22 +117,12 @@ def _outstanding(row: dict) -> int:
     return max(0, int(row.get("outstanding_paise") or 0))
 
 
-def list_transactions(db, firm_id: str, *, client_ids: Optional[list[str]] = None,
-                      date_from: Optional[str] = None,
-                      date_to: Optional[str] = None) -> list[dict[str, Any]]:
-    """Sales invoices and purchase bills as one list, newest first.
+def _counted_rows(db, firm_id: str, client_ids: Optional[list[str]],
+                  date_from: Optional[str], date_to: Optional[str]) -> tuple[list[dict], list[dict]]:
+    """Every counted sales invoice and purchase bill in the window, paged.
 
-    `client_ids` None means every client in the firm; the caller is responsible
-    for having narrowed it to the caller's assigned clients first.
+    The one definition of which documents a report counts, read by the feed and by the P&L's Python twin alike.
     """
-    # Checked BEFORE any query is built: a caller assigned to zero clients gets
-    # an empty list, and touching the tables at all would be wasted work whose
-    # only possible outcome is []. Also guards against `.in_("client_id", [])`,
-    # whose behaviour on an empty list is not something to depend on when the
-    # wrong answer is "every client in the firm".
-    if client_ids is not None and not client_ids:
-        return []
-
     # Each page is a FRESH builder carrying every filter — fetch_all calls
     # this once per page and adds its own `id > cursor ORDER BY id`, so reusing
     # one builder would stack each page's cursor on the last. `id` is in both
@@ -159,8 +159,27 @@ def list_transactions(db, firm_id: str, *, client_ids: Optional[list[str]] = Non
             q = q.lte("bill_date", date_to)
         return q
 
-    sales = fetch_all(sales_page, key="id", label="reports.transactions.sales")
-    bills = fetch_all(bills_page, key="id", label="reports.transactions.bills")
+    return (fetch_all(sales_page, key="id", label="reports.transactions.sales"),
+            fetch_all(bills_page, key="id", label="reports.transactions.bills"))
+
+
+def list_transactions(db, firm_id: str, *, client_ids: Optional[list[str]] = None,
+                      date_from: Optional[str] = None,
+                      date_to: Optional[str] = None) -> list[dict[str, Any]]:
+    """Sales invoices and purchase bills as one list, newest first.
+
+    `client_ids` None means every client in the firm; the caller is responsible
+    for having narrowed it to the caller's assigned clients first.
+    """
+    # Checked BEFORE any query is built: a caller assigned to zero clients gets
+    # an empty list, and touching the tables at all would be wasted work whose
+    # only possible outcome is []. Also guards against `.in_("client_id", [])`,
+    # whose behaviour on an empty list is not something to depend on when the
+    # wrong answer is "every client in the firm".
+    if client_ids is not None and not client_ids:
+        return []
+
+    sales, bills = _counted_rows(db, firm_id, client_ids, date_from, date_to)
 
     customers = _party_names(db, "customers",
                              {str(r["customer_id"]) for r in sales if r.get("customer_id")},
@@ -224,6 +243,119 @@ def list_transactions(db, firm_id: str, *, client_ids: Optional[list[str]] = Non
     # which would make a report look different on every refresh.
     out.sort(key=lambda t: (t["transaction_date"] or "", t["id"]), reverse=True)
     return out
+
+
+def party_totals(db, firm_id: str, *, client_ids: Optional[list[str]] = None,
+                 date_from: Optional[str] = None, date_to: Optional[str] = None) -> dict[str, Any]:
+    """The firm Reports page's P&L Statement: taxable value by party, with both totals (POST-A-469).
+
+    public.report_party_totals (migrations 745 and 766) answers it where the rows are, net of the issued credit and debit
+    notes (POST-A-502); an answer from before 766 lacks the three note keys and a screen then says nothing about notes. The Python rule
+    (domain/reporting/party_totals.py) answers it from the paged rows only where the function cannot be reached: mock
+    mode, and the minutes the API runs before the migration has. It is logged at ERROR when it is, because it reads
+    every counted document, which the reporting rule forbids in production; tests/test_report_party_totals_parity_pg.py
+    holds the two identical.
+
+    `db` must be the API's privileged client: the function is executable by the service role alone, and the route has
+    already asked whether the caller may read each client in `client_ids`. `client_ids` None means every client of the
+    firm; an empty list means none, and nothing is read.
+    """
+    if client_ids is not None and not client_ids:
+        return party_totals_rule.party_totals([], [], customer_names={}, vendor_names={})
+
+    if hasattr(db, "rpc"):
+        try:
+            res = db.rpc("report_party_totals", {
+                "p_firm": firm_id, "p_client_ids": client_ids,
+                "p_from": date_from, "p_to": date_to,
+            }).execute()
+            out = getattr(res, "data", None)
+            if isinstance(out, dict) and "revenue" in out and "expenses" in out:
+                return out
+            raise ValueError(f"report_party_totals returned {type(out).__name__}, not an answer")
+        except Exception as e:                              # noqa: BLE001 — the twin answers instead, loudly
+            _logger.error("report_party_totals failed (%s) — falling back to the Python rule: %s", firm_id, e)
+
+    sales, bills = _counted_rows(db, firm_id, client_ids, date_from, date_to)
+    notes = _counted_note_rows(db, firm_id, client_ids, date_from, date_to)
+    customers = _party_names(
+        db, "customers",
+        {str(r["customer_id"]) for r in [*sales, *notes["sales_credit_notes"], *notes["sales_debit_notes"]] if r.get("customer_id")},
+        firm_id)
+    vendors = _party_names(
+        db, "vendors",
+        {str(r["vendor_id"]) for r in [*bills, *notes["purchase_debit_notes"], *notes["purchase_credit_notes"]] if r.get("vendor_id")},
+        firm_id)
+    return party_totals_rule.party_totals(sales, bills, customer_names=customers, vendor_names=vendors, **notes)
+
+
+# The four note reads, one function each with the table, columns and filters as literals: a table or column named by a variable is
+# invisible to tests/test_backend_columns_exist_pg.py, which checks every literal name against the real schema.
+def _credit_notes_page(db, firm_id, client_ids, date_from, date_to):
+    q = (db.table("credit_notes").select("id, client_id, customer_id, credit_note_date, taxable_amount_paise, status")
+         .eq("firm_id", firm_id).is_("deleted_at", "null").in_("status", sorted(_NOTE_COUNTED)))
+    if client_ids is not None:
+        q = q.in_("client_id", client_ids)
+    if date_from:
+        q = q.gte("credit_note_date", date_from)
+    if date_to:
+        q = q.lte("credit_note_date", date_to)
+    return q
+
+
+def _sales_debit_notes_page(db, firm_id, client_ids, date_from, date_to):
+    q = (db.table("sales_debit_notes").select("id, client_id, customer_id, debit_note_date, taxable_amount_paise, status")
+         .eq("firm_id", firm_id).is_("deleted_at", "null").in_("status", sorted(_NOTE_COUNTED)))
+    if client_ids is not None:
+        q = q.in_("client_id", client_ids)
+    if date_from:
+        q = q.gte("debit_note_date", date_from)
+    if date_to:
+        q = q.lte("debit_note_date", date_to)
+    return q
+
+
+def _purchase_debit_notes_page(db, firm_id, client_ids, date_from, date_to):
+    q = (db.table("debit_notes").select("id, client_id, vendor_id, debit_note_date, taxable_amount_paise, status")
+         .eq("firm_id", firm_id).is_("deleted_at", "null").in_("status", sorted(_NOTE_COUNTED)))
+    if client_ids is not None:
+        q = q.in_("client_id", client_ids)
+    if date_from:
+        q = q.gte("debit_note_date", date_from)
+    if date_to:
+        q = q.lte("debit_note_date", date_to)
+    return q
+
+
+def _purchase_credit_notes_page(db, firm_id, client_ids, date_from, date_to):
+    q = (db.table("purchase_credit_notes").select("id, client_id, vendor_id, credit_note_date, taxable_amount_paise, status")
+         .eq("firm_id", firm_id).is_("deleted_at", "null").in_("status", sorted(_NOTE_COUNTED)))
+    if client_ids is not None:
+        q = q.in_("client_id", client_ids)
+    if date_from:
+        q = q.gte("credit_note_date", date_from)
+    if date_to:
+        q = q.lte("credit_note_date", date_to)
+    return q
+
+
+def _counted_note_rows(db, firm_id: str, client_ids: Optional[list[str]],
+                       date_from: Optional[str], date_to: Optional[str]) -> dict[str, list[dict]]:
+    """The four kinds of CGST section 34 note the P&L Statement nets, in the window, paged (POST-A-502).
+
+    A sales credit note reduces revenue and a sales debit note increases it; a purchase debit note reduces expense and a
+    purchase credit note increases it, which is how the ledger posts them. Each is read by its own date, for the clients
+    asked for, issued (or applied) and not deleted: the rule public.report_party_totals applies in SQL.
+    """
+    # Each read is a function that builds a FRESH query, which `fetch_all` calls once per page.
+    where = (db, firm_id, client_ids, date_from, date_to)
+    return {
+        "sales_credit_notes": fetch_all(lambda: _credit_notes_page(*where), key="id", label="reports.party_totals.credit_notes"),
+        "sales_debit_notes": fetch_all(lambda: _sales_debit_notes_page(*where), key="id", label="reports.party_totals.sales_debit_notes"),
+        "purchase_debit_notes": fetch_all(lambda: _purchase_debit_notes_page(*where), key="id", label="reports.party_totals.debit_notes"),
+        "purchase_credit_notes": fetch_all(lambda: _purchase_credit_notes_page(*where), key="id",
+                                           label="reports.party_totals.purchase_credit_notes"),
+    }
 
 
 def gst_summary(db, firm_id: str, client_id: str, month: str) -> dict[str, Any]:

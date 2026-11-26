@@ -1,0 +1,602 @@
+{
+ "gstr1_from_books": {
+  "amendments": {
+   "already_declared": [],
+   "carry_forward": [],
+   "closing_soon": [],
+   "counts": {
+    "already_declared": 0,
+    "amendments": 0,
+    "carry_forward": 0,
+    "closing_soon_periods": 0,
+    "expired_periods": 0,
+    "needs_decision": 0,
+    "source_periods": 0
+   },
+   "expired": [],
+   "included": true,
+   "needs_decision": [],
+   "sections": [],
+   "source_periods": []
+  },
+  "ca_review_required": true,
+  "cess_gaps": [],
+  "gstin": "27AAACA1234A1ZK",
+  "invoice_count": 1,
+  "payload": {
+   "b2b": [
+    {
+     "ctin": "27BBBBB1111B1ZN",
+     "inv": [
+      {
+       "idt": "10-09-2026",
+       "inum": "INV-0001",
+       "inv_typ": "R",
+       "itms": [
+        {
+         "itm_det": {
+          "camt": 900.0,
+          "csamt": 0.0,
+          "iamt": 0.0,
+          "rt": 0.0,
+          "samt": 900.0,
+          "txval": 10000.0
+         },
+         "num": 1
+        }
+       ],
+       "pos": "27",
+       "rchrg": "N",
+       "val": 11800.0
+      }
+     ]
+    }
+   ],
+   "cur_gt": 10000.0,
+   "doc_issue": {
+    "doc_det": [
+     {
+      "doc_num": 1,
+      "doc_typ": "Invoices for outward supply",
+      "docs": [
+       {
+        "cancel": 0,
+        "from": "INV-0001",
+        "net_issue": 1,
+        "num": 1,
+        "to": "INV-0001",
+        "totnum": 1
+       }
+      ]
+     }
+    ]
+   },
+   "fp": "092026",
+   "gstin": "27AAACA1234A1ZK",
+   "gt": 0.0
+  },
+  "payload_gaps": [
+   {
+    "hsn_sc": "",
+    "kind": "hsn_digits_below_requirement",
+    "reason": "no HSN or SAC code \u2014 6 digits are required (Notification 78/2020-Central Tax). Table 12 files the code exactly as recorded \u2014 correct it on the invoice line or on the product in the catalogue.",
+    "reference_no": "INV-0001",
+    "withheld": false
+   },
+   {
+    "hsn_sc": "",
+    "kind": "hsn_aggregate_turnover_not_recorded",
+    "reason": "The client's aggregate turnover for the preceding financial year is not recorded, so the strictest HSN requirement is shown. CGST \u00a72(6) aggregate turnover is all-India on the PAN and includes exempt supplies and exports, so it cannot be derived from one client's books \u2014 record it on the client's GST settings.",
+    "reference_no": "",
+    "withheld": false
+   }
+  ],
+  "period": "092026",
+  "period_window": {
+   "end": "2026-09-30",
+   "frequency": "monthly",
+   "key": "092026",
+   "label": "September 2026",
+   "months": [
+    "092026"
+   ],
+   "months_covered": 1,
+   "requested": "092026",
+   "start": "2026-09-01"
+  },
+  "reconciliation": {
+   "net_output_gst": {
+    "books_paise": 180000,
+    "difference_paise": 0,
+    "ledger_paise": 180000,
+    "matched": true
+   },
+   "reconciled": true
+  },
+  "source": "posted_general_ledger",
+  "summary": {
+   "counts": {
+    "b2b": 1,
+    "b2cl": 0,
+    "b2cs_rate_groups": 0,
+    "credit_notes_registered": 0,
+    "credit_notes_unregistered": 0,
+    "deemed_exports": 0,
+    "exports": 0,
+    "nil_exempt": 0,
+    "sez": 0
+   },
+   "gstin": "27AAACA1234A1ZK",
+   "period": "092026",
+   "totals_rupees": {
+    "cgst": 900.0,
+    "igst": 0.0,
+    "sgst": 900.0,
+    "taxable": 10000.0
+   }
+  },
+  "table_13_coverage": {
+   "challans": {
+    "by_reason": [],
+    "count": 0,
+    "note": "The books record no delivery challan issued in this period. Drafts and cancelled challans are not counted.",
+    "read": true
+   },
+   "declared_natures": [
+    "Invoices for outward supply",
+    "Debit Note",
+    "Credit Note"
+   ],
+   "not_read_natures": [
+    "Invoices for inward supply from unregistered person",
+    "Revised Invoice",
+    "Receipt Voucher",
+    "Payment Voucher",
+    "Refund Voucher",
+    "Delivery Challan for job work",
+    "Delivery Challan for supply on approval",
+    "Delivery Challan in case of liquid gas",
+    "Delivery Challan in case other than by way of supply (excluding at S no. 9 to 11)"
+   ],
+   "note": "This build reads 3 natures of document for Table 13: Invoices for outward supply, Debit Note and Credit Note. It did not look for the other 9 natures the form lists: Invoices for inward supply from unregistered person; Revised Invoice; Receipt Voucher; Payment Voucher; Refund Voucher; Delivery Challan for job work; Delivery Challan for supply on approval; Delivery Challan in case of liquid gas; Delivery Challan in case other than by way of supply (excluding at S no. 9 to 11). If this client issued any of them in the period, they are not in this return. Whether they fall to be declared is for the CA to settle against the form."
+  },
+  "tax_total_paise": 180000,
+  "taxable_total_paise": 1000000,
+  "total_cess_paise": 0,
+  "total_cgst_paise": 90000,
+  "total_igst_paise": 0,
+  "total_sgst_paise": 90000,
+  "validation_errors": [],
+  "validation_warnings": []
+ },
+ "gstr1_submitted_obligation": {
+  "082026": {
+   "closed": false,
+   "message": "No GSTR-1 obligation for August 2026 is on the compliance calendar, so none was closed.",
+   "obligation_id": null,
+   "state": "not_on_the_calendar"
+  },
+  "092026": {
+   "closed": false,
+   "message": "No GSTR-1 obligation for September 2026 is on the compliance calendar, so none was closed.",
+   "obligation_id": null,
+   "state": "not_on_the_calendar"
+  }
+ },
+ "gstr3b_from_books": {
+  "bank_line_caveats": [],
+  "ca_review_required": true,
+  "cash_payable_paise": 90000,
+  "credit_ledger": {
+   "closing": {
+    "cess_paise": 0,
+    "cgst_paise": 0,
+    "igst_paise": 0,
+    "sgst_paise": 0,
+    "total_paise": 0
+   },
+   "closing_as_of": "2026-09-30",
+   "note": "The electronic credit ledger is a running balance and is per GSTIN. The closing figure is what THIS return computed; it moves the portal's ledger only once the return is filed there.",
+   "opening": {
+    "balance": {
+     "cess_paise": 0,
+     "cgst_paise": 0,
+     "igst_paise": 0,
+     "sgst_paise": 0,
+     "total_paise": 0
+    },
+    "chain": null,
+    "known": false,
+    "label": "Not recorded \u2014 assumed nil",
+    "recorded": null,
+    "recorded_minus_chain": null,
+    "sentences": [
+     "No opening balance of the electronic credit ledger is recorded for this return, and no earlier return saved here carries one forward. The set-off below assumes the ledger held NOTHING at the start of the period. If the portal shows credit brought forward, record it and compute again: credit in the ledger pays output tax before any cash is due (CGST Act s.49(4)), so this cash figure may be higher than what is actually payable. It cannot be lower."
+    ],
+    "source": "not_recorded",
+    "window_start": "2026-09-01"
+   }
+  },
+  "disposal_caveats": [],
+  "gstin": "27AAACA1234A1ZK",
+  "gstr1_tie_out": {
+   "ca_review_required": true,
+   "draft_exists": false,
+   "gaps": [
+    "A GSTR-1A or an IFF filed on the portal is not held here, and either could already have changed what the portal shows in Table 3.1 for this period."
+   ],
+   "gstin": "27AAACA1234A1ZK",
+   "message": "This period's GSTR-1 has not been filed, so the portal has nothing to fill Table 3.1 from yet and there is nothing to compare this build against. That is not the same as the two agreeing.",
+   "period": "092026",
+   "portal_locks_outward_tables": true,
+   "registration_caveat": null,
+   "status": "not_filed",
+   "verified": false
+  },
+  "itc_carried_forward_paise": 0,
+  "itc_claimed_paise": 90000,
+  "late_filing": {
+   "available": false,
+   "reason": "Interest and the late fee are computed once the filing date is known. A return being prepared has none, and using today's date would give the figure a value that changes every day the return is not filed."
+  },
+  "months_without_gstr2b": [
+   "092026"
+  ],
+  "net_tax_paise": 90000,
+  "payload": {
+   "eco_dtls": {
+    "eco_reg_sup": {
+     "camt": 0,
+     "csamt": 0,
+     "iamt": 0,
+     "samt": 0,
+     "txval": 0
+    },
+    "eco_sup": {
+     "camt": 0,
+     "csamt": 0,
+     "iamt": 0,
+     "samt": 0,
+     "txval": 0
+    }
+   },
+   "gstin": "27AAACA1234A1ZK",
+   "inter_sup": {
+    "comp_details": [],
+    "uin_details": [],
+    "unreg_details": []
+   },
+   "intr_ltfee": {
+    "fee_details": {
+     "camt": 0,
+     "csamt": 0,
+     "iamt": 0,
+     "samt": 0
+    },
+    "intr_details": {
+     "camt": 0,
+     "csamt": 0,
+     "iamt": 0,
+     "samt": 0
+    }
+   },
+   "inward_sup": {
+    "isup_details": [
+     {
+      "inter": 0,
+      "intra": 0,
+      "ty": "GST"
+     },
+     {
+      "inter": 0,
+      "intra": 0,
+      "ty": "NONGST"
+     }
+    ]
+   },
+   "itc_elg": {
+    "itc_avl": [
+     {
+      "camt": 0,
+      "csamt": 0,
+      "iamt": 0,
+      "samt": 0,
+      "ty": "IMPG"
+     },
+     {
+      "camt": 0,
+      "csamt": 0,
+      "iamt": 0,
+      "samt": 0,
+      "ty": "IMPS"
+     },
+     {
+      "camt": 0,
+      "csamt": 0,
+      "iamt": 0,
+      "samt": 0,
+      "ty": "ISRC"
+     },
+     {
+      "camt": 0,
+      "csamt": 0,
+      "iamt": 0,
+      "samt": 0,
+      "ty": "ISD"
+     },
+     {
+      "camt": 450,
+      "csamt": 0,
+      "iamt": 0,
+      "samt": 450,
+      "ty": "OTH"
+     }
+    ],
+    "itc_inelg": [
+     {
+      "camt": 0,
+      "csamt": 0,
+      "iamt": 0,
+      "samt": 0,
+      "ty": "RUL"
+     },
+     {
+      "camt": 0,
+      "csamt": 0,
+      "iamt": 0,
+      "samt": 0,
+      "ty": "OTH"
+     }
+    ],
+    "itc_net": {
+     "camt": 450,
+     "csamt": 0,
+     "iamt": 0,
+     "samt": 450
+    },
+    "itc_rev": [
+     {
+      "camt": 0,
+      "csamt": 0,
+      "iamt": 0,
+      "samt": 0,
+      "ty": "RUL"
+     },
+     {
+      "camt": 0,
+      "csamt": 0,
+      "iamt": 0,
+      "samt": 0,
+      "ty": "OTH"
+     }
+    ]
+   },
+   "ret_period": "092026",
+   "sup_details": {
+    "isup_rev": {
+     "camt": 0,
+     "csamt": 0,
+     "iamt": 0,
+     "samt": 0,
+     "txval": 0
+    },
+    "osup_det": {
+     "camt": 900,
+     "csamt": 0,
+     "iamt": 0,
+     "samt": 900,
+     "txval": 10000
+    },
+    "osup_nil_exmp": {
+     "txval": 0
+    },
+    "osup_nongst": {
+     "txval": 0
+    },
+    "osup_zero": {
+     "camt": 0,
+     "csamt": 0,
+     "iamt": 0,
+     "samt": 0,
+     "txval": 0
+    }
+   }
+  },
+  "period": "092026",
+  "period_window": {
+   "end": "2026-09-30",
+   "frequency": "monthly",
+   "key": "092026",
+   "label": "September 2026",
+   "months": [
+    "092026"
+   ],
+   "months_covered": 1,
+   "requested": "092026",
+   "start": "2026-09-01"
+  },
+  "rcm_cash_paise": 0,
+  "reconciliation": {
+   "asset_disposals": {
+    "count": 0,
+    "output_tax_paise": 0,
+    "taxable_value_paise": 0
+   },
+   "bank_lines": {
+    "inward_line_count": 0,
+    "itc_paise": 0,
+    "output_tax_paise": 0,
+    "outward_line_count": 0
+   },
+   "itc": {
+    "books_paise": 90000,
+    "difference_paise": 0,
+    "ledger_paise": 90000,
+    "matched": true
+   },
+   "ledger_by_head": {
+    "cgst": 90000,
+    "igst": 0,
+    "input": 90000,
+    "sgst": 90000
+   },
+   "output_gst": {
+    "advance_tax_excluded_paise": 0,
+    "books_paise": 180000,
+    "difference_paise": 0,
+    "ledger_paise": 180000,
+    "matched": true
+   },
+   "reconciled": true
+  },
+  "registration_caveat": null,
+  "source": "posted_general_ledger",
+  "table_4a_gaps": [
+   {
+    "label": "Inward supplies from ISD",
+    "reason": "An Input Service Distributor invoice is a document type this product does not model, so a distribution from a head office reaches no register here. Enter it on the portal.",
+    "row": "4(A)(4)"
+   }
+  ],
+  "tax_liability_paise": 180000,
+  "undeclarable_rows": [
+   {
+    "label": "Inward supplies from ISD",
+    "reason": "An Input Service Distributor invoice is a document type this product does not model, so a distribution from a head office reaches no register here. Enter it on the portal.",
+    "row": "4(A)(4)"
+   },
+   {
+    "label": "Supplies on which the e-commerce operator pays the tax (\u00a79(5))",
+    "reason": "Nothing here marks a supply as made through an electronic commerce operator, and neither side of \u00a79(5) is modelled, so both 3.1.1 rows are nil. A client supplying through one has to enter these on the portal.",
+    "row": "3.1.1(i)"
+   },
+   {
+    "label": "Supplies made through an e-commerce operator (\u00a79(5))",
+    "reason": "The same gap seen from the supplier's side, and it is the one to check: a supply made through an operator has been counted in 3.1(a) here like any other outward supply, because nothing tells the two apart. Where a client sells through an operator, both this row and what 3.1(a) already carries need looking at on the portal.",
+    "row": "3.1.1(ii)"
+   },
+   {
+    "label": "Exempt, nil-rated and non-GST INWARD supplies",
+    "reason": "A purchase bill is not classified as exempt, nil-rated or non-GST on the inward side here, so this row is nil. It is a disclosure only \u2014 no tax turns on it \u2014 but the portal expects the values.",
+    "row": "5"
+   },
+   {
+    "label": "Ineligible ITC under \u00a716(4) and the place-of-supply rules",
+    "reason": "Neither limb is tracked here, so the row is nil. \u00a717(5) is deliberately NOT in it: Circular 170/02/2022-GST puts that reversal in Table 4(B) and says reporting it in 4(D) as well overstates the ineligible credit shown against the taxpayer. So a nil here does not mean no blocked credit \u2014 that is in 4(B)(1).",
+    "row": "4(D)(2)"
+   }
+  ],
+  "validation_errors": [],
+  "validation_warnings": [],
+  "working": {
+   "advances_11": {
+    "cgst_paise": 0,
+    "igst_paise": 0,
+    "rule": "CGST Act s.13(2); Notification 66/2017-Central Tax",
+    "sgst_paise": 0,
+    "taxable_value_paise": 0
+   },
+   "inter_state_3_2": {
+    "composition": {},
+    "uin": {},
+    "unregistered": {}
+   },
+   "itc": {
+    "avail_cgst_paise": 45000,
+    "avail_igst_paise": 0,
+    "avail_sgst_paise": 45000,
+    "cgst_paise": 45000,
+    "igst_paise": 0,
+    "net_cgst_paise": 45000,
+    "net_igst_paise": 0,
+    "net_sgst_paise": 45000,
+    "sgst_paise": 45000
+   },
+   "itc_reversal": {
+    "permanent_paise": {
+     "cess_paise": 0,
+     "cgst_paise": 0,
+     "igst_paise": 0,
+     "sgst_paise": 0
+    },
+    "reasons": [],
+    "reclaimable_paise": {
+     "cess_paise": 0,
+     "cgst_paise": 0,
+     "igst_paise": 0,
+     "sgst_paise": 0
+    }
+   },
+   "itc_utilisation": {
+    "available_paise": 90000,
+    "carried_forward_paise": 0,
+    "consumed_paise": 90000
+   },
+   "net_payable": {
+    "cgst_paise": 45000,
+    "challan_total_paise": 90000,
+    "igst_paise": 0,
+    "rcm_cash_paise": 0,
+    "sgst_paise": 45000,
+    "total_paise": 90000
+   },
+   "outward": {
+    "nil_exempt_paise": 0,
+    "non_gst_paise": 0,
+    "taxable_cgst_paise": 90000,
+    "taxable_igst_paise": 0,
+    "taxable_sgst_paise": 90000,
+    "taxable_value_paise": 1000000,
+    "zero_rated_igst_paise": 0,
+    "zero_rated_paise": 0
+   },
+   "rcm_inward": {
+    "cgst_paise": 0,
+    "igst_paise": 0,
+    "sgst_paise": 0
+   },
+   "rule_36_4": {
+    "cap_applied": false,
+    "compared": false,
+    "gstr2a_cgst_paise": 0,
+    "gstr2a_igst_paise": 0,
+    "gstr2a_record_count": 0,
+    "gstr2a_sgst_paise": 0,
+    "per_document": {
+     "allowed_cess_paise": 0,
+     "allowed_cgst_paise": 45000,
+     "allowed_igst_paise": 0,
+     "allowed_sgst_paise": 45000,
+     "applied": false,
+     "not_assessed": [],
+     "notes": [
+      "No GSTR-2B has been reconciled for this period, so no document could be checked against one. \u00a716(2)(aa) is not applied here and the figures below are the books' own \u2014 upload the period's GSTR-2B and reconcile to see which documents the portal actually carries."
+     ],
+     "withheld": [],
+     "withheld_cess_paise": 0,
+     "withheld_cgst_paise": 0,
+     "withheld_igst_paise": 0,
+     "withheld_sgst_paise": 0,
+     "withheld_total_paise": 0
+    },
+    "self_assessed_cgst_paise": 0,
+    "self_assessed_igst_paise": 0,
+    "self_assessed_sgst_paise": 0
+   }
+  }
+ },
+ "gstr3b_submitted_obligation": {
+  "082026": {
+   "closed": false,
+   "message": "No GSTR-3B obligation for August 2026 is on the compliance calendar, so none was closed.",
+   "obligation_id": null,
+   "state": "not_on_the_calendar"
+  },
+  "092026": {
+   "closed": false,
+   "message": "No GSTR-3B obligation for September 2026 is on the compliance calendar, so none was closed.",
+   "obligation_id": null,
+   "state": "not_on_the_calendar"
+  }
+ }
+}

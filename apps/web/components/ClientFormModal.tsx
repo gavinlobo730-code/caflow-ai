@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, FormEvent } from "react";
-import { X } from "lucide-react";
+import { Modal } from "@/components/ui/modal";
 import type { Client } from "@/lib/types";
 import type { CreateClientInput } from "@/lib/data/clients";
 
@@ -9,15 +9,8 @@ import { INDIAN_STATES } from "@/lib/constants/indianStates";
 import { Callout } from "@/components/ui/callout";
 import { gstinProblem } from "@/lib/gst/gstin";
 import { panProblem } from "@/lib/identifiers/pan";
-// The values `clients.entity_type` may hold — migration 453 added the last
-// three. Pinned from the Python side against models/client.EntityType
-// (tests/test_a_huf_aop_and_boi_have_their_own_tax_basis.py), because a list
-// asserted against its own copy passes whenever both drift together.
-const ENTITY_TYPES = [
-  "Proprietorship", "Partnership", "LLP", "Private Limited",
-  "Public Limited", "Trust", "Society", "Individual",
-  "HUF", "AOP", "BOI",
-];
+// The values `clients.entity_type` may hold: one list, shared with the sign-up's firm profile (lib/clients/entityTypes.ts).
+import { ENTITY_TYPES } from "@/lib/clients/entityTypes";
 
 // THE CANONICAL LIST, not a fifth copy. This held 31 of the 36 live codes —
 // Dadra & Nagar Haveli and Daman & Diu (26), Lakshadweep (31), Puducherry (34),
@@ -71,19 +64,6 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
     }
     setError(null);
   }, [editClient, open]);
-
-  // Escape closes the dialog, matching the shared Modal (components/ui/modal.tsx)
-  // — guarded on `open` since this component stays mounted (and its other
-  // effects run) even while hidden, and on `saving` so a save in flight can't
-  // be abandoned mid-request.
-  useEffect(() => {
-    if (!open) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape" && !saving) onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, saving, onClose]);
 
   function set(field: keyof CreateClientInput, value: string | boolean) {
     setForm(f => ({ ...f, [field]: value }));
@@ -145,28 +125,10 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-ps-bg/60" onClick={onClose} />
-
-      {/* Modal */}
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-ps-border">
-          <div>
-            <h2 className="text-base font-semibold text-ps-ink">
-              {editClient ? "Edit Client" : "Add New Client"}
-            </h2>
-            <p className="text-xs text-ps-label mt-0.5">
-              {editClient ? "Update client details" : "Register a new client with your firm"}
-            </p>
-          </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-ps-muted text-ps-hint">
-            <X size={16} />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+    // POST-A-130: the shared dialog (named, Escape, Tab kept inside, focus given back). It stays open while the client is being saved.
+    <Modal title={editClient ? "Edit Client" : "Add New Client"} maxWidthClass="max-w-2xl" onClose={() => { if (!saving) onClose(); }}
+      note={editClient ? "Update client details" : "Register a new client with your firm"}>
+        <form onSubmit={handleSubmit} className="space-y-5">
           {/* Row 1 */}
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
@@ -333,7 +295,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
 
           {/* Actions */}
           <div className="flex gap-3 pt-2">
-            <button
+            <button disabled={saving}
               type="button" onClick={onClose}
               className="flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-ps-body hover:bg-ps-bg"
             >
@@ -347,7 +309,6 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
