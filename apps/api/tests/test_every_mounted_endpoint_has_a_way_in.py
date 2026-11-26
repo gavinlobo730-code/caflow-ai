@@ -74,6 +74,9 @@ WEB = _REPO / "apps" / "web"
 #: are the most-used public endpoints on the site. An endpoint is reachable if
 #: SOME frontend in this repository calls it.
 MARKETING = _REPO / "apps" / "marketing"
+#: The PLATFORM ADMINISTRATION site (POST-B-351) is the third: a separate site, on its own address, that is the only
+#: caller of the platform routes once the product's own platform page is retired. It is plain JavaScript in `src/`.
+PLATFORM_ADMIN = _REPO / "apps" / "platform-admin"
 
 #: Per-prefix ceilings, measured against the tree of 2026-09-16. Lower one in
 #: the same commit that wires a screen up; raising one is a claim that a new
@@ -550,12 +553,12 @@ def _api_members(masked: list[str], lines: list[str]):
 
 def _frontend_files(roots):
     for root in roots:
-        for folder in ("app", "lib", "components"):
+        for folder in ("app", "lib", "components", "src"):
             directory = root / folder
             if not directory.exists():
                 continue
             for path in sorted(directory.rglob("*")):
-                if path.suffix in (".ts", ".tsx") and ".test." not in path.name:
+                if path.suffix in (".ts", ".tsx", ".js") and ".test." not in path.name:
                     yield folder, path
 
 
@@ -600,7 +603,7 @@ def _sources(roots: tuple = ()) -> str:
     Tests are excluded so a test that merely NAMES an endpoint cannot make it
     look reachable — the exact mistake this guards against, one level up.
     """
-    screens, units = _screens_and_units(roots or (WEB, MARKETING))
+    screens, units = _screens_and_units(roots or (WEB, MARKETING, PLATFORM_ADMIN))
     seed = "\n".join(screens)
     live = [seed]
     words = set(_WORD.findall(seed))

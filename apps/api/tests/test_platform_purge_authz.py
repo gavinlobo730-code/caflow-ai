@@ -54,7 +54,11 @@ class _FakeDB:
 
 
 def _client(monkeypatch, *, is_admin: bool, aal: str = "aal2", fake_db: "_FakeDB | None" = None):
+    from services import platform_notice
     monkeypatch.setattr(pa, "_is_platform_admin", lambda uid: is_admin)
+    monkeypatch.setattr(pa, "_firm_standing", lambda uid: pa.Standing(belongs_to=(), firmless_admin_on_list=True))
+    monkeypatch.setattr(platform_notice, "note_visit", lambda *a, **k: None)
+    monkeypatch.setattr(platform_notice, "note_action", lambda *a, **k: None)
     if fake_db is not None:
         monkeypatch.setattr(plat, "get_service_supabase", lambda: fake_db)
         monkeypatch.setattr(plat, "log_event", lambda *a, **k: None)
@@ -76,7 +80,7 @@ def test_platform_admin_without_mfa_cannot_purge(monkeypatch):
     c = _client(monkeypatch, is_admin=True, aal="aal1")
     r = c.delete(_PURGE)
     assert r.status_code == 403
-    assert "Multi-factor" in r.json()["detail"]
+    assert r.json()["detail"] == pa.SECOND_FACTOR_SENTENCE
 
 
 def test_platform_admin_with_mfa_reaches_purge_rpc_once(monkeypatch):

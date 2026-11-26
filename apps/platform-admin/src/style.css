@@ -1,0 +1,26 @@
+/* One plain sheet for one page. Colours are tokens with a dark-mode set; contrast is the product's (ps.* tokens). */
+:root { --bg: #ffffff; --text: #0f172a; --muted: #475569; --line: #cbd5e1; --accent: #4338ca; --danger: #b91c1c; --ok: #047857; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0b1120; --text: #e2e8f0; --muted: #94a3b8; --line: #334155; --accent: #a5b4fc; --danger: #fca5a5; --ok: #6ee7b7; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, sans-serif; }
+header { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+h1 { font-size: 18px; margin: 0; }
+h2 { font-size: 16px; margin: 24px 0 8px; }
+main { padding: 0 16px 32px; max-width: 1100px; margin: 0 auto; }
+.hint { color: var(--muted); }
+#notice { color: var(--ok); min-height: 1.5em; }
+#error, #confirm-error { color: var(--danger); min-height: 1.5em; }
+form { display: grid; gap: 12px; max-width: 360px; }
+label { display: grid; gap: 4px; }
+input { font: inherit; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); }
+button { font: inherit; padding: 6px 12px; border: 1px solid var(--accent); border-radius: 6px; background: transparent; color: var(--accent); cursor: pointer; margin: 2px; }
+button:disabled { opacity: 0.5; cursor: wait; }
+table { width: 100%; border-collapse: collapse; display: block; overflow-x: auto; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+dt { color: var(--muted); }
+dd { margin: 0; font-size: 20px; }
+dialog { border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); max-width: 420px; }
+menu { display: flex; justify-content: flex-end; gap: 8px; padding: 0; }

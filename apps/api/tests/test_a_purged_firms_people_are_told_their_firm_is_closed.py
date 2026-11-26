@@ -151,6 +151,10 @@ def _purge_client(monkeypatch, db, *, as_the_server_answers=False):
     app.include_router(plat.router)
     monkeypatch.setattr(plat, "get_service_supabase", lambda: db)
     monkeypatch.setattr(pa, "_is_platform_admin", lambda auth_user_id: True)
+    from services import platform_notice as _notice   # POST-B-351: no database read for lock 3 and no mail
+    monkeypatch.setattr(pa, "_firm_standing", lambda uid: pa.Standing(belongs_to=(), firmless_admin_on_list=True))
+    monkeypatch.setattr(_notice, "note_visit", lambda *a, **k: None)
+    monkeypatch.setattr(_notice, "note_action", lambda *a, **k: None)
     admin = {"auth_user_id": "adm", "email": "admin@x.test", "aal": "aal2", "last_authenticator_code_at": time.time()}
     app.dependency_overrides[get_jwt_user] = lambda: admin
     return TestClient(app, raise_server_exceptions=not as_the_server_answers)

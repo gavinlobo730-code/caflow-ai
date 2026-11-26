@@ -33,6 +33,7 @@ HOW TO POINT THIS AT A REAL DOMAIN
     the normal case.
 """
 import os
+from typing import Optional
 
 # The live Cloudflare Pages subdomain for apps/web. Used ONLY when FRONTEND_URL
 # is unset. Do NOT "modernise" this to match the dashboard label — the label is
@@ -141,6 +142,28 @@ def parse_origins(raw: str) -> list[str]:
     return origins
 
 
+def platform_admin_origin() -> Optional[str]:
+    """The separate platform administration site's origin (POST-B-351), from PLATFORM_ADMIN_ORIGIN, or None.
+
+    Only an exact `https://host` with nothing after it is taken: a path, a wildcard, a port-less `http` or a typo is
+    refused (None, and logged), because this is the one origin allowed to call the platform routes from a browser and a
+    pattern here would allow more than one site."""
+    raw = (os.environ.get("PLATFORM_ADMIN_ORIGIN") or "").strip().rstrip("/")
+    if not raw:
+        return None
+    import re
+    if not re.fullmatch(r"https://[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+", raw):
+        import logging
+        logging.getLogger("caflow.urls").error("PLATFORM_ADMIN_ORIGIN is not an https origin with a plain host name; ignored")
+        return None
+    return raw
+
+
 def allowed_origins() -> list[str]:
-    """The origins CORSMiddleware is given: ALLOWED_ORIGINS, else the defaults."""
-    return parse_origins(os.environ.get("ALLOWED_ORIGINS") or default_allowed_origins())
+    """The origins CORSMiddleware is given: ALLOWED_ORIGINS, else the defaults, and the platform administration site's
+    origin either way (it is set by its own variable so that adding the site never means retyping the whole list)."""
+    origins = parse_origins(os.environ.get("ALLOWED_ORIGINS") or default_allowed_origins())
+    extra = platform_admin_origin()
+    if extra and extra not in origins:
+        origins.append(extra)
+    return origins

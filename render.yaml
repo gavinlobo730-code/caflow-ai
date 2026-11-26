@@ -143,6 +143,11 @@ services:
       # that serves the portal from a DIFFERENT host than the app.
       - key: PORTAL_BASE_URL
         sync: false
+      # The separate platform administration site's origin, exactly (https://host, nothing after it), POST-B-351.
+      # core/urls.platform_admin_origin adds it to the CORS list whether or not ALLOWED_ORIGINS is set, and ignores a
+      # value that is not a plain https origin. Unset: no browser on another site may call the API, as today.
+      - key: PLATFORM_ADMIN_ORIGIN
+        sync: false
       # Where a "Book a demo" form submission from the marketing site is sent.
       # routers/demo_request.py REFUSES with a 503 when this is unset rather
       # than guessing an address — an unset value here means every lead the

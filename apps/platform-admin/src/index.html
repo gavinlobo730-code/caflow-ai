@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <title>Platform administration</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="config.js"></script>
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header>
+    <h1>PracticeSync platform administration</h1>
+    <button id="sign-out" type="button" hidden>Sign out</button>
+  </header>
+  <main>
+    <p id="notice" role="status" aria-live="polite"></p>
+    <p id="error" role="alert"></p>
+
+    <section id="step-password" hidden>
+      <h2>Sign in</h2>
+      <p class="hint">This site is for the platform administrator only. Nothing on it is remembered between visits: every visit needs the password and the authenticator code.</p>
+      <form id="password-form" autocomplete="off">
+        <label>Email <input id="email" type="email" required autocomplete="username"></label>
+        <label>Password <input id="password" type="password" required autocomplete="current-password"></label>
+        <button type="submit">Continue</button>
+      </form>
+    </section>
+
+    <section id="step-code" hidden>
+      <h2>Authenticator code</h2>
+      <div id="enrol-hint" hidden>
+        <p>This account has no authenticator yet. In your authenticator app, add an account by typing this key, then enter the six-digit code it shows:</p>
+        <p><code id="enrol-secret"></code></p>
+      </div>
+      <form id="code-form" autocomplete="off">
+        <label>Six-digit code <input id="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required autocomplete="one-time-code"></label>
+        <button type="submit">Sign in</button>
+      </form>
+    </section>
+
+    <section id="console" hidden>
+      <h2>Platform</h2>
+      <dl id="stats"></dl>
+
+      <h2>Firms</h2>
+      <table>
+        <thead><tr><th scope="col">Firm</th><th scope="col">Created</th><th scope="col">People</th><th scope="col">Clients</th><th scope="col">Status</th><th scope="col">Actions</th></tr></thead>
+        <tbody id="firms"></tbody>
+      </table>
+
+      <section id="people" hidden>
+        <h3 id="people-title"></h3>
+        <table>
+          <thead><tr><th scope="col">Name</th><th scope="col">Email</th><th scope="col">Role</th><th scope="col">Status</th></tr></thead>
+          <tbody id="people-rows"></tbody>
+        </table>
+      </section>
+
+      <h2>Activity on these pages</h2>
+      <p class="hint">Every sign-in to these pages and every action is also mailed to the addresses on the platform list.</p>
+      <table>
+        <thead><tr><th scope="col">When (IST)</th><th scope="col">What</th><th scope="col">Firm</th><th scope="col">By</th><th scope="col">From</th></tr></thead>
+        <tbody id="activity"></tbody>
+      </table>
+    </section>
+
+    <dialog id="confirm">
+      <form method="dialog" id="confirm-form">
+        <h2 id="confirm-title"></h2>
+        <p id="confirm-text"></p>
+        <label id="confirm-reason-label" hidden>Reason <input id="confirm-reason"></label>
+        <label id="confirm-name-label" hidden>Type the firm's name exactly <input id="confirm-name" autocomplete="off"></label>
+        <p id="confirm-error" role="alert"></p>
+        <label>Authenticator code <input id="confirm-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code"></label>
+        <menu>
+          <button value="cancel" type="button" id="confirm-cancel">Cancel</button>
+          <button value="go" type="submit" id="confirm-go"></button>
+        </menu>
+      </form>
+    </dialog>
+  </main>
+</body>
+</html>
