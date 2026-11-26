@@ -103,10 +103,15 @@ PARAM_REJECTED = "param_rejected"
 #: monthly AI allowance (`domain/ai/budget_gate`). It never reached a provider, so it
 #: says nothing about whether the provider works and is not noted as an attempt on one.
 BUDGET = "budget_exhausted"
+#: The PROVIDER refused because the account that pays for it has no credit left (POST-A-564): a prepaid balance that
+#: reached zero, a billing limit. Not the firm's own allowance (that is BUDGET, and is never sent), not a rate limit
+#: (waiting helps a rate limit and does not help this), and not a bad key. Whoever pays for the provider's account
+#: has to add credit; a second model behind the same account fails the same way, so it stops.
+CREDIT = "credit_exhausted"
 
 OUTCOMES = frozenset({
     OK, TRUNCATED, EMPTY, BAD_SHAPE, TIMEOUT, NETWORK, RATE_LIMITED, SERVER_ERROR,
-    AUTH, MODEL_GONE, TOO_LONG, REFUSED, PARAM_REJECTED, BUDGET,
+    AUTH, MODEL_GONE, TOO_LONG, REFUSED, PARAM_REJECTED, BUDGET, CREDIT,
 })
 
 RETRY = "retry"
@@ -114,7 +119,7 @@ NEXT_MODEL = "next_model"
 STOP = "stop"
 
 #: A second model behind the SAME key or the SAME prompt fails the same way.
-_STOPS = frozenset({AUTH, TOO_LONG, REFUSED, BUDGET})
+_STOPS = frozenset({AUTH, TOO_LONG, REFUSED, BUDGET, CREDIT})
 #: Worth the same model once more, after a pause.
 _RETRYABLE = frozenset({RATE_LIMITED, SERVER_ERROR, NETWORK})
 
@@ -232,12 +237,28 @@ def _says_key_is_bad(low: str) -> bool:
     return "api key" in low and any(w in low for w in ("invalid", "not valid", "expired", "revoked"))
 
 
+#: Error codes the OpenAI-compatible providers use for an account with no credit. `[S]`: recalled, not read in the
+#: providers' own documents (egress to them is refused here); an unknown code still reaches the person in the
+#: provider's own words, so a wrong guess here costs a less helpful sentence and never a wrong one.
+_CREDIT_CODES = {"insufficient_quota", "billing_hard_limit_reached", "payment_required", "insufficient_balance"}
+
+
+def _says_credit_is_gone(low: str) -> bool:
+    """Google's older answer for the same thing is a 429 whose message sends the reader to their plan and billing,
+    which an ordinary rate limit's does not; a prepaid balance that ran out says so in words."""
+    return ("billing" in low and ("plan" in low or "check" in low)) or "prepaid" in low or "credit balance" in low \
+        or "insufficient balance" in low or "out of credit" in low
+
+
 def classify(status: int, body: Any) -> str:
     """The outcome word for a non-200 answer."""
     code, message = error_parts(body)
     low = f"{code or ''} {message}".lower()
     if status == 401 or code == "invalid_api_key" or _says_key_is_bad(low):
         return AUTH
+    # Before the rate limit: Google has answered a spent account with 429 (POST-A-564).
+    if status == 402 or code in _CREDIT_CODES or _says_credit_is_gone(low):
+        return CREDIT
     if code in _MODEL_GONE_CODES or status == 404 or "decommission" in low or "does not exist" in low:
         return MODEL_GONE
     if status == 429 or code == "rate_limit_exceeded":
@@ -270,6 +291,10 @@ def failure_sentence(provider: Provider, status: int, body: Any, model: str) -> 
                 f"({code or f'HTTP {status}'}). Set {provider.model_env} on the server "
                 "to a model " + name + " currently offers — retrying will not help."
                 + (f" {name} said: {message[:300]}" if message else "")), code
+    if kind == CREDIT:
+        return (f"The AI provider ({name}) refused because the account that pays for it has no credit left "
+                f"(HTTP {status}). Whoever pays for the {name} account has to add credit before it answers again; "
+                "trying again will not help."), code
     if kind == RATE_LIMITED:
         return (f"The AI provider ({name}) is rate-limiting this account right now. "
                 "Wait a minute and ask again."), code
