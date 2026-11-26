@@ -66,12 +66,17 @@ test("every typed-date box carries the marker the helper reads", () => {
 test("a file that hears Escape itself and asks before closing leaves the focused box first", () => {
   const asks = /\bconfirmLeave\b|\buseUnsavedChanges\b/;
   const hearsEscape = /["']Escape["']/;
-  const found = [...tsx("app"), ...tsx("components")]
+  const unsafeText = (src: string) => hearsEscape.test(src) && asks.test(src) && !/\.blur\(\)|closeAfterTheFocusedDateCommits/.test(src);
+  // NO FILE IS IN THIS POSITION ANY MORE. The last one, the employee sheet, became the shared Drawer (POST-A-130, twenty-first step,
+  // 23-11-2026), which hears Escape for it and leaves the focused date box first. The scan used to be proven by finding at least one
+  // such file; with none left it is proven on text, each way round, so a file that starts hearing Escape itself is still judged.
+  assert.equal(unsafeText('if (e.key === "Escape") void confirmLeave().then(onClose);'), true, "the scan no longer finds an unsafe Escape");
+  assert.equal(unsafeText('const { confirmLeave } = useUnsavedChanges(dirty); if (e.key === "Escape") closeAfterTheFocusedDateCommits(() => ask());'), false);
+  assert.equal(unsafeText('const { confirmLeave } = useUnsavedChanges(dirty); return <Drawer open onClose={requestClose} />;'), false,
+    "a sheet that asks and leaves Escape to the shared Drawer was read as hearing Escape itself");
+  const unsafe = [...tsx("app"), ...tsx("components")]
     .filter((f) => !["components/ui/modal.tsx", "components/ui/drawer.tsx"].includes(f.split(path.sep).join("/")))
-    .map((f) => [f, read(f)] as const)
-    .filter(([, src]) => hearsEscape.test(src) && asks.test(src));
-  assert.ok(found.length >= 1, "the scan found no overlay that hears Escape and asks - it is broken");
-  const unsafe = found.filter(([, src]) => !/\.blur\(\)|closeAfterTheFocusedDateCommits/.test(src)).map(([f]) => f);
+    .filter((f) => unsafeText(read(f)));
   assert.deepEqual(unsafe, [],
     "An overlay that hears Escape and asks about unsaved typing reads a stale dirty flag while a date box is still focused. " +
     "Call closeAfterTheFocusedDateCommits(() => latestClose()) from lib/dates/closeAfterDateCommit.");

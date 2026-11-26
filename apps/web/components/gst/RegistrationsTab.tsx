@@ -580,8 +580,8 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
                     (CGST Act s.10). Leaving this unrecorded still lets its
                     return be prepared — it names the gap instead of a figure.
                     {kinds && !kinds.composition_rates_verified && (
-                      <> Rates shown are not independently verified against
-                      Rule 7 in this environment.</>
+                      <> Rates shown have not been checked against Rule 7
+                      itself.</>
                     )}
                   </span>
                 </label>

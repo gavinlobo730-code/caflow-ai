@@ -1197,8 +1197,8 @@ export default function CapitalGainsPage() {
                   </div>
 
                   <p className="text-2xs text-ps-hint border-t pt-3">
-                    Every figure and window here is written from knowledge rather than read
-                    off the bare Act — this environment cannot reach incometax.gov.in.
+                    Every figure and window here is written from knowledge and has not been
+                    read against the Act itself.
                     Check s. 54EC&apos;s ₹50 lakh, the six-month and two- and three-year
                     windows and the Finance Act 2023 ₹10 crore cap against the section
                     before relying on them.

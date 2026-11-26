@@ -29,6 +29,7 @@ import { toast } from "@/components/ui/use-toast";
 import { PageHeader } from "@/components/ui/page-header";
 
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/states";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
@@ -1190,72 +1191,71 @@ export default function ClientPortalPage() {
 
       {/* New Request Modal */}
       {showNewRequestModal && (
-        <div className="fixed inset-0 bg-brand-dark/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
-            <h3 className="text-base font-semibold text-ps-ink">New Document Request</h3>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-medium text-ps-label mb-1">Title *</label>
-                <input aria-label="Title"
-                  type="text"
-                  placeholder="e.g. Upload Q4 Bank Statement"
-                  value={newRequest.title}
-                  onChange={(e) => setNewRequest((p) => ({ ...p, title: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
-                  autoFocus
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-ps-label mb-1">Description</label>
-                <textarea aria-label="Description"
-                  placeholder="e.g. For the period Jan–Mar 2026"
-                  value={newRequest.description}
-                  onChange={(e) => setNewRequest((p) => ({ ...p, description: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand resize-none"
-                  rows={3}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-ps-label mb-1">Needed by</label>
-                <DateInput
-                  aria-label="Needed by"
-                  value={newRequest.due_date}
-                  onChange={(v) => setNewRequest((p) => ({ ...p, due_date: v }))}
-                  onStateChange={requestDates.watch("needed", "Needed by")}
-                  className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
-                />
-              </div>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={newRequest.is_urgent}
-                  onChange={(e) => setNewRequest((p) => ({ ...p, is_urgent: e.target.checked }))}
-                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-brand"
-                />
-                <span className="text-sm text-ps-body">Mark as Urgent</span>
-                <AlertTriangle size={14} className="text-amber-500" />
-              </label>
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <button disabled={savingRequest}
-                onClick={() => {
-                  setShowNewRequestModal(false);
-                  setNewRequest({ title: "", description: "", is_urgent: false, due_date: "" });
-                }}
-                className="px-4 py-2 text-sm text-ps-label border border-ps-border rounded-lg hover:bg-ps-bg"
-              >
-                Cancel
-              </button>
-              <Button variant="plain" size="none" spinner={false}
-                onClick={handleCreateRequest}
-                disabled={actionInFlight || !newRequest.title.trim()}
-                className="px-4 py-2 text-sm bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 font-medium"
-              >
-                {savingRequest ? "Creating…" : "Create Request"}
-              </Button>
-            </div>
+        // The shared dialog (POST-A-130): named, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it, its ×) and its
+        // Cancel are held while its own request is out.
+        <Modal title="New Document Request" maxWidthClass="max-w-md" onClose={() => { if (!savingRequest) { setShowNewRequestModal(false); setNewRequest({ title: "", description: "", is_urgent: false, due_date: "" }); } }}
+          footer={<>
+            <button disabled={savingRequest}
+              onClick={() => {
+                setShowNewRequestModal(false);
+                setNewRequest({ title: "", description: "", is_urgent: false, due_date: "" });
+              }}
+              className="px-4 py-2 text-sm text-ps-label border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <Button variant="plain" size="none" spinner={false}
+              onClick={handleCreateRequest}
+              disabled={actionInFlight || !newRequest.title.trim()}
+              className="px-4 py-2 text-sm bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 font-medium"
+            >
+              {savingRequest ? "Creating…" : "Create Request"}
+            </Button>
+          </>}>
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-ps-label mb-1">Title *</label>
+            <input aria-label="Title"
+              type="text"
+              placeholder="e.g. Upload Q4 Bank Statement"
+              value={newRequest.title}
+              onChange={(e) => setNewRequest((p) => ({ ...p, title: e.target.value }))}
+              className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
+              autoFocus
+            />
           </div>
+          <div>
+            <label className="block text-xs font-medium text-ps-label mb-1">Description</label>
+            <textarea aria-label="Description"
+              placeholder="e.g. For the period Jan–Mar 2026"
+              value={newRequest.description}
+              onChange={(e) => setNewRequest((p) => ({ ...p, description: e.target.value }))}
+              className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand resize-none"
+              rows={3}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-ps-label mb-1">Needed by</label>
+            <DateInput
+              aria-label="Needed by"
+              value={newRequest.due_date}
+              onChange={(v) => setNewRequest((p) => ({ ...p, due_date: v }))}
+              onStateChange={requestDates.watch("needed", "Needed by")}
+              className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
+            />
+          </div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={newRequest.is_urgent}
+              onChange={(e) => setNewRequest((p) => ({ ...p, is_urgent: e.target.checked }))}
+              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-brand"
+            />
+            <span className="text-sm text-ps-body">Mark as Urgent</span>
+            <AlertTriangle size={14} className="text-amber-500" />
+          </label>
         </div>
+        </Modal>
       )}
     </div>
   );

@@ -1,8 +1,9 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { useEffect, useState } from "react";
-import { Globe, Copy, X } from "lucide-react";
+import { Globe, Copy } from "lucide-react";
 import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getClient } from "@/lib/data/clients";
@@ -251,55 +252,48 @@ export default function PortalPage() {
 
       {/* Invite Modal */}
       {showInviteModal && (
-        <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-ps-ink">Invite to Portal</h3>
-              <button onClick={() => setShowInviteModal(false)} className="text-ps-hint hover:text-ps-label">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {inviteSent ? (
-              <div className="bg-green-50 border border-green-100 rounded-lg px-4 py-3">
-                <p className="text-sm text-green-700 font-medium">Invite sent!</p>
-                <p className="text-xs text-green-600 mt-0.5">
-                  An invite has been sent to {inviteEmail}. They&apos;ll set a password and can sign in
-                  any time afterward.
-                </p>
-              </div>
-            ) : (
-              <>
-                <div>
-                  <label className="block text-xs font-medium text-ps-body mb-1">Client email *</label>
-                  <input aria-label="Client email"
-                    type="email"
-                    value={inviteEmail}
-                    onChange={(e) => setInviteEmail(e.target.value)}
-                    placeholder="client@example.com"
-                    className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
-                  />
-                </div>
-                {inviteError && <Callout tone="problem">{inviteError}</Callout>}
-                <div className="flex gap-3 justify-end">
-                  <button
-                    onClick={() => setShowInviteModal(false)}
-                    className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg"
-                  >
-                    Cancel
-                  </button>
-                  <Button variant="plain" size="none" spinner={false}
-                    onClick={handleSendInvite}
-                    disabled={loading || !inviteEmail.trim()}
-                    className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40"
-                  >
-                    {loading ? "Sending…" : "Send Invite"}
-                  </Button>
-                </div>
-              </>
-            )}
+        // The shared dialog (POST-A-130): named, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it, its ×) and its
+        // Cancel are held while its own request is out.
+        <Modal title="Invite to Portal" maxWidthClass="max-w-md" onClose={() => { if (!loading) setShowInviteModal(false); }}>
+        {inviteSent ? (
+          <div className="bg-green-50 border border-green-100 rounded-lg px-4 py-3">
+            <p className="text-sm text-green-700 font-medium">Invite sent!</p>
+            <p className="text-xs text-green-600 mt-0.5">
+              An invite has been sent to {inviteEmail}. They&apos;ll set a password and can sign in
+              any time afterward.
+            </p>
           </div>
-        </div>
+        ) : (
+          <>
+            <div>
+              <label className="block text-xs font-medium text-ps-body mb-1">Client email *</label>
+              <input aria-label="Client email"
+                type="email"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                placeholder="client@example.com"
+                className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
+              />
+            </div>
+            {inviteError && <Callout tone="problem">{inviteError}</Callout>}
+            <div className="flex gap-3 justify-end">
+              <button disabled={loading}
+                onClick={() => setShowInviteModal(false)}
+                className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-40"
+              >
+                Cancel
+              </button>
+              <Button variant="plain" size="none" spinner={false}
+                onClick={handleSendInvite}
+                disabled={loading || !inviteEmail.trim()}
+                className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40"
+              >
+                {loading ? "Sending…" : "Send Invite"}
+              </Button>
+            </div>
+          </>
+        )}
+        </Modal>
       )}
     </div>
   );

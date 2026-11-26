@@ -3,10 +3,11 @@
 import { useState, useEffect, useCallback, type Dispatch, type SetStateAction } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, CheckCircle, XCircle, X } from "lucide-react";
+import { ChevronLeft, CheckCircle, XCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { Skeleton, LoadingRegion } from "@/components/ui/skeleton";
 import { Callout } from "@/components/ui/callout";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
@@ -121,101 +122,95 @@ function EntityFormModal({
   const inputClass =
     "w-full mt-1 px-3 py-2 text-sm bg-ps-surface border border-ps-border-strong rounded-md text-ps-ink placeholder:text-ps-hint focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand";
   return (
-    <div className="fixed inset-0 bg-brand/60 flex items-center justify-center z-50 px-4">
-      <div className="bg-ps-surface border border-ps-border rounded-xl shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-sm font-semibold text-brand">{title}</h2>
-          <button disabled={saving} onClick={onCancel} className="text-ps-hint hover:text-ps-body">
-            <X size={16} />
-          </button>
+    // The shared dialog (POST-A-130): named, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it, its ×) and its
+    // Cancel are held while its own request is out.
+    <Modal title={title} maxWidthClass="max-w-lg" onClose={() => { if (!saving) onCancel(); }}
+      footer={<>
+        <button disabled={saving}
+          onClick={onCancel}
+          className="flex-1 text-sm text-ps-label border border-ps-border-strong py-2 rounded-md hover:bg-ps-hover disabled:opacity-50"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={onSave}
+          disabled={saving || !!saveDisabled || !form.full_name.trim()}
+          className="flex-1 text-sm bg-brand text-white py-2 rounded-md hover:bg-brand-dark disabled:opacity-50"
+        >
+          {saving ? savingLabel : saveLabel}
+        </button>
+      </>}>
+    <div className="space-y-3">
+      <div>
+        <label className="text-xs text-ps-label font-medium">Full Name *</label>
+        <input aria-label="Full Name"
+          value={form.full_name}
+          onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
+          className={inputClass}
+          placeholder="Individual or entity name"
+        />
+      </div>
+      <div>
+        <label className="text-xs text-ps-label font-medium">Entity Type</label>
+        <select aria-label="Entity Type"
+          value={form.entity_type}
+          onChange={(e) => setForm((f) => ({ ...f, entity_type: e.target.value as EntityType }))}
+          className={inputClass}
+        >
+          {ENTITY_TYPES.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs text-ps-label font-medium">PAN</label>
+          <input aria-label="PAN"
+            value={form.pan}
+            onChange={(e) => setForm((f) => ({ ...f, pan: e.target.value.toUpperCase() }))}
+            className={`${inputClass} font-mono`}
+            placeholder="AAAAA9999A"
+            maxLength={10}
+          />
         </div>
-        <div className="space-y-3">
-          <div>
-            <label className="text-xs text-ps-label font-medium">Full Name *</label>
-            <input aria-label="Full Name"
-              value={form.full_name}
-              onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
-              className={inputClass}
-              placeholder="Individual or entity name"
-            />
-          </div>
-          <div>
-            <label className="text-xs text-ps-label font-medium">Entity Type</label>
-            <select aria-label="Entity Type"
-              value={form.entity_type}
-              onChange={(e) => setForm((f) => ({ ...f, entity_type: e.target.value as EntityType }))}
-              className={inputClass}
-            >
-              {ENTITY_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-ps-label font-medium">PAN</label>
-              <input aria-label="PAN"
-                value={form.pan}
-                onChange={(e) => setForm((f) => ({ ...f, pan: e.target.value.toUpperCase() }))}
-                className={`${inputClass} font-mono`}
-                placeholder="AAAAA9999A"
-                maxLength={10}
-              />
-            </div>
-            <div>
-              <label className="text-xs text-ps-label font-medium">GSTIN</label>
-              <input aria-label="GSTIN"
-                value={form.gstin}
-                onChange={(e) => setForm((f) => ({ ...f, gstin: e.target.value.toUpperCase() }))}
-                className={`${inputClass} font-mono`}
-                placeholder="22AAAAA0000A1ZC"
-                maxLength={15}
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-ps-label font-medium">Email</label>
-              <input aria-label="Email"
-                type="email"
-                value={form.email}
-                onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-                className={inputClass}
-                placeholder="contact@example.com"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-ps-label font-medium">Phone</label>
-              <input aria-label="Phone"
-                type="tel"
-                value={form.phone}
-                onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-                className={inputClass}
-                placeholder="+91 98765 43210"
-              />
-            </div>
-          </div>
+        <div>
+          <label className="text-xs text-ps-label font-medium">GSTIN</label>
+          <input aria-label="GSTIN"
+            value={form.gstin}
+            onChange={(e) => setForm((f) => ({ ...f, gstin: e.target.value.toUpperCase() }))}
+            className={`${inputClass} font-mono`}
+            placeholder="22AAAAA0000A1ZC"
+            maxLength={15}
+          />
         </div>
-        {saveError && <Callout tone="problem">{saveError}</Callout>}
-        <div className="flex gap-2 mt-5">
-          <button disabled={saving}
-            onClick={onCancel}
-            className="flex-1 text-sm text-ps-label border border-ps-border-strong py-2 rounded-md hover:bg-ps-hover"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onSave}
-            disabled={saving || !!saveDisabled || !form.full_name.trim()}
-            className="flex-1 text-sm bg-brand text-white py-2 rounded-md hover:bg-brand-dark disabled:opacity-50"
-          >
-            {saving ? savingLabel : saveLabel}
-          </button>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs text-ps-label font-medium">Email</label>
+          <input aria-label="Email"
+            type="email"
+            value={form.email}
+            onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+            className={inputClass}
+            placeholder="contact@example.com"
+          />
+        </div>
+        <div>
+          <label className="text-xs text-ps-label font-medium">Phone</label>
+          <input aria-label="Phone"
+            type="tel"
+            value={form.phone}
+            onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+            className={inputClass}
+            placeholder="+91 98765 43210"
+          />
         </div>
       </div>
     </div>
+    {saveError && <Callout tone="problem">{saveError}</Callout>}
+    </Modal>
   );
 }
 

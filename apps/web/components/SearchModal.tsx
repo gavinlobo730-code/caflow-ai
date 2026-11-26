@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { Search, Users, UserPlus, CheckSquare, FileText, Shield, ShieldCheck, X, Compass } from "lucide-react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { Search, Users, UserPlus, CheckSquare, FileText, Shield, ShieldCheck, Compass } from "lucide-react";
 import { api } from "@/lib/api";
 import { useRouter, usePathname } from "next/navigation";
 import { matchScreens, screenHref, isScreensOnly, SCREENS_ONLY_PREFIX } from "@/lib/navigation/screens";
 import { Skeleton, LoadingRegion } from "@/components/ui/skeleton";
 import { arrayOrEmpty } from "@/lib/api/shape";
+import { Modal } from "@/components/ui/modal";
 
 // THE ONE CLIENT FOR /api/search. The palette and the /search page both read
 // these — the page used to keep its own copy of the type, the labels and
@@ -87,14 +88,26 @@ export async function runSearch(query: string): Promise<{ results: SearchResult[
   }
 }
 
+/**
+ * The search box. It is the shared dialog (POST-A-130): named, modal, focus in its box, Tab kept inside, Escape and a click beside it
+ * close it, the page behind it held still and focus given back to where it was. The hand-built layer this replaces had an Escape
+ * listener of its own and none of the rest.
+ *
+ * Mounted only while open, so each opening starts with an empty box and no results. It used to stay mounted and clear itself in an
+ * effect, which runs after the first paint: the last search and its results were drawn for a frame at every opening (a browser run
+ * read the old text out of the box).
+ */
 export function SearchModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  return open ? <SearchDialog onClose={onClose} /> : null;
+}
+
+function SearchDialog({ onClose }: { onClose: () => void }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   // Distinguishes "search failed" from "no results found".
   const [searchError, setSearchError] = useState<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const pathname = usePathname() ?? "";
   // The open client, read off the URL — the same segment
@@ -104,24 +117,6 @@ export function SearchModal({ open, onClose }: { open: boolean; onClose: () => v
     pathname.match(
       /^\/clients\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(\/|$)/i,
     )?.[1] ?? null;
-
-  useEffect(() => {
-    if (open) {
-      setQuery("");
-      setResults([]);
-      setSelectedIndex(0);
-      setTimeout(() => inputRef.current?.focus(), 50);
-    }
-  }, [open]);
-
-  // Escape to close — open is controlled by parent via onOpenSearch
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape" && open) onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
 
   const search = useCallback(async (q: string) => {
     if (!q.trim()) { setResults([]); setSearchError(null); return; }
@@ -193,6 +188,10 @@ export function SearchModal({ open, onClose }: { open: boolean; onClose: () => v
       e.preventDefault();
       setSelectedIndex(i => Math.max(i - 1, 0));
     } else if (e.key === "Enter") {
+      // The press is finished here. Closing gives focus back to whatever opened the box, which is usually the top bar's Search button, and
+      // a browser delivers the rest of an Enter press to the element that has focus by then: left alone, the same press clicked that
+      // button and the box opened again over the screen just chosen (found by driving this in a browser).
+      e.preventDefault();
       if (allResults[selectedIndex]) {
         router.push(allResults[selectedIndex].href);
         onClose();
@@ -203,8 +202,6 @@ export function SearchModal({ open, onClose }: { open: boolean; onClose: () => v
     }
   }
 
-  if (!open) return null;
-
   const grouped = allResults.reduce<Record<string, SearchResult[]>>((acc, r) => {
     if (!acc[r.category]) acc[r.category] = [];
     acc[r.category].push(r);
@@ -214,19 +211,11 @@ export function SearchModal({ open, onClose }: { open: boolean; onClose: () => v
   let flatIndex = 0;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-20 bg-ps-bg/75 backdrop-blur-sm print:hidden"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white rounded-2xl shadow-[0_24px_60px_rgba(0,0,0,0.6),0_0_0_1px_rgba(255,255,255,0.03)] border border-ps-border w-full max-w-2xl mx-4 overflow-hidden"
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Input */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-ps-border focus-within:ring-2 focus-within:ring-inset focus-within:ring-brand">
+    <Modal title="Search" onClose={onClose} maxWidthClass="max-w-2xl" placement="top">
+        {/* Input. The box has no outline of its own; the row around it draws the ring. */}
+        <div className="flex items-center gap-3 rounded-lg border border-ps-border px-3 py-2 focus-within:ring-2 focus-within:ring-inset focus-within:ring-brand">
           <Search size={18} className="text-ps-hint shrink-0" />
           <input aria-label="Search"
-            ref={inputRef}
             type="text"
             className="flex-1 text-base outline-none text-ps-ink placeholder:text-ps-hint bg-transparent"
             placeholder={`Go to a screen, or find a client, task or journal… (${SCREENS_ONLY_PREFIX} for screens only)`}
@@ -234,16 +223,10 @@ export function SearchModal({ open, onClose }: { open: boolean; onClose: () => v
             onChange={e => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
           />
-          <button
-            onClick={onClose}
-            className="p-1 rounded hover:bg-ps-muted transition-colors"
-          >
-            <X size={15} className="text-ps-hint" />
-          </button>
         </div>
 
         {/* Results */}
-        <div className="max-h-96 overflow-y-auto">
+        <div className="-mx-4 max-h-96 overflow-y-auto">
           {loading && (
             <LoadingRegion label="Loading results" className="py-2" noticeClassName="px-4">
               {[1, 2, 3].map(i => (
@@ -315,14 +298,13 @@ export function SearchModal({ open, onClose }: { open: boolean; onClose: () => v
           )}
         </div>
 
-        {/* Footer */}
-        <div className="border-t border-ps-border px-4 py-2 flex items-center gap-4 text-xs text-ps-hint">
+        {/* The keys */}
+        <div className="border-t border-ps-border pt-2 flex items-center gap-4 text-xs text-ps-hint">
           <span><kbd className="font-mono">↑↓</kbd> navigate</span>
           <span><kbd className="font-mono">Enter</kbd> select</span>
           <span><kbd className="font-mono">Esc</kbd> close</span>
           <span className="ml-auto"><kbd className="font-mono">⌘K</kbd> to open</span>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

@@ -42,8 +42,8 @@ ICAI_FEE_DEPENDENCE = (
     "proportion of a practice's total fees as a self-interest threat to "
     "independence, requiring safeguards above a specified proportion. The "
     "proportion, and whether it is measured over audit clients or all of "
-    "them, are NOT held here — they could not be read from icai.org in this "
-    "environment, and a figure written from memory on an independence "
+    "them, are NOT held here: they have not been read from the Code itself, "
+    "and a figure written from memory on an independence "
     "question would give a firm a clean bill of health nobody issued. Read "
     "the Code and apply it to the shares below."
 )

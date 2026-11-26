@@ -113,11 +113,13 @@ for (const form of FORMS) {
 // 2. EVERY WAY OUT OF A DRAWER ASKS FIRST
 // ═════════════════════════════════════════════════════════════════════════════
 
-/** `minHandlers` is the floor under "the walk found something to judge". The two fixed-asset drawers are the shared Drawer since POST-A-130, which
- *  owns the backdrop click and Escape (and reads the `onClose` it is handed), so the handlers written in THEIR source are the buttons: the Correct
- *  drawer has Cancel and Save only. */
+/** `minHandlers` is the floor under "the walk found something to judge". All three are the shared Drawer since POST-A-130 (the employee sheet
+ *  from its twenty-first step), which owns the backdrop click and Escape and closes through the `onClose` it is handed, so that attribute is
+ *  one of the gestures judged here: handing the sheet the bare `onClose` would bypass the leave question on Escape, on a click beside it and
+ *  on its ×, all at once. The employee sheet's own handlers are its section buttons and what it hands the sheet; the Correct drawer has
+ *  Cancel, Save and what it hands the sheet. */
 const DRAWERS: { file: string; component: string; minHandlers: number }[] = [
-  { file: "components/payroll/EmployeeDrawer.tsx", component: "EmployeeDrawer", minHandlers: 3 },
+  { file: "components/payroll/EmployeeDrawer.tsx", component: "EmployeeDrawer", minHandlers: 2 },
   { file: "app/clients/[id]/fixed-assets/page.tsx", component: "AddAssetDrawer", minHandlers: 3 },
   { file: "app/clients/[id]/fixed-assets/page.tsx", component: "CorrectAssetDrawer", minHandlers: 2 },
 ];
@@ -127,7 +129,7 @@ const DRAWERS: { file: string; component: string; minHandlers: number }[] = [
 function gestureHandlers(fn: ts.FunctionDeclaration): ts.Node[] {
   const out: ts.Node[] = [];
   walk(fn, (n) => {
-    if (ts.isJsxAttribute(n) && /^on(Click|KeyDown|KeyUp|Submit)$/.test(n.name.getText()) && n.initializer) {
+    if (ts.isJsxAttribute(n) && /^on(Click|KeyDown|KeyUp|Submit|Close)$/.test(n.name.getText()) && n.initializer) {
       out.push(n.initializer);
     }
     // document.addEventListener("keydown", handler)

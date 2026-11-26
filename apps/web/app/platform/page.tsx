@@ -10,7 +10,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { arrayOrEmpty } from "@/lib/api/shape";
 import { useRouter } from "next/navigation";
-import { Building2, Users, ShieldCheck, Ban, RotateCcw, Trash2, X, Loader2, AlertCircle, RefreshCw, AlertTriangle, KeyRound } from "lucide-react";
+import { Building2, Users, ShieldCheck, Ban, RotateCcw, Trash2, Loader2, AlertCircle, RefreshCw, AlertTriangle, KeyRound } from "lucide-react";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { api } from "@/lib/api";
@@ -21,6 +21,7 @@ import { formatDate } from "@/lib/services/formatting";
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { LoadingRegion } from "@/components/ui/skeleton";
 import { isFreshCodeRefusal, sixDigitCode } from "@/lib/auth/freshCode";
 
@@ -394,13 +395,9 @@ export default function PlatformAdminPage() {
 
       {/* Firm detail (read-only) */}
       {detail && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={() => setDetail(null)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-6 py-4 border-b border-ps-border">
-              <h2 className="text-base font-semibold text-ps-ink">{detail.firm.name}</h2>
-              <button onClick={() => setDetail(null)} className="text-ps-hint hover:text-ps-label"><X size={18} /></button>
-            </div>
-            <div className="px-6 py-4 space-y-4 overflow-y-auto">
+        // The shared dialog (POST-A-130): named for the firm, modal, Tab kept inside, Escape closes it, focus given back. It only reads.
+        <Modal title={detail.firm.name} maxWidthClass="max-w-lg" onClose={() => setDetail(null)}>
+            <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div><p className="text-xs text-ps-hint">Created</p><p className="text-ps-ink">{detail.firm.created_at ? formatDate(detail.firm.created_at) : "—"}</p></div>
                 <div><p className="text-xs text-ps-hint">Status</p><p className="text-ps-ink">{detail.firm.status}</p></div>
@@ -420,21 +417,28 @@ export default function PlatformAdminPage() {
                 </div>
               </div>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* Permanent delete — MFA step-up + typed confirmation */}
       {purgeTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={(e) => { e.stopPropagation(); if (!purgeBusy) setPurgeTarget(null); }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-6 py-4 border-b border-ps-border">
-              <h2 className="text-base font-semibold text-state-problem flex items-center gap-2"><AlertTriangle size={16} /> Permanently delete firm</h2>
-              <button disabled={purgeBusy} onClick={() => !purgeBusy && setPurgeTarget(null)} className="text-ps-hint hover:text-ps-label"><X size={18} /></button>
-            </div>
-            <div className="px-6 py-4 space-y-4">
-              <p className="text-sm text-ps-label">
+        // The shared dialog (POST-A-130): named, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it, its ×) and
+        // its Cancel are held while the deletion is out.
+        <Modal title="Permanently delete firm" maxWidthClass="max-w-md" onClose={() => { if (!purgeBusy) setPurgeTarget(null); }}
+          footer={<>
+            <button onClick={() => setPurgeTarget(null)} disabled={purgeBusy} className="text-sm text-ps-label px-3 py-2 hover:underline disabled:opacity-50">Cancel</button>
+            <Button variant="plain" size="none" onClick={confirmPurge}
+              disabled={actionInFlight || purgeName.trim() !== purgeTarget.name || purgeCode.replace(/\s/g, "").length !== 6}
+              className="inline-flex items-center gap-2 rounded-lg bg-red-600 text-white text-sm font-medium px-4 py-2 hover:bg-red-700 disabled:opacity-50">
+              {purgeBusy ? <Loader2 className="animate-spin" size={14} /> : <Trash2 size={14} />} Delete permanently
+            </Button>
+          </>}>
+            <div className="space-y-4">
+              <p className="text-sm text-ps-label flex items-start gap-2">
+                <AlertTriangle size={16} className="text-state-problem shrink-0 mt-0.5" aria-hidden="true" />
+                <span>
                 This <span className="font-semibold text-state-problem">irreversibly</span> deletes <span className="font-semibold">{purgeTarget.name}</span> and all of its data — {purgeTarget.users} user(s), {purgeTarget.clients} client(s), and every related record. This cannot be undone.
+                </span>
               </p>
               <p className="text-xs text-ps-hint">Login accounts in authentication are not removed — only the firm and its data.</p>
               <div>
@@ -450,16 +454,7 @@ export default function PlatformAdminPage() {
               </div>
               {purgeErr && <Callout tone="problem">{purgeErr}</Callout>}
             </div>
-            <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-ps-border">
-              <button onClick={() => setPurgeTarget(null)} disabled={purgeBusy} className="text-sm text-ps-label px-3 py-2 hover:underline disabled:opacity-50">Cancel</button>
-              <Button variant="plain" size="none" onClick={confirmPurge}
-                disabled={actionInFlight || purgeName.trim() !== purgeTarget.name || purgeCode.replace(/\s/g, "").length !== 6}
-                className="inline-flex items-center gap-2 rounded-lg bg-red-600 text-white text-sm font-medium px-4 py-2 hover:bg-red-700 disabled:opacity-50">
-                {purgeBusy ? <Loader2 className="animate-spin" size={14} /> : <Trash2 size={14} />} Delete permanently
-              </Button>
-            </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

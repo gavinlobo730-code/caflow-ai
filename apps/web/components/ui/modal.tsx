@@ -13,7 +13,9 @@
  *   • dialogs STACK (a dialog opened from inside another, a confirmation shown
  *     over one): only the top one acts on Escape, kept in lib/ui/overlayStack
  *     (POST-A-128). `footer` is a bar pinned to the bottom of the panel, for a
- *     dialog whose buttons must stay in view while its body scrolls.
+ *     dialog whose buttons must stay in view while its body scrolls;
+ *   • `placement="top"` holds the panel's top edge still, for a dialog whose
+ *     height changes while it is open (the search box).
  */
 import { useEffect, useRef, useId, type ReactNode } from "react";
 import { X } from "lucide-react";
@@ -30,6 +32,7 @@ export function Modal({
   children,
   footer,
   maxWidthClass = "max-w-sm",
+  placement = "center",
 }: {
   title: string;
   note?: ReactNode;
@@ -38,6 +41,11 @@ export function Modal({
   /** Buttons that stay in view at the bottom of the panel while the body scrolls. */
   footer?: ReactNode;
   maxWidthClass?: string;
+  /**
+   * Where the panel sits. "top" holds its top edge 80px below the window's, for a dialog whose height changes while it is open (the search
+   * box, whose list of results grows and shrinks at every keystroke): centred, such a panel moves its first field at each change.
+   */
+  placement?: "center" | "top";
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
@@ -86,7 +94,7 @@ export function Modal({
 
   // PRE-A-022: drawn in the body, so no parent's spacing, transform or filter can move the window-covering layer.
   return inBody(
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+    <div className={`fixed inset-0 z-[70] flex justify-center p-4 ${placement === "top" ? "items-start pt-20" : "items-center"}`}>
       <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-hidden="true" />
       <div
         ref={panelRef}
@@ -94,7 +102,7 @@ export function Modal({
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className={`relative w-full ${maxWidthClass} bg-white rounded-xl shadow-xl p-4 space-y-3 max-h-[90vh] overflow-y-auto outline-none${footer ? " scroll-pb-16" : ""}`}
+        className={`relative w-full ${maxWidthClass} bg-white rounded-xl shadow-xl p-4 space-y-3 ${placement === "top" ? "max-h-[calc(100vh-6rem)] overflow-y-auto" : "max-h-[90vh] overflow-y-auto"} outline-none${footer ? " scroll-pb-16" : ""}`}
       >
         <div className="flex items-center justify-between gap-3">
           <h3 id={titleId} className="text-sm font-semibold text-ps-ink">{title}</h3>

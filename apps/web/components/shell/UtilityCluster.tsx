@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Compass, Search, Settings, LogOut, Receipt } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useMenuDismiss } from "@/lib/ui/useMenuDismiss";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { hasEmployeePortalAccess } from "@/lib/portal/employeeAccess";
 
@@ -52,6 +53,11 @@ export function UtilityCluster({
 }) {
   const { user, userRole, signOut, fullName } = useAuth();
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
+  // The account menu has no layer over the window behind it (POST-A-130): Escape closes it with focus back on the Account button, and a
+  // click anywhere else closes it without being swallowed, so the thing clicked still acts.
+  const accountButtonRef = useRef<HTMLButtonElement | null>(null);
+  const accountMenuRef = useRef<HTMLDivElement | null>(null);
+  useMenuDismiss(avatarMenuOpen, () => setAvatarMenuOpen(false), { opener: accountButtonRef, menu: accountMenuRef }, { outsideClick: true });
   // "My payslips" (POST-A-549): a member of staff whom the practice also pays here, and who accepted the payslip portal's
   // invitation with the address they sign in with, reaches their own payslips from this menu. Asked of the server the first
   // time the menu is opened, never on every screen: most members are not on the practice's own payroll, and the answer for
@@ -124,9 +130,12 @@ export function UtilityCluster({
 
       <div className="relative">
         <button
+          ref={accountButtonRef}
           onClick={toggleAvatarMenu}
           title={user?.email ?? "Account"}
           aria-label="Account"
+          aria-haspopup="true"
+          aria-expanded={avatarMenuOpen}
           className={cn(
             "w-7 h-7 rounded-full flex items-center justify-center text-3xs font-bold hover:opacity-80 transition-opacity shrink-0",
             isDark ? "bg-white/15 text-white" : "bg-brand text-white"
@@ -135,9 +144,10 @@ export function UtilityCluster({
           {initials}
         </button>
         {avatarMenuOpen && (
-          <>
-            <div className="fixed inset-0 z-20" onClick={() => setAvatarMenuOpen(false)} />
             <div
+              ref={accountMenuRef}
+              role="group"
+              aria-label="Account menu"
               className={cn(
                 "absolute z-30 w-48 rounded-xl p-1.5",
                 isRail ? "left-full bottom-0 ml-2" : "right-0 top-full mt-2",
@@ -150,12 +160,16 @@ export function UtilityCluster({
               )}
             >
               <div className={cn("px-3 py-2 mb-1 border-b", isDark ? "border-white/10" : "border-ps-border")}>
+                {/* What is not known is not drawn. This used to fall back to "user@firm.com" and to "Partner", an address nobody has and a
+                    role the person may not hold. */}
                 <p className={cn("text-xs font-semibold truncate", isDark ? "text-white" : "text-ps-ink")}>
-                  {user?.email ?? "user@firm.com"}
+                  {user?.email ?? "Signed in"}
                 </p>
-                <p className={cn("text-3xs truncate mt-0.5", isDark ? "text-slate-500" : "text-ps-hint")}>
-                  {userRole ?? "Partner"}
-                </p>
+                {userRole && (
+                  <p className={cn("text-3xs truncate mt-0.5", isDark ? "text-slate-500" : "text-ps-hint")}>
+                    {userRole}
+                  </p>
+                )}
               </div>
               {ownPayslips && (
                 <Link
@@ -187,7 +201,6 @@ export function UtilityCluster({
                 Sign out
               </button>
             </div>
-          </>
         )}
       </div>
     </div>
