@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { UploadProgress } from "@/components/ui/upload-progress";
 import type { UploadProgress as BytesSent } from "@/lib/api/uploadWithProgress";
 import { useEffect, useRef, useState } from "react";
-import { Upload, Download, Trash2, FolderOpen, X } from "lucide-react";
+import { Upload, Download, Trash2, FolderOpen } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Card } from "@/components/ui/card";
 import { TableSkeleton } from "@/components/ui/skeleton";
@@ -329,61 +329,52 @@ export default function DocumentsPage() {
 
       {/* Upload Modal */}
       {showUploadModal && (
-        <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-ps-ink">Upload Document</h3>
-              <button disabled={uploading}
-                onClick={() => { setShowUploadModal(false); setUploadFile(null); setUploadLabel(""); }}
-                className="text-ps-hint hover:text-ps-label"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-medium text-ps-body mb-1">Label *</label>
-                <input aria-label="Label"
-                  type="text"
-                  value={uploadLabel}
-                  onChange={(e) => setUploadLabel(e.target.value)}
-                  placeholder="e.g. GSTR-9 FY 2024-25, ITR AY 2024-25"
-                  className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-ps-body mb-1">File *{maxUploadMb ? ` (max ${maxUploadMb} MB)` : ""}</label>
-                <input aria-label="File to upload"
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.csv,.doc,.docx,.txt,.zip"
-                  onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
-                  className="w-full text-sm text-ps-label file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                />
-                {uploadFile && (
-                  <p className="text-xs text-ps-hint mt-1">{uploadFile.name} — {formatFileSize(uploadFile.size)}</p>
-                )}
-              </div>
-              {uploadError && <Callout tone="problem">{uploadError}</Callout>}
-            </div>
-            <div className="flex gap-3 justify-end">
-              <button disabled={uploading}
-                onClick={() => { setShowUploadModal(false); setUploadFile(null); setUploadLabel(""); }}
-                className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg"
-              >
-                Cancel
-              </button>
-              <Button variant="plain" size="none" spinner={false}
-                onClick={() => handleUploadDocument()}
-                disabled={actionInFlight || !uploadFile || !uploadLabel.trim()}
-                className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40"
-              >
-                {uploading ? "Uploading…" : "Upload"}
-              </Button>
-            </div>
-            <UploadProgress progress={sent} what="the document" />
+        // The shared dialog (POST-A-130): named, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it, its ×) and its
+        // Cancel are held while its own request is out.
+        <Modal title="Upload Document" maxWidthClass="max-w-md" onClose={() => { if (!uploading) { setShowUploadModal(false); setUploadFile(null); setUploadLabel(""); } }}
+          footer={<>
+            <button disabled={uploading}
+              onClick={() => { setShowUploadModal(false); setUploadFile(null); setUploadLabel(""); }}
+              className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-40"
+            >
+              Cancel
+            </button>
+            <Button variant="plain" size="none" spinner={false}
+              onClick={() => handleUploadDocument()}
+              disabled={actionInFlight || !uploadFile || !uploadLabel.trim()}
+              className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40"
+            >
+              {uploading ? "Uploading…" : "Upload"}
+            </Button>
+          </>}>
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-ps-body mb-1">Label *</label>
+            <input aria-label="Label"
+              type="text"
+              value={uploadLabel}
+              onChange={(e) => setUploadLabel(e.target.value)}
+              placeholder="e.g. GSTR-9 FY 2024-25, ITR AY 2024-25"
+              className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
+            />
           </div>
+          <div>
+            <label className="block text-xs font-medium text-ps-body mb-1">File *{maxUploadMb ? ` (max ${maxUploadMb} MB)` : ""}</label>
+            <input aria-label="File to upload"
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.csv,.doc,.docx,.txt,.zip"
+              onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
+              className="w-full text-sm text-ps-label file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+            />
+            {uploadFile && (
+              <p className="text-xs text-ps-hint mt-1">{uploadFile.name} — {formatFileSize(uploadFile.size)}</p>
+            )}
+          </div>
+          {uploadError && <Callout tone="problem">{uploadError}</Callout>}
         </div>
+        <UploadProgress progress={sent} what="the document" />
+        </Modal>
       )}
 
       {/* Version Prompt Modal */}

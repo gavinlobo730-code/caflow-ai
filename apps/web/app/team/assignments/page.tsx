@@ -21,7 +21,7 @@ type Client = ClientSummary;
 // Partner assigns clients to staff; this controls what each user can discover,
 // view, search, be notified about, and use as AI context (enforced server-side).
 export default function AssignmentsPage() {
-  // assignment:write is Partner-only in the matrix; assignment:read is Manager+.
+  // assignment:write is a Partner's by default and assignment:read a Manager's; either can be ticked for one member (migration 403).
   // Named after the permission rather than the role so a matrix change moves the
   // UI with it — this page is the administration surface for exactly that grant.
   const { can } = usePermissions();
@@ -102,7 +102,7 @@ export default function AssignmentsPage() {
 
       {!canAssign && (
         <div className="flex items-center gap-2 text-xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2 mb-4">
-          <ShieldAlert size={14} /> View only — only a Partner can change assignments.
+          <ShieldAlert size={14} /> View only. Changing assignments needs the permission to change who is assigned to which client.
         </div>
       )}
       {error && <div className="text-xs text-red-600 mb-3">{error}</div>}

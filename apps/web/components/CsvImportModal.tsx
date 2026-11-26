@@ -10,9 +10,10 @@
  */
 
 import { useState, useRef, useEffect } from "react";
-import { X, Download, Upload, AlertCircle, CheckCircle, Plus } from "lucide-react";
+import { Download, Upload, AlertCircle, CheckCircle, Plus } from "lucide-react";
 import { LogoIcon } from "@/components/LogoIcon";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { useSingleFlight } from "@/lib/async/useSingleFlight";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 import { sheetToCsvWithIsoDates } from "@/lib/spreadsheet/xlsxCsv";
@@ -316,17 +317,40 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
   const errorCount = rows.filter(r => r.errors.length > 0).length;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ps-bg/60 p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-ps-border">
-          <h2 className="text-base font-semibold text-ps-ink">{title}</h2>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-label">
-            <X className="w-5 h-5" />
+    <>
+    {/* The shared dialog (POST-A-130): named, modal, Tab kept inside, focus given back.
+        HELD WHILE IMPORTING (found while converting it). Its × and its Cancel were live while the rows were being imported, so the dialog
+        could be closed with the import still out: the rows go on being created on the server and the person never learns how many
+        landed or which were refused, which is the one thing its last step exists to say. Escape, a click beside it, the × and Cancel
+        are all held until the answer is on the screen. A read (parsing the file, the preview) writes nothing and can be abandoned. */}
+    <Modal title={title} maxWidthClass="max-w-3xl" onClose={() => { if (step !== "importing") onClose(); }}
+      footer={<>
+        <button onClick={onClose} disabled={step === "importing"} className="mr-auto text-sm text-ps-label hover:text-ps-body disabled:opacity-50">
+          {step === "done" ? "Close" : "Cancel"}
+        </button>
+        {step === "resolve" && (
+          <button
+            onClick={() => setStep("preview")}
+            className="px-5 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark"
+          >
+            Continue to preview
           </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+        )}
+        {step === "preview" && validCount > 0 && (
+          // A second click in the same moment as the first is ignored: `handleImport` moves to "importing" only after the call has started, so
+          // without the flight two clicks in one tick started two imports of the same file (POST-A-390). The flight is held until the import settles.
+          <Button
+            variant="plain"
+            size="none"
+            flight={flight}
+            onClick={handleImport}
+            className="px-5 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark"
+          >
+            Import {validCount} row{validCount !== 1 ? "s" : ""}
+          </Button>
+        )}
+      </>}>
+        <div className="space-y-4">
 
           {/* Step 1 — Upload */}
           {step === "upload" && (
@@ -581,35 +605,8 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
           )}
         </div>
 
-        {/* Footer */}
-        <div className="px-6 py-4 border-t border-ps-border flex justify-between items-center">
-          <button onClick={onClose} className="text-sm text-ps-label hover:text-ps-body">
-            {step === "done" ? "Close" : "Cancel"}
-          </button>
-          {step === "resolve" && (
-            <button
-              onClick={() => setStep("preview")}
-              className="px-5 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark"
-            >
-              Continue to preview
-            </button>
-          )}
-          {step === "preview" && validCount > 0 && (
-            // A second click in the same moment as the first is ignored: `handleImport` moves to "importing" only after the call has started, so
-            // without the flight two clicks in one tick started two imports of the same file (POST-A-390). The flight is held until the import settles.
-            <Button
-              variant="plain"
-              size="none"
-              flight={flight}
-              onClick={handleImport}
-              className="px-5 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark"
-            >
-              Import {validCount} row{validCount !== 1 ? "s" : ""}
-            </Button>
-          )}
-        </div>
-      </div>
-      {resolveTarget && resolveTarget.resolver.renderCreate(resolveTarget.name, () => setResolveTarget(null))}
-    </div>
+    </Modal>
+    {resolveTarget && resolveTarget.resolver.renderCreate(resolveTarget.name, () => setResolveTarget(null))}
+    </>
   );
 }

@@ -797,8 +797,8 @@ NOT_BUILT = {
            "section 143 and goods sent on approval. None is modelled."),
     "18": ("HSN summary of INWARD supplies. Purchase bill lines carry an HSN "
            "code, but the table's own requirement has moved by notification "
-           "more than once and could not be read here — every .gov.in is "
-           "refused at this environment's egress proxy."),
+           "more than once and has not been read against the notifications, "
+           "so the table is not filled here."),
     "19": ("Late fee payable and PAID. domain/gst/late_filing.py computes what "
            "is PAYABLE under section 47(2) — Notification 7/2023-Central Tax "
            "was read on 18-09-2026 — but its ceiling is a percentage of "

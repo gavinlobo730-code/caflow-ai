@@ -111,7 +111,7 @@ export default function LoginHistoryPage() {
 
       {!canViewHistory && (
         <div className="flex items-center gap-2 text-xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2 mb-3">
-          <ShieldAlert size={14} /> Login history is visible to Managers and Partners only.
+          <ShieldAlert size={14} /> Login history needs the permission to see the team list.
         </div>
       )}
       {canViewHistory && <SignedInNow canEnd={canForceLogout} />}

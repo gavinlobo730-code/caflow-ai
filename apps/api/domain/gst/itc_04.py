@@ -111,8 +111,8 @@ TABLE_5C_NOT_DERIVED = (
 )
 FORM_NUMBERING = (
     "The form's table numbers and column names are written from knowledge and "
-    "were not read off the notified form, which could not be reached from this "
-    "environment. Check them against the utility before keying anything."
+    "have not been read off the notified form. Check them against the utility "
+    "before keying anything."
 )
 WASTE_IS_NOT_SUBTRACTED = (
     "Losses and wastes are recorded and shown, but are NOT subtracted from what "

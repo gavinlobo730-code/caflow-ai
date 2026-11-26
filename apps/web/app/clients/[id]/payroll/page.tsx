@@ -2271,7 +2271,9 @@ function PayrollEnablementLine({ clientId }: { clientId: string }) {
         success?: boolean; error?: string | null; detail?: string;
       };
       if (res?.success === false) {
-        setMsg(res.error || res.detail || "Only a Partner can switch payroll on for a client.");
+        // A refusal that came without words is reported as what happened. It used to say "Only a Partner can switch payroll on", a reason
+        // nobody had read off the answer, and untrue since the switch is a permission a Partner can tick for somebody else.
+        setMsg(res.error || res.detail || "Payroll could not be switched on for this client.");
         return;
       }
       setEnabled(true);
@@ -2311,7 +2313,7 @@ function PayrollEnablementLine({ clientId }: { clientId: string }) {
           <span className="text-ps-body">
             Payroll is <strong>off</strong> for this client — nothing payroll can be
             created for them until it is switched on. Anything already recorded stays readable.
-            {resolved && !mayEnable && " A Partner switches it on here."}
+            {resolved && !mayEnable && " Switching it on needs the permission to switch payroll on, which a Partner holds and can give."}
           </span>
           {mayEnable && (
             <Button variant="plain" size="none" onClick={() => switchOn()} disabled={enableSaving}

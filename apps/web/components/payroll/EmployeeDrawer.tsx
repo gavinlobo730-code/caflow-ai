@@ -42,6 +42,7 @@ import { formatPaise } from "@/lib/money/format";
 import { formatDate } from "@/lib/services/formatting";
 import { objectOrNull, objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
+import { Drawer } from "@/components/ui/drawer";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
@@ -186,49 +187,21 @@ export default function EmployeeDrawer({ employee, clientId, canFinalize, onClos
   }, [confirmLeave]);
   const requestClose = useCallback(() => { void guarded(onClose); }, [guarded, onClose]);
 
-  // Escape closes the drawer, matching the shared Drawer/Modal/ClientFormModal
-  // pattern (a document/window keydown listener) — this component was the one
-  // full-screen overlay with no way out but the explicit Close button.
+  // THE SHARED SIDE SHEET (POST-A-130) hears Escape, a click beside it and its × and asks `requestClose` for each, so every way out
+  // still asks about unsaved typing first. It also keeps Tab inside, locks the page and gives focus back to the employee's row, which the
+  // hand-built panel did not.
   //
   // A date box commits on blur, not per keystroke, so Escape pressed while one is still focused would be asked about before the typed
-  // date had reached the section that reports unsaved typing: the question would be skipped and the date lost. The focused box is left
-  // first, and the question is asked on the next tick, by the closure that has seen the commit (frontend_ux-19).
-  const requestCloseRef = useRef(requestClose);
-  requestCloseRef.current = requestClose;
-  useEffect(() => {
-    const closeOnEscape = () => {
-      const focused = document.activeElement;
-      if (focused instanceof HTMLInputElement) {
-        focused.blur();
-        setTimeout(() => requestCloseRef.current(), 0);
-        return;
-      }
-      requestClose();
-    };
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") closeOnEscape();
-    }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [requestClose]);
+  // date had reached the section that reports unsaved typing: the question would be skipped and the date lost. The shared sheet leaves
+  // the focused date box first and closes on the next tick, through the latest `onClose`, which has seen the commit (frontend_ux-19).
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/20" onClick={requestClose}>
-      <div className="w-full max-w-[720px] h-full bg-white shadow-xl overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}>
-        <div className="sticky top-0 bg-white border-b border-ps-border px-5 py-3 flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-ps-ink truncate">{employee.name}</p>
-            <p className="text-2xs text-ps-hint">
-              {[employee.designation, employee.department].filter(Boolean).join(" · ") || "—"}
-              {employee.status && employee.status !== "active" ? ` · ${employee.status}` : ""}
-            </p>
-          </div>
-          <button onClick={requestClose}
-            className="text-xs text-ps-label border border-ps-border rounded-lg px-2.5 py-1 hover:bg-ps-bg shrink-0">
-            Close
-          </button>
-        </div>
+    <Drawer open widthClass="sm:max-w-[720px]" ariaLabel={employee.name} onClose={requestClose}
+      title={<span className="font-sans truncate">{employee.name}</span>}>
+        <p className="px-5 pt-3 text-2xs text-ps-hint">
+          {[employee.designation, employee.department].filter(Boolean).join(" · ") || "—"}
+          {employee.status && employee.status !== "active" ? ` · ${employee.status}` : ""}
+        </p>
 
         <div className="px-5 pt-3 flex gap-1.5 flex-wrap border-b border-ps-border pb-3">
           {SECTIONS.map((s) => (
@@ -269,8 +242,7 @@ export default function EmployeeDrawer({ employee, clientId, canFinalize, onClos
             <ReliefSection employee={employee} clientId={clientId} onDirtyChange={setDirty} />
           )}
         </div>
-      </div>
-    </div>
+    </Drawer>
   );
 }
 

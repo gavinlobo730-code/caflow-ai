@@ -231,6 +231,7 @@ const NOT_CHROME: Record<string, string> = {
   ClientShell: "the frame: held by the class-list rule above",
   PrintHeader: "print-only on purpose: held by the PrintHeader test below",
   WhereIsGuide: "a dialog the person opens (POST-A-538): it draws nothing while closed, and open it is the shared Modal every dialog is",
+  SearchModal: "a dialog the person opens (POST-A-130): it draws nothing while closed, and open it is the shared Modal every dialog is",
   ScreenAccessGate: "the page itself or, for somebody who holds no tick for it, the sentence that stands in the page's place (POST-A-543): content, so it prints",
 };
 
@@ -241,7 +242,6 @@ const CHROME: Record<string, { file: string; anchor: string }> = {
   ClientTopBar: { file: "components/shell/ClientTopBar.tsx", anchor: "relative shrink-0" },
   SecureAccountBanner: { file: "components/shell/SecureAccountBanner.tsx", anchor: "px-4 pt-3" },
   SkipToContent: { file: "components/shell/SkipToContent.tsx", anchor: "sr-only" },
-  SearchModal: { file: "components/SearchModal.tsx", anchor: "fixed inset-0 z-50" },
   NewVersionNotice: { file: "components/shell/NewVersionNotice.tsx", anchor: "fixed bottom-4 left-4 z-[45]" },
   // Toaster renders only a viewport; the class list that places it is in the primitive.
   Toaster: { file: "components/ui/toast.tsx", anchor: "fixed top-0 z-[100]" },

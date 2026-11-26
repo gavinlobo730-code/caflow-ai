@@ -108,6 +108,9 @@ test("every call goes through the API, never over PostgREST", () => {
 
 test("the screen says its figures were not read off the Act", () => {
   const src = code(SCREEN);
-  assert.match(src, /incometax\.gov\.in/,
+  // The note used to give the reason in the build container's words ("this environment cannot reach incometax.gov.in"), and this test
+  // found it by that phrase. What a CA must be told is the fact and the instruction, in whatever environment they read it (23-11-2026).
+  assert.match(src, /has not been\s+read against the Act itself/,
     "every window and cap here is [S]-graded; a CA relying on one must be told");
+  assert.match(src, /before relying on them/, "the note no longer says to check the figures before relying on them");
 });

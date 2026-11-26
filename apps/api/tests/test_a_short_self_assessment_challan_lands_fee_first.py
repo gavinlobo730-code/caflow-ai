@@ -199,7 +199,7 @@ def test_the_interest_is_never_derived_here_and_the_answer_says_so():
     p = sa.position(financial_year="2025-26", challans=[dict(_CHALLAN)],
                     tax_due_paise=80_000_00)
     assert any("§234F is not modelled" in c for c in p.caveats)
-    assert any("not read off the Act" in c for c in p.caveats)
+    assert any("not been read off the Act" in c for c in p.caveats)
     assert p.to_dict()["verified"] is False
 
 

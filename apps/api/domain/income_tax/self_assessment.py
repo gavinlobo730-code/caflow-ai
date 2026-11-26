@@ -79,9 +79,9 @@ from domain.money_sentence import rupee_text
 VERIFIED = False
 
 UNVERIFIED_NOTE = (
-    "§140A(1)'s appropriation order is recorded from knowledge, not read off "
-    "the Act — this environment refuses outbound requests. It is pinned by a "
-    "test. Check it before relying on the split of a short payment."
+    "§140A(1)'s appropriation order is recorded from knowledge and has not "
+    "been read off the Act. Check it before relying on the split of a short "
+    "payment."
 )
 
 SECTION_140A_3_DEFAULT = (

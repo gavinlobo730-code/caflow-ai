@@ -762,8 +762,8 @@ export function Gstr8Panel({ clientId, gstin }: { clientId: string; gstin: strin
               <Callout tone="note" title="Rate band not independently verified">
                 The s.52 TCS rate applied here is recorded from the Finance
                 (No. 2) Act 2024 and the GSTN offline utility&apos;s own
-                validation rather than confirmed against the CBIC portal in
-                this environment. Check it before relying on this figure.
+                validation rather than confirmed against the CBIC portal.
+                Check it before relying on this figure.
               </Callout>
             )}
 

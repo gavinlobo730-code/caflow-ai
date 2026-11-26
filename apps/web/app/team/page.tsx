@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 import { Users, UserPlus, Shield, Mail, MoreVertical, AlertCircle, Lock, SlidersHorizontal, Smartphone, Send } from "lucide-react";
+import { RowMenu } from "@/components/ui/row-menu";
+import { rowMenuAt, type RowMenuPlace } from "@/lib/ui/rowMenuPosition";
 import MemberAccessDrawer from "@/components/team/MemberAccessDrawer";
 import ResetAuthenticatorModal from "@/components/team/ResetAuthenticatorModal";
 import { useAuth, usePermissions } from "@/lib/auth/AuthContext";
@@ -354,22 +356,25 @@ interface ActionsMenuProps {
 }
 
 function ActionsMenu({ member, onEdit, onDeactivate, onResend, onResetAuthenticator }: ActionsMenuProps) {
-  const [open, setOpen] = useState(false);
+  // The shared row menu (POST-A-130): no layer over the window behind it, so it opens from the keyboard, takes focus, closes on Escape
+  // and gives focus back, and a click on another row's button opens that row's menu at once.
+  const [place, setPlace] = useState<RowMenuPlace | null>(null);
+  const setOpen = (open: false) => { if (!open) setPlace(null); };
   const isActive = member.is_active !== false;
   const switchLabel = switchActionLabel(member);
 
   return (
     <div className="relative">
       <button
-        onClick={() => setOpen(o => !o)}
+        onClick={(e) => setPlace(rowMenuAt(e, 192))}
+        aria-haspopup="true" aria-expanded={place !== null}
+        aria-label={`Actions for ${member.full_name}`}
         className="p-1 rounded hover:bg-ps-muted text-ps-hint hover:text-ps-label"
       >
         <MoreVertical className="w-4 h-4" />
       </button>
-      {open && (
-        <>
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 mt-1 w-48 bg-white border border-ps-border rounded-lg shadow-lg z-20 py-1">
+      {place && (
+          <RowMenu place={place} widthClass="w-48" onClose={() => setPlace(null)}>
             <button
               onClick={() => { setOpen(false); onEdit(); }}
               className="w-full text-left px-3 py-2 text-xs text-ps-body hover:bg-ps-bg flex items-center gap-2"
@@ -404,8 +409,7 @@ function ActionsMenu({ member, onEdit, onDeactivate, onResend, onResetAuthentica
               <Users className="w-3.5 h-3.5" />
               {switchLabel}
             </button>
-          </div>
-        </>
+          </RowMenu>
       )}
     </div>
   );

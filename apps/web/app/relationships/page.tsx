@@ -1,11 +1,12 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { useState, useEffect, useMemo, type Dispatch, type SetStateAction } from "react";
 import { readWindow } from "@/lib/lists/readWindow";
 import { ENTITY_REGISTER_WINDOW_MAX } from "@/lib/lists/window";
 import { errorMessage } from "@/lib/api";
-import { Plus, X } from "lucide-react";
+import { Plus } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { DataTable } from "@/components/ui/data-table";
 import type { Column, FilterDef } from "@/lib/table/types";
@@ -158,101 +159,95 @@ function EntityFormModal({
   saveDisabled?: boolean;
 }) {
   return (
-    <div className="fixed inset-0 bg-brand/60 flex items-center justify-center z-50 px-4">
-      <div className="bg-white border border-gray-200 rounded-xl shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-sm font-semibold text-brand">{title}</h2>
-          <button disabled={saving} onClick={onCancel} className="text-gray-400 hover:text-gray-700">
-            <X size={16} />
-          </button>
+    // The shared dialog (POST-A-130): named, modal, Tab kept inside, focus given back. Its close (Escape, a click beside it, its ×) and its
+    // Cancel are held while its own request is out.
+    <Modal title={title} maxWidthClass="max-w-lg" onClose={() => { if (!saving) onCancel(); }}
+      footer={<>
+        <button disabled={saving}
+          onClick={onCancel}
+          className="flex-1 text-sm text-gray-600 border border-gray-300 py-2 rounded-md hover:bg-gray-50 disabled:opacity-50"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={onSave}
+          disabled={saving || !!saveDisabled || !form.full_name.trim()}
+          className="flex-1 text-sm bg-brand text-white py-2 rounded-md hover:bg-brand-dark disabled:opacity-50"
+        >
+          {saving ? savingLabel : saveLabel}
+        </button>
+      </>}>
+    <div className="space-y-3">
+      <div>
+        <label className="text-xs text-gray-600 font-medium">Full Name *</label>
+        <input aria-label="Full Name"
+          value={form.full_name}
+          onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
+          className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder:text-ps-hint focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
+          placeholder="Individual or entity name"
+        />
+      </div>
+      <div>
+        <label className="text-xs text-gray-600 font-medium">Entity Type</label>
+        <select aria-label="Entity Type"
+          value={form.entity_type}
+          onChange={(e) => setForm((f) => ({ ...f, entity_type: e.target.value as EntityType }))}
+          className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
+        >
+          {ENTITY_TYPES.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs text-gray-600 font-medium">PAN</label>
+          <input aria-label="PAN"
+            value={form.pan}
+            onChange={(e) => setForm((f) => ({ ...f, pan: e.target.value.toUpperCase() }))}
+            className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder:text-ps-hint font-mono focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
+            placeholder="AAAAA9999A"
+            maxLength={10}
+          />
         </div>
-        <div className="space-y-3">
-          <div>
-            <label className="text-xs text-gray-600 font-medium">Full Name *</label>
-            <input aria-label="Full Name"
-              value={form.full_name}
-              onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
-              className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder:text-ps-hint focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
-              placeholder="Individual or entity name"
-            />
-          </div>
-          <div>
-            <label className="text-xs text-gray-600 font-medium">Entity Type</label>
-            <select aria-label="Entity Type"
-              value={form.entity_type}
-              onChange={(e) => setForm((f) => ({ ...f, entity_type: e.target.value as EntityType }))}
-              className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
-            >
-              {ENTITY_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-gray-600 font-medium">PAN</label>
-              <input aria-label="PAN"
-                value={form.pan}
-                onChange={(e) => setForm((f) => ({ ...f, pan: e.target.value.toUpperCase() }))}
-                className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder:text-ps-hint font-mono focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
-                placeholder="AAAAA9999A"
-                maxLength={10}
-              />
-            </div>
-            <div>
-              <label className="text-xs text-gray-600 font-medium">GSTIN</label>
-              <input aria-label="GSTIN"
-                value={form.gstin}
-                onChange={(e) => setForm((f) => ({ ...f, gstin: e.target.value.toUpperCase() }))}
-                className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder:text-ps-hint font-mono focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
-                placeholder="22AAAAA0000A1ZC"
-                maxLength={15}
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-gray-600 font-medium">Email</label>
-              <input aria-label="Email"
-                type="email"
-                value={form.email}
-                onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-                className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder:text-ps-hint focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
-                placeholder="contact@example.com"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-gray-600 font-medium">Phone</label>
-              <input aria-label="Phone"
-                type="tel"
-                value={form.phone}
-                onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-                className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder:text-ps-hint focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
-                placeholder="+91 98765 43210"
-              />
-            </div>
-          </div>
+        <div>
+          <label className="text-xs text-gray-600 font-medium">GSTIN</label>
+          <input aria-label="GSTIN"
+            value={form.gstin}
+            onChange={(e) => setForm((f) => ({ ...f, gstin: e.target.value.toUpperCase() }))}
+            className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder:text-ps-hint font-mono focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
+            placeholder="22AAAAA0000A1ZC"
+            maxLength={15}
+          />
         </div>
-        {saveError && <Callout tone="problem">{saveError}</Callout>}
-        <div className="flex gap-2 mt-5">
-          <button disabled={saving}
-            onClick={onCancel}
-            className="flex-1 text-sm text-gray-600 border border-gray-300 py-2 rounded-md hover:bg-gray-50"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onSave}
-            disabled={saving || !!saveDisabled || !form.full_name.trim()}
-            className="flex-1 text-sm bg-brand text-white py-2 rounded-md hover:bg-brand-dark disabled:opacity-50"
-          >
-            {saving ? savingLabel : saveLabel}
-          </button>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs text-gray-600 font-medium">Email</label>
+          <input aria-label="Email"
+            type="email"
+            value={form.email}
+            onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+            className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder:text-ps-hint focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
+            placeholder="contact@example.com"
+          />
+        </div>
+        <div>
+          <label className="text-xs text-gray-600 font-medium">Phone</label>
+          <input aria-label="Phone"
+            type="tel"
+            value={form.phone}
+            onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+            className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder:text-ps-hint focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
+            placeholder="+91 98765 43210"
+          />
         </div>
       </div>
     </div>
+    {saveError && <Callout tone="problem">{saveError}</Callout>}
+    </Modal>
   );
 }
 
