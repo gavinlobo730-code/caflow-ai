@@ -91,10 +91,9 @@ const NO_BROWSE_SURFACE: Record<string, string> = {
     "it is self-gated server-side and is not firm navigation",
   "/onboarding":
     "the firm SIGNUP wizard, which runs before a firm exists and so renders " +
-    "with no shell at all (AppShell's NO_SHELL_EXACT). Its ONE sub-route, " +
-    "/onboarding/checklist, is now a redirect stub to /clients/onboarding " +
-    "(UNLISTED there) — the real client-onboarding screen moved into " +
-    "ClientsPanel under that path",
+    "with no shell at all (AppShell's NO_SHELL_EXACT). It has no sub-route: " +
+    "/onboarding/checklist moved to /clients/onboarding in ClientsPanel, and " +
+    "the forwarding page left at the old address was deleted (POST-A-562)",
 };
 
 /**

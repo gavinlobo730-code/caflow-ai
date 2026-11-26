@@ -47,10 +47,9 @@ test("protected routes are NOT public (auth guard must still block these)", () =
 });
 
 test("/onboarding is EXACT — its sub-routes are staff screens", () => {
-  // `/onboarding/checklist` is now a redirect stub to /clients/onboarding
-  // (the real client-onboarding workflow tracker moved there — see
-  // ClientsPanel.tsx), kept only for old bookmarks, and it is still a staff
-  // route behind rbac() rather than public. As a public PREFIX it used to be
+  // `/onboarding/checklist` has no page now (the client-onboarding tracker
+  // moved to /clients/onboarding and its forwarding page was deleted by
+  // POST-A-562), and the address must still not be public. As a public PREFIX it used to be
   // handed to signed-out visitors instead of the login page. The wizard
   // itself stays public because it has to run before a firm exists.
   assert.equal(isPublicPath("/onboarding/checklist"), false);
