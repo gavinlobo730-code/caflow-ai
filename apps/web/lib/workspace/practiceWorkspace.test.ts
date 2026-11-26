@@ -103,7 +103,7 @@ test("the open People screen is named on the bar, and the longer address wins", 
   assert.equal(practiceSectionAt("/team/login-history/")?.id, "login-history");
   assert.equal(practiceSectionAt("/approvals/")?.id, "approvals");
   // A page under Team that has no entry of its own is Team's.
-  assert.equal(practiceSectionAt("/team/work-allocation/")?.id, "team");
+  assert.equal(practiceSectionAt("/team/no-such-page/")?.id, "team");
 });
 
 test("a People entry is offered to whoever may read it, and nothing is withheld while the permissions are still being read", () => {
@@ -203,7 +203,7 @@ test("the People screen an address is on, for the pair its gate asks (POST-A-542
   assert.deepEqual(peopleSectionAt("/team/workload/")?.requires, ["workload", "read"]);
   assert.deepEqual(peopleSectionAt("/team/assignments/x/")?.requires, ["assignment", "read"]);
   // An address under Team that is no screen of its own takes Team's pair, so nothing under /team is ungated.
-  assert.deepEqual(peopleSectionAt("/team/work-allocation/")?.requires, ["team", "read"]);
+  assert.deepEqual(peopleSectionAt("/team/no-such-page/")?.requires, ["team", "read"]);
   // Nothing else is a People screen.
   for (const other of ["/", "/teams/", "/practice/", "/approvals-x/", "/clients/c-1/", ""]) assert.equal(peopleSectionAt(other), null, other);
 });

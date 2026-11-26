@@ -63,9 +63,8 @@ function getRealPathname(): string {
 // as a PREFIX match this list had lost it the rail, the panel and ⌘K, so it
 // had no navigation at all and nothing in the product linked to it. It now
 // lives at /clients/onboarding, in the Clients workspace it belongs to (see
-// lib/workspace/routeOwnership.ts); /onboarding/checklist is a redirect stub
-// kept for bookmarks and needs no entry here, since it renders no content of
-// its own to strip a shell from.
+// lib/workspace/routeOwnership.ts); the forwarding page
+// left at /onboarding/checklist was deleted by POST-A-562.
 const NO_SHELL_PREFIXES = [
   "/login",
   "/signup",

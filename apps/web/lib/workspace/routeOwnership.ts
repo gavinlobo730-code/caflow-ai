@@ -36,8 +36,8 @@ export function getActiveWorkspaceForPathname(pathname: string): WorkspaceId | n
   // list strip its sidebar, so it rendered with no navigation and no ⌘K, and
   // nothing in the product linked to it. It now lives at /clients/onboarding
   // and reaches Clients through the ordinary /clients prefix check below,
-  // with no special case needed. /onboarding/checklist is a redirect stub
-  // kept for bookmarks and answers null here, same as /onboarding itself.
+  // with no special case needed. /onboarding/checklist has no page now
+  // (POST-A-562) and answers null here, same as /onboarding itself.
   if (
     pathname === "/" ||
     pathname.startsWith("/calendar") ||

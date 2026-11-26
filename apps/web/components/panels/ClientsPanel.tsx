@@ -24,8 +24,8 @@ const CLIENTS_ITEMS = [
   // SIGNUP wizard at /onboarding — which matched `AppShell`'s NO_SHELL entry
   // for that wizard and left it with no shell at all until both that entry
   // and the public-path one were made exact (see lib/auth/public-paths.ts).
-  // It now lives under /clients, whose onboarding it tracks; the old URL is
-  // a redirect stub kept for bookmarks (app/onboarding/checklist/page.tsx).
+  // It now lives under /clients, whose onboarding it tracks; the forwarding
+  // page left at the old URL was deleted by POST-A-562, nothing linking to it.
   { href: "/clients/onboarding", label: "Client Onboarding", icon: ListChecks },
   { href: "/client-portal", label: "Client Portal", icon: ExternalLink },
   // Two distinct document surfaces: /documents is the OCR/intelligence
