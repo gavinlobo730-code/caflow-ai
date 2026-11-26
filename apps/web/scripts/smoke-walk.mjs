@@ -454,10 +454,6 @@ const EXPECTED_LANDINGS = {
   //   /signup: a signed-in visitor who already has a firm is bounced, the mirror of /login
   //     (lib/auth/guardDecision `shouldBounceFromSignup`; sweep-auth-and-public-02).
   "/signup": "/",
-  //   the two redirect stubs, kept so a bookmark or an emailed link still lands somewhere (a
-  //   static export has no server-side redirect to issue).
-  "/onboarding/checklist": "/clients/onboarding",
-  "/team/work-allocation": "/team/workload",
   // The walk feeds every :id the string "_placeholder", which resolves to no
   // client, and the workspace index returns to the list rather than showing a
   // shell for a client that is not there. A seeded demo firm (T2) is what
