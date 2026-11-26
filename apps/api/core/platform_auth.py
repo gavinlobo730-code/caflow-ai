@@ -83,15 +83,19 @@ class Standing:
     firmless_admin_on_list: bool         # whether any account on the platform list belongs to no firm
 
 
-def _tables_holding(db, auth_user_id: str) -> tuple[str, ...]:
+def _tables_holding(auth_user_id: str) -> tuple[str, ...]:
     """Which PRINCIPAL_TABLES hold a row for this account. Each table is named outright, not looped over, so the
-    firm-scope guard reads each query (a table named by a variable is one of its blind spots)."""
+    firm-scope guard reads each query (a table named by a variable is one of its blind spots). The privileged client is
+    taken here, at the queries, because the payroll-table guard (POST-A-339) never counts a parameter as privileged."""
+    from core.supabase_client import get_service_supabase
+    db = get_service_supabase()
     staff = db.table("users").select("auth_user_id").eq("auth_user_id", auth_user_id).limit(1).execute().data
     portal = (db.table("client_portal_users").select("auth_user_id")
               .eq("auth_user_id", auth_user_id).limit(1).execute().data)
     employee = (db.table("payroll_employees").select("auth_user_id")
                 .eq("auth_user_id", auth_user_id).limit(1).execute().data)
-    # The legacy one-contact portal link on the client's own row (`portal_access_service._legacy_client`).
+    # The legacy one-contact portal link on the client's own row (`portal_access_service._legacy_client`). It includes
+    # the firm's own practice on purpose: whoever the link names belongs to a firm.
     legacy = db.table("clients").select("id").eq("portal_user_id", auth_user_id).limit(1).execute().data
     found = {"users": staff, "client_portal_users": portal, "payroll_employees": employee, "clients": legacy}
     return tuple(t for t in PRINCIPAL_TABLES if found[t])
@@ -101,12 +105,12 @@ def _firm_standing(auth_user_id: str) -> Standing:
     """Lock 3's two facts. Raises on a failed read; the gate turns that into a refusal."""
     from core.supabase_client import get_service_supabase
     db = get_service_supabase()
-    mine = _tables_holding(db, auth_user_id)
+    mine = _tables_holding(auth_user_id)
     turned_on = bool(db.table("platform_audit").select("id").eq("action", FIRMLESS_RULE_ON).limit(1).execute().data)
     if turned_on:
         return Standing(belongs_to=mine, firmless_admin_on_list=True)
     listed = [r.get("auth_user_id") for r in (db.table("platform_admins").select("auth_user_id").execute().data or [])]
-    firmless = [str(uid) for uid in listed if uid and not _tables_holding(db, str(uid))]
+    firmless = [str(uid) for uid in listed if uid and not _tables_holding(str(uid))]
     if firmless:
         db.table("platform_audit").insert({"action": FIRMLESS_RULE_ON, "actor_auth_user_id": firmless[0],
                                            "metadata": {"firmless_accounts": len(firmless)}}).execute()

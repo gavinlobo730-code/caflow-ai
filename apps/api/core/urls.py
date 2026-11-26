@@ -152,7 +152,8 @@ def platform_admin_origin() -> Optional[str]:
     if not raw:
         return None
     import re
-    if not re.fullmatch(r"https://[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+", raw):
+    scheme, _sep, host = raw.partition("://")
+    if scheme != "https" or not re.fullmatch(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+", host):
         import logging
         logging.getLogger("caflow.urls").error("PLATFORM_ADMIN_ORIGIN is not an https origin with a plain host name; ignored")
         return None
