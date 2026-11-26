@@ -30,7 +30,9 @@ from pathlib import Path
 
 import pytest
 from packaging.requirements import Requirement
+from packaging.specifiers import SpecifierSet
 from packaging.utils import canonicalize_name
+from packaging.version import Version
 
 API = Path(__file__).resolve().parents[1]
 REPO = API.parents[1]
@@ -125,19 +127,63 @@ def test_every_direct_dependency_is_in_the_lock_at_a_version_the_range_allows():
 
 
 def test_the_ranges_the_old_file_had_are_the_ranges_the_in_file_has():
-    """The lock records what the ranges resolve to; it must not quietly tighten or loosen them. The old file's
-    `>=`/`<` lines are quoted here from before the change. Only RANGES are held: this list also quoted three exact
-    pins (fastapi, gunicorn, python-multipart) as "this change bumps nothing", which was true on the day the lock
-    was introduced and made every later bump of those three, Dependabot's included, fail a guard that is about
-    ranges (2 Oct 2026). An exact pin moves by editing the file and recompiling; a range moving is the thing
-    worth stopping."""
-    text = "\n".join(_logical_lines(API / "requirements.in"))
-    # pydantic, pandas and reportlab are quoted at the minimums Dependabot's python group moved them to on 2 Nov 2026,
-    # each the version that bump locks (pydantic 2.14.2, pandas 3.1.0, reportlab 5.1.0). The lock held pandas 3.0.6 and
-    # reportlab 5.0.1 before, so no major version moved; the owner approved the change of minimums.
-    for line in ("httpx>=0.27.0,<0.28.0", "pydantic>=2.14.2", "pandas>=3.1.0", "reportlab>=5.1.0",
-                 "google-genai>=1.0.0,<2.0.0"):
-        assert line in text, f"{line} changed: a range the lock was introduced with moved"
+    """The lock records what the ranges resolve to; it must not quietly tighten or loosen them, and it must not let a
+    range jump a major version unseen. Only RANGES are held: this list also quoted three exact pins (fastapi, gunicorn,
+    python-multipart) as "this change bumps nothing", which was true on the day the lock was introduced and made every
+    later bump of those three, Dependabot's included, fail a guard that is about ranges (2 Oct 2026). An exact pin moves
+    by editing the file and recompiling; a range moving is the thing worth stopping.
+
+    TWO KINDS OF RANGE, AND THE SECOND IS NOT HELD AT ONE VERSION (26 Nov 2026, POST-A-560). httpx and google-genai
+    carry an UPPER bound, and that bound is the guard (httpx 0.28 changed how a client is built; google-genai 2 is a
+    different library), so each is held exactly. pydantic, pandas and reportlab carry only a MINIMUM, and a minimum is
+    exactly what Dependabot's python group raises each week to the version it locks: the test used to quote the minimum
+    to the patch (`pydantic>=2.14.2`), so the first routine bump of any of the three failed it, which it did on
+    pull request 1196 with nothing wrong in the bump. What matters about a minimum is that it stays a plain minimum
+    (nobody adds an upper bound, which would freeze the library behind the lock), that it is never LOWERED below what
+    the lock was built on (that would let an older, different version satisfy the file), and that it stays in the same
+    major version (a jump from pydantic 2 to 3 is a decision, not a weekly bump). Each is held to those three."""
+    by_name: dict[str, list[Requirement]] = {}
+    for line in _logical_lines(API / "requirements.in"):
+        requirement = Requirement(line)
+        by_name.setdefault(canonicalize_name(requirement.name), []).append(requirement)
+
+    held_exactly = {"httpx": ">=0.27.0,<0.28.0", "google-genai": ">=1.0.0,<2.0.0"}
+    for name, spec in held_exactly.items():
+        assert any(r.specifier == SpecifierSet(spec) for r in by_name.get(name, [])), (
+            f"{name}{spec} changed: a range the lock was introduced with moved")
+
+    # The minimums the lock was built on (pydantic 2.14.2, pandas 3.1.0, reportlab 5.1.0, quoted on 2 Nov 2026). The lock
+    # held pandas 3.0.6 and reportlab 5.0.1 before that, so no major version moved; the owner approved the change.
+    floors = {"pydantic": "2.14.2", "pandas": "3.1.0", "reportlab": "5.1.0"}
+    for name, floor in floors.items():
+        assert by_name.get(name), f"{name} is no longer a direct dependency: this guard has nothing to hold"
+        for requirement in by_name[name]:
+            clauses = list(requirement.specifier)
+            assert [c.operator for c in clauses] == [">="], (
+                f"{requirement} is no longer a plain minimum: an upper bound or another clause was added")
+            minimum = Version(clauses[0].version)
+            assert minimum >= Version(floor), f"{requirement} was LOWERED below {floor}, the minimum the lock was built on"
+            assert minimum.major == Version(floor).major, (
+                f"{requirement} jumped a major version from {floor}: that is a decision, not a weekly bump")
+
+
+def test_the_range_guard_catches_what_it_is_for_and_lets_a_routine_bump_through():
+    """The restated guard is only worth having if it still fails on an accidental move. Run on made-up lines."""
+    def moves(line: str, floor: str = "2.14.2") -> bool:
+        requirement = Requirement(line)
+        clauses = list(requirement.specifier)
+        if [c.operator for c in clauses] != [">="]:
+            return True
+        minimum = Version(clauses[0].version)
+        return minimum < Version(floor) or minimum.major != Version(floor).major
+
+    assert not moves("pydantic>=2.14.2")                 # the floor itself
+    assert not moves("pydantic>=2.14.4")                 # a routine bump, the one Dependabot made
+    assert not moves("pydantic[email]>=2.15.0")          # a minor bump, the extra kept
+    assert moves("pydantic>=2.14.2,<2.15")               # an upper bound was added
+    assert moves("pydantic>=2.0.0")                      # lowered below the floor
+    assert moves("pydantic>=3.0.0")                      # a major jump
+    assert moves("pydantic==2.14.4")                     # no longer a range at all
 
 
 def test_the_runtime_set_holds_no_test_only_package():
