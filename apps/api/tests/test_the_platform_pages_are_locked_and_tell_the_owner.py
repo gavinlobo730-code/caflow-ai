@@ -30,6 +30,11 @@ class _Q:
         self.filters[col] = val
         return self
 
+    def contains(self, col, wanted):
+        # jsonb containment: every key asked for is in the stored object and equal
+        self.contained = (col, wanted)
+        return self
+
     def insert(self, payload):
         self.payload = payload
         return self
@@ -44,6 +49,10 @@ class _Q:
         if self.table in self.db.broken:
             raise RuntimeError("read failed")
         rows = self.db.rows.get(self.table, [])
+        held = getattr(self, "contained", None)
+        if held:
+            col, wanted = held
+            rows = [row for row in rows if all((row.get(col) or {}).get(k) == v for k, v in wanted.items())]
 
         def hit(row):
             for col, val in self.filters.items():

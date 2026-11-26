@@ -108,7 +108,7 @@ def note_visit(admin: dict, address: Optional[str]) -> None:
         db = get_service_supabase()
         if key:
             seen = (db.table("platform_audit").select("id").eq("action", "platform_sign_in")
-                    .eq("metadata->>session", key).limit(1).execute().data) or []
+                    .contains("metadata", {"session": key}).limit(1).execute().data) or []
             if seen:
                 return
         when = _when()
