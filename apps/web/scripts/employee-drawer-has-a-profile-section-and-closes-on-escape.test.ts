@@ -98,21 +98,25 @@ test("typed junk in a percent or amount field refuses rather than saving as unch
   assert.match(body, /throw new Error/);
 });
 
-test("the drawer closes on Escape via a document keydown listener", () => {
+test("the drawer closes on Escape, through the shared side sheet, and Escape still ends in onClose", () => {
+  // It had a document keydown listener of its own, the shape the shared Drawer uses. It IS the shared Drawer now (POST-A-130), which owns
+  // Escape, the click beside it and its ×, keeps Tab inside and gives focus back; so the listener is gone from this file and the rule is
+  // held where it now lives: the sheet is the shared one, and what it is handed to close with reaches onClose.
   const src = stripped();
-  assert.match(src, /addEventListener\("keydown"/);
-  assert.match(src, /e\.key === "Escape"/);
-  assert.match(src, /removeEventListener\("keydown"/,
-    "the listener must be cleaned up in the effect's return");
+  assert.doesNotMatch(src, /addEventListener\("keydown"/, "a second Escape listener beside the shared sheet's would ask the leave question twice");
+  const handed = /<Drawer open[^>]*?\bonClose=\{(\w+)\}/.exec(src)?.[1];
+  assert.ok(handed, "the employee sheet is not the shared Drawer, or is handed no way to close");
   // The RULE is that Escape ENDS in onClose. It used to be pinned as the
   // spelling `onClose()` in this file, which failed the day closing with typed
-  // work started asking first (frontend_ux-23): Escape now calls a guard that
+  // work started asking first (frontend_ux-23): the sheet is handed a guard that
   // asks and then calls onClose. Either shape satisfies the rule; a handler that
   // reaches onClose by neither does not.
-  // The handler is the Escape branch's call, in either spelling: `if (e.key === "Escape") close();` or the same with a block.
-  const handler = /e\.key === "Escape"\)\s*\{?\s*(\w+)\(\)/.exec(src)?.[1];
-  assert.ok(handler, "the Escape branch calls a function");
-  assert.ok(reaches(src, handler), `Escape calls ${handler}(), which never reaches onClose`);
+  assert.ok(reaches(src, handed), `the shared sheet is handed ${handed}, which never reaches onClose`);
+  // And the shared sheet does hear Escape, and leaves a focused date box first so its commit is seen by the leave question.
+  const drawer = stripComments(fs.readFileSync(path.join(WEB, "components/ui/drawer.tsx"), "utf8"));
+  assert.match(drawer, /e\.key === "Escape"/);
+  assert.match(drawer, /closeAfterTheFocusedDateCommits\(\(\) => onCloseRef\.current\(\)\)/);
+  assert.match(drawer, /removeEventListener\("keydown"/, "the listener must be cleaned up in the effect's return");
 });
 
 /** The text of `const name = …;` — up to the `;` that ends it at bracket depth 0, so a callback's own statements are inside it. */

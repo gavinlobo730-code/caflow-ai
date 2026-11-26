@@ -90,9 +90,9 @@ VERIFIED = False
 ADDITIONAL_DEPRECIATION_PERCENT = 20
 
 UNVERIFIED_NOTE = (
-    "The §32(1)(iia) rate and provisos here are recorded from knowledge, not "
-    "read off the Act — this environment refuses outbound requests. Each is "
-    "pinned by a test. Check them against the Finance Act before filing."
+    "The §32(1)(iia) rate and provisos here are recorded from knowledge and "
+    "have not been read off the Act. Check them against the Finance Act "
+    "before filing."
 )
 
 THE_TICK_ASSERTS_THE_PROVISO = (

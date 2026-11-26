@@ -38,7 +38,7 @@ const ADMIN_CARDS: {
   { label: "MSME 43B(h) Tracker", description: "Track MSME vendor payments to avoid IT Act §43B(h) disallowance", href: "/accounting/msme-tracker", icon: FileText },
   { label: "Schedule III Statements", description: "Balance Sheet & P&L in Companies Act 2013 Schedule III format for MCA/ROC", href: "/accounting/schedule-iii", icon: ClipboardCheck },
   { label: "Trial Balance Import", description: "Import opening balances from Tally, Busy, QuickBooks, Zoho, Excel CSV", href: "/accounting/trial-balance-import", icon: Scale },
-  { label: "Lock Financial Year", description: "Lock closed years to prevent accidental edits — Partner only", href: "/accounting/lock-year", icon: Lock },
+  { label: "Lock Financial Year", description: "Lock closed years to prevent accidental edits", href: "/accounting/lock-year", icon: Lock },
 ];
 
 // sweep-accounting-hub-1-04: the sidebar (AccountingPanel's NAV_GROUPS) has

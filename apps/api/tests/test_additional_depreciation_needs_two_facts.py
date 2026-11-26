@@ -53,7 +53,9 @@ L = 1_00_000_00  # one lakh in paise
 
 def test_nothing_here_claims_to_be_verified():
     assert ad.VERIFIED is False
-    assert "pinned by a test" in ad.UNVERIFIED_NOTE
+    # The note is read by a CA on the working: it says the one fact and the one instruction, and nothing about how the code is tested.
+    assert "not been read off the Act" in ad.UNVERIFIED_NOTE
+    assert "Check them against the Finance Act before filing" in ad.UNVERIFIED_NOTE
 
 
 def test_the_rate_is_twenty_per_cent_of_actual_cost():

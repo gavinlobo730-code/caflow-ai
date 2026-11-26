@@ -130,7 +130,7 @@ function PinModal({
       </>}>
         <p className="text-sm text-ps-label">
           {isSettingPin
-            ? "No PIN is set yet. Create a PIN that Partners will use to lock or unlock financial years."
+            ? "No PIN is set yet. Create the PIN that is asked for whenever a financial year is locked or unlocked."
             : `Enter the firm PIN to ${d.isLocked ? "unlock" : "lock"} FY ${d.fy}.`}
         </p>
 
@@ -243,7 +243,7 @@ function LockYearContent() {
         back={{ href: "/accounting", label: "Accounting" }}
         icon={<Shield className="w-5 h-5 text-blue-600" />}
         title="Lock Financial Year"
-        subtitle="Partner-only — lock closed years to prevent accidental edits"
+        subtitle="Lock closed years to prevent accidental edits"
       />
 
       {/* Warning */}
@@ -251,7 +251,7 @@ function LockYearContent() {
         <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
         <div className="text-sm text-amber-800">
           <p className="font-medium">Locking a year prevents all journal entries, invoice edits, and adjustments for that period.</p>
-          <p className="text-xs mt-1 text-state-attention">Only Partners can lock or unlock. Unlock before making any corrections.</p>
+          <p className="text-xs mt-1 text-state-attention">Locking and unlocking need the permission to approve the books. Unlock before making any corrections.</p>
         </div>
       </div>
 

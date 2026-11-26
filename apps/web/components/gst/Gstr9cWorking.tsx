@@ -471,7 +471,7 @@ export default function Gstr9cWorking({ clientId, financialYear }: { clientId: s
               <p className="text-3xs text-ps-hint mt-1">
                 Self-certification (no CA/CMA sign-off recorded in the return) applies from
                 FY {statement.self_certification_from_fy} onward.
-                {!statement.gstr9c_verified && " These figures are not independently verified against a primary source in this environment."}
+                {!statement.gstr9c_verified && " These figures have not been checked against a primary source."}
               </p>
             </details>
           </div>

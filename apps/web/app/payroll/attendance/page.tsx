@@ -466,8 +466,9 @@ export default function AttendancePage() {
         client_id: earnClient, enabled: next,
       }) as { success?: boolean; error?: string | null; detail?: string };
       if (res?.success === false) {
+        // A refusal that came without words is reported as what happened, in the direction that was asked (this switch goes both ways).
         setEarnMsg(res.error || res.detail
-          || "Only a Partner can switch payroll on for a client.");
+          || `Payroll could not be switched ${next ? "on" : "off"} for this client.`);
       } else {
         setPayrollOn(prev => ({ ...prev, [earnClient]: next }));
         setEarnMsg(next
@@ -1181,7 +1182,7 @@ export default function AttendancePage() {
                       ) : (
                         <>Payroll is <strong>not switched on</strong> for{" "}
                           {clientNames[earnClient] ?? earnClient}. Nothing payroll can
-                          be created for them until a Partner turns it on; anything
+                          be created for them until it is switched on; anything
                           already recorded stays readable.</>
                       )}
                     </span>

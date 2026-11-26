@@ -988,8 +988,8 @@ def assemble(*, form: str, assessment_year: str, financial_year: str, statements
                     "record them, so they are left for the CA to key.")
     gaps.append(f"The statements are {FRAMEWORK}. The product records no accounting framework, so whether this company or firm files "
                 f"the Ind AS parts of the form instead is the CA's to confirm.")
-    gaps.append("The line-to-box table has not been read against the form's instructions (they are not reachable from this "
-                "environment). Check each placement before the first return is keyed from it.")
+    gaps.append("The line-to-box table has not been read against the form's instructions. Check each placement before the first "
+                "return is keyed from it.")
     unsplit = [s for s in bs["liability_slots"] + bs["asset_slots"] if s["not_split_paise"]]
     if unsplit:
         gaps.append(f"{len(unsplit)} balance sheet figure(s) are totals whose parts the books do not record; the CA splits them.")

@@ -57,8 +57,9 @@
  */
 
 import { Button } from "@/components/ui/button";
+import { Drawer } from "@/components/ui/drawer";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { X, ShieldAlert, Lock, RotateCcw } from "lucide-react";
+import { ShieldAlert, Lock, RotateCcw } from "lucide-react";
 import { api, type MemberAccessGrid } from "@/lib/api";
 import { denialNotice } from "@/lib/team/denialNotice";
 import { LoadingRegion } from "@/components/ui/skeleton";
@@ -300,27 +301,18 @@ export default function MemberAccessDrawer({ userId, onClose, onSaved }: Props) 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/30" onClick={(e) => { e.stopPropagation(); if (!saving) onClose(); }}>
-      <div
-        className="w-full max-w-2xl h-full bg-white shadow-xl flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-label="Member access"
-      >
-        <div className="px-5 py-4 border-b border-ps-border flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-ps-ink truncate">
-              {grid?.full_name || "Member access"}
-            </h2>
-            <p className="text-xs text-ps-hint mt-0.5">
-              {grid?.email}
-              {grid?.role ? ` · ${grid.role}` : ""}
-            </p>
-          </div>
-          <button disabled={saving} onClick={onClose} aria-label="Close" className="text-ps-hint hover:text-ps-ink">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
+    // The shared side sheet (POST-A-130): modal, Tab kept inside, Escape closes it, focus given back to the member's row. It keeps the
+    // name it was announced by ("Member access"); the member's own name is its heading. Its close (Escape, a click beside it, its ×) is
+    // held while the ticks are being saved.
+    <Drawer open widthClass="sm:max-w-2xl" ariaLabel="Member access" onClose={() => { if (!saving) onClose(); }}
+      title={<span className="font-sans truncate">{grid?.full_name || "Member access"}</span>}>
+      <div className="flex min-h-[calc(100%-3rem)] flex-col">
+        {grid && (
+          <p className="px-5 pt-3 text-xs text-ps-hint">
+            {grid.email}
+            {grid.role ? ` · ${grid.role}` : ""}
+          </p>
+        )}
 
         <div className="px-5 py-3 border-b border-ps-border bg-ps-bg/60">
           <p className="text-xs text-ps-label">
@@ -347,7 +339,7 @@ export default function MemberAccessDrawer({ userId, onClose, onSaved }: Props) 
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+        <div className="flex-1 px-5 py-4 space-y-5">
           {!vocabulary || !grid ? (
             <LoadingRegion label="Loading this member's access" className="text-sm text-ps-hint">Loading…</LoadingRegion>
           ) : (
@@ -423,7 +415,7 @@ export default function MemberAccessDrawer({ userId, onClose, onSaved }: Props) 
           )}
         </div>
 
-        <div className="px-5 py-3 border-t border-ps-border flex items-center justify-between gap-3">
+        <div className="sticky bottom-0 bg-white px-5 py-3 border-t border-ps-border flex items-center justify-between gap-3">
           <button
             type="button"
             onClick={resetAll}
@@ -447,6 +439,6 @@ export default function MemberAccessDrawer({ userId, onClose, onSaved }: Props) 
           </div>
         </div>
       </div>
-    </div>
+    </Drawer>
   );
 }

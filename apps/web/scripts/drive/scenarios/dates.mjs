@@ -546,7 +546,7 @@ async function openEmployeeForm(env) {
 }
 
 /** An employee's drawer (Profile, Full & final, Salary revisions, Loans & advances) on the client's payroll screen, open at one tab, for a person who may finalise. */
-function openEmployeeDrawer(tab) {
+export function openEmployeeDrawer(tab) {
   return async (env) => {
     const { page, stub } = env;
     stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { payroll: ["read", "write", "approve", "finalize"] } }) });
@@ -1855,7 +1855,7 @@ const TASK_ROW = {
   due_date: "2026-10-20", assignee_id: null, assigned_to: null, created_at: "2026-10-01T05:00:00Z", updated_at: "2026-10-01T05:00:00Z", deleted_at: null,
   clients: { client_name: CLIENT_ROW.client_name },
 };
-async function openEditTask(env) {
+export async function openEditTask(env) {
   const { page, stub } = env;
   stub.setTable("tasks", [TASK_ROW]);
   stub.route({ method: "PATCH", re: /api\/tasks\/t-1$/, reply: () => ok({ task: TASK_ROW }) });
@@ -1881,7 +1881,7 @@ async function openTaskFromTemplate(env) {
   await pick(page, page.locator('button[aria-label="Client"]').last(), CLIENT_ROW.client_name);
 }
 
-async function openUploadDocument(env) {
+export async function openUploadDocument(env) {
   const { page, stub } = env;
   stub.route({ method: "GET", re: /api\/client-documents\?/, reply: () => ok({ documents: [], returned: 0, has_more: false }) });
   stub.route({ method: "POST", re: /api\/client-documents\/upload$/, reply: () => ok({ document: { id: "d-1" } }) });
@@ -1900,7 +1900,7 @@ const HEALTH_SCORE = {
   client_id: CLIENT_ID, overall_score: 72, grade: "B", health_grade: "B", dimensions: {}, last_calculated_at: "2026-10-08T00:30:00Z",
   is_critical: false, is_at_risk: false, hard_override: null, hard_override_reason: null,
 };
-async function openHealthOverride(env, path) {
+export async function openHealthOverride(env, path) {
   const { page, stub } = env;
   stub.setTable("health_scores", [HEALTH_SCORE]);
   stub.route({ method: "POST", re: new RegExp(`api\\/health\\/scores\\/${CLIENT_ID}\\/override$`), reply: () => ok({ id: "ov-1" }) });
@@ -1910,7 +1910,7 @@ async function openHealthOverride(env, path) {
   await page.getByLabel("Reason", { exact: true }).fill("The notice was answered in person");
 }
 
-async function openAddRenewal(env) {
+export async function openAddRenewal(env) {
   const { page, stub } = env;
   stub.route({ method: "POST", re: /api\/lifecycle\/renewals$/, reply: () => ok({ id: "rn-1" }) });
   await page.goto(env.at("/lifecycle/"), { waitUntil: "networkidle" });
@@ -1919,7 +1919,7 @@ async function openAddRenewal(env) {
   await page.getByLabel("Financial Year", { exact: true }).fill("2026-27");
 }
 
-async function openPortalRequest(env) {
+export async function openPortalRequest(env) {
   const { page, stub } = env;
   stub.route({ method: "POST", re: /api\/portal\/document-requests$/, reply: () => ok({ id: "dr-1" }) });
   await page.goto(`${env.base}/client-portal/?client=${CLIENT_ID}`, { waitUntil: "networkidle" });

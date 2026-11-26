@@ -310,15 +310,9 @@ export const UNLISTED: Record<string, string> = {
   "/portal/dashboard": "the client's own screen, not staff navigation",
   "/portal/employee": "the EMPLOYEE portal — a different principal entirely",
   "/portal/employee/activate": "reached from an invitation link",
-  "/onboarding/checklist":
-    "a pure redirect to /clients/onboarding/ (sweep-auth-and-public-05) — kept " +
-    "for old bookmarks; naming it would give ONE destination two palette entries",
-  "/team/work-allocation":
-    "a pure redirect to /team/workload (practice_management-24) — Work Allocation " +
-    "was merged into it and its URL kept for old bookmarks and #unassigned-tasks " +
-    "links; naming it would give ONE destination two palette entries",
   "/clients/[id]":
-    "a pure redirect to /clients/:id/overview/ — naming it would give ONE\n     destination two palette entries, and \"Overview\" is the one a CA means",
+    "the client workspace's front door (its module grid), reached by opening a client — " +
+    "it needs a client, and every screen it leads to is named under its own section",
   "/health/[client_id]": "a RECORD, which is what entity search already finds",
   "/relationships/[entity_id]": "a RECORD",
   "/clients/[id]/accounting/journal/[entryId]/edit": "a RECORD — no such screen without a document id",
