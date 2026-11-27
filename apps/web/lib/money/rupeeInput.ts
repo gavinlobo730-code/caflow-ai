@@ -62,9 +62,9 @@ export function plainDecimalText(raw: string): string | null {
 
 /**
  * A typed amount or quantity as a JS number, for the parity-pinned arithmetic that takes RUPEES and not paise: the text through the one
- * grouping reader, then parseFloat as before. A text with no comma, or one with a misplaced comma, is judged exactly as parseFloat judged it,
- * so this changes the reading of properly grouped text and of text with a misplaced comma (which is NaN, so the callers that already treat
- * a non-number as nothing or as a refusal keep doing so). Use it wherever a screen turns a typed amount or quantity into a
+ * grouping reader, then parseFloat as before. A text with no comma is judged exactly as parseFloat judged it; properly grouped text is the
+ * number it names; text with a comma in a wrong place is NaN (not what parseFloat reads up to the comma), so the callers that already treat
+ * a non-number as nothing or as a refusal keep doing so. Use it wherever a screen turns a typed amount or quantity into a
  * number after a reader here has accepted the text; a bare parseFloat or Number on that text reads "1,25,000" as 1 or NaN (POST-A-567).
  */
 export function typedNumber(raw: string): number {

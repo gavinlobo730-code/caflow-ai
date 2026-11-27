@@ -541,7 +541,7 @@ function TransferPanel({ clientId, godowns, detail, onDone }: {
   async function move() {
     setError("");
     if (dates.first ?? clearedProblem) { refusal.refuse(); return; }
-    // A quantity the server cannot read ("1,500", "5 kg", a fourth decimal) came back as a generic failure naming nothing: it is refused here, in the unit the column keeps.
+    // A quantity the server cannot read ("5 kg", a comma in a wrong place, a fourth decimal) came back as a generic failure naming nothing: it is refused here, in the unit the column keeps.
     // A quantity grouped properly ("1,500") is read by that check, so what is SENT is the plain digits the server reads (it refuses a comma), not the text as typed.
     const plainQuantity = plainDecimalText(quantity);
     if (parseQuantity(quantity) === null || plainQuantity === null) { setError("Quantity: enter a number, like 5 or 12.5 (up to three decimals)."); return; }

@@ -127,7 +127,7 @@ const LOAN_TYPE_LABELS: Record<LoanType, string> = {
  * money by the time it reaches an EMI schedule or an FD maturity figure.
  */
 function ratePercentFromInput(raw: string): number | null {
-  const bps = bpsFromPercentInput(raw.replace(/[,\s%]/g, ""));
+  const bps = bpsFromPercentInput(raw.replace(/[\s%]/g, ""));
   return bps === null ? null : bps / 100;
 }
 
@@ -418,7 +418,7 @@ export default function LoansAndFDPage() {
     // figure computes nothing rather than an EMI on a coerced one, and says which box to correct.
     setCalcResult(null);
     const p = paiseFromRupeeInput(calcPrincipal);
-    const bps = bpsFromPercentInput(calcRate.replace(/[,\s%]/g, ""));
+    const bps = bpsFromPercentInput(calcRate.replace(/[\s%]/g, ""));
     const n = monthsFromInput(calcTenure);
     if (p === null || p <= 0) { setCalcError("Enter the principal in rupees, e.g. 1000000."); return; }
     if (bps === null || bps <= 0) { setCalcError("Enter the annual interest rate, e.g. 10.5."); return; }

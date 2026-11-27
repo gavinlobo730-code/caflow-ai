@@ -48,13 +48,16 @@ function codeOf(rel: string): string {
 }
 
 test("no sentence a person is shown tells them to leave the commas out of an amount", () => {
-  const allowed = new Set(STILL_TRUE.map((e) => e.file));
+  // A file with a sentence that is still true is scanned too, with only THAT sentence taken out: a second "no commas" in the same file (the
+  // payroll page has many amount boxes) must not hide behind the first.
+  const permitted = new Map(STILL_TRUE.map((e) => [e.file, e.phrase]));
   const offenders: string[] = [];
   for (const dir of ["app", "components", "lib"]) {
     for (const rel of sourceFiles(dir)) {
       const posix = rel.split(path.sep).join("/");
-      if (allowed.has(posix)) continue;
-      const code = codeOf(rel);
+      let code = codeOf(rel);
+      const phrase = permitted.get(posix);
+      if (phrase) code = code.replace(/"\s*\+\s*"/g, "").split(phrase).join("");
       const m = /(?:without|with no|no)\s+commas/i.exec(code);
       if (m) offenders.push(`${posix}: …${code.slice(Math.max(0, m.index - 60), m.index + m[0].length + 20).replace(/\s+/g, " ")}`);
     }

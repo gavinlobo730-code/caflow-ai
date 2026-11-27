@@ -34,7 +34,7 @@ import type {
   ArrearsReliefResult, EmployeeLoanRow, PerquisiteResult,
   SalaryRevisionRow, SettlementInput, SettlementResult,
 } from "@/lib/api";
-import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput";
+import { paiseFromRupeeInput, bpsFromPercentInput, AMOUNT_MAY_LOOK_LIKE } from "@/lib/money/rupeeInput";
 import { financialYearOfMonth } from "@/lib/dates/periods";
 import { Callout, GapList } from "@/components/ui/callout";
 import { YearPicker } from "@/components/ui/year-picker";
@@ -472,8 +472,22 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded, onDirt
     };
   }
 
+  /** The amount boxes whose text is not an amount. A box that is typed in and unreadable used to be sent as 0 (`?? 0` above), so a settlement over
+   *  "12,50" of notice pay recovered went to the ledger with none recovered while the box said "Not an amount." beside it. */
+  function unreadableAmounts(): string | null {
+    const boxes: Array<[string, string]> = [
+      ["Salary to last day", salaryToLastDay], ["Leave encashment", leaveAmount], ["Notice pay recovered", noticePay],
+      ["Loans outstanding", loansOutstanding], ["Other recoveries", otherRecoveries], ["Average of the last ten months", averageTenMonths],
+      ["Gratuity exemption already used", gratuityUsed], ["Leave exemption already used", leaveUsed],
+    ];
+    const bad = boxes.filter(([, text]) => text.trim() !== "" && paiseFromRupeeInput(text) === null).map(([name]) => name);
+    return bad.length === 0 ? null : `${bad.join(", ")} ${bad.length === 1 ? "is not an amount" : "are not amounts"}. ${AMOUNT_MAY_LOOK_LIKE} Nothing was sent.`;
+  }
+
   async function preview() {
     if (dates.first) { dates.refuseWith(setErr); return; }
+    const unreadable = unreadableAmounts();
+    if (unreadable) { setErr(unreadable); return; }
     setBusy("preview"); setErr(null); setDone(null); setConfirming(false);
     try {
       const res = await api.payroll.previewSettlement(employee.id, body());
@@ -487,6 +501,8 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded, onDirt
 
   async function record() {
     if (dates.first) { dates.refuseWith(setErr); return; }
+    const unreadable = unreadableAmounts();
+    if (unreadable) { setErr(unreadable); return; }
     setBusy("record"); setErr(null);
     try {
       const res = await api.payroll.recordSettlement(employee.id, {
