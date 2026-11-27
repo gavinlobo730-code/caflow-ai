@@ -81,8 +81,11 @@ _RUN_SUM_KEYS = ("gross_paise", "net_paise", "tds_paise", "pf_employee_paise", "
 _EMPLOYEE_SUM_KEYS = ("gross_paise", "net_paise", "tds_paise", "pt_paise", "pf_employee_paise", "esi_employee_paise")
 
 
-def _from_the_database(db, function: str, firm_id: str, run_ids: list[str]) -> Optional[list]:
+def _from_the_database(db, label: str, firm_id: str, call: Callable) -> Optional[list]:
     """The database function's answer, or None when there is none to ask (mock mode, a database without migration 779) or it failed.
+
+    `call` takes the privileged client and returns the `.rpc(...)` builder, so the function's NAME is a literal at its call site (the
+    schema checks read `.rpc("name", ...)` literals and a name passed through a variable is one nothing checks).
 
     None is never an empty answer: the caller then adds the figures up itself from the paged payslips, so a missing function costs
     speed and never a figure. A failure is reported, not swallowed."""
@@ -90,10 +93,9 @@ def _from_the_database(db, function: str, firm_id: str, run_ids: list[str]) -> O
     if not callable(getattr(client, "rpc", None)):
         return None
     try:
-        return fetch_document(lambda: client.rpc(function, {"p_firm": firm_id, "p_run_ids": run_ids}),
-                              label=f"payroll_report.{function}", expect=list)
+        return fetch_document(lambda: call(client), label=f"payroll_report.{label}", expect=list)
     except Exception as exc:                                  # noqa: BLE001 — reported below, and the Python path answers
-        capture_soft_failure(exc, operation=f"payroll_report.{function}", firm_id=firm_id)
+        capture_soft_failure(exc, operation=f"payroll_report.{label}", firm_id=firm_id)
         return None
 
 
@@ -219,7 +221,8 @@ def run_summaries(db, firm_id: str, run_ids: list[str]) -> dict[str, dict]:
     """
     if not run_ids:
         return {}
-    answer = _from_the_database(db, "payroll_run_summaries", firm_id, run_ids)
+    answer = _from_the_database(
+        db, "payroll_run_summaries", firm_id, lambda c: c.rpc("payroll_run_summaries", {"p_firm": firm_id, "p_run_ids": run_ids}))
     if answer is not None:
         return run_totals_from_answer(run_ids, answer)
     rows = fetch_all_in(
@@ -261,7 +264,8 @@ def employee_year_totals(db, firm_id: str, financial_year: str,
         return []
 
     run_ids = [str(r["id"]) for r in run_rows]
-    answer = _from_the_database(db, "payroll_year_end_totals", firm_id, run_ids)
+    answer = _from_the_database(
+        db, "payroll_year_end_totals", firm_id, lambda c: c.rpc("payroll_year_end_totals", {"p_firm": firm_id, "p_run_ids": run_ids}))
     if answer is not None:
         return employee_totals_from_answer(answer)
     rows = fetch_all_in(
