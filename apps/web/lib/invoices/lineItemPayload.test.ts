@@ -63,11 +63,11 @@ test("a stored note line's cess limbs reopen as the two boxes and go back out as
 // quantity here was read by the bare parseFloat while the validators upstream had started to accept the grouped text.
 test("a grouped quantity and rate reach the payload as the figures typed, and the line gate agrees", async () => {
   const { isValidLine } = await import("./gst.ts");
-  const line: any = {
+  const line = {
     description: "Paper", hsn_sac: "", qty: "1,000", rate: "1,250", unit: "NOS", gst_rate: 18, serviceCatalogueId: "S1",
     discountPercent: "", cessPercent: "", cessPerUnit: "",
-  };
-  assert.equal(isValidLine(line), true);
+  } as unknown as Parameters<typeof toInvoiceLinePayload>[0];
+  assert.equal(isValidLine(line as Parameters<typeof isValidLine>[0]), true);
   const sent = toInvoiceLinePayload(line);
   assert.equal(sent.quantity, 1000);
   assert.equal(sent.rate_paise, 125_000);
