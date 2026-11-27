@@ -106,7 +106,7 @@ class PeriodValidationService:
                     status_code=422,
                     detail=(
                         f"Cannot post to a locked financial year: {fy_string}. "
-                        "Only Partners can unlock financial years."
+                        "Only someone who may approve Accounting can unlock a financial year."
                     ),
                 )
 

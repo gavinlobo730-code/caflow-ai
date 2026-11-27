@@ -128,7 +128,7 @@ PAGE_FACTS: dict[str, str] = {
     "It does not write to the product's database.": DEMO_FORM,
     "It does not name every service the product uses; email delivery and error reporting are two it leaves out.": UNNAMED,
     # what a sign-in leaves behind (POST-A-486)
-    "The product records the address and the browser that people sign in from, and keeps them with the sign-in history that your firm's Partners and Managers can read.": SIGN_IN_RECORD,
+    "The product records the address and the browser that people sign in from, and keeps them with the sign-in history, which the people in your firm who have been given access to it can read (by default, Partners and Managers).": SIGN_IN_RECORD,
     "The address is the one our own server saw; it is not turned into a place.": SIGN_IN_ADDRESS,
     "There is no public email address or phone line yet.": SUPPORT_LINK,
     "When there is one, the Support page lists it.": SUPPORT_LINK,
@@ -1068,7 +1068,7 @@ def test_the_footer_rule_passes_a_correct_footer():
 
 def test_a_sign_in_is_recorded_with_its_address_and_browser_and_read_by_partners_and_managers(monkeypatch):
     """The sentence: the product records the address and the browser that people sign in from and keeps them with the sign-in history
-    that the firm's Partners and Managers can read. Drives the real route, then asks who the history is open to. (It says 'people sign
+    which the people in the firm who have been given access to it can read, by default Partners and Managers (a Partner's tick can give it to anyone else, and take it away). Drives the real route, then asks who the history is open to by default. (It says 'people sign
     in from', not 'each sign-in': a sign-in by an invitation or a reset link leaves no history row, only a session row.)"""
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
@@ -1099,7 +1099,7 @@ def test_a_sign_in_is_recorded_with_its_address_and_browser_and_read_by_partners
 
     readers = {role.value if hasattr(role, "value") else str(role) for role in PERMISSIONS["team"]["read"]}
     assert readers == {Role.PARTNER.value, Role.MANAGER.value}, (
-        "the sentence says Partners and Managers read the sign-in history; if the team:read tier changes, the sentence is wrong")
+        "the sentence says Partners and Managers read the sign-in history BY DEFAULT; if the team:read default changes, the sentence is wrong")
 
 
 def test_the_address_a_sign_in_records_is_our_servers_and_is_sent_nowhere():
