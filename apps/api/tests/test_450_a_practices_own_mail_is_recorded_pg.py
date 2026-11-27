@@ -61,7 +61,7 @@ def _scalar(dsn: str, sql: str) -> str:
 
 
 def _as(dsn: str, auth_uid: str, sql: str) -> subprocess.CompletedProcess:
-    """An authenticated PostgREST session, the way test_r440 simulates one."""
+    """An authenticated PostgREST session, the way test_440_a_portal_client_can_post_and_read_their_own_thread_pg simulates one."""
     return _psql(dsn, f"SET request.jwt.claims = '{{\"sub\": \"{auth_uid}\"}}'; "
                       f"SET ROLE authenticated; {sql}")
 

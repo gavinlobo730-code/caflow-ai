@@ -31,7 +31,7 @@ import pytest
 
 import routers.fixed_assets as fa_router
 from routers.fixed_assets import _annual_depreciation_for_period
-from tests.test_r232_fixed_asset_depreciation import FIRM, FakeDB, _dep, _seed_asset
+from tests.test_fixed_asset_depreciation_is_charged_from_the_years_opening_value import FIRM, FakeDB, _dep, _seed_asset
 
 SL = dict(depreciation_method="SL", wdv_rate_percent=None)
 LAKH = 1_00_000_00

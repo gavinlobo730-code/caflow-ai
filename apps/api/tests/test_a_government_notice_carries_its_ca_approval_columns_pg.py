@@ -17,7 +17,7 @@ Against real Postgres/PostgREST (SUPABASE_URL configured, _USE_MOCK=False)
 both the insert and the update referenced columns absent from the schema,
 so even a genuine, non-fabricated Groq extraction was never persisted in
 production — the milestone's own new tests only exercise the in-memory mock
-store and could never catch this (test_r2_8_ai_extraction.py).
+store and could never catch this (test_ai_extraction_does_not_fabricate_data_or_persist_mock_notices.py).
 
 Migration 158 adds the three missing columns additively (same repair pattern
 as 155/157: a new migration, never editing 052). This test performs the

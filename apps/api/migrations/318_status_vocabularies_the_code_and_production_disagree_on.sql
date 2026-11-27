@@ -27,7 +27,7 @@
 -- makes this migration a REAL DDL change in production, not a no-op — the only
 -- one in this file.
 --
--- No test caught it because tests/test_r239_gst_computation_gaps.py runs the
+-- No test caught it because tests/test_gst_blocked_credit_and_computation_gaps.py runs the
 -- path against an in-memory FakeDB. tests/test_status_vocabularies_pg.py now
 -- asserts, against real Postgres, that every status either module writes is
 -- accepted.

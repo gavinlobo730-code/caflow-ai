@@ -380,6 +380,9 @@ services/year_end_financial_service.py :: C901 :: generate_financial_statements 
 services/year_end_financial_service.py :: PLR0915 :: generate_financial_statements :: 101
 tests/generate_gst_parity_vectors.py :: B905 :: build :: 2
 tests/test_441_portal_client_may_pay_their_own_invoice_pg.py :: F841 :: test_before_this_migration_the_activating_update_is_also_refused :: 1
+tests/test_443_a_portal_client_reads_their_own_fee_documents_pg.py :: B017 :: test_statement_negative_control_is_unavailable_before_the_fix :: 1
+tests/test_443_a_portal_client_reads_their_own_fee_documents_pg.py :: F841 :: test_no_for_all_restrictive_assignment_scope_survives :: 1
+tests/test_443_a_portal_client_reads_their_own_fee_documents_pg.py :: F841 :: test_only_select_carries_the_portal_branch_not_insert_update_delete :: 1
 tests/test_a_26as_line_it_cannot_read_is_named.py :: B017 :: test_the_reading_is_a_frozen_value :: 1
 tests/test_a_bank_rule_says_which_field_and_which_one_wins.py :: B017 :: test_an_unknown_field_is_refused_at_create_and_at_edit :: 2
 tests/test_a_bank_rule_says_which_field_and_which_one_wins.py :: B017 :: test_an_unknown_operator_is_refused_at_create_and_at_edit :: 2
@@ -478,7 +481,9 @@ tests/test_filing_demo_gstr3b.py :: B905 :: test_table_4_rows_arithmetically_agr
 tests/test_five_things_the_second_probe_pass_found.py :: B017 :: test_every_quantity_field_in_the_product_carries_the_rule :: 1
 tests/test_four_things_the_sales_slice_found.py :: B017 :: test_the_correction_path_validates_it_too :: 1
 tests/test_frontend_columns_exist_pg.py :: B007 :: test_the_columns_fixed_here_stay_fixed :: 1
+tests/test_gst_blocked_credit_and_computation_gaps.py :: B017 :: test_purchase_bill_line_requires_blocked_credit_reason_when_ineligible :: 1
 tests/test_gst_parity_vectors.py :: B905 :: test_backend_matches_parity_discount :: 2
+tests/test_gst_saves_party_creation_and_relationships_refuse_another_firms_client.py :: B017 :: test_create_entity_to_entity_relationship_rejects_unowned_entities :: 1
 tests/test_health_answers_before_the_slow_boot.py :: B007 :: test_the_slow_work_is_not_done_at_import :: 1
 tests/test_hub_client_worklist_parity_pg.py :: B905 :: _double :: 1
 tests/test_inventory_adjustment_router.py :: F841 :: test_adjust_rejects_reverse_itc_on_increase :: 1
@@ -498,6 +503,8 @@ tests/test_one_capacity_model_and_a_task_carries_its_estimate.py :: B905 :: test
 tests/test_opening_balance_journal.py :: F841 :: test_status_no_openings_does_not_need_posting :: 1
 tests/test_opening_register_import.py :: F841 :: test_register_integrity_reports_nothing_new_for_that_register :: 1
 tests/test_opening_register_import.py :: F841 :: test_the_door_audits_the_import_once_and_a_re_upload_audits_nothing :: 1
+tests/test_payroll_duplicate_run_pf_base_and_model_validation.py :: F841 :: test_create_run_other_db_errors_still_propagate_unmasked :: 1
+tests/test_payroll_reopened_run_reversal_rounding_and_payslip_tenant_check.py :: F841 :: test_a_paid_run_can_no_longer_be_reopened_and_double_finalized :: 1
 tests/test_phase33a_practice.py :: B017 :: test_identity_normalises_and_validates_pan :: 1
 tests/test_phase33a_practice.py :: B017 :: test_identity_validates_gstin :: 1
 tests/test_pilot_features.py :: F841 :: TestTenantIsolationPilotFeatures.test_ai_copilot_firm_context_uses_firm_id :: 1
@@ -507,13 +514,6 @@ tests/test_production_readiness_audit.py :: F841 :: TestMultiTenancyScoping.test
 tests/test_purchase_bill_attachment.py :: F841 :: test_document_url_endpoint_mints_fresh_signed_url :: 1
 tests/test_purchase_bill_cancellation.py :: F841 :: test_cannot_cancel_draft_bill :: 1
 tests/test_purchase_bill_line_extras.py :: F841 :: test_update_draft_lines_rejects_empty_list :: 1
-tests/test_r229_payroll_gaps.py :: F841 :: test_create_run_other_db_errors_still_propagate_unmasked :: 1
-tests/test_r231_cross_tenant_isolation.py :: B017 :: test_create_entity_to_entity_relationship_rejects_unowned_entities :: 1
-tests/test_r236_payroll_hardening.py :: F841 :: test_a_paid_run_can_no_longer_be_reopened_and_double_finalized :: 1
-tests/test_r239_gst_computation_gaps.py :: B017 :: test_purchase_bill_line_requires_blocked_credit_reason_when_ineligible :: 1
-tests/test_r443_portal_client_reads_own_fee_documents_pg.py :: B017 :: test_statement_negative_control_is_unavailable_before_the_fix :: 1
-tests/test_r443_portal_client_reads_own_fee_documents_pg.py :: F841 :: test_no_for_all_restrictive_assignment_scope_survives :: 1
-tests/test_r443_portal_client_reads_own_fee_documents_pg.py :: F841 :: test_only_select_carries_the_portal_branch_not_insert_update_delete :: 1
 tests/test_reconciliation_router.py :: F841 :: test_get_run_returns_run_and_its_findings :: 1
 tests/test_reconciliation_router.py :: F841 :: test_list_runs_returns_most_recent_first :: 1
 tests/test_recurring_client_scope.py :: B023 :: test_every_template_endpoint_refuses_before_it_acts :: 1

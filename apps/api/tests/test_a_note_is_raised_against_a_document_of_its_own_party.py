@@ -136,7 +136,7 @@ def test_a_new_note_against_its_own_partys_document_and_one_against_nothing_are_
 @pytest.mark.parametrize("k", KINDS, ids=IDS)
 def test_a_document_of_another_client_is_still_answered_as_it_was_and_never_as_another_partys(monkeypatch, k):
     db = _world(monkeypatch, k)
-    # The sales credit note's create has had its own sentence for this since SALES-30 (a 422, held by tests/test_r237_ar_ap_hardening.py);
+    # The sales credit note's create has had its own sentence for this since SALES-30 (a 422, held by tests/test_receivables_and_payables_resolve_a_party_of_the_same_client.py);
     # it is asked first and keeps it. The other three answer in the words a missing row gets.
     status, words = (422, "The invoice this credit note refers to is not part of this client's books.") if k.table == "credit_notes" else (404, k.missing)
     for stranger in ("DOC-ELSEWHERE", "DOC-INVENTED"):

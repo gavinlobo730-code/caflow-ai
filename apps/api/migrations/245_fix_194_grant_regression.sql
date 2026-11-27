@@ -33,8 +33,8 @@
 --
 -- Re-applies ONLY the two specific revokes 194 undid -- none of 194's other
 -- 16 table fixes (which were correct) are touched. Proven by
--- tests/test_r3_3_legacy_invoice_fixed_asset_rls_pg.py and
--- tests/test_r3_9b_fee_receipt_atomic_pg.py, both already existed and were
+-- tests/test_166_the_legacy_invoice_and_fixed_asset_tables_are_locked_down_pg.py and
+-- tests/test_172_a_fee_receipt_is_recorded_atomically_pg.py, both already existed and were
 -- failing against a fully-migrated database before this fix.
 
 REVOKE INSERT, UPDATE, DELETE ON public.fixed_assets FROM authenticated;

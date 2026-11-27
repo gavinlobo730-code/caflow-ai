@@ -199,7 +199,7 @@ CLAIMS: tuple[Claim, ...] = (
         fact="Every firm-scoped row carries firm_id, queries filter on it in the application, and row-level security enforces it again in the database.",
         proofs=(
             "tests/test_rls_covers_every_granted_table_pg.py::test_no_table_granted_to_authenticated_has_rls_disabled",
-            "tests/test_r230_cross_tenant_isolation.py::test_create_schedule_rejects_another_firms_client",
+            "tests/test_billing_and_advance_tax_refuse_another_firms_client.py::test_create_schedule_rejects_another_firms_client",
             "tests/test_tenancy_backstop.py::test_get_run_slips_cross_firm_is_404",
         ),
         not_proved="The API runs on the service-role key, which bypasses RLS, unless USE_USER_JWT is on; the application-layer filter is the primary control and the cross-tenant tests cover the routers they name, not every query.",
@@ -250,7 +250,7 @@ CLAIMS: tuple[Claim, ...] = (
         fact="A client invited by their firm signs in to a portal that shows the documents and reports the firm shares, what the firm has asked for, their invoices, and a message thread. A client cannot upload to it.",
         proofs=(
             "tests/test_portal_data_surfaces.py::test_list_invoices_scoped_and_isolated",
-            "tests/test_r440_portal_client_can_post_a_message_pg.py::test_a_portal_client_can_post_to_their_own_thread",
+            "tests/test_440_a_portal_client_can_post_and_read_their_own_thread_pg.py::test_a_portal_client_can_post_to_their_own_thread",
             "tests/test_sharing_a_report_to_a_portal_is_decided_once.py::test_a_report_nobody_named_is_refused_rather_than_written_through",
             "tests/test_the_marketing_site_does_not_claim_what_the_code_does_not_do.py::test_the_site_does_not_make_this_claim",
         ),
@@ -358,7 +358,7 @@ CLAIMS: tuple[Claim, ...] = (
         proofs=(
             "tests/test_a_scanned_pdf_is_read_as_a_picture_or_refused.py::test_a_scanned_pdf_goes_to_the_image_path_and_never_the_text_model",
             "tests/test_a_scanned_pdf_is_read_as_a_picture_or_refused.py::test_a_digital_pdf_still_takes_the_text_path",
-            "tests/test_r2_8_ai_extraction.py::test_image_upload_routes_through_the_vision_extractor_not_text",
+            "tests/test_ai_extraction_does_not_fabricate_data_or_persist_mock_notices.py::test_image_upload_routes_through_the_vision_extractor_not_text",
         ),
         says=(
             Says("A photographed bill goes to a vision model; a typed PDF goes to the text one.", AI_IN_ACTION),
@@ -417,7 +417,7 @@ CLAIMS: tuple[Claim, ...] = (
         status=PROVEN,
         fact="A photo or PDF uploaded against a client is read by an AI model into a draft purchase bill whose figures are checked to add up.",
         proofs=(
-            "tests/test_r2_8_ai_extraction.py::test_successful_extraction_returns_real_data",
+            "tests/test_ai_extraction_does_not_fabricate_data_or_persist_mock_notices.py::test_successful_extraction_returns_real_data",
             "tests/test_an_extracted_invoice_has_to_add_up.py::test_a_misread_digit_is_reported_with_the_amount",
         ),
         says=(
@@ -442,9 +442,9 @@ CLAIMS: tuple[Claim, ...] = (
         status=PROVEN,
         fact="A posted ledger entry that came from a document cannot be deleted or edited in place: the database refuses it, and a correction is a reversal.",
         proofs=(
-            "tests/test_r251_journal_line_immutability_pg.py::test_cannot_change_a_posted_line_amount",
-            "tests/test_r251_journal_line_immutability_pg.py::test_cannot_delete_a_posted_line",
-            "tests/test_r266_journal_edit_until_locked_pg.py::test_a_posted_entry_still_cannot_be_deleted",
+            "tests/test_251_posted_journal_lines_are_immutable_pg.py::test_cannot_change_a_posted_line_amount",
+            "tests/test_251_posted_journal_lines_are_immutable_pg.py::test_cannot_delete_a_posted_line",
+            "tests/test_266_a_posted_journal_may_be_corrected_until_the_period_closes_pg.py::test_a_posted_entry_still_cannot_be_deleted",
             "tests/test_discard_manual_journal_pg.py::test_an_auto_posted_entry_is_refused",
         ),
         says=(

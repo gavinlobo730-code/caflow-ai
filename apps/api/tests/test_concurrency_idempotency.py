@@ -148,7 +148,7 @@ def test_cas_guard_retries_on_stale_paid(monkeypatch):
     # Postgres row lock (SELECT ... FOR UPDATE) rather than an app-level
     # optimistic CAS retry, and isn't meaningfully simulable by a
     # single-threaded fake reacting to its own synchronous .update() call (see
-    # test_r2_12_atomic_receipt_settlement_pg.py for the real-Postgres proof
+    # test_a_receipt_posts_its_journal_row_and_allocations_in_one_transaction_pg.py for the real-Postgres proof
     # of concurrent-settlement safety). This test targets the legacy
     # CAS-retry loop specifically, which the code still preserves as a
     # fallback for test doubles without rpc support — so the receipt call

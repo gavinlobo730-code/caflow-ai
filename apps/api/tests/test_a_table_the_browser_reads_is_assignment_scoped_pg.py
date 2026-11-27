@@ -76,7 +76,7 @@ _FROM = re.compile(r'\.from\(\s*["\']([a-z0-9_]+)["\']\s*\)')
 # instead of leaving 084's single FOR ALL one.
 #
 # The client portal's table is scoped another way and is covered by its own test:
-# test_r3_0_client_portal_users_rls_pg.py. The employee portal's declaration table
+# test_163_the_client_portal_users_table_is_locked_down_pg.py. The employee portal's declaration table
 # (`payroll_it_declarations`, scoped by `_own_employee`, test_297_employee_declaration_rls_pg.py)
 # was the second entry until 25-10-2026: POST-A-010 moved the employee portal behind the API,
 # so no screen reads it and this rule, which is about the tables the browser reads, no longer

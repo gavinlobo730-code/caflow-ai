@@ -39,7 +39,7 @@
 -- — is true of the REPORTING engine. 269 then granted the whole schema to
 -- service_role and deliberately kept these five in a read_only array, carrying
 -- 096's sentence forward as a least-privilege decision, and
--- tests/test_r269_service_role_grants_pg.py pinned it.
+-- tests/test_the_service_role_reaches_every_table_the_app_uses_pg.py pinned it.
 --
 -- What neither noticed is that the reporting engine is not the only thing
 -- running as service_role. The document-creation endpoints are too, and they

@@ -95,7 +95,7 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO service_role;
 --     the object, and this sets them for the role running this migration. That
 --     is the same role the migration runner uses to create tables, so new
 --     tables are covered. A table created by some other role still needs its
---     own grant — the invariant test in tests/test_r269_service_role_grants_pg.py
+--     own grant — the invariant test in tests/test_the_service_role_reaches_every_table_the_app_uses_pg.py
 --     is what catches that, rather than trusting this to be airtight.
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
     GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO service_role;

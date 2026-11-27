@@ -21,7 +21,7 @@ import pytest
 import routers.fixed_assets as fa_router
 from domain.reporting import fixed_asset_movement as fam
 from routers.fixed_assets import _annual_depreciation_for_period
-from tests.test_r232_fixed_asset_depreciation import FIRM, FakeDB, _dep, _patch_side_effects, _seed_asset  # noqa: F401
+from tests.test_fixed_asset_depreciation_is_charged_from_the_years_opening_value import FIRM, FakeDB, _dep, _patch_side_effects, _seed_asset  # noqa: F401
 
 SL = dict(depreciation_method="SL", useful_life_years=5, salvage_value_paise=0, wdv_rate_percent=None)
 

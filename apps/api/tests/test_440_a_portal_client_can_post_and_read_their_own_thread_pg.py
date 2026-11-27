@@ -37,7 +37,7 @@ WHAT IS PROVEN HERE, AND WHY EACH CASE MATTERS
       opened ahead of the feature that needs it.
 
 Simulates an authenticated PostgREST session the same way
-test_r246_users_column_grant_pg.py / test_r3_1b_capital_gains_rls_pg.py do:
+test_a_user_may_rename_themselves_and_not_change_their_role_or_firm_pg.py / test_164_capital_gains_is_locked_down_pg.py do:
 `SET request.jwt.claims` + `SET ROLE authenticated` in one psql session.
 
 Runs only when HARNESS_PG is set + psql on PATH; skips in the mock-mode CI
@@ -97,7 +97,7 @@ def _count(dsn: str, sql: str) -> int:
 
 def _as(dsn: str, auth_uid: str, sql: str) -> subprocess.CompletedProcess:
     """Simulates an authenticated PostgREST session — same technique as
-    test_r246_users_column_grant_pg.py / test_r3_1b_capital_gains_rls_pg.py.
+    test_a_user_may_rename_themselves_and_not_change_their_role_or_firm_pg.py / test_164_capital_gains_is_locked_down_pg.py.
     Runs with -q -c (no -tA): used where only the return code / stderr matters."""
     return _psql(
         dsn,

@@ -22,8 +22,8 @@ import routers.purchase_bills as pb
 from models.invoices import PurchaseBillIn, PurchaseBillLineIn
 from tests.e2e_harness import FakeDB, wire_e2e, seed_standard_coa
 # A PDF WITH a text layer: bare "%PDF-1.4 fake bytes" has none, so it is a scan now and
-# is never sent to the text model (ai-03) — see tests/test_r2_8_ai_extraction._text_pdf.
-from tests.test_r2_8_ai_extraction import _TEXT_PDF
+# is never sent to the text model (ai-03) — see tests/test_ai_extraction_does_not_fabricate_data_or_persist_mock_notices._text_pdf.
+from tests.test_ai_extraction_does_not_fabricate_data_or_persist_mock_notices import _TEXT_PDF
 
 FIRM = "FIRM-A"
 CALLER = {"firm_id": FIRM, "auth_user_id": "u1", "email": "ca@firma.test", "role": "Partner"}

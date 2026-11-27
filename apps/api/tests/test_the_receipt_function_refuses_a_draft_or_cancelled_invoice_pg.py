@@ -9,7 +9,7 @@ application never reaches the database with a bad allocation — but the RPC
 is SECURITY DEFINER and this invariant must hold for any caller, present or
 future, not just the one call site this task also fixed. This file proves
 the guard exists in the function body itself, mirroring the structure of
-test_r2_12_atomic_receipt_settlement_pg.py.
+test_a_receipt_posts_its_journal_row_and_allocations_in_one_transaction_pg.py.
 
 Runs only when HARNESS_PG is set + psql on PATH; skips in the mock-mode CI
 job. The `migrations` CI job runs it against its Postgres service.

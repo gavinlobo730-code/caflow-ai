@@ -11,7 +11,7 @@ WHAT THIS PINS
 """
 from models.invoices import ReceiptAllocationIn, ReceiptIn
 from models.parties import CustomerIn
-from tests.test_r227_fx_reversal import CALLER, FIRM, _setup, _usd_invoice
+from tests.test_reversing_a_foreign_currency_settlement_rolls_back_the_settled_foreign_amount import CALLER, FIRM, _setup, _usd_invoice
 
 
 def _bank(db):

@@ -5,7 +5,7 @@ unreconcile claim race, and a cross-client matching-rule leak (the rule leak
 itself is covered by test_bank_matching.py::test_queue_does_not_apply_another_clients_rule).
 
 Assignment-scoping tests mirror the established pattern in
-test_r231_cross_tenant_isolation.py: monkeypatch core.authz onto the real
+test_gst_saves_party_creation_and_relationships_refuse_another_firms_client.py: monkeypatch core.authz onto the real
 (non-mock) enforcement path with a fake client-ownership resolver, then call
 the router functions directly.
 """
@@ -36,7 +36,7 @@ def enforced(monkeypatch):
 # ── Router assignment scoping ────────────────────────────────────────────────
 # banking.py's own _db() returns None without SUPABASE_URL (this test env), so
 # these exercise the assert_client_access guard added BEFORE the db-dependent
-# code path -- same precedent as test_r231's relationships.py tests.
+# code path -- same precedent as test_gst_saves_party_creation_and_relationships_refuse_another_firms_client's relationships.py tests.
 
 def test_list_bank_accounts_rejects_another_firms_client(enforced):
     with pytest.raises(HTTPException) as ei:

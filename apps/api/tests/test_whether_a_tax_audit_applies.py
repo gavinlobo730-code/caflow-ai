@@ -238,7 +238,7 @@ def test_no_form_where_no_audit_is_required():
 
 def _client():
     """The router alone, with the auth dependency overridden — the same shape
-    as tests/test_r3_1b_capital_gains_endpoints.py, which exercises the
+    as tests/test_the_capital_gains_endpoints_trust_nothing_the_caller_sends.py, which exercises the
     capital-gains endpoints in this router."""
     from fastapi import FastAPI
     from fastapi.testclient import TestClient

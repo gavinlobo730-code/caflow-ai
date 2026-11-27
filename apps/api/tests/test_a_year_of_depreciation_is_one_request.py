@@ -41,7 +41,7 @@ from fastapi import HTTPException
 
 import routers.fixed_assets as fa
 from models.accounting import DepreciationRunIn
-from tests.test_r232_fixed_asset_depreciation import FakeDB, _seed_asset
+from tests.test_fixed_asset_depreciation_is_charged_from_the_years_opening_value import FakeDB, _seed_asset
 
 FIRM, CLIENT = "firm-1", "client-1"
 USER = {"firm_id": FIRM, "id": "u-1", "auth_user_id": "auth-1", "role": "Partner",

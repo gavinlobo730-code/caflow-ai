@@ -306,7 +306,7 @@ non-Partner is told 404, never 403, so its existence is not disclosed.*
   reported). Fee invoices already issued are not re-written.
 - The portal reads the link as the client's own principal to show them their fee
   invoices: `portal_data_service.resolve_fee_scope()`, with the policy repair of
-  migration 442 (`test_r442_portal_client_reads_own_fee_scope_pg.py`).
+  migration 442 (`test_442_a_portal_client_reads_their_own_fee_scope_pg.py`).
 
 ### G4 — The practice's own payroll is the Partner's alone
 

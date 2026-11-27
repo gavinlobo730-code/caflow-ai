@@ -26,8 +26,8 @@ BUILDING ON THE SIBLING INVESTIGATIONS
 
 WHAT THIS FILE PROVES, IN TWO LAYERS
     Layer 1 (raw SQL, `SET request.jwt.claims` + `SET ROLE authenticated` —
-    the same technique test_r246_users_column_grant_pg.py /
-    test_r440_portal_client_can_post_a_message_pg.py use): a portal client's
+    the same technique test_a_user_may_rename_themselves_and_not_change_their_role_or_firm_pg.py /
+    test_440_a_portal_client_can_post_and_read_their_own_thread_pg.py use): a portal client's
     own SELECT against their own row is denied (zero rows, not an error —
     RLS's usual silence) on a database built from every migration EXCEPT 442
     (the negative control), and succeeds on a database built from the full
