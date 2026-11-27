@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { Badge } from "@/components/ui/badge";
-import { DashboardSkeleton, TableSkeleton, LoadingRegion } from "@/components/ui/skeleton";
+import { DashboardSkeleton, TableSkeleton, LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 import AmendmentsTab from "@/components/gst/AmendmentsTab";
 import ItcRegisterTab from "@/components/gst/ItcRegisterTab";
@@ -2079,7 +2079,7 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
           </label>
         </div>
         )}
-        {reading && <LoadingRegion label="Reading the GSTR-2B file" className="text-xs text-ps-label">Reading the file…</LoadingRegion>}
+        {reading && <LoadingRegion label="Reading the GSTR-2B file"><SkeletonText lines={3} /></LoadingRegion>}
 
         {/* WHAT THE SERVER MADE OF THE FILE. The month and the GSTIN are the
             file's and whether this client holds that registration is the

@@ -21,13 +21,13 @@
  */
 import { Button } from "@/components/ui/button";
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, Mail } from "lucide-react";
+import { Mail } from "lucide-react";
 import { api } from "@/lib/api";
 import type { EmailLogRow, EmailPreferenceEvent } from "@/lib/api";
 import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 import { Callout } from "@/components/ui/callout";
 import { formatDate } from "@/lib/dates/format";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 
 /** `true` or `false` only when the server said so; anything else is "not told". */
 function readMailEnabled(data: unknown): boolean | null {
@@ -107,7 +107,7 @@ export function EmailPreferencesPanel() {
       )}
       {loading ? (
         <LoadingRegion label="Loading email preferences">
-          <p className="flex items-center gap-2 text-xs text-ps-hint"><Loader2 className="animate-spin" size={12} /> Loading…</p>
+          <SkeletonText lines={2} />
         </LoadingRegion>
       ) : (
         <ul className="divide-y divide-ps-border">

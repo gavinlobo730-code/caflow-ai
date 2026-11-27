@@ -44,7 +44,7 @@ import type { Entry } from "@/components/banking/EntriesTab";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { formatDate } from "@/lib/dates/format";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 
 interface EntryDetail extends Entry {
   suggestions: MatchSuggestion[];
@@ -254,7 +254,7 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
   }
   if (!t) {
     // Reached only when the modal was opened without the row (no `initial`).
-    return <Shell onClose={onClose} title="Entry"><LoadingRegion label="Loading the entry" className="text-xs text-ps-hint">Loading…</LoadingRegion></Shell>;
+    return <Shell onClose={onClose} title="Entry"><LoadingRegion label="Loading the entry"><SkeletonText lines={3} /></LoadingRegion></Shell>;
   }
 
   const passed = t.entry_state === "passed";

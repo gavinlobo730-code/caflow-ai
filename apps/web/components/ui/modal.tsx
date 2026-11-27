@@ -19,7 +19,7 @@
  */
 import { useEffect, useRef, useId, type ReactNode } from "react";
 import { X } from "lucide-react";
-import { firstFormField, trapTabKey } from "@/lib/ui/focusTrap";
+import { firstFormField, trapTabKey, whoOpenedTheDialog } from "@/lib/ui/focusTrap";
 import { lockBodyScroll } from "@/lib/ui/scrollLock";
 import { closeAfterTheFocusedDateCommits } from "@/lib/dates/closeAfterDateCommit";
 import { escapeBelongsToAnOpenPicker, openOverlay } from "@/lib/ui/overlayStack";
@@ -49,6 +49,15 @@ export function Modal({
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
+  // WHO OPENED THIS IS READ BEFORE ITS CONTENT MOUNTS (POST-A-555). A field inside the dialog that takes the focus itself (`autoFocus`) does
+  // so while React commits, which is BEFORE the effect below runs, so reading the focused element there found the field, a node the dialog
+  // takes with it when it closes: focus then fell to the top of the page and a keyboard user lost their place (the HSN library's Edit was the
+  // first one driven in a browser and the twelve dialogs that autofocus a field all had it). The render that first draws the dialog is the
+  // last moment the opener still holds the focus.
+  const openerRef = useRef<HTMLElement | null | undefined>(undefined);
+  if (openerRef.current === undefined) {
+    openerRef.current = typeof document === "undefined" ? null : ((document.activeElement as HTMLElement | null) ?? null);
+  }
   const titleId = useId();
   // The latest onClose, read at the moment Escape is pressed. The effect below used to depend on `onClose`, so a parent that passes an
   // inline arrow (nearly all of them) re-ran it on EVERY parent render: the cleanup gave focus back to the opener and the setup then moved
@@ -58,7 +67,7 @@ export function Modal({
   onCloseRef.current = onClose;
 
   useEffect(() => {
-    restoreRef.current = (document.activeElement as HTMLElement) ?? null;
+    restoreRef.current = whoOpenedTheDialog(openerRef.current ?? null, panelRef.current);
     // Focus the first form field (not the Close button) once mounted.
     // The first field a person can really focus: a hidden file input before it would take the focus call and leave focus behind the dialog.
     (firstFormField(panelRef.current) ?? panelRef.current)?.focus();

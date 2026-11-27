@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 
 /** Only what the modal actually needs. Narrower than the pages' own PayrollRun
  *  types, deliberately: a shared component that demanded every column would
@@ -92,7 +92,7 @@ export function DisburseModal({ run, onClose, onDone }: {
           <span className="font-mono"> {netStr}</span>, clearing the payable raised at finalization.
         </div>
         {loadingAccts ? (
-          <LoadingRegion label="Loading bank accounts" className="text-sm text-ps-label">Loading bank accounts…</LoadingRegion>
+          <LoadingRegion label="Loading bank accounts"><SkeletonText lines={3} /></LoadingRegion>
         ) : accounts.length === 0 ? (
           <div className="text-xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2">
             No bank account is linked to a ledger account for this client. Add one under

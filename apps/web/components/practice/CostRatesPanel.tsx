@@ -26,7 +26,7 @@ import { Button } from "@/components/ui/button";
 import { rupeeInputFromPaise } from "@/lib/money/rupeeInput";
 import { readRateInput } from "@/lib/time/rateInput";
 import { arrayOrEmpty } from "@/lib/api/shape";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 
 /** Said when a typed rate is not an amount. The shared message talks about what an hour BILLS at; this is a cost. */
 export const COST_RATE_HINT =
@@ -141,9 +141,7 @@ export function CostRatesPanel({ onSaved }: { onSaved?: () => void }) {
 
       {!loaded && (
         <LoadingRegion label="Loading cost rates" noticeClassName="justify-center text-center">
-          <div className="flex items-center justify-center py-8 text-ps-hint">
-            <Loader2 className="animate-spin mr-2" size={16} /> Loading…
-          </div>
+          <SkeletonText lines={4} className="py-8" />
         </LoadingRegion>
       )}
 

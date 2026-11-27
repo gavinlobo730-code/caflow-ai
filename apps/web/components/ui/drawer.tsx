@@ -18,7 +18,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { inBody } from "@/lib/ui/inBody";
-import { trapTabKey } from "@/lib/ui/focusTrap";
+import { trapTabKey, whoOpenedTheDialog } from "@/lib/ui/focusTrap";
 import { lockBodyScroll } from "@/lib/ui/scrollLock";
 import { closeAfterTheFocusedDateCommits } from "@/lib/dates/closeAfterDateCommit";
 import { escapeBelongsToAnOpenPicker, openOverlay } from "@/lib/ui/overlayStack";
@@ -45,6 +45,16 @@ export function Drawer({
 }: DrawerProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
+  // WHO OPENED THIS IS READ IN THE RENDER THAT FIRST DRAWS IT (POST-A-555), for the reason given in `Modal`: a field inside that takes the
+  // focus itself does so while React commits, before the effect below runs, and the effect would then take that field for the opener.
+  const openerRef = useRef<HTMLElement | null>(null);
+  const openerHeldRef = useRef(false);
+  if (open && !openerHeldRef.current) {
+    openerRef.current = typeof document === "undefined" ? null : ((document.activeElement as HTMLElement | null) ?? null);
+    openerHeldRef.current = true;
+  } else if (!open) {
+    openerHeldRef.current = false;
+  }
   // Callers pass an inline arrow, so `onClose` is a new function on every render of the parent. The effect below moves focus when the
   // drawer opens and gives it back when it closes; depending on `onClose` would run both at every render of the parent and pull the
   // cursor out of the field the person is typing in. Escape reads the latest one through this ref instead.
@@ -54,7 +64,7 @@ export function Drawer({
   // Escape-to-close + Tab trap + focus management + scroll lock. Only active while open.
   useEffect(() => {
     if (!open) return;
-    restoreFocusRef.current = (document.activeElement as HTMLElement) ?? null;
+    restoreFocusRef.current = whoOpenedTheDialog(openerRef.current, panelRef.current);
     panelRef.current?.focus();
     const unlockScroll = lockBodyScroll();
     const overlay = openOverlay();

@@ -19,7 +19,7 @@
  * their determination and the account is their choice.
  */
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, RefreshCw, Scale } from "lucide-react";
+import { RefreshCw, Scale } from "lucide-react";
 import { Field, Input, Select } from "@/components/ui/field";
 import { api } from "@/lib/api";
 import type { BonusRegister as BonusRegisterData } from "@/lib/api";
@@ -29,7 +29,7 @@ import { Callout, GapList } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
 import { formatDate } from "@/lib/services/formatting";
 import { Button } from "@/components/ui/button";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 
 function rupees(paise: number): string {
   return "₹" + (paise / 100).toLocaleString("en-IN", {
@@ -168,9 +168,7 @@ export function BonusRegisterTab({ clientId }: { clientId: string }) {
 
       {loading && !data && (
         <LoadingRegion label="Loading the bonus register">
-          <div className="flex items-center gap-2 text-xs text-ps-hint">
-            <Loader2 size={12} className="animate-spin" /> Loading…
-          </div>
+          <SkeletonText lines={3} />
         </LoadingRegion>
       )}
 

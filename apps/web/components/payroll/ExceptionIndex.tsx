@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { api, type ApiResp } from "@/lib/api";
 import { apiErr } from "@/components/payroll/shared";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 
 type PayrollException = {
   kind: string;
@@ -100,7 +100,7 @@ export function ExceptionIndexTab() {
       </CardHeader>
       <CardContent className="p-0">
         {loading ? (
-          <LoadingRegion label="Checking the roster" className="text-center text-ps-hint py-12 text-sm" noticeClassName="justify-center text-center">Checking the roster…</LoadingRegion>
+          <LoadingRegion label="Checking the roster" className="py-12" noticeClassName="justify-center text-center"><SkeletonText lines={3} /></LoadingRegion>
         ) : error ? (
           <div className="p-8 text-center">
             <p className="text-sm text-red-600 font-medium mb-2">{error}</p>

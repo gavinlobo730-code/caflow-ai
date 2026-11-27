@@ -26,7 +26,7 @@ import { todayIstISO } from "@/lib/dates/format";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 import { DateInput } from "@/components/ui/date-input";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 
@@ -248,7 +248,7 @@ export function NrvReviewPanel({ clientId, onClose, onPosted }: { clientId: stri
               </td></tr>
             )}
             {loading && !sheet && (
-              <tr><td colSpan={7} className="px-3 py-8 text-center text-ps-hint"><LoadingRegion label="Loading the register" noticeClassName="justify-center text-center">Loading the register…</LoadingRegion></td></tr>
+              <tr><td colSpan={7} className="px-3 py-8 text-center text-ps-hint"><LoadingRegion label="Loading the register" noticeClassName="justify-center text-center"><SkeletonText lines={3} /></LoadingRegion></td></tr>
             )}
           </tbody>
         </table>

@@ -5,7 +5,7 @@ import { Sparkles, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
 import { objectWithLists } from "@/lib/api/shape";
 import { formatPaise } from "@/lib/services/formatting";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 
 /**
  * A short narrative over the year's P&L and Balance Sheet — Phase 3a-3.
@@ -132,7 +132,7 @@ export function StatementAnalysisPanel({
           </p>
         )}
 
-        {asked && loading && <LoadingRegion label="Reading the statements" className="text-3xs text-ps-hint">Reading the statements…</LoadingRegion>}
+        {asked && loading && <LoadingRegion label="Reading the statements"><SkeletonText lines={3} /></LoadingRegion>}
 
         {asked && !loading && error && (
           <p className="text-xs text-ps-label leading-relaxed">{error}</p>

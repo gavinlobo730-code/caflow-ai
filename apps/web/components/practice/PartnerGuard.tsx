@@ -4,7 +4,7 @@ import { ReactNode } from "react";
 import { Lock } from "lucide-react";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { isPartnerOnlyAllowed } from "@/lib/auth/permissions";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 
 /**
  * Route-level guard for My practice (Amendment v1.1 Guardrail G1; the area was named "Practice" and "Revenue
@@ -19,7 +19,7 @@ export function PartnerGuard({ children }: { children: ReactNode }) {
   // answers "no" — which flashed "Partner access only" at a Partner on every
   // hard load. A role still resolving is not a refusal (lib/auth/guardDecision).
   if (loading || roleLoading) {
-    return <LoadingRegion label="Checking your access" className="p-8 text-sm text-gray-500">Loading…</LoadingRegion>;
+    return <LoadingRegion label="Checking your access" className="p-8"><SkeletonText lines={4} /></LoadingRegion>;
   }
   if (!isPartnerOnlyAllowed(userRole)) {
     return (

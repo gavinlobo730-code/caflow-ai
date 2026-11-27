@@ -42,7 +42,7 @@ import { failureSentence } from "@/lib/api/failureSentence";
 import { INDIAN_STATES } from "@/lib/constants/indianStates";
 import { Button } from "@/components/ui/button";
 import { istToday } from "@/lib/dateMath";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 
 function todayPeriod(): string {
   const d = istToday();
@@ -397,7 +397,7 @@ export function Gstr8Panel({ clientId, gstin }: { clientId: string; gstin: strin
         <h6 className="text-2xs font-semibold text-ps-body">Registered sellers (Table 3)</h6>
         {loadingRows ? (
           <LoadingRegion label="Loading the sellers">
-            <p className="text-2xs text-ps-hint inline-flex items-center gap-1"><Loader2 size={11} className="animate-spin" /> Loading…</p>
+            <SkeletonText lines={2} />
           </LoadingRegion>
         ) : registered.length > 0 ? (
           <div className="overflow-x-auto">

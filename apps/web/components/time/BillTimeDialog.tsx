@@ -22,7 +22,7 @@ import Link from "next/link";
 import { api } from "@/lib/api";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 import { formatPaise } from "@/lib/money/format";
 import { formatDate } from "@/lib/dates/format";
 import { formatDuration } from "@/lib/data/timeTracking";
@@ -155,7 +155,7 @@ export default function BillTimeDialog({ clientId, clientName, onClose, onBilled
         {loadProblem ? (
           <p role="alert" className="text-sm text-state-problem">{loadProblem}</p>
         ) : !work ? (
-          <LoadingRegion label="Reading this client's unbilled time" className="text-sm text-ps-hint">Loading…</LoadingRegion>
+          <LoadingRegion label="Reading this client's unbilled time"><SkeletonText lines={3} /></LoadingRegion>
         ) : made ? (
           <div role="status" data-bill-time-made>
             <p className="text-sm text-ps-ink font-medium">

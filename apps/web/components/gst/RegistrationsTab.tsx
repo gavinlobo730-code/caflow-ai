@@ -38,7 +38,7 @@ import { formatPaise } from "@/lib/money/format";
 import { Cmp08Panel } from "@/components/gst/Cmp08Panel";
 import { Gstr8Panel } from "@/components/gst/Gstr8Panel";
 import { Gstr4AnnualPanel } from "@/components/gst/Gstr4AnnualPanel";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 
 type Msg = { type: "ok" | "err"; text: string } | null;
 
@@ -374,7 +374,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
           the read succeeded. It used to render on a failed read too, telling
           the CA to go and record a GSTIN the client already had. */}
       {loading ? (
-        <LoadingRegion label="Loading the registrations" className="text-xs text-ps-hint">Loading…</LoadingRegion>
+        <LoadingRegion label="Loading the registrations"><SkeletonText lines={4} /></LoadingRegion>
       ) : loadFailed ? null : rows.length === 0 ? (
         <EmptyState
           className="py-6"

@@ -6,7 +6,7 @@ import { api, type FirmDeviceMember } from "@/lib/api/index";
 import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 import { DeviceList } from "@/components/security/DeviceList";
 
 /**
@@ -71,7 +71,7 @@ export function SignedInNow({ canEnd }: { canEnd: boolean }) {
         )}
         {notice && <p role="status" className="text-xs text-state-ready">{notice}</p>}
         {!members && !error && (
-          <LoadingRegion label="Reading who is signed in" className="text-sm text-ps-label">Reading who is signed in…</LoadingRegion>
+          <LoadingRegion label="Reading who is signed in"><SkeletonText lines={3} /></LoadingRegion>
         )}
         {members && members.length === 0 && (
           <p className="text-xs text-ps-hint">Nobody has been heard from in the last {minutes ?? "few"} minutes.</p>

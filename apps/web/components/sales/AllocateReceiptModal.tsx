@@ -39,7 +39,7 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { formatDate } from "@/lib/dates/format";
 import { selectAll } from "@/lib/supabase/selectAll";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 
 type OpenInvoice = {
   id: string;
@@ -158,7 +158,7 @@ export default function AllocateReceiptModal({
   return (
     // POST-A-130: the shared dialog (named, Escape, Tab kept inside, focus given back). It stays open while the allocation is being saved.
     <Modal title={`Apply ${receipt.receipt_no}`} note={<>{receipt.customer_name ?? "Customer"} · {fmt(settlement)} to settle{Number(receipt.tds_paise ?? 0) > 0 ? ` (${fmt(receipt.amount_paise)} received + ${fmt(Number(receipt.tds_paise))} TDS)` : ""}</>} maxWidthClass="max-w-[720px]" onClose={() => { if (!saving) onClose(); }}>
-          {loading ? <LoadingRegion label="Loading open invoices" className="text-xs text-ps-hint">Loading open invoices…</LoadingRegion>
+          {loading ? <LoadingRegion label="Loading open invoices"><SkeletonText lines={3} /></LoadingRegion>
             : loadFailed ? (
               <div className="flex items-center gap-3">
                 <p className="text-xs text-state-problem">

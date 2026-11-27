@@ -32,7 +32,7 @@ import { ChevronDown, ChevronRight, History } from "lucide-react";
 import { api, type AuditEntry } from "@/lib/api";
 import { describeChanges } from "@/components/accounting/entryHistoryFields";
 import { formatIstLabelled } from "@/lib/dates/formatIst";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import RequestAccess from "@/components/auth/RequestAccess";
 
@@ -118,7 +118,7 @@ export default function EntryHistory({ entryId }: { entryId: string }) {
             </div>
           )}
           {mayRead && loading && entries.length === 0 && (
-            <LoadingRegion label="Reading the edit log" className="px-5 py-6 text-xs text-ps-hint">Reading the log…</LoadingRegion>
+            <LoadingRegion label="Reading the edit log" className="px-5 py-6"><SkeletonText lines={3} /></LoadingRegion>
           )}
           {mayRead && error && (
             <p role="alert" className="px-5 py-6 text-xs text-state-problem">{error}</p>

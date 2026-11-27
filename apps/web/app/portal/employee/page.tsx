@@ -17,7 +17,7 @@ import { TaxDeclarationTab } from "@/components/portal/TaxDeclarationTab";
 import { TdsProjectionTab } from "@/components/portal/TdsProjectionTab";
 import { PortalShell } from "@/components/portal/PortalShell";
 import { formatMonthYear } from "@/lib/dates/format";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 import { SectionPlaceholder } from "@/components/ui/page-frame";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -304,11 +304,7 @@ export default function EmployeePortalPage() {
         {activeTab === "payslips" && (
           <div className="space-y-3">
             {payslipsLoading ? (
-              <LoadingRegion label="Loading payslips" noticeClassName="justify-center text-center">
-                <div className="text-center py-10 text-sm text-ps-hint flex items-center justify-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin" /> Loading payslips…
-                </div>
-              </LoadingRegion>
+              <LoadingRegion label="Loading payslips" noticeClassName="justify-center text-center"><SkeletonText lines={3} /></LoadingRegion>
             ) : payslipsError ? (
               <div className="bg-white rounded-xl border border-ps-border px-5 py-12 text-center space-y-3">
                 <p className="text-sm text-state-problem font-medium">Couldn&apos;t load your payslips — the request failed or timed out.</p>
@@ -373,11 +369,7 @@ export default function EmployeePortalPage() {
         {activeTab === "leave" && (
           <div className="space-y-3">
             {leaveLoading ? (
-              <LoadingRegion label="Loading leave balances" noticeClassName="justify-center text-center">
-                <div className="text-center py-10 text-sm text-ps-hint flex items-center justify-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin" /> Loading leave balances…
-                </div>
-              </LoadingRegion>
+              <LoadingRegion label="Loading leave balances" noticeClassName="justify-center text-center"><SkeletonText lines={3} /></LoadingRegion>
             ) : leaveError ? (
               <div className="bg-white rounded-xl border border-ps-border px-5 py-12 text-center space-y-3">
                 <p className="text-sm text-state-problem font-medium">Couldn&apos;t load your leave balances — the request failed or timed out.</p>

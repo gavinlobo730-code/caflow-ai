@@ -84,3 +84,23 @@ export function firstFormField(root: HTMLElement | null): HTMLElement | null {
   return all.find((el) => canTakeFocusOnOpen({ disabled: el.disabled, type: el.type, offsetParent: el.offsetParent })) ?? null;
 }
 
+/**
+ * WHO OPENED A DIALOG: the element that held the focus when it was first DRAWN, unless that is gone by the time it is mounted (POST-A-555).
+ *
+ * A dialog has to read its opener twice, because two things happen in the same commit and each hides the opener from one reading.
+ * A field inside it that takes the focus itself (`autoFocus`) does so BEFORE the dialog's effect runs, so the focused element at effect time
+ * is that field, which closes with the dialog: the render before the commit is the last moment the opener still holds the focus. But a menu
+ * or a placeholder dialog that is REPLACED by this one in the same commit holds the focus at render time and hands it back to its own
+ * opener when it unmounts, so the element read in the render is gone at effect time and the focused element then is the right one.
+ *
+ * So: the element read in the render, if it is still on the page and is not inside the dialog; otherwise whatever holds the focus now,
+ * unless that is inside the dialog (an autofocused field), in which case there is nobody to give it back to but the page.
+ */
+export function whoOpenedTheDialog(
+  readInTheRender: HTMLElement | null, panel: HTMLElement | null,
+  now: HTMLElement | null = typeof document === "undefined" ? null : (document.activeElement as HTMLElement | null),
+): HTMLElement | null {
+  if (readInTheRender && readInTheRender.isConnected && !(panel && panel.contains(readInTheRender))) return readInTheRender;
+  if (now && !(panel && panel.contains(now))) return now;
+  return readInTheRender;
+}

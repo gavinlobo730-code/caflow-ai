@@ -62,7 +62,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ShieldAlert, Lock, RotateCcw } from "lucide-react";
 import { api, type MemberAccessGrid } from "@/lib/api";
 import { denialNotice } from "@/lib/team/denialNotice";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 import { SETTINGS_GROUP, menuFor, menuGroups, menuPermissionKeys, pairWords, wouldHold } from "@/lib/access/permissionGroups";
 import { AREA_NAMES } from "@/lib/guide/whereIs";
 import { ALL_SCREENS } from "@/lib/navigation/screens";
@@ -341,7 +341,7 @@ export default function MemberAccessDrawer({ userId, onClose, onSaved }: Props) 
 
         <div className="flex-1 px-5 py-4 space-y-5">
           {!vocabulary || !grid ? (
-            <LoadingRegion label="Loading this member's access" className="text-sm text-ps-hint">Loading…</LoadingRegion>
+            <LoadingRegion label="Loading this member's access"><SkeletonText lines={3} /></LoadingRegion>
           ) : (
             <>
               {preview && (

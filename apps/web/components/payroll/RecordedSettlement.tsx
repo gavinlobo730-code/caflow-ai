@@ -20,7 +20,7 @@ import { objectWithLists } from "@/lib/api/shape";
 import { formatPaise } from "@/lib/money/format";
 import { formatDate } from "@/lib/dates/format";
 import { journalEntryHref } from "@/lib/accounting/sourceDocument";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 
 type Load = { kind: "loading" } | { kind: "ok"; s: RecordedSettlement } | { kind: "failed"; why: string };
 
@@ -48,7 +48,7 @@ export default function RecordedSettlementDialog({ clientId, settlementId, onClo
     <Modal title="Recorded settlement" maxWidthClass="max-w-2xl" onClose={onClose}
       note="As it was recorded. Nothing on this page is recomputed.">
       {load.kind === "loading" && (
-        <LoadingRegion label="Reading the settlement" className="text-xs text-ps-label">Reading the settlement…</LoadingRegion>
+        <LoadingRegion label="Reading the settlement"><SkeletonText lines={3} /></LoadingRegion>
       )}
       {load.kind === "failed" && (
         <p role="alert" className="text-xs text-state-problem">{load.why}</p>

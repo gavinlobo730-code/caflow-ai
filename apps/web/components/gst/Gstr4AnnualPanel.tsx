@@ -31,7 +31,7 @@ import { failureSentence } from "@/lib/api/failureSentence";
 import { INDIAN_STATES } from "@/lib/constants/indianStates";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { Button } from "@/components/ui/button";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 
 const B2B_RUPEE_FIELDS = [
   ["taxable_value", "Taxable value"],
@@ -328,7 +328,7 @@ export function Gstr4AnnualPanel({ clientId, gstin }: { clientId: string; gstin:
       <Section title="Table 4A — registered supplier, no reverse charge" subtitle="Informational only: the supplier already charged and remitted this tax.">
         {loadingRows ? (
           <LoadingRegion label="Loading the purchases">
-            <p className="text-2xs text-ps-hint inline-flex items-center gap-1"><Loader2 size={11} className="animate-spin" /> Loading…</p>
+            <SkeletonText lines={2} />
           </LoadingRegion>
         ) : (
           <B2BTable rows={b2b} onRemove={(id) => removeRow(() => api.gstr4Annual.deleteB2BSupply(id, clientId))} />
@@ -339,7 +339,7 @@ export function Gstr4AnnualPanel({ clientId, gstin }: { clientId: string; gstin:
       <Section title="Table 4B — registered supplier, reverse charge" subtitle="s.9(3)/(4): the dealer self-assesses this tax, and it feeds the return's liability.">
         {loadingRows ? (
           <LoadingRegion label="Loading the purchases">
-            <p className="text-2xs text-ps-hint inline-flex items-center gap-1"><Loader2 size={11} className="animate-spin" /> Loading…</p>
+            <SkeletonText lines={2} />
           </LoadingRegion>
         ) : (
           <B2BTable rows={b2bRc} onRemove={(id) => removeRow(() => api.gstr4Annual.deleteB2BRcSupply(id, clientId))} />

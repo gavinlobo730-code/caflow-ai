@@ -273,10 +273,13 @@ test("the walk is not vacuous for words either: it finds the lines of words, the
   // 185, 136 and 41 when POST-A-449 closed; a floor well under each, so a change to the walk that stops seeing words fails.
   // 136 lines on 20-11-2026, after POST-A-530 turned the screens' own word-only waits into shapes (the lines left are a button's own
   // label, a field's own part and the in-place hints a dialog or a log keeps as words).
-  assert.ok(words > 110, `found only ${words} lines of waiting words`);
+  // 63, 14 and 40 on 27-11-2026 (POST-A-565): seventy-nine plain reads inside a region (a tab, a drawer, a panel) became shapes inside the
+  // same region (the computations keep their words on purpose), so the words and the covered words fall by that many and the controls
+  // stay; the floors follow them down.
+  assert.ok(words > 50, `found only ${words} lines of waiting words`);
   // 107 on 20-11-2026 after POST-A-530 turned twenty-four word-only regions into shapes, and 87 when the last screens followed: this
   // is the direction the count should go, and the floor follows it down.
-  assert.ok(covered > 70, `found only ${covered} lines of waiting words inside a region`);
+  assert.ok(covered > 8, `found only ${covered} lines of waiting words inside a region`);
   assert.ok(controls > 30, `found only ${controls} waiting words inside a control`);
 });
 
@@ -360,25 +363,26 @@ test("self-test: words in a region, in a button, in a table cell's region, in a 
 
 // The two controls below once used the payroll roster and the recurring templates' cell. Both wait with a shape now (POST-A-530),
 // so the controls moved to two small in-place hints that stay words by design: a line inside a dialog and a line under a log.
-test("negative control: the allocate-receipt dialog with its region taken away names the words it left bare", () => {
-  const rel = "components/sales/AllocateReceiptModal.tsx";
+test("negative control: the cash-flow forecast with its region taken away names the words it left bare", () => {
+  // POST-A-565 turned the plain reads in tabs, drawers and panels into shapes, so the controls use screens that keep WORDS in their
+  // region on purpose: a computation says what it is building (the forecast, the ageing, the GST builds).
+  const rel = "app/reports/cash-flow/page.tsx";
   const text = read(rel);
-  const open = '<LoadingRegion label="Loading open invoices" className="text-xs text-ps-hint">';
-  const at = text.indexOf(open);
-  const close = text.indexOf("</LoadingRegion>", at);
-  assert.ok(at > 0 && close > at, "premise: the dialog's region is where this test expects it");
-  const broken = text.slice(0, at) + "<div>" + text.slice(at + open.length, close) + "</div>" + text.slice(close + "</LoadingRegion>".length);
-  assert.deepEqual(uncovered(rel), [], "premise: the dialog draws no uncovered mark today");
-  assert.deepEqual(uncovered(rel, broken).map((m) => `${m.owner}:${m.kind}`), ["AllocateReceiptModal:words"]);
+  const open = '<LoadingRegion label="Building the forecast" className="bg-white rounded-xl border border-ps-border p-10 text-center" noticeClassName="justify-center text-center">';
+  assert.equal(text.split(open).length, 2, "premise: the region sits once on the screen");
+  const broken = text.replace(open, "<div>").replace("</LoadingRegion>", "</div>");
+  assert.equal(uncovered(rel).filter((m) => m.kind === "words").length, 0, "premise: the screen draws no uncovered words today");
+  assert.equal(uncovered(rel, broken).filter((m) => m.kind === "words").length, 1);
 });
 
-test("negative control: the statement delivery log with its region taken away names the words it left bare", () => {
-  const rel = "components/sales/StatementDeliveryLog.tsx";
+test("negative control: the ageing screen with its region taken away names the words it left bare", () => {
+  const rel = "app/accounting/receivables/page.tsx";
   const text = read(rel);
-  const region = '<LoadingRegion label="Loading the delivery log" className="mt-2 text-xs text-ps-hint">Loading the delivery log…</LoadingRegion>';
-  assert.equal(text.split(region).length, 2, "premise: the region sits under the log once");
-  const broken = text.replace(region, "<p>Loading the delivery log…</p>");
-  assert.deepEqual(uncovered(rel, broken).map((m) => `${m.owner}:${m.kind}`), ["StatementDeliveryLog:words"]);
+  const open = '<LoadingRegion label="Building the ageing" className="bg-white rounded-xl border border-ps-border p-8 text-center" noticeClassName="justify-center text-center">';
+  assert.equal(text.split(open).length, 2, "premise: the region sits once on the screen");
+  const broken = text.replace(open, "<div>").replace("</LoadingRegion>", "</div>");
+  assert.equal(uncovered(rel).filter((m) => m.kind === "words").length, 0, "premise: the screen draws no uncovered words today");
+  assert.equal(uncovered(rel, broken).filter((m) => m.kind === "words").length, 1);
 });
 
 test("negative control: a listed mark taken away does not make room for a new bare one elsewhere in the file", () => {

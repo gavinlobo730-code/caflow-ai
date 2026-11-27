@@ -2,7 +2,7 @@
 //   node --experimental-strip-types --test lib/ui/focusTrap.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { tabTarget, canTakeFocusOnOpen } from "./focusTrap.ts";
+import { tabTarget, canTakeFocusOnOpen, whoOpenedTheDialog } from "./focusTrap.ts";
 import { lockBodyScroll } from "./scrollLock.ts";
 
 const items = ["close", "name", "save"];
@@ -95,3 +95,35 @@ test("a dialog moves focus to a control a person can focus, never to a hidden or
   assert.equal(canTakeFocusOnOpen({ disabled: false, offsetParent: {} }), true, "a select or textarea has no input type");
 });
 
+// POST-A-555 — who a dialog gives the focus back to. The elements are stand-ins with the two facts the rule reads.
+const el = (name: string, connected = true, inside: unknown[] = []) =>
+  ({ name, isConnected: connected, contains: (x: unknown) => inside.includes(x) }) as unknown as HTMLElement;
+
+test("a field that took the focus itself is not the opener: the element read before the dialog mounted is", () => {
+  const field = el("autofocused field");
+  const panel = el("panel", true, [field]);
+  const opener = el("Edit button");
+  // At effect time the focused element is the field inside the panel; the render before it saw the button.
+  assert.equal(whoOpenedTheDialog(opener, panel, field), opener);
+});
+
+test("an overlay replaced in the same commit hands the focus to its own opener, and that is who this one gives it back to", () => {
+  const menuItem = el("menu item", false);       // gone by now: the menu unmounted in the commit that mounted the dialog
+  const rowButton = el("row button");            // where the menu put the focus on its way out
+  const panel = el("panel");
+  assert.equal(whoOpenedTheDialog(menuItem, panel, rowButton), rowButton);
+});
+
+test("nothing focused when it was drawn and a field inside took the focus: there is nobody to give it back to, so the page", () => {
+  const field = el("autofocused field");
+  const panel = el("panel", true, [field]);
+  const body = el("body");
+  assert.equal(whoOpenedTheDialog(body, panel, field), body);
+});
+
+test("the element read in the render that is inside the dialog is never the opener", () => {
+  const field = el("field");
+  const panel = el("panel", true, [field]);
+  const rowButton = el("row button");
+  assert.equal(whoOpenedTheDialog(field, panel, rowButton), rowButton);
+});

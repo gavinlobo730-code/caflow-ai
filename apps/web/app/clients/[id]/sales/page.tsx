@@ -26,7 +26,7 @@ import { fetchActiveBankAccounts } from "@/lib/banking/activeBankAccounts";
 import { formatPaise, formatDateTime, formatMoney } from "@/lib/services/formatting";
 import { bpsFromPercentInput, paiseFromRupeeInput, parseQuantity } from "@/lib/money/rupeeInput";
 import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
-import { Skeleton, TableSkeleton, TransactionListSkeleton, LoadingRegion } from "@/components/ui/skeleton";
+import { Skeleton, TableSkeleton, TransactionListSkeleton, LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 import type { Column, FilterDef } from "@/lib/table/types";
 import { bulkStockNotMovedSentence, bulkStockSentence, issuedMessage, joinSentences, stockEffectProblem, stockEffectSummary, stockNotMovedSentence } from "@/lib/documents/stockEffect";
 import { mapWithConcurrency } from "@/lib/table/concurrency";
@@ -3355,11 +3355,7 @@ function Customers({
         <Modal title={deleteDeps === null ? "Delete customer" : deleteDeps.can_delete ? "Delete Customer?" : "Can't delete this customer"} maxWidthClass="max-w-md"
           onClose={() => { if (!deleteBusy) { setDeleteTarget(null); setDeleteDeps(null); } }}>
             {deleteDeps === null ? (
-              <LoadingRegion label="Checking for linked records" noticeClassName="px-6 justify-center text-center">
-                <div className="py-6 flex items-center justify-center gap-2 text-sm text-ps-label">
-                  <Loader2 size={16} className="animate-spin" /> Checking for linked records…
-                </div>
-              </LoadingRegion>
+              <LoadingRegion label="Checking for linked records" noticeClassName="px-6 justify-center text-center"><SkeletonText lines={3} /></LoadingRegion>
             ) : deleteDeps.can_delete ? (
               <>
                 <div className="space-y-2">

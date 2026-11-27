@@ -59,7 +59,7 @@ import {
 import PeriodPicker from "@/components/PeriodPicker";
 import { resolvePeriodRange, periodOptionLabel, type PeriodMode } from "@/lib/dates/periods";
 import { mapWithConcurrency } from "@/lib/table/concurrency";
-import { TableSkeleton, LoadingRegion } from "@/components/ui/skeleton";
+import { TableSkeleton, LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 import { RecurringBills } from "@/components/purchases/RecurringBills";
 import { PaymentAccountPicker } from "@/components/banking/PaymentAccountPicker";
 import { postingAccountNotice } from "@/lib/accounting/postingAccountNotice";
@@ -2003,11 +2003,7 @@ function Vendors({ clientId }: { clientId: string }) {
         <Modal title={deleteDeps === null ? "Delete vendor" : deleteDeps.can_delete ? "Delete Vendor?" : "Can't delete this vendor"} maxWidthClass="max-w-md"
           onClose={() => { if (!deleteBusy) { setDeleteTarget(null); setDeleteDeps(null); } }}>
             {deleteDeps === null ? (
-              <LoadingRegion label="Checking for linked records" noticeClassName="px-6 justify-center text-center">
-                <div className="py-6 flex items-center justify-center gap-2 text-sm text-ps-label">
-                  <Loader2 size={16} className="animate-spin" /> Checking for linked records…
-                </div>
-              </LoadingRegion>
+              <LoadingRegion label="Checking for linked records" noticeClassName="px-6 justify-center text-center"><SkeletonText lines={3} /></LoadingRegion>
             ) : deleteDeps.can_delete ? (
               <>
                 <div className="space-y-2">
