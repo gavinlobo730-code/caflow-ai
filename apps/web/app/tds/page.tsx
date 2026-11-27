@@ -749,14 +749,14 @@ function AddChallanModal({ clientId, choices, onClose, onAdded }: {
     // Convert to paise — integer arithmetic, never float
     const amtPaise = paiseFromRupeeInput(amtRupees || "0");
     if (amtPaise === null) {
-      setError("Amount must be in rupees, e.g. 125000 or 125000.50 — without commas.");
+      setError("Amount must be in rupees, e.g. 125000 or 125000.50 (commas only where an amount is usually grouped, as in 1,25,000).");
       return;
     }
     const surchargePaise = paiseFromRupeeInput(surchargeRupees || "0");
     const interestPaise = paiseFromRupeeInput(interestRupees || "0");
     const penaltyPaise = paiseFromRupeeInput(penaltyRupees || "0");
     if (surchargePaise === null || interestPaise === null || penaltyPaise === null) {
-      setError("Surcharge, interest and penalty must be rupee amounts — e.g. 3600 or 3600.50, without commas.");
+      setError("Surcharge, interest and penalty must be rupee amounts — e.g. 3600 or 3600.50 (commas only where an amount is usually grouped, as in 1,25,000).");
       return;
     }
     // The server refuses this too, with the arithmetic spelled out. Saying it
@@ -1835,7 +1835,7 @@ export default function TDSPage() {
               const grossPaise = paiseFromRupeeInput(row.gross_amount_rs ?? "0");
               if (grossPaise === null) {
                 errors.push(`${row.party_name ?? "row"}: gross_amount_rs must be a `
-                            + "plain amount in rupees, without commas");
+                            + "plain amount in rupees, with commas only where an amount is usually grouped");
                 continue;
               }
               try {

@@ -219,7 +219,7 @@ export default function AdvanceTaxPage() {
   const unforeseenProblem = badUnforeseen
     ? (!badUnforeseen.r.arose_on
         ? "Every income needs the date it arose."
-        : "The tax on an income must be an amount in rupees, e.g. 109375 — without commas.")
+        : "The tax on an income must be an amount in rupees, e.g. 109375 (commas only where an amount is usually grouped, as in 1,25,000).")
     : null;
 
   // Server-side compute, debounced 400ms (matches the capital-gains
@@ -231,7 +231,7 @@ export default function AdvanceTaxPage() {
       // charges 1% a month on one — for tax the client has actually paid.
       setResult(null);
       setComputeError(`Instalment ${badPaidInstalment}: enter the amount paid in `
-                      + "rupees, e.g. 125000 — without commas.");
+                      + "rupees, e.g. 125000 (commas only where an amount is usually grouped, as in 1,25,000).");
       return;
     }
     // A date that is not a date reads as blank, which `unforeseenProblem` would call "needs the date it arose": the date's own sentence is the
@@ -284,9 +284,9 @@ export default function AdvanceTaxPage() {
         || tdsTcsPaise === null || reliefPaise === null) {
       setLateResult(null);
       setLateError(tdsTcsPaise === null
-        ? "TDS / TCS credit: enter the amount in rupees, e.g. 45000 — without commas."
+        ? "TDS / TCS credit: enter the amount in rupees, e.g. 45000 (commas only where an amount is usually grouped, as in 1,25,000)."
         : reliefPaise === null
-          ? "Relief: enter the amount in rupees, e.g. 12000 — without commas."
+          ? "Relief: enter the amount in rupees, e.g. 12000 (commas only where an amount is usually grouped, as in 1,25,000)."
           : null);
       return;
     }
@@ -390,7 +390,7 @@ export default function AdvanceTaxPage() {
     const bad = Object.entries(amounts).find(([, v]) => v === null);
     if (bad) {
       setSaError(`${bad[0].replace("_paise", "").replace("_", " ")}: enter the amount in `
-                 + "rupees, e.g. 50000 — without commas.");
+                 + "rupees, e.g. 50000 (commas only where an amount is usually grouped, as in 1,25,000).");
       return;
     }
     setSaBusy(true);

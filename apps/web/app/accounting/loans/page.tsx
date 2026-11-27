@@ -264,7 +264,7 @@ export default function LoansAndFDPage() {
     if (!loanForm.client_id) { setLoanError("Select a client"); return; }
     if (!loanForm.lender_name.trim()) { setLoanError("Lender name is required"); return; }
     if (loanForm.emi && paiseFromRupeeInput(loanForm.emi) === null) {
-      setLoanError("EMI must be an amount in rupees, e.g. 25000 or 25000.50 — without commas.");
+      setLoanError("EMI must be an amount in rupees, e.g. 25000 or 25000.50 (commas only where an amount is usually grouped, as in 1,25,000).");
       return;
     }
     // isNaN(Math.round(parseFloat(x) * 100)) was the old test, and it is FALSE
@@ -275,7 +275,7 @@ export default function LoansAndFDPage() {
     const rate = ratePercentFromInput(loanForm.interest_rate);
     if (principal === null || outstanding === null) {
       setLoanError("Principal and outstanding must be amounts in rupees, e.g. 1250000 "
-                   + "or 1250000.50 — without commas.");
+                   + "or 1250000.50 (commas only where an amount is usually grouped, as in 1,25,000).");
       return;
     }
     if (principal <= 0) { setLoanError("Enter a valid principal amount"); return; }
@@ -344,7 +344,7 @@ export default function LoansAndFDPage() {
     const rate = ratePercentFromInput(fdForm.interest_rate);
     if (principal === null) {
       setFDError("Principal must be an amount in rupees, e.g. 500000 or 500000.50 "
-                 + "— without commas.");
+                 + "(commas only where an amount is usually grouped, as in 1,25,000).");
       return;
     }
     if (principal <= 0) { setFDError("Enter a valid principal amount"); return; }

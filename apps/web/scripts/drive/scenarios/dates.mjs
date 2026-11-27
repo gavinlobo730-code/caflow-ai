@@ -1216,7 +1216,7 @@ const CLIENT_NOT_FOUND_SENTENCE = "Not found";
 const PT_UNCOVERED_SENTENCE = "These slabs do not cover every wage. They must start at 0, each band's upper bound must be the next band's lower bound, and the highest band must be left open ('and above'). A wage falling in a hole would come out as nil, which is indistinguishable from a state saying nothing is due.";
 /** What the statutory-values screen says itself, before anything is sent. */
 const PT_STATE_CODE_SENTENCE = 'State must be the two-letter code, e.g. "GJ".';
-const PT_BAND_COMMA_SENTENCE = "Band 1: the amounts must be plain figures in rupees, without commas.";
+const PT_BAND_COMMA_SENTENCE = "Band 1: the amounts must be plain figures in rupees (commas only where an amount is usually grouped, as in 1,25,000).";
 /** What the MCA door says for the one refusal a CA meets in the ordinary course, adding a director twice (routers/mca_workspace.py `create_director`, migration 038's UNIQUE (client_id, din)): an HTTP 200 with success:false. */
 const MCA_DUPLICATE_DIN_SENTENCE = "This DIN is already recorded for this client.";
 /** What the TDS door says for a failure nobody anticipated, here the challan (routers/tds_workspace.py `_could_not`): an HTTP 200 with success:false. */
@@ -4550,9 +4550,9 @@ export const scenarios = [
       await record.click();
       await shownInTheDialog(page, PT_STATE_CODE_SENTENCE, "a state code that is not two letters was not refused inside the dialog");
       await page.getByLabel("State code", { exact: true }).fill("GJ");
-      await page.getByLabel("Band 1: tax (₹)", { exact: true }).fill("2,000");
+      await page.getByLabel("Band 1: tax (₹)", { exact: true }).fill("2,00");
       await record.click();
-      await shownInTheDialog(page, PT_BAND_COMMA_SENTENCE, "a band amount with a comma was not refused inside the dialog");
+      await shownInTheDialog(page, PT_BAND_COMMA_SENTENCE, "a band amount with a comma in a place nobody writes one was not refused inside the dialog");
       await stub.quiet();
       assert.equal(stub.writesTo(/statutory-values\/pt$/).length, 0, "a refusal the screen could make itself SENT A WRITE");
       // The server's refusal of a set with a hole in it (the first band does not start at zero) comes back as an HTTP 422 whose detail is the sentence.

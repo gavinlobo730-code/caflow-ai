@@ -852,7 +852,7 @@ export default function TaxComputationPage() {
         : [["Declared income", presDeclared]];
     const bad = amounts.find(([, v]) => paiseFromRupeeInput(v || "0") === null);
     if (bad) {
-      setPresError(`${bad[0]} must be an amount in rupees, without commas.`);
+      setPresError(`${bad[0]} must be an amount in rupees (commas only where an amount is usually grouped, as in 1,25,000).`);
       return;
     }
     if (presumptiveScheme === "44ae" && !presVehicles.length) {
@@ -949,7 +949,7 @@ export default function TaxComputationPage() {
     const bad = fields.find(([, v]) => paiseFromRupeeInput(v || "0") === null);
     if (bad) {
       setComputeError(`${bad[0]} must be an amount in rupees, e.g. 1200000 or `
-                      + "1200000.50 — without commas.");
+                      + "1200000.50 (commas only where an amount is usually grouped, as in 1,25,000).");
       return;
     }
     // The box is hidden where the server does not offer the relief, and a hidden box is not asked.
@@ -1167,7 +1167,7 @@ export default function TaxComputationPage() {
     const disallPaise = paiseFromRupeeInput(disallAmount);
     if (disallPaise === null) {
       setComputeError("The disallowance amount must be in rupees, e.g. 50000 or "
-                      + "50000.50 — without commas.");
+                      + "50000.50 (commas only where an amount is usually grouped, as in 1,25,000).");
       return;
     }
     setSavingDisall(true);

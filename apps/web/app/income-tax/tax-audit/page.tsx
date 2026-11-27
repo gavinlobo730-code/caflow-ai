@@ -350,7 +350,7 @@ function AuditModal({ clients, editAudit, presetClientId, onClose, onSaved }: {
     // client 12 crore over the threshold.
     const turnoverPaise = form.turnoverRs ? paiseFromRupeeInput(form.turnoverRs) : 0;
     if (turnoverPaise === null) {
-      setError("Turnover must be an amount in rupees, e.g. 12000000 — without commas.");
+      setError("Turnover must be an amount in rupees, e.g. 12000000 (commas only where an amount is usually grouped, as in 1,25,000).");
       return;
     }
     setSaving(true);

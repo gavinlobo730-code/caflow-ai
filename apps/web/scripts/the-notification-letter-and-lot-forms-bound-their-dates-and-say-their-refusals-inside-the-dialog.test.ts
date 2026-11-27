@@ -96,7 +96,7 @@ test("the statutory values dialog says its refusals inside itself, not on the pa
     assert.ok(call.trim() === "null" || (/["']ok["']/.test(call) && !/["']err["']/.test(call)),
       `save() puts something on the page's message line that is not the success message, which the full-screen dialog covers: setMsg(${call.slice(0, 80)})`);
   }
-  for (const sentence of ["State must be the two-letter code", "the amounts must be plain figures in rupees, without commas", "The set was refused."]) {
+  for (const sentence of ["State must be the two-letter code", "the amounts must be plain figures in rupees (commas only where an amount is usually grouped", "The set was refused."]) {
     assert.ok(save.includes(sentence), `save() no longer has the sentence: ${sentence}`);
   }
   assert.ok(code.includes("are all "), "the sentence for a notification that names no source or day no longer exists");
@@ -184,8 +184,11 @@ test("a stock lot's manufacture date is bounded by today and its expiry may not 
     assert.match(body, /\(refusal\.shown \?\? error\) && <Callout tone="problem">\{refusal\.shown \?\? error\}<\/Callout>/, `the ${name} does not render the date's sentence`);
   }
   // A quantity the server cannot read is refused here, in a sentence, before anything is sent.
-  assert.match(move, /if \(parseQuantity\(quantity\) === null\) \{ setError\("Quantity: enter a number, like 5 or 12\.5 \(up to three decimals\)\."\); return; \}/,
-    "the Move stock panel sends a quantity it cannot read (\"1,500\" raised inside the service and answered 500)");
+  assert.match(move, /if \(parseQuantity\(quantity\) === null \|\| plainQuantity === null\) \{ setError\("Quantity: enter a number, like 5 or 12\.5 \(up to three decimals\)\."\); return; \}/,
+    "the Move stock panel sends a quantity it cannot read (\"5 kg\" raised inside the service and answered 500)");
+  // A grouped quantity (\"1,500\") is READ by that check since POST-A-567, and the server refuses a comma, so what is SENT is the plain digits the check read.
+  assert.match(move, /const plainQuantity = plainDecimalText\(quantity\);/, "the panel no longer takes its quantity through the one grouping reader");
+  assert.match(move, /quantity: plainQuantity, movement_date: when/, "the Move stock panel sends the quantity as typed, commas and all, and the server answers 422 \"Quantity must be a number\"");
   // Close and Cancel wait for a Create that is out (the lot dialog and the godown dialog share the screen and the rule).
   for (const [name, body] of [["lot dialog", lot], ["godown dialog", functionText(code, "GodownModal")]] as const) {
     assert.match(body, /<button onClick=\{onClose\} disabled=\{saving\}/, `the ${name}'s Cancel is live while a Create is out`);

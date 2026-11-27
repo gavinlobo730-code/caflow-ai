@@ -1617,7 +1617,7 @@ function Vendors({ clientId }: { clientId: string }) {
     const opening = paiseFromRupeeInput(openingBalance || "0");
     if (opening === null) {
       setFormError("Opening balance must be an amount in rupees, "
-                   + "e.g. 125000 or 125000.50 — without commas.");
+                   + "e.g. 125000 or 125000.50 (commas only where an amount is usually grouped, as in 1,25,000).");
       return;
     }
     if (tdsApplicable && bpsFromPercentInput(tdsRate) === null) {
@@ -2798,7 +2798,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
     const amtPaise = paiseFromRupeeInput(amount || "0");
     if (amtPaise === null) {
       setMsg({ type: "err", text: "Amount must be a number of rupees, e.g. 125000 or "
-                                  + "125000.50 — without commas." });
+                                  + "125000.50 (commas only where an amount is usually grouped, as in 1,25,000)." });
       return;
     }
     if (amtPaise <= 0) { setMsg({ type: "err", text: "Amount must be positive" }); return; }
@@ -2812,7 +2812,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
     // outstanding), so this is the same refusal said sooner — not the rule.
     if (allocInvalid) {
       setMsg({ type: "err", text: "An allocation must be a number of rupees, e.g. 125000 or "
-                                  + "125000.50 — without commas." });
+                                  + "125000.50 (commas only where an amount is usually grouped, as in 1,25,000)." });
       return;
     }
     if (!isForeign && allocTotal > amtPaise) {

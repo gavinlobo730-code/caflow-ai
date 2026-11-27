@@ -62,13 +62,14 @@ export const scenarios = [
       assert.match(await dialog(page).innerText(), /Line 1: price including GST/);
 
       const price = dialog(page).getByLabel("Price including GST (₹)");
-      await price.fill("11,800");
+      await price.fill("118,00");
       await dialog(page).getByRole("button", { name: "Work out the rate" }).click();
       await until(async () => (await result(page).getAttribute("data-inclusive-answer")) === "problem", "the refusal");
-      assert.match(await result(page).innerText(), /price including GST as an amount, with no commas/);
+      assert.match(await result(page).innerText(), /price including GST as an amount in rupees/);
       assert.equal(asked.length, 0, "a price that is not a figure was sent to the server");
 
-      await price.fill("11800");
+      // A price grouped the way amounts are written is read, and sent as the plain figure (POST-A-567).
+      await price.fill("11,800");
       await price.press("Enter");
       await until(async () => (await result(page).getAttribute("data-inclusive-answer")) === "exact", "the answer");
       assert.equal(asked.length, 1);

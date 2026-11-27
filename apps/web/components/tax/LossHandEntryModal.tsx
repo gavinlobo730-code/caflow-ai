@@ -56,7 +56,7 @@ export function LossHandEntryModal({
   const amountProblem =
     !recording ? null
     : amount.trim() === "" ? null
-    : paise === null || paise < 0 ? "Enter the amount in rupees with no commas, for example 400000 or 400000.50."
+    : paise === null || paise < 0 ? "Enter the amount in rupees, for example 400000 or 400000.50 (commas only where an amount is usually grouped, as in 1,25,000)."
     : paise === 0 ? "Enter more than nothing. To remove a year's use, take it back from the list."
     : null;
   const ready = recording

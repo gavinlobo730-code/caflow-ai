@@ -112,12 +112,15 @@ export const scenarios = [
       await dialog.getByLabel("Financial year that used the loss").selectOption("2025-26");
       assert.equal(await confirm.isDisabled(), false, "the confirm button stayed disabled with everything filled");
 
-      for (const bad of ["abc", "1e3", "12.345", "0", "-5", "1,00,000"]) {
+      for (const bad of ["abc", "1e3", "12.345", "0", "-5", "1,00", "0,500"]) {
         await dialog.getByLabel("Amount of the loss it used (₹)").fill(bad);
         assert.equal(await confirm.isDisabled(), true, `the confirm button was live with the amount "${bad}"`);
       }
+      // An amount grouped the way amounts are written is read (POST-A-567); a comma where nobody writes one is refused in words.
       await dialog.getByLabel("Amount of the loss it used (₹)").fill("1,00,000");
-      await dialog.getByText("Enter the amount in rupees with no commas").waitFor();
+      assert.equal(await confirm.isDisabled(), false, "a properly grouped amount was refused");
+      await dialog.getByLabel("Amount of the loss it used (₹)").fill("1,00");
+      await dialog.getByText("Enter the amount in rupees, for example").waitFor();
       await dialog.getByLabel("Amount of the loss it used (₹)").fill("0");
       await dialog.getByText("Enter more than nothing.").waitFor();
       await dialog.getByLabel("Amount of the loss it used (₹)").fill("100000");

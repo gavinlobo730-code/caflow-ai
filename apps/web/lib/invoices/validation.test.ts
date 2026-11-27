@@ -59,3 +59,14 @@ test("foreign invoice requires a positive exchange rate", () => {
   assert.ok(validateInvoiceEditor({ customerId: "c1", invoiceNo: "INV-0001", invoiceDate: "2026-07-06", lines: [line()], isForeign: true, exchangeRate: "" }).errors.exchangeRate);
   assert.equal(validateInvoiceEditor({ customerId: "c1", invoiceNo: "INV-0001", invoiceDate: "2026-07-06", lines: [line()], isForeign: true, exchangeRate: "83.2" }).ok, true);
 });
+
+// POST-A-567 — a line whose quantity or rate is text that is grouped properly is a line, and text with a comma where nobody writes one is
+// NOT: it used to be read up to the comma (1,2,5 as ₹1; 12,50 as ₹12), by a gate that sent the same text on.
+test("a grouped rate is a valid line and a misplaced comma is not", () => {
+  assert.equal(isValidLine(line({ rate: "1,25,000" })), true);
+  assert.equal(isValidLine(line({ qty: "1,000", rate: "50" })), true);
+  for (const bad of ["1,2,5", "12,50", "1.5,000", "0,500"]) {
+    assert.equal(isValidLine(line({ rate: bad })), false, `a rate of ${bad} must not be a valid line`);
+    assert.equal(isValidLine(line({ qty: bad })), false, `a quantity of ${bad} must not be a valid line`);
+  }
+});

@@ -135,7 +135,7 @@ export const scenarios = [
       await arrange(env);
       await boxOf(page, "Asha Rao").fill("6,50");
       await saveOf(page, "Asha Rao").click();
-      const problem = page.getByRole("alert").filter({ hasText: "without commas" });
+      const problem = page.getByRole("alert").filter({ hasText: "commas only where an amount is usually grouped" });
       await problem.waitFor();
       assert.equal(await boxOf(page, "Asha Rao").getAttribute("aria-invalid"), "true");
       assert.equal(putBodies(env).length, 0, "a refused amount was still sent");

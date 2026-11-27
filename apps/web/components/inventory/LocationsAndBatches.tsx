@@ -26,7 +26,7 @@ import { Plus, AlertCircle, Info, Warehouse, ArrowRightLeft, Trash2, Boxes, Rota
 import { request } from "@/lib/api";
 import { formatPaise } from "@/lib/services/formatting";
 import { todayIstISO } from "@/lib/dates/format";
-import { parseQuantity } from "@/lib/money/rupeeInput";
+import { parseQuantity, plainDecimalText } from "@/lib/money/rupeeInput";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { Callout } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
@@ -542,7 +542,9 @@ function TransferPanel({ clientId, godowns, detail, onDone }: {
     setError("");
     if (dates.first ?? clearedProblem) { refusal.refuse(); return; }
     // A quantity the server cannot read ("1,500", "5 kg", a fourth decimal) came back as a generic failure naming nothing: it is refused here, in the unit the column keeps.
-    if (parseQuantity(quantity) === null) { setError("Quantity: enter a number, like 5 or 12.5 (up to three decimals)."); return; }
+    // A quantity grouped properly ("1,500") is read by that check, so what is SENT is the plain digits the server reads (it refuses a comma), not the text as typed.
+    const plainQuantity = plainDecimalText(quantity);
+    if (parseQuantity(quantity) === null || plainQuantity === null) { setError("Quantity: enter a number, like 5 or 12.5 (up to three decimals)."); return; }
     setSaving(true);
     try {
       await request("/api/inventory/transfer", {
@@ -550,7 +552,7 @@ function TransferPanel({ clientId, godowns, detail, onDone }: {
         body: JSON.stringify({
           client_id: clientId, service_catalogue_id: item,
           from_godown_id: from, to_godown_id: to,
-          quantity, movement_date: when,
+          quantity: plainQuantity, movement_date: when,
         }),
       });
       setQuantity("");

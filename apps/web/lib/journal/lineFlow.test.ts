@@ -18,6 +18,12 @@ test("a credit-heavy entry is offered a DEBIT", () => {
     { side: "debit", amount: "749.50" });
 });
 
+test("a line typed with its commas is read, so the balancing leg is the right figure (POST-A-567)", () => {
+  assert.deepEqual(balancingLeg([L("1,25,000"), L("", "25,000")]), { side: "credit", amount: "100000.00" });
+  // A comma where nobody writes one is no figure, so none is guessed.
+  assert.equal(balancingLeg([L("1,2,5"), L("", "600")]), null);
+});
+
 test("a balanced entry is offered nothing", () => {
   assert.equal(balancingLeg([L("1000"), L("", "1000")]), null);
   assert.equal(balancingLeg([L(), L()]), null, "two blank lines are balanced at nil");

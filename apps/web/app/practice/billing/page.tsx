@@ -78,7 +78,7 @@ function Billing() {
     // A billing schedule bills this amount every cadence until somebody stops
     // it, so an amount read wrong is wrong repeatedly.
     const amountPaise = paiseFromRupeeInput(form.amount_rupees || "0");
-    if (amountPaise === null) { setError("Enter the amount in rupees, e.g. 125000 or 125000.50 — without commas."); return; }
+    if (amountPaise === null) { setError("Enter the amount in rupees, e.g. 125000 or 125000.50 (commas only where an amount is usually grouped, as in 1,25,000)."); return; }
     try {
       await api.billing.createSchedule({
         client_id: form.client_id, arrangement: form.arrangement, cadence: form.cadence,

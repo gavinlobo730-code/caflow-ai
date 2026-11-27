@@ -133,7 +133,7 @@ function AddModal({ clients, presetClientId, onClose, onAdded }: {
     const amountPaise = form.amountDemandedRs
       ? paiseFromRupeeInput(form.amountDemandedRs) : 0;
     if (amountPaise === null) {
-      setError("Amount demanded must be in rupees, e.g. 125000 — without commas.");
+      setError("Amount demanded must be in rupees, e.g. 125000 (commas only where an amount is usually grouped, as in 1,25,000).");
       return;
     }
     setSaving(true);

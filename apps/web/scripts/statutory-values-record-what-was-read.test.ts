@@ -56,7 +56,7 @@ test("amounts go through the exact parser, never parseFloat", () => {
 
 test("a field the parser refuses stops the save instead of becoming a number", () => {
   assert.match(code, /if \(from === null \|\| amount === null/);
-  assert.match(src, /must be plain figures in rupees, without commas/);
+  assert.match(src, /must be plain figures in rupees \(commas only where an amount is usually grouped/);
 });
 
 test("the whole set is posted in one call", () => {

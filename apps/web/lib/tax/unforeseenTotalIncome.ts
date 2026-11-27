@@ -21,7 +21,7 @@ export function readTotalIncome(raw: string): TotalIncomeReading {
   if (raw.trim() === "") return { kind: "absent" };
   const paise = paiseFromRupeeInput(raw);
   if (paise === null) {
-    return { kind: "problem", message: "The year's total income is not an amount. Type it in rupees without commas, such as 12500000 or 12500000.50, or leave it blank." };
+    return { kind: "problem", message: "The year's total income is not an amount. Type it in rupees, such as 12500000 or 12500000.50 (commas only where an amount is usually grouped, as in 1,25,00,000), or leave it blank." };
   }
   if (paise < 0) {
     return { kind: "problem", message: "The year's total income cannot be below zero. Leave it blank if it is not known." };

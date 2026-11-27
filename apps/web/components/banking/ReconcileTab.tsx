@@ -157,7 +157,7 @@ const toPaise = (s: string): number | null => paiseFromRupeeInput(s || "0");
 
 /** The message shown when one of them is not an amount. One wording, because
  *  all three fields are the same kind of mistake. */
-const NOT_AN_AMOUNT = "Enter the amount in rupees, e.g. 125000 or 125000.50 — without commas.";
+const NOT_AN_AMOUNT = "Enter the amount in rupees, e.g. 125000 or 125000.50 (commas only where an amount is usually grouped, as in 1,25,000).";
 
 export function BankReconciliation({ clientId, onGoToEntries }: {
   clientId: string;

@@ -24,7 +24,7 @@ import { Plus, RefreshCw, Clock, Trash2 } from "lucide-react";
 import { apiCall, apiGet, getAuthToken, HELD_DIALOG_MS } from "@/lib/invoices/shared";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
-import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput";
+import { paiseFromRupeeInput, bpsFromPercentInput, parseQuantity } from "@/lib/money/rupeeInput";
 import { purchaseServiceToLine } from "@/lib/catalogue/service";
 import { templateBasePaise } from "@/lib/recurring/templateBase";
 import { formatPaise } from "@/lib/services/formatting";
@@ -523,7 +523,7 @@ function RecurringBillEditor({
       }
       const ratePaise = paiseFromRupeeInput(l.rate || "0");
       if (ratePaise === null) {
-        setErr(`Line ${i + 1}: the rate must be a number of rupees, e.g. 50000 or 50000.50 — without commas.`);
+        setErr(`Line ${i + 1}: the rate must be a number of rupees, e.g. 50000 or 50000.50 (commas only where an amount is usually grouped, as in 1,25,000).`);
         return;
       }
       const gstBps = bpsFromPercentInput(l.gst_rate || "0");
@@ -531,7 +531,7 @@ function RecurringBillEditor({
         setErr(`Line ${i + 1}: the GST rate must be a percentage, e.g. 18 or 12.5.`);
         return;
       }
-      const qty = Number(l.quantity);
+      const qty = parseQuantity(l.quantity) ?? Number.NaN;
       if (!Number.isFinite(qty) || qty <= 0) {
         setErr(`Line ${i + 1}: quantity must be a positive number.`);
         return;

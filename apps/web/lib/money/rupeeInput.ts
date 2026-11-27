@@ -32,9 +32,11 @@ const AMOUNT = /^(-?)(\d*)(?:\.(\d{0,2}))?$/;
  *
  * Either the Indian way (1,25,000: groups of two, the last of three) or the Western way (1,250,000: groups of three), and nothing else.
  * Both name the same digits, so there is no reading in which the two disagree about the value; what is refused is a comma in a place
- * neither puts one (1,2,5 and 12,50 and ,500 and 1,,250), because a comma there is a typing mistake and not a grouping.
+ * neither puts one (1,2,5 and 12,50 and ,500 and 1,,250), because a comma there is a typing mistake and not a grouping. A group that starts
+ * with a zero (0,500 and 01,250) is refused for the same reason: nobody writes a grouped amount that way, and a leading zero there is far
+ * likelier a slipped key than a rupee figure.
  */
-const GROUPED_WHOLE = /^(?:\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})*,\d{3})$/;
+const GROUPED_WHOLE = /^(?:[1-9]\d{0,2}(?:,\d{3})+|[1-9]\d?(?:,\d{2})*,\d{3})$/;
 
 /**
  * The text as a plain decimal: the commas of a properly grouped whole part taken out, anything else as it was.
@@ -61,11 +63,14 @@ export function plainDecimalText(raw: string): string | null {
 /**
  * A typed amount or quantity as a JS number, for the parity-pinned arithmetic that takes RUPEES and not paise: the text through the one
  * grouping reader, then parseFloat as before. A text with no comma, or one with a misplaced comma, is judged exactly as parseFloat judged it,
- * so this changes the reading of properly grouped text and nothing else. Use it wherever a screen turns a typed amount or quantity into a
+ * so this changes the reading of properly grouped text and of text with a misplaced comma (which is NaN, so the callers that already treat
+ * a non-number as nothing or as a refusal keep doing so). Use it wherever a screen turns a typed amount or quantity into a
  * number after a reader here has accepted the text; a bare parseFloat or Number on that text reads "1,25,000" as 1 or NaN (POST-A-567).
  */
 export function typedNumber(raw: string): number {
-  return parseFloat(plainDecimalText(raw) ?? raw);
+  const s = plainDecimalText(raw);
+  // A comma in a wrong place is NOT a number: NaN, never what parseFloat would read up to the first comma (1,2,5 as 1; 12,50 as 12).
+  return s === null ? Number.NaN : parseFloat(s);
 }
 
 /** What an amount box may look like, in the words a refusal uses. One sentence, so every box that refuses an amount says the same thing. */

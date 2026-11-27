@@ -315,7 +315,7 @@ function ProfileSection({ employee, onSaved, onDirtyChange }: {
       ].filter((f): f is string => f !== null);
       if (rejected.length) {
         throw new Error(`${rejected.join(", ")} ${rejected.length === 1 ? "is" : "are"} not `
-          + "a number — type digits only, without commas.");
+          + "a number — type numbers only (an amount may be grouped like 1,25,000; a percentage takes no comma).");
       }
       await api.payroll.updateEmployee(employee.id, {
         pan: pan.trim() ? pan.trim().toUpperCase() : null,

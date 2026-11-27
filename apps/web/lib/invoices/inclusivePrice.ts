@@ -61,7 +61,7 @@ export function inclusiveQuestion(
   clientId: string, typedPrice: string, basis: InclusiveBasis, line: LineFacts,
 ): { question: InclusiveQuestion } | { problem: string } {
   const price = filled(typedPrice) ? paiseFromRupeeInput(typedPrice) : null;
-  if (price === null || price <= 0) return { problem: "Type the price including GST as an amount, with no commas, for example 11800 or 11800.50." };
+  if (price === null || price <= 0) return { problem: "Type the price including GST as an amount in rupees, for example 11800 or 11800.50 (commas only where an amount is usually grouped, as in 11,800)." };
   const quantity = parseQuantity(line.qty);
   if (quantity === null || quantity <= 0) return { problem: "Enter this line's quantity first." };
   let discount: number | null = null;

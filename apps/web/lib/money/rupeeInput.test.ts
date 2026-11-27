@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  bpsFromPercentInput, paiseFromRupeeInput, parseQuantity, plainDecimalText, rupeeInputFromPaise,
+  bpsFromPercentInput, paiseFromRupeeInput, parseQuantity, plainDecimalText, rupeeInputFromPaise, typedNumber,
   sumRupeeInputs,
 } from "./rupeeInput.ts";
 
@@ -148,7 +148,9 @@ test("an amount grouped the Indian way or the Western way is read as the number 
 });
 
 test("a comma where nobody writes one is a mistake, and is refused", () => {
-  for (const bad of ["1,2,5", "12,50", ",500", "1,,250", "1,250,00", "123,45,678", "1,25,00,0", "1,", "1,250.5,0", "1.250,00", "1,25.000,5"]) {
+  for (const bad of ["1,2,5", "12,50", ",500", "1,,250", "1,250,00", "123,45,678", "1,25,00,0", "1,", "1,250.5,0", "1.250,00", "1,25.000,5",
+    // a group that starts with a zero is a slipped key, not a figure
+    "0,500", "01,250", "0,00,000"]) {
     assert.equal(paiseFromRupeeInput(bad), null, `${bad} should not parse`);
   }
 });
@@ -161,6 +163,14 @@ test("the plain reader takes the commas out of a grouped whole part and nothing 
   assert.equal(plainDecimalText("abc"), "abc");         // not its question: the reader that asked decides
   assert.equal(plainDecimalText("1,2,5"), null);
   assert.equal(plainDecimalText("1,250,"), null);
+});
+
+test("a typed number is the grouped figure, and a misplaced comma is NaN, never the digits before the comma", () => {
+  assert.equal(typedNumber("1,25,000"), 125000);
+  assert.equal(typedNumber("1,250.50"), 1250.5);
+  assert.equal(typedNumber("1250"), 1250);
+  assert.equal(typedNumber("12abc"), 12);              // no comma: judged exactly as parseFloat judged it (the readers refuse it first)
+  for (const bad of ["1,2,5", "12,50", "1.5,000", "0,500"]) assert.ok(Number.isNaN(typedNumber(bad)), `${bad} should be NaN`);
 });
 
 test("a percentage never takes grouping: 1,000 there would be a thousand per cent", () => {
