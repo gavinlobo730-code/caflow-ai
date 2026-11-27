@@ -35,7 +35,7 @@ export type MaturityChoice =
  * and is not a maturity amount).
  */
 export function chooseMaturity(receiptText: string, principalPaise: number, estimatePaise: number): MaturityChoice {
-  const typed = receiptText.replace(/[,\s₹]/g, "");
+  const typed = receiptText.replace(/[\s₹]/g, "");
   if (typed === "") return { ok: true, paise: estimatePaise, isEstimate: true };
   const paise = paiseFromRupeeInput(typed);
   if (paise === null || paise <= 0) {

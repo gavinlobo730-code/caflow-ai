@@ -84,9 +84,10 @@ export function voucherColumns(layout: VoucherLayout): VoucherColumn[] {
 const text = (v: string | undefined): string => (v ?? "").trim();
 
 /** A rupee cell through the one parser: blank is 0, a cell that is not an
- *  amount is null. The currency symbol and Indian commas are taken off first. */
+ *  amount is null. The currency symbol is taken off first; commas are the reader's
+ *  (proper grouping is read, a comma anywhere else is refused, POST-A-570). */
 function amountCell(v: string | undefined): number | null {
-  const cleaned = text(v).replace(/[,\s₹]/g, "");
+  const cleaned = text(v).replace(/[\s₹]/g, "");
   return cleaned === "" ? 0 : paiseFromRupeeInput(cleaned);
 }
 

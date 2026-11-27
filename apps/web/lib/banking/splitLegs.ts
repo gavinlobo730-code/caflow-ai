@@ -45,7 +45,7 @@ export interface SplitLeg {
  *  rather than being reported as a non-positive leg — which is a different
  *  mistake with a different fix. */
 export function rupeesToPaise(v: string): number | null {
-  return paiseFromRupeeInput(String(v).replace(/[,\s₹]/g, ""));
+  return paiseFromRupeeInput(String(v).replace(/[\s₹]/g, ""));
 }
 
 /** The legs the reader has actually started. A blank row at the bottom is an

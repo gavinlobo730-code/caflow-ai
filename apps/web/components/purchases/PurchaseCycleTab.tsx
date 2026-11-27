@@ -31,7 +31,7 @@ import {
   type PurchaseOrderPosition,
   type ThreeWayMatch,
 } from "@/lib/api";
-import { paiseFromRupeeInput, parseQuantity } from "@/lib/money/rupeeInput";
+import { paiseFromRupeeInput, parseQuantity, unreadableBoxesSentence, type TypedBox } from "@/lib/money/rupeeInput";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { EntityLookup } from "@/components/lookups/EntityLookup";
 import { Button } from "@/components/ui/button";
@@ -256,6 +256,11 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
 
   async function save() {
     if (dates.first) { dates.refuseWith(setMsg, (text) => ({ type: "err" as const, text })); return; }
+    // A line whose quantity or rate is typed and cannot be read was saved as a quantity of 1 or a rate of nothing (POST-A-569): it is refused
+    // and named instead. A blank quantity is still 1 and a blank rate nothing, which is this form's own rule.
+    const unreadable = unreadableBoxesSentence(lines.flatMap((l, i): TypedBox[] => (l.description.trim()
+      ? [[`Line ${i + 1} quantity`, l.quantity, "quantity"], [`Line ${i + 1} rate`, l.rate]] : [])));
+    if (unreadable) { setMsg({ type: "err", text: unreadable }); return; }
     const body = buildLines();
     if (!body.length) {
       setMsg({ type: "err", text: "Add at least one line." });

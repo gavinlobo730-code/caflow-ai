@@ -185,3 +185,38 @@ export function parseQuantity(raw: string): number | null {
   const n = Number(`${sign}${whole || "0"}.${frac || "0"}`);
   return Number.isFinite(n) ? n : null;
 }
+
+/** A box a form reads: its name as the person sees it, the text in it, and what it takes (an amount unless said). */
+export type TypedBox = readonly [name: string, text: string, kind?: "amount" | "percent" | "quantity"];
+
+/**
+ * The names of the boxes that are TYPED IN and cannot be read as what they take (POST-A-571).
+ *
+ * WHY THIS EXISTS. A form that reads a box with `paiseFromRupeeInput(text) ?? 0` turns the reader's refusal into nothing and carries on: a
+ * notice-pay recovery typed 12,50 was recorded as none recovered and posted, a revised basic typed 45,00 would have been saved as a basic
+ * of nothing, a purchase cost that could not be read entered the capital gains register as nil. The reader refusing was never the problem;
+ * the caller not asking was. A form asks this BEFORE it builds what it sends, and says the sentence below. A blank box is not unreadable:
+ * what a blank means (nothing, unchanged, not recorded) is the form's own rule and stays so.
+ */
+export function unreadableBoxes(boxes: readonly TypedBox[]): string[] {
+  return boxes.filter(([, text, kind = "amount"]) => {
+    if (text.trim() === "") return false;
+    if (kind === "percent") return bpsFromPercentInput(text) === null;
+    if (kind === "quantity") return parseQuantity(text) === null;
+    return paiseFromRupeeInput(text) === null;
+  }).map(([name]) => name);
+}
+
+/** The refusal for those boxes, or null when every typed box can be read: which boxes, what they may look like, and that nothing was sent. */
+export function unreadableBoxesSentence(boxes: readonly TypedBox[]): string | null {
+  const bad = unreadableBoxes(boxes);
+  if (bad.length === 0) return null;
+  const kinds = new Set(boxes.filter(([name]) => bad.includes(name)).map(([, , kind = "amount"]) => kind));
+  const how = [
+    kinds.has("amount") ? AMOUNT_MAY_LOOK_LIKE : "",
+    kinds.has("percent") ? "A percentage is a plain number such as 40 or 40.5, with no comma." : "",
+    kinds.has("quantity") ? "A quantity is a number with up to three decimals, such as 5 or 12.5." : "",
+  ].filter(Boolean).join(" ");
+  return `${bad.join(", ")} ${bad.length === 1 ? "cannot be read" : "cannot be read"}. ${how} Nothing was sent.`;
+}
+

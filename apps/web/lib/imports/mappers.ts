@@ -36,8 +36,8 @@ export interface ImportColumn { key: string; label: string; required: boolean; h
 
 function str(v: string | undefined): string { return (v ?? "").trim(); }
 /** A spreadsheet cell with the marks a person puts in one taken off: the
- *  currency symbol, the Indian thousands commas, a stray percent sign. */
-function cell(v: string | undefined): string { return str(v).replace(/[,\s₹%]/g, ""); }
+ *  currency symbol, a stray percent sign. Commas are left for the one reader (POST-A-570). */
+function cell(v: string | undefined): string { return str(v).replace(/[\s₹%]/g, ""); }
 
 /**
  * Rupees string → integer paise, or NaN when the cell is not an amount.

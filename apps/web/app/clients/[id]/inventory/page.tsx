@@ -945,7 +945,7 @@ function NrvWritedownModal({
   // read the NRV with parseFloat and compared it against a cost divided back
   // to rupees — so "1,250" was ₹1, and the preview, the "no write-down needed"
   // notice and the posted figure all agreed on the wrong number.
-  const nrvPaise = nrvPerUnit.trim() === "" ? null : paiseFromRupeeInput(nrvPerUnit.replace(/[,\s₹]/g, ""));
+  const nrvPaise = nrvPerUnit.trim() === "" ? null : paiseFromRupeeInput(nrvPerUnit.replace(/[\s₹]/g, ""));
   const qty = item.stock_qty_units ?? 0;
 
   // The amount this will write down is the SERVER'S, from the function that posts it (POST-A-134). This used to be

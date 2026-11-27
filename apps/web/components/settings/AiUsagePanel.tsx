@@ -31,6 +31,7 @@ import { Input, Select } from "@/components/ui/field";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { api, type AiAllowancePart, type AiUsage, type AiUsageByDay, type AiUsageByFeature } from "@/lib/api/index";
 import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
+import { plainDecimalText } from "@/lib/money/rupeeInput";
 import { formatIstLabelled } from "@/lib/dates/formatIst";
 import { TechnicalDetails } from "@/components/ai/TechnicalDetails";
 
@@ -46,7 +47,9 @@ type Parsed = { ok: true; value: number | null } | { ok: false };
 /** Text to "no limit" (blank), a whole number, or refused. It judges nothing about the
  *  size: the server owns what a limit may be, including that zero is not one. */
 function parseLimit(text: string): Parsed {
-  const t = text.replace(/[,\s]/g, "");
+  // Grouping is read by the one reader (1,00,000 or 1,000,000), so a comma in a place nobody writes one is refused and not removed (POST-A-570).
+  const t = plainDecimalText(text.replace(/\s/g, ""));
+  if (t === null) return { ok: false };
   if (t === "") return { ok: true, value: null };
   if (!/^[0-9]+$/.test(t)) return { ok: false };
   const n = Number(t);

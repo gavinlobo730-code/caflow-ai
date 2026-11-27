@@ -33,7 +33,7 @@ import { Loader2 } from "lucide-react";
 import { api, type Cmp08Working } from "@/lib/api";
 import { Callout, GapList } from "@/components/ui/callout";
 import { formatPaise } from "@/lib/money/format";
-import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
+import { paiseFromRupeeInput, unreadableBoxesSentence } from "@/lib/money/rupeeInput";
 import { objectOrNull } from "@/lib/api/shape";
 import { istToday } from "@/lib/dateMath";
 
@@ -64,6 +64,9 @@ export function Cmp08Panel({ clientId, gstin }: { clientId: string; gstin: strin
 
   const load = useCallback(async () => {
     if (!clientId || !/^\d{6}$/.test(period)) return;
+    // Interest that is typed and cannot be read is not nil interest: the statement would be prepared without it and say nothing (POST-A-571).
+    const unreadable = unreadableBoxesSentence([["Interest", interestInput]]);
+    if (unreadable) { setData(null); setError(unreadable.replace(" Nothing was sent.", " Nothing was prepared.")); return; }
     setLoading(true);
     setError(null);
     const interestPaise = paiseFromRupeeInput(interestInput) ?? 0;

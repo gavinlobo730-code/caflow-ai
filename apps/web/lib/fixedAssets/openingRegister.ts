@@ -128,9 +128,10 @@ export function openingRegisterColumns(categories: string[] = []): OpeningRegist
 const text = (v: string | undefined): string => (v ?? "").trim();
 const orNull = (v: string | undefined): string | null => text(v) || null;
 
-/** An amount cell, with the rupee sign and Indian commas taken off first. */
+/** An amount cell, with the rupee sign and spaces taken off first. Commas are left for the one reader, which reads proper grouping and refuses a
+ *  comma anywhere else (POST-A-570). */
 function cleaned(v: string | undefined): string {
-  return text(v).replace(/[,\s₹]/g, "");
+  return text(v).replace(/[\s₹]/g, "");
 }
 
 /** A REQUIRED amount: blank is null (unknown), never 0. */
