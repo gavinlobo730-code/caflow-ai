@@ -47,7 +47,7 @@ const WHERE: { title: string; body: string; figures?: string }[] = [
   },
   {
     title: "Sign-ins are recorded",
-    body: "The product records the address and the browser that people sign in from, and keeps them with the sign-in history that your firm's Partners and Managers can read. The address is the one our own server saw; it is not turned into a place.",
+    body: "The product records the address and the browser that people sign in from, and keeps them with the sign-in history, which the people in your firm who have been given access to it can read (by default, Partners and Managers). The address is the one our own server saw; it is not turned into a place.",
   },
   {
     title: "What is replaced on the way",
