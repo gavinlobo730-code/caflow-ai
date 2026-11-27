@@ -29,7 +29,7 @@ test("someone who may post, and an answer not yet read, are offered everything a
 });
 
 test("the confirm says posted entries are left alone and why", () => {
-  assert.match(POSTED_LEFT_ALONE, /Partner approve every manual journal/);
+  assert.match(POSTED_LEFT_ALONE, /approved before it posts/);
   assert.match(POSTED_LEFT_ALONE, /skipped/);
 });
 

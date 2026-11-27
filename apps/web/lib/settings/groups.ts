@@ -84,7 +84,7 @@ export const SETTINGS_GROUPS: readonly SettingsGroup[] = [
       {
         href: "/settings/journal-approval",
         label: "Journal approval",
-        says: "Whether a Partner approves every manual journal before it reaches a client's books. Off unless a Partner switches it on.",
+        says: "Whether every manual journal waits for someone who may approve journal entries before it reaches a client's books. Off unless it is switched on.",
       },
     ],
   },

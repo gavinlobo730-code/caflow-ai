@@ -45,7 +45,7 @@ import { useJournalApprovalRule } from "@/lib/accounting/journalApprovalRule";
 
 /** What the screen says in place of "Post to the ledger now" where the server's answer is that this person may not post. */
 export const HELD_FOR_APPROVAL =
-  "This firm has a Partner approve every manual journal, and you may not approve, so the vouchers are saved as drafts: each waits in "
+  "This firm has every manual journal approved before it posts, and you may not approve, so the vouchers are saved as drafts: each waits in "
   + "Approvals for someone who may approve it.";
 
 export function VoucherImportButton({ clientId, onImported, onSummary }: {
