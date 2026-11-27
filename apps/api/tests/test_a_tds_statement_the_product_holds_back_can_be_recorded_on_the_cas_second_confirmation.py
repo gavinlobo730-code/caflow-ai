@@ -202,7 +202,7 @@ def test_nobody_without_the_approval_of_tds_records_over_the_refusal(who):
     switched off no longer records over a refusal, and neither does anyone below Manager."""
     rid = _prepared_shell()
     out = update_return_status(rid, _ask(acknowledge_incomplete=True), who)
-    assert out["success"] is False and out["error"] == "Only Manager or above can approve or file a TDS return."
+    assert out["success"] is False and out["error"] == "Only someone who may approve TDS can approve or file a TDS return."
     assert tds_ws._MOCK_RETURNS[rid]["status"] == "prepared"
 
 

@@ -192,7 +192,7 @@ def test_an_executive_cannot_approve(world, route):
 
     out = _approve(status_fn, saved["id"], EXEC)
 
-    assert out["success"] is False and "Manager or above" in out["error"]
+    assert out["success"] is False and "someone who may approve GST returns" in out["error"]
     assert _row(world, table, saved["id"])["status"] == "draft"
 
 
@@ -208,7 +208,7 @@ def test_the_grid_decides_per_person_in_both_directions(world, route):
     denied = _user("Manager", "mgr2", permission_overrides={"gst:approve": False})
     again = _save(kind, MANAGER)                       # a Manager voids it, then asks a second Manager
     out = _approve(status_fn, again["id"], denied)
-    assert out["success"] is False and "Manager or above" in out["error"]
+    assert out["success"] is False and "someone who may approve GST returns" in out["error"]
     assert _row(world, table, again["id"])["status"] == "draft"
 
 

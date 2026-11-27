@@ -84,7 +84,7 @@ def test_the_advice_fits_a_draft_and_an_issued_invoice_and_says_who_can_reverse(
                  jf.elsewhere(what="invoice A/1", number="A/0", date="2026-04-05"),
                  jf.unreadable(what="invoice A/1")):
         assert "issue the draft again" not in said and "the figures the draft has" not in said, said
-    assert "A Partner can reverse that entry" in jf.difference([_l("AR", 1)], [_l("AR", 2)], what="invoice A/1")
+    assert "Someone who may approve Accounting can reverse that entry" in jf.difference([_l("AR", 1)], [_l("AR", 2)], what="invoice A/1")
     assert "if it is still a draft" in jf.elsewhere(what="invoice A/1", number="A/0", date="2026-04-05")
 
 
@@ -114,7 +114,7 @@ def test_the_held_elsewhere_sentence_does_not_say_the_draft_when_the_invoice_is_
 def test_the_sentence_for_a_draft_that_cannot_be_deleted_names_the_entry_and_the_remedy():
     said = jf.kept_by_delete(what="invoice A/1", number="A/1", date="2026-04-05")
     assert said.startswith("Invoice A/1 cannot be deleted") and "A/1" in said and "2026-04-05" in said, said
-    assert "A Partner can reverse that entry" in said and "Nothing was changed" in said
+    assert "Someone who may approve Accounting can reverse that entry" in said and "Nothing was changed" in said
 
 
 def test_the_refusal_is_a_value_error_so_every_caller_that_stops_on_a_refusal_stops():
@@ -747,7 +747,7 @@ def test_an_issued_invoice_with_no_link_is_not_reposted_onto_an_entry_with_other
     assert res["success"] is False and res["error"].startswith("Cannot repost — An entry for invoice INV-1"), res
     assert "Seed the Chart of Accounts" not in res["error"], "the refusal blamed the chart of accounts"
     assert "issue the draft again" not in res["error"], "an issued invoice was told to issue the draft"
-    assert "A Partner can reverse that entry" in res["error"]
+    assert "Someone who may approve Accounting can reverse that entry" in res["error"]
     assert not _row(db, invoice_id).get("journal_entry_id")
 
 

@@ -414,7 +414,7 @@ def test_retracting_an_entry_that_closed_nothing_has_no_calendar_note(door):
 
 
 def test_the_retraction_note_promises_a_reopen_that_exists_and_names_who_can_do_it():
-    """The note says a Manager or Partner can reopen the obligation. A first wording promised a correction Compliance could not
+    """The note says someone who may approve Compliance can reopen the obligation. A first wording promised a correction Compliance could not
     make; this keeps the promise true from both ends: the ESI deposit is a reopenable type, and the door is the Manager tier."""
     from core.permissions import can
     from domain.compliance_record_service import REOPENABLE_OBLIGATION_TYPES

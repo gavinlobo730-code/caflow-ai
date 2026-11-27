@@ -655,8 +655,8 @@ def create_bank_account(
         if not can_user(current_user, "accounting", "write"):
             raise HTTPException(
                 status_code=422,
-                detail="Adding a bank account also creates its ledger, which needs a Manager or a Partner. Ask one to add it, "
-                       "or choose an existing bank ledger for it.")
+                detail="Adding a bank account also creates its ledger, which needs someone with write access to Accounting. Ask them "
+                       "to add it, or choose an existing bank ledger for it.")
         payload["coa_account_id"] = _ensure_bank_ledger(
             db, firm_id, payload["client_id"], payload["bank_name"],
             payload["account_no"], payload.get("account_type"))
@@ -2913,7 +2913,7 @@ def update_rule(
             if not can_user(current_user, "banking", "approve"):      # the per-person grid, as the sweep asks it
                 raise HTTPException(
                     status_code=403,
-                    detail="Only a Manager or Partner can let a rule pass entries by itself.")
+                    detail="Only someone with Banking approval can let a rule pass entries by itself.")
             if not (rule.get("suggested_account_id") or fields.get("suggested_account_id")):
                 raise HTTPException(
                     status_code=422,
@@ -3104,14 +3104,14 @@ def delete_rule(
         raise HTTPException(
             status_code=503,
             detail=("Could not check whether this rule has posted bank lines, and deleting one that has erases the record of why "
-                    "they posted, so nothing was deleted. Try again in a moment, or ask a Manager or Partner, or deactivate the "
+                    "they posted, so nothing was deleted. Try again in a moment, or ask someone with Banking approval, or deactivate the "
                     "rule instead."))
     if posted and not may_delete_a_rule_that_posted:
         raise HTTPException(
             status_code=403,
             detail=(f"This rule posted {posted} bank line{'s' if posted != 1 else ''} by "
                     f"itself, and deleting it erases the record of why they posted. "
-                    f"Only a Manager or Partner can delete it — or deactivate it instead."))
+                    f"Only someone with Banking approval can delete it — or deactivate it instead."))
 
     (privileged_for(db).table("bank_matching_rules").delete()
      .eq("id", rule_id).eq("firm_id", current_user["firm_id"]).execute())

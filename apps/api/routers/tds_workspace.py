@@ -2141,7 +2141,7 @@ def _status_request_refusal(body: "UpdateReturnStatusRequest", current_user: dic
     # Asked of the PERSON (`can_user`: a per-person row wins, the role decides where there is none), not of the role template: a Manager whose
     # approval of TDS the Team grid switched off still approved, filed and could record over a refusal, and an Executive it had granted it to could not.
     if body.status in ("ca_approved", "filed") and not can_user(current_user, "tds", "approve"):
-        return "Only Manager or above can approve or file a TDS return."
+        return "Only someone who may approve TDS can approve or file a TDS return."
 
     if body.status == "filed" and not (body.prn or "").strip():
         return "PRN (Provisional Receipt Number) is required to mark a return as filed."

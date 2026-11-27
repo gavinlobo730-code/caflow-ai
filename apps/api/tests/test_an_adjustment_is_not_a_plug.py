@@ -298,7 +298,7 @@ def test_the_completion_refusal_no_longer_invites_the_plug(db, spies):
         svc.complete(db, FIRM, rid)
     detail = str(e.value.detail)
     assert "or record an adjustment" not in detail
-    assert "a Manager can record it" in detail and "say what it is" in detail
+    assert "someone with Banking approval can record it" in detail and "say what it is" in detail
 
 
 # ══════════════════════════════════════════════════════════════════════════════

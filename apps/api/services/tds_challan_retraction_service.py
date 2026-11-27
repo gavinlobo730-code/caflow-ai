@@ -190,7 +190,7 @@ def _reopen(rec: dict, *, challan: dict, reason: str, actor: dict, firm_id: str,
     return None
 
 
-_WHO = "a Manager or Partner can reopen it, with a reason, from Deadlines or the client's Compliance tab"
+_WHO = "someone who may approve Compliance can reopen it, with a reason, from Deadlines or the client's Compliance tab"
 
 
 def _calendar_sentence(effect: dict[str, Any], *, salary: bool = False) -> Optional[str]:

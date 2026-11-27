@@ -164,7 +164,7 @@ def test_an_executive_who_names_no_ledger_is_told_a_manager_must_add_it_and_noth
     with pytest.raises(HTTPException) as e:
         banking.create_bank_account(BankAccountIn(client_id=CLIENT, bank_name="HDFC Bank", account_no="50100234567890",
                                                   opening_balance_paise=0, opening_balance_date="2026-04-01"), executive)
-    assert e.value.status_code == 422 and "needs a Manager or a Partner" in str(e.value.detail)
+    assert e.value.status_code == 422 and "needs someone with write access to Accounting" in str(e.value.detail)
     assert db.rows("bank_accounts") == []
     mine = _own(db, "Current account (my own)", "Asset", "Current Assets")       # naming a ledger needs no chart write
     out = banking.create_bank_account(BankAccountIn(client_id=CLIENT, bank_name="HDFC Bank", account_no="50100234567890",

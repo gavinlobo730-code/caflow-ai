@@ -148,7 +148,7 @@ def test_gstr1_approval_requires_manager_role(client):
                           json={"status": "ca_approved", "ca_approved": True},
                           headers=exec_headers)
     assert r_exec.json()["success"] is False
-    assert "Manager" in r_exec.json()["error"]
+    assert "someone who may approve GST returns" in r_exec.json()["error"]
 
     r_mgr = client.patch(f"/api/gst-workspace/gstr1/{return_id}/status",
                          json={"status": "ca_approved", "ca_approved": True},
@@ -171,7 +171,7 @@ def test_gstr3b_approval_requires_manager_role(client):
                           json={"status": "ca_approved", "ca_approved": True},
                           headers=exec_headers)
     assert r_exec.json()["success"] is False
-    assert "Manager" in r_exec.json()["error"]
+    assert "someone who may approve GST returns" in r_exec.json()["error"]
 
     r_mgr = client.patch(f"/api/gst-workspace/gstr3b/{return_id}/status",
                          json={"status": "ca_approved", "ca_approved": True},

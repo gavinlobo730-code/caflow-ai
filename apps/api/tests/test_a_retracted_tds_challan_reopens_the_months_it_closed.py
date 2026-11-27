@@ -299,7 +299,7 @@ def test_a_filed_month_with_no_record_is_named_and_left(world):
     assert data["reopened_obligation_ids"] == [] and now(unrecorded)["status"] == "Filed"
     note = data["calendar_note"]
     assert "August 2025" in note and "does not reopen it" in note and "nothing recorded which challan closed that month" in note
-    assert "Manager or Partner can reopen" in note
+    assert "someone who may approve Compliance can reopen" in note
 
 
 def test_a_caller_who_may_not_approve_compliance_has_the_months_named_and_nothing_reopened(world):
@@ -309,7 +309,7 @@ def test_a_caller_who_may_not_approve_compliance_has_the_months_named_and_nothin
     data = retract(client, c).json()["data"]
     assert data["reopened_obligation_ids"] == [] and now(ob)["status"] == "Filed"
     assert "July 2025" in data["calendar_note"] and "closed on this challan and still reads filed" in data["calendar_note"]
-    assert "does not include approving Compliance" in data["calendar_note"] and "Manager or Partner can reopen" in data["calendar_note"]
+    assert "does not include approving Compliance" in data["calendar_note"] and "someone who may approve Compliance can reopen" in data["calendar_note"]
     assert db.rows("tds_challans") == []                                        # the challan itself is retracted either way
 
 

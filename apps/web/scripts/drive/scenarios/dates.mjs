@@ -4150,8 +4150,8 @@ export const scenarios = [
   // which the API client RAISES) both leave a pending row: it is kept, the reason is said, and the dialog closes instead of staying open over a row that exists.
   ...[
     { id: "a-date-the-door-refuses", name: "a date before the year ended", answer: null, typed: "15/01/2026", sentence: MCA_BEFORE_YEAR_SENTENCE },
-    { id: "a-caller-the-door-refuses", name: "a caller who may not approve MCA filings", answer: refuse("Only Manager or above can mark filings as filed", 403), typed: "05/10/2026",
-      sentence: "Only Manager or above can mark filings as filed" },
+    { id: "a-caller-the-door-refuses", name: "a caller who may not approve MCA filings", answer: refuse("Only someone who may approve MCA filings can mark filings as filed", 403), typed: "05/10/2026",
+      sentence: "Only someone who may approve MCA filings can mark filings as filed" },
   ].map((c) => ({
     id: `mca-add-filed-${c.id}-keeps-the-row-and-closes-the-dialog`,
     title: `MCA > Filings > Add Filing recorded as Filed, ${c.name}: the row is kept as pending, the reason is said and the dialog closes`,

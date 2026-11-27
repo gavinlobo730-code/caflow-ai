@@ -5024,8 +5024,8 @@ def assert_payroll_enabled(db, firm_id: str, client_id: str) -> None:
             # Names the control that exists: the "Switch on" beside the Payroll
             # heading on the client's own Payroll page. This used to say
             # "Payroll → Settings", a screen that has never existed.
-            detail=("Payroll is not switched on for this client. A Partner turns "
-                    "it on from the client's Payroll page (Switch on, under the "
+            detail=("Payroll is not switched on for this client. Someone who may switch payroll on does it "
+                    "from the client's Payroll page (Switch on, under the "
                     "Payroll heading); until then nothing payroll can be created "
                     "for them. Existing payroll records stay readable."))
 

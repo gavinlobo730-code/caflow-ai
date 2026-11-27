@@ -891,8 +891,8 @@ class BankReconciliationService:
                 status_code=422,
                 detail=(f"Cannot complete — statement does not tie out. Difference "
                         f"{rupee_text(summary['difference_paise'])}. Reconcile the remaining "
-                        f"items. If the difference is a real, documented item, a Manager "
-                        f"can record it as an adjustment and say what it is — it is "
+                        f"items. If the difference is a real, documented item, someone "
+                        f"with Banking approval can record it as an adjustment and say what it is — it is "
                         f"printed on the reconciliation."))
         # F2: freeze the report at completion so the historical reconciliation can
         # never silently change if transactions are later modified / reversed / removed.

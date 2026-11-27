@@ -816,7 +816,7 @@ def update_filing_status(
         # `my_permission`, so a Partner's grid decision has to be the answer in both places.
         if body.status == "filed":
             if not can_user(current_user, "mca", "approve"):
-                raise HTTPException(status_code=403, detail="Only Manager or above can mark filings as filed")
+                raise HTTPException(status_code=403, detail="Only someone who may approve MCA filings can mark filings as filed")
 
         # Read first: marking a filing "filed" writes the MCA21 SRN and
         # acknowledgement onto it (Companies Act §92/§137/§139).

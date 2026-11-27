@@ -122,7 +122,7 @@ def difference(existing_lines: Iterable[dict], proposed_lines: Iterable[dict], *
 # What a person can do about it. It is said the same for a draft and for an issued invoice, because the repost route reaches it too: an
 # issued invoice's lines are locked, so "put the draft back" is offered only where it applies. Reversing a ledger entry is a Partner's.
 _WHAT_NEXT = (
-    "A Partner can reverse that entry from the ledger so the invoice can be posted afresh; if it is still a draft, it can instead be "
+    "Someone who may approve Accounting can reverse that entry from the ledger so the invoice can be posted afresh; if it is still a draft, it can instead be "
     "put back to what it was."
 )
 
@@ -145,5 +145,5 @@ def kept_by_delete(*, what: str, number: str, date: str) -> str:
     return (
         f"{what[:1].upper()}{what[1:]} cannot be deleted yet: an earlier issue that did not finish left an entry for it in the ledger "
         f"(number {number} dated {date}), and deleting the draft would leave that entry with nothing behind it. Nothing was changed. "
-        f"A Partner can reverse that entry from the ledger first; then the draft can be deleted."
+        f"Someone who may approve Accounting can reverse that entry from the ledger first; then the draft can be deleted."
     )
