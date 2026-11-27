@@ -12,7 +12,7 @@
  * round_off_paise column).
  */
 import { parseLineAmounts } from "../money/lineInput.ts";
-import { bpsFromPercentInput, paiseFromRupeeInput } from "../money/rupeeInput.ts";
+import { bpsFromPercentInput, paiseFromRupeeInput, typedNumber } from "../money/rupeeInput.ts";
 import { lineCess } from "../money/cessLine.ts";
 import { dnLineGst } from "./debitNoteGst.ts";
 import { blockingUnread, UNREAD_LABEL, type UnreadField } from "./extractedLine.ts";
@@ -183,7 +183,7 @@ export function previewBillTotals(lines: PurchaseBillLine[], isInterstate: boole
       // that is pinned. What HAS changed is that parseLineAmounts above has
       // already refused anything but a plain decimal, so parseFloat can no
       // longer see "1,25,000" and answer 1.
-      { quantity: parsed.quantity, rate: parseFloat(l.rate), gst_rate_bps: Math.round(l.gst_rate * 100) },
+      { quantity: parsed.quantity, rate: typedNumber(l.rate), gst_rate_bps: Math.round(l.gst_rate * 100) },
       isInterstate,
     );
     taxable += g.taxable_paise; cgst += g.cgst_paise; sgst += g.sgst_paise; igst += g.igst_paise;

@@ -58,6 +58,16 @@ export function plainDecimalText(raw: string): string | null {
   return `${sign}${whole.replace(/,/g, "")}${frac}`;
 }
 
+/**
+ * A typed amount or quantity as a JS number, for the parity-pinned arithmetic that takes RUPEES and not paise: the text through the one
+ * grouping reader, then parseFloat as before. A text with no comma, or one with a misplaced comma, is judged exactly as parseFloat judged it,
+ * so this changes the reading of properly grouped text and nothing else. Use it wherever a screen turns a typed amount or quantity into a
+ * number after a reader here has accepted the text; a bare parseFloat or Number on that text reads "1,25,000" as 1 or NaN (POST-A-567).
+ */
+export function typedNumber(raw: string): number {
+  return parseFloat(plainDecimalText(raw) ?? raw);
+}
+
 /** What an amount box may look like, in the words a refusal uses. One sentence, so every box that refuses an amount says the same thing. */
 export const AMOUNT_MAY_LOOK_LIKE = "Type the amount in rupees, for example 1250, 1250.50 or 1,25,000, with commas only where they are usually written.";
 
