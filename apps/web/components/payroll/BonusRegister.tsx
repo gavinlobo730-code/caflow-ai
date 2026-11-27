@@ -104,7 +104,7 @@ export function BonusRegisterTab({ clientId }: { clientId: string }) {
     ].filter((m): m is string => m !== null);
     if (unreadable.length > 0) {
       setError(`Not saved — ${unreadable.join(", ")} is not a plain number `
-        + "(digits and up to two decimals, without commas). Leave a box blank "
+        + "(digits and up to two decimals; an amount may be grouped like 1,25,000, the rate takes no comma). Leave a box blank "
         + "for not recorded.");
       return;
     }

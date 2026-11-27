@@ -11,7 +11,7 @@
  */
 
 import { ratePaiseFromRupees } from "../money/gstLine.ts";
-import { bpsFromPercentInput, paiseFromRupeeInput } from "../money/rupeeInput.ts";
+import { bpsFromPercentInput, paiseFromRupeeInput, typedNumber } from "../money/rupeeInput.ts";
 
 export interface InvoiceLineInput {
   description: string;
@@ -81,7 +81,7 @@ export function toInvoiceLinePayload(line: InvoiceLineInput): InvoiceLinePayload
   return {
     description: line.description.trim(),
     hsn_sac: line.hsn_sac.trim() || undefined,
-    quantity: parseFloat(line.qty),
+    quantity: typedNumber(line.qty),
     // Shared with the preview math (lib/money/gstLine.ts) so the paise the
     // summary reasons about is byte-identical to the paise actually sent.
     rate_paise: ratePaiseFromRupees(line.rate),

@@ -127,7 +127,7 @@ const LOAN_TYPE_LABELS: Record<LoanType, string> = {
  * money by the time it reaches an EMI schedule or an FD maturity figure.
  */
 function ratePercentFromInput(raw: string): number | null {
-  const bps = bpsFromPercentInput(raw.replace(/[,\s%]/g, ""));
+  const bps = bpsFromPercentInput(raw.replace(/[\s%]/g, ""));
   return bps === null ? null : bps / 100;
 }
 
@@ -264,7 +264,7 @@ export default function LoansAndFDPage() {
     if (!loanForm.client_id) { setLoanError("Select a client"); return; }
     if (!loanForm.lender_name.trim()) { setLoanError("Lender name is required"); return; }
     if (loanForm.emi && paiseFromRupeeInput(loanForm.emi) === null) {
-      setLoanError("EMI must be an amount in rupees, e.g. 25000 or 25000.50 — without commas.");
+      setLoanError("EMI must be an amount in rupees, e.g. 25000 or 25000.50 (commas only where an amount is usually grouped, as in 1,25,000).");
       return;
     }
     // isNaN(Math.round(parseFloat(x) * 100)) was the old test, and it is FALSE
@@ -275,7 +275,7 @@ export default function LoansAndFDPage() {
     const rate = ratePercentFromInput(loanForm.interest_rate);
     if (principal === null || outstanding === null) {
       setLoanError("Principal and outstanding must be amounts in rupees, e.g. 1250000 "
-                   + "or 1250000.50 — without commas.");
+                   + "or 1250000.50 (commas only where an amount is usually grouped, as in 1,25,000).");
       return;
     }
     if (principal <= 0) { setLoanError("Enter a valid principal amount"); return; }
@@ -344,7 +344,7 @@ export default function LoansAndFDPage() {
     const rate = ratePercentFromInput(fdForm.interest_rate);
     if (principal === null) {
       setFDError("Principal must be an amount in rupees, e.g. 500000 or 500000.50 "
-                 + "— without commas.");
+                 + "(commas only where an amount is usually grouped, as in 1,25,000).");
       return;
     }
     if (principal <= 0) { setFDError("Enter a valid principal amount"); return; }
@@ -418,7 +418,7 @@ export default function LoansAndFDPage() {
     // figure computes nothing rather than an EMI on a coerced one, and says which box to correct.
     setCalcResult(null);
     const p = paiseFromRupeeInput(calcPrincipal);
-    const bps = bpsFromPercentInput(calcRate.replace(/[,\s%]/g, ""));
+    const bps = bpsFromPercentInput(calcRate.replace(/[\s%]/g, ""));
     const n = monthsFromInput(calcTenure);
     if (p === null || p <= 0) { setCalcError("Enter the principal in rupees, e.g. 1000000."); return; }
     if (bps === null || bps <= 0) { setCalcError("Enter the annual interest rate, e.g. 10.5."); return; }

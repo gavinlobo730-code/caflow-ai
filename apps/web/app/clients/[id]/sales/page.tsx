@@ -859,7 +859,7 @@ function RecurringEditor({
       // A blank quantity used to default to 1 and a bad rate to 0, so a
       // mistyped line was raised silently at a figure nobody entered.
       setError(`"${bad.description.trim()}": enter the rate and quantity as plain `
-               + "numbers, without commas — e.g. 125000 and 2.");
+               + "numbers — e.g. 125000 (or 1,25,000) and 2.");
       return;
     }
     const payloadLines = filled.map((l) => ({
@@ -1234,7 +1234,7 @@ function Statements({ clientId }: { clientId: string }) {
     if (!customerId || !applyInvoiceId) return;
     const amountPaise = paiseFromRupeeInput(applyAmount || "0");
     if (amountPaise === null) {
-      setApplyError("Enter the amount in rupees, e.g. 12500 or 12500.50 — without commas.");
+      setApplyError("Enter the amount in rupees, e.g. 12500 or 12500.50 (commas only where an amount is usually grouped, as in 1,25,000).");
       return;
     }
     if (amountPaise <= 0) { setApplyError("Enter an amount to apply."); return; }
@@ -4023,17 +4023,17 @@ function ReceiptForm({
     if (dates.first) { dates.refuseWith(setError); return; }
     if (!customerId) { setError("Select a customer"); return; }
     if (amountPaise === null) {
-      setError("Amount must be a number of rupees, e.g. 125000 or 125000.50 — without commas.");
+      setError("Amount must be a number of rupees, e.g. 125000 or 125000.50 (commas only where an amount is usually grouped, as in 1,25,000).");
       return;
     }
     if (badAllocation) {
       setError("An allocation is not an amount in rupees — enter it as 125000 or "
-               + "125000.50, without commas.");
+               + "125000.50 (commas only where an amount is usually grouped, as in 1,25,000).");
       return;
     }
     if (amountPaise <= 0) { setError("Amount must be greater than zero"); return; }
     if (tdsPaise === null) {
-      setError("TDS must be a number of rupees, e.g. 10000 or 10000.50 — without commas.");
+      setError("TDS must be a number of rupees, e.g. 10000 or 10000.50 (commas only where an amount is usually grouped, as in 1,25,000).");
       return;
     }
     // The server refuses it too (`create_foreign_receipt`, 422). Said here as

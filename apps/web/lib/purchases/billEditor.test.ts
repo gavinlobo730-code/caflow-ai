@@ -122,9 +122,15 @@ test("findBlockedCreditHits reports the correct line index in a multi-line bill"
 // amounts are grouped was accepted as a valid one-rupee line, previewed at ₹1
 // and saved at ₹1, with nothing anywhere saying so.
 
-test("a rate typed with Indian digit grouping is refused, not read as one rupee", () => {
-  assert.equal(isValidBillLine(line({ rate: "1,25,000" })), false);
-  assert.equal(isValidBillLine(line({ qty: "1,000" })), false);
+test("a rate typed with Indian digit grouping is read as what it says, not as one rupee", () => {
+  // POST-A-567: properly grouped text is accepted, by the same reader the preview and the payload use, so all three agree.
+  assert.equal(isValidBillLine(line({ rate: "1,25,000" })), true);
+  assert.equal(isValidBillLine(line({ qty: "1,000" })), true);
+});
+
+test("a comma in the wrong place in a rate or a quantity is refused", () => {
+  assert.equal(isValidBillLine(line({ rate: "1,2,5" })), false);
+  assert.equal(isValidBillLine(line({ qty: "1,00" })), false);
 });
 
 test("text parseFloat would read as a number is refused", () => {
@@ -147,7 +153,7 @@ test("a refused line contributes nothing to the preview totals", () => {
   // or the CA is shown a total the invoice will not carry.
   const good = previewBillTotals([line({ rate: "1000", qty: "1" })], false);
   const withBad = previewBillTotals(
-    [line({ rate: "1000", qty: "1" }), line({ rate: "1,25,000", qty: "1" })], false);
+    [line({ rate: "1000", qty: "1" }), line({ rate: "1,2,5", qty: "1" })], false);
   assert.equal(withBad.taxable_paise, good.taxable_paise);
   assert.equal(withBad.grand_total_paise, good.grand_total_paise);
 });
@@ -326,9 +332,18 @@ test("the payload still carries everything it carried before", () => {
 });
 
 test("an invalid line never reaches the payload", () => {
-  // parseFloat("1,25,000") is 1. The filter is isValidBillLine, which refuses
-  // it outright rather than sending a one-rupee line.
-  assert.equal(buildLinePayload([base({ rate: "1,25,000" })]).length, 0);
+  // The filter is isValidBillLine, which refuses a misplaced comma outright rather than sending a line nobody typed.
+  assert.equal(buildLinePayload([base({ rate: "1,2,5" })]).length, 0);
+});
+
+test("a grouped rate reaches the payload as the figure typed, and the preview agrees (POST-A-567)", () => {
+  // parseFloat("1,25,000") is 1: the payload builder and the preview read the text through the one grouping reader, so the line is
+  // saved at ₹1,25,000 and the figure on screen is the figure sent.
+  const sent = buildLinePayload([base({ rate: "1,25,000", qty: "1" })]);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].rate_paise, 12_500_000);
+  assert.equal(previewBillTotals([line({ rate: "1,25,000", qty: "1" })], false).taxable_paise,
+    previewBillTotals([line({ rate: "125000", qty: "1" })], false).taxable_paise);
 });
 
 // ── sweep-client-purchases-03: the caption must not contradict the figures ──

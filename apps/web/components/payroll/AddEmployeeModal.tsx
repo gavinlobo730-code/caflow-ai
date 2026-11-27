@@ -180,7 +180,7 @@ export function AddEmployeeModal({
       daBps === null ? "DA %" : null,
     ].filter((f): f is string => f !== null);
     if (basicPaise === null || otherPaise === null || hraBps === null || daBps === null) {
-      setErr(`${rejected.join(", ")} ${rejected.length === 1 ? "is not a number" : "are not numbers"} — type digits only, without commas.`);
+      setErr(`${rejected.join(", ")} ${rejected.length === 1 ? "is not a number" : "are not numbers"} — type numbers only (an amount may be grouped like 1,25,000; a percentage takes no comma).`);
       return;
     }
 

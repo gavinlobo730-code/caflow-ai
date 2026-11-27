@@ -949,7 +949,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
     const salvage = paiseFromRupeeInput(form.salvage_value_paise || "0");
     if (cost === null || salvage === null) {
       setError("Cost and salvage value must be amounts in rupees, e.g. 125000 or "
-               + "125000.50 — without commas.");
+               + "125000.50 (commas only where an amount is usually grouped, as in 1,25,000).");
       return;
     }
     // The one parser, for the tax too (CLAUDE.md). Blank means nil, not NaN.
@@ -957,7 +957,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
     const cgst = paiseFromRupeeInput(form.cgst_paise || "0");
     const sgst = paiseFromRupeeInput(form.sgst_paise || "0");
     if (igst === null || cgst === null || sgst === null) {
-      setError("GST amounts must be in rupees, e.g. 18000 or 18000.50 — without commas.");
+      setError("GST amounts must be in rupees, e.g. 18000 or 18000.50 (commas only where an amount is usually grouped, as in 1,25,000).");
       return;
     }
     const taxTotal = igst + cgst + sgst;
@@ -1950,7 +1950,7 @@ function DisposalTab({ clientId }: { clientId: string }) {
     if (dates.first) { dates.refuseWith(setError, undefined, ""); return; }
     if (proceedsPaise === null) {
       setError("Sale proceeds must be an amount in rupees, e.g. 125000 or "
-               + "125000.50 — without commas.");
+               + "125000.50 (commas only where an amount is usually grouped, as in 1,25,000).");
       return;
     }
     setDisposing(true); setError("");

@@ -305,7 +305,7 @@ export default function SuppliersPage() {
     const creditLimit = form.credit_limit_rs.trim() ? rsToP(form.credit_limit_rs) : null;
     if (form.credit_limit_rs.trim() && creditLimit === null) {
       setError("Credit limit must be an amount in rupees, e.g. 500000 or 500000.50 "
-               + "— without commas.");
+               + "(commas only where an amount is usually grouped, as in 1,25,000).");
       return;
     }
 

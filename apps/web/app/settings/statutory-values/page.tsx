@@ -160,7 +160,7 @@ export default function StatutoryValuesPage() {
       const amount = paiseFromRupeeInput(band.amount);
       const to = band.to.trim() === "" ? null : paiseFromRupeeInput(band.to);
       if (from === null || amount === null || (band.to.trim() !== "" && to === null)) {
-        setFormError(`Band ${i + 1}: the amounts must be plain figures in rupees, without commas.`);
+        setFormError(`Band ${i + 1}: the amounts must be plain figures in rupees (commas only where an amount is usually grouped, as in 1,25,000).`);
         return;
       }
       // The server's own sentences for a band's bounds (models/payroll.PTSlabSetIn, POST-A-392), said here before anything is sent:

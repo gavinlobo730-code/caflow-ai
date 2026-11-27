@@ -23,7 +23,7 @@ import { Plus, AlertCircle, Info, HardHat, CheckCircle2, PauseCircle, PlayCircle
 import { Modal } from "@/components/ui/modal";
 import { request } from "@/lib/api";
 import { usePermissions } from "@/lib/auth/AuthContext";
-import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
+import { paiseFromRupeeInput, AMOUNT_MAY_LOOK_LIKE } from "@/lib/money/rupeeInput";
 import { formatPaise } from "@/lib/services/formatting";
 
 import { TableSkeleton } from "@/components/ui/skeleton";
@@ -467,10 +467,10 @@ function CostModal({ clientId, project, onClose, onSaved }: {
   async function save() {
     if (dates.first) { dates.refuseWith(setError, undefined, ""); return; }
     const paise = paiseFromRupeeInput(amount);
-    if (!description.trim() || paise === null || paise <= 0) {
-      setError("Say what the cost is and what it came to.");
-      return;
-    }
+    // One sentence per box, each naming its own (POST-A-567): the combined sentence did not say which of the two was wrong.
+    if (!description.trim()) { setError("Say what the cost is, for example Architect's fee."); return; }
+    if (paise === null) { setError(`The amount is not readable. ${AMOUNT_MAY_LOOK_LIKE}`); return; }
+    if (paise <= 0) { setError("The amount must be more than nothing."); return; }
     setSaving(true); setError("");
     try {
       await request(`/api/cwip/${project.id}/costs`, {

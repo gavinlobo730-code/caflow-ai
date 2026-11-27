@@ -10,7 +10,7 @@
  * authority; this just stops the two from ever disagreeing.
  */
 
-import { bpsFromPercentInput, paiseFromRupeeInput } from "../money/rupeeInput.ts";
+import { bpsFromPercentInput, paiseFromRupeeInput, typedNumber } from "../money/rupeeInput.ts";
 import { lineCess } from "../money/cessLine.ts";
 import { applyDiscountsToLines, computeLineGst, taxablePaise,
          quantityFromInput, ratePaiseFromRupees, splitLineGst,
@@ -638,8 +638,8 @@ export function validateInvoiceNo(invoiceNo: string): string | undefined {
  * deliberately NOT required here — it's an optional field on the line. */
 export function isValidLine(l: InvoiceLine): boolean {
   return (
-    (parseFloat(l.qty) || 0) > 0 &&
-    (parseFloat(l.rate) || 0) > 0 &&
+    (typedNumber(l.qty) || 0) > 0 &&
+    (typedNumber(l.rate) || 0) > 0 &&
     !!l.serviceCatalogueId
   );
 }

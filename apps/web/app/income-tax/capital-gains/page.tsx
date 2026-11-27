@@ -231,8 +231,8 @@ export default function CapitalGainsPage() {
       // or the result panel just stays blank and the CA re-types the dates.
       setResult(null);
       setComputeError("Purchase, sale, improvement and 31-01-2018 fair market "
-                      + "value must be amounts in rupees, e.g. 2500000 — "
-                      + "without commas.");
+                      + "value must be amounts in rupees, e.g. 2500000 "
+                      + "(commas only where an amount is usually grouped, as in 25,00,000).");
       return;
     }
     // A date that is not a date reads as blank, so the blank check below must not be the one to answer for it. The problem is acted on

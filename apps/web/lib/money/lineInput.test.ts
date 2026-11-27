@@ -7,10 +7,17 @@ test("a plain line is read exactly", () => {
   assert.deepEqual(parseLineAmounts("0.335", "1.00"), { quantity: 0.335, ratePaise: 100 });
 });
 
-test("the grouped rate that used to be accepted as one rupee", () => {
-  // (parseFloat("1,25,000") || 0) > 0 is TRUE, and the line saved at ₹1.
-  assert.equal(parseLineAmounts("1", "1,25,000"), null);
-  assert.equal(parseLineAmounts("1,000", "50"), null);
+test("the grouped rate that used to be accepted as one rupee is read as what it says", () => {
+  // (parseFloat("1,25,000") || 0) > 0 is TRUE, and the line saved at ₹1. It is now READ as ₹1,25,000 (POST-A-567, the owner's decision of
+  // 27-11-2026), by the one reader every line's text goes through, so the preview and the payload agree on it.
+  assert.deepEqual(parseLineAmounts("1", "1,25,000"), { quantity: 1, ratePaise: 12_500_000 });
+  assert.deepEqual(parseLineAmounts("1,000", "50"), { quantity: 1000, ratePaise: 5000 });
+});
+
+test("a comma in a place nobody writes one is still refused", () => {
+  assert.equal(parseLineAmounts("1", "1,2,5"), null);
+  assert.equal(parseLineAmounts("1", "12,50"), null);
+  assert.equal(parseLineAmounts("1,00", "50"), null);
 });
 
 test("text that parseFloat reads as a number is refused", () => {

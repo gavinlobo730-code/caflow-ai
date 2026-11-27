@@ -20,7 +20,11 @@ test("rupees become exact paise", () => {
   assert.deepEqual(readRateInput(" 99.9 "), { kind: "rate", paise: 9990 });
 });
 
-for (const bad of ["1,25,000", "12abc", "1e3", "-5", "-0.01", ".", "abc", "1.2.3"]) {
+test("a rate typed with grouping is read as what it says (POST-A-567)", () => {
+  assert.deepEqual(readRateInput("1,250"), { kind: "rate", paise: 125000 });
+});
+
+for (const bad of ["1,2,5", "12abc", "1e3", "-5", "-0.01", ".", "abc", "1.2.3"]) {
   test(`${JSON.stringify(bad)} is refused with the sentence, not stored as something else`, () => {
     const r = readRateInput(bad);
     assert.equal(r.kind, "invalid");

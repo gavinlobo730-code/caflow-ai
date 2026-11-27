@@ -43,11 +43,17 @@ test("a corrected cost is the one field that re-posts", () => {
   assert.deepEqual(res.body, { purchase_cost_paise: 1_50_000_00 });
 });
 
-test("an amount typed with Indian grouping is refused, not read as one rupee", () => {
-  // parseFloat("1,50,000") is 1, and a cost field is exactly where an amount is
-  // typed that way. The canonical parser REFUSES it rather than guessing, so
-  // the CA is told to retype instead of the register recording ₹1.
+test("an amount typed with Indian grouping is read as what it says, never as one rupee", () => {
+  // parseFloat("1,50,000") is 1, and a cost field is exactly where an amount is typed that way. The canonical parser READS properly
+  // grouped text since 27-11-2026 (POST-A-567), so the register records ₹1,50,000 and not ₹1.
   const res = changedFields(ASSET, { ...formFor(ASSET), purchase_cost_rs: "1,50,000" });
+  assert.equal(res.ok, true);
+  if (!res.ok) return;
+  assert.deepEqual(res.body, { purchase_cost_paise: 1_50_000_00 });
+});
+
+test("an amount with a comma in the wrong place is refused rather than read as something else", () => {
+  const res = changedFields(ASSET, { ...formFor(ASSET), purchase_cost_rs: "1,5,000" });
   assert.equal(res.ok, false);
   if (res.ok) return;
   assert.match(res.error, /amount/);

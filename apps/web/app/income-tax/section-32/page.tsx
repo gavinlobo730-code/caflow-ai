@@ -459,7 +459,7 @@ function AddBlockDialog({ clientId, fy, itrRows, onClose, onSaved }: {
     const opening = paiseFromRupeeInput(openingRs || "0");
     if (!blockKey.trim()) { setError("Give the block a name, e.g. Plant & Machinery 15%."); return; }
     if (opening === null) {
-      setError("Enter the opening written-down value in rupees, e.g. 1250000 — without commas.");
+      setError("Enter the opening written-down value in rupees, e.g. 1250000 (commas only where an amount is usually grouped, as in 1,25,000).");
       return;
     }
     const ratePercent = Number(rate);

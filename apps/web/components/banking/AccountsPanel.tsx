@@ -493,7 +493,7 @@ export function BankAccountModal({ clientId, account, onClose, onSaved }: {
     const openingPaise = paiseFromRupeeInput(openingBal || "0");
     if (openingPaise === null) {
       setError("Opening balance must be an amount in rupees, e.g. 125000 or "
-               + "125000.50 — without commas.");
+               + "125000.50 (commas only where an amount is usually grouped, as in 1,25,000).");
       return;
     }
     // BANK-27. An opening balance is a balance AS AT a date. Without one the

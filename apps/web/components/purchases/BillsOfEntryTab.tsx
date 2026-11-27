@@ -160,7 +160,7 @@ export function BillsOfEntryTab({ clientId, openDoc }:
       const typed = String(form[key] ?? "").trim();
       const p = paiseFromRupeeInput(typed || "0");
       if (p === null) {
-        setMsg({ type: "err", text: `${label} must be an amount in rupees, e.g. 125000 or 125000.50 — without commas.` });
+        setMsg({ type: "err", text: `${label} must be an amount in rupees, e.g. 125000 or 125000.50 (commas only where an amount is usually grouped, as in 1,25,000).` });
         return;
       }
       paise[key] = p;

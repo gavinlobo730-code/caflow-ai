@@ -177,7 +177,7 @@ export function CustomerFormModal({
       const openingBalancePaise = paiseFromRupeeInput(openingBalance || "0");
       if (openingBalancePaise === null) {
         fail("Opening balance must be an amount in rupees, e.g. 125000 or 125000.50 "
-             + "— without commas.");
+             + "(commas only where an amount is usually grouped, as in 1,25,000).");
         setSaving(false);
         return;
       }

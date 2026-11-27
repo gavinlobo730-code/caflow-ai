@@ -384,7 +384,7 @@ function VerifyModal({ row, clientId, employeeName, onClose, onSaved }: {
     if (Object.values(verified).some((v) => v === null)
         || Object.values(itemPaise).some((v) => v === null)) {
       setError("Every verified amount must be in rupees, e.g. 150000 or 150000.50 "
-               + "— without commas.");
+               + "(commas only where an amount is usually grouped, as in 1,25,000).");
       return;
     }
     setSaving(true);

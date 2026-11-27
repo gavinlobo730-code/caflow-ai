@@ -251,7 +251,7 @@ function AddReceiptModal({ invoices, onClose, onSaved }: {
   async function handleSave() {
     if (dates.first) { dates.refuseWith(setError); return; }
     const amtPaise = paiseFromRupeeInput(amountRs || "0");
-    if (amtPaise === null) { setError("Enter the amount in rupees, e.g. 125000 or 125000.50 — without commas."); return; }
+    if (amtPaise === null) { setError("Enter the amount in rupees, e.g. 125000 or 125000.50 (commas only where an amount is usually grouped, as in 1,25,000)."); return; }
     if (!invoiceId || amtPaise <= 0) { setError("Select invoice and enter valid amount"); return; }
     setSaving(true);
     try {

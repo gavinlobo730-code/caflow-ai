@@ -99,7 +99,7 @@ export const scenarios = [
       const sheet = page.getByRole("dialog", { name: "Landed costs", exact: true });
       await sheet.waitFor();
       await sheet.getByLabel("What it is").fill("Freight inward");
-      await sheet.getByLabel("Amount (₹)").fill("1250");
+      await sheet.getByLabel("Amount (₹)").fill("1,250");
       stub.forgetWrites();
       await sheet.getByRole("button", { name: "Add", exact: true }).click();
       await until(async () => (await sheet.getByRole("button", { name: "Add", exact: true }).isDisabled()), "the Add button to be held while the charge is out");
@@ -111,8 +111,32 @@ export const scenarios = [
       await sheet.getByText("A stub refusal of the charge.").waitFor({ timeout: 8000 }).catch(() => { throw new Error("the server's refusal was not shown inside Landed costs"); });
       const sent = stub.writesTo(LANDED, "POST");
       assert.equal(sent.length, 1, "the charge was not sent exactly once");
-      assert.equal(JSON.parse(sent[0].body).amount_paise, 125000, "the charge did not carry the typed amount, as paise");
+      assert.equal(JSON.parse(sent[0].body).amount_paise, 125000, "the charge did not carry the typed amount (1,250) as paise");
       assert.equal(await sheet.getByRole("button", { name: "Add", exact: true }).isDisabled(), false, "Add stayed held after the answer");
+    },
+  },
+  {
+    id: "an-amount-with-a-comma-in-the-wrong-place-is-refused-in-a-sentence-that-names-the-amount",
+    title: "Landed costs > Add: 1,2,5 sends nothing and the sentence says the AMOUNT is the problem and how an amount may look; a blank description is told to say what the charge is",
+    async run(env) {
+      const { page, stub } = env;
+      const opener = await atTheBillMenu(env);
+      await opener.click();
+      await page.getByRole("button", { name: "Landed costs", exact: true }).click();
+      const sheet = page.getByRole("dialog", { name: "Landed costs", exact: true });
+      await sheet.waitFor();
+      stub.forgetWrites();
+      await sheet.getByLabel("What it is").fill("Freight inward");
+      await sheet.getByLabel("Amount (₹)").fill("1,2,5");
+      await sheet.getByRole("button", { name: "Add", exact: true }).click();
+      await sheet.getByText(/The amount is not readable\./).waitFor({ timeout: 4000 });
+      assert.match(await sheet.innerText(), /for example 1250, 1250\.50 or 1,25,000/, "the sentence does not say how an amount may look");
+      assert.equal(stub.writesTo(LANDED, "POST").length, 0, "an unreadable amount was sent");
+      await sheet.getByLabel("What it is").fill("");
+      await sheet.getByLabel("Amount (₹)").fill("1,25,000");
+      await sheet.getByRole("button", { name: "Add", exact: true }).click();
+      await sheet.getByText(/Say what the charge is/).waitFor({ timeout: 4000 });
+      assert.equal(stub.writesTo(LANDED, "POST").length, 0, "a charge with no description was sent");
     },
   },
   {

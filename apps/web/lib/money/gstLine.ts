@@ -37,6 +37,7 @@
  */
 
 import { decimalTruncate, floorDivBigInt } from "./decimalMath.ts";
+import { typedNumber } from "./rupeeInput.ts";
 
 /** Python's `//`. Re-exported name kept local so the arithmetic below reads
  *  the same as it did when these primitives lived in this file; the
@@ -50,14 +51,16 @@ const floorDiv = floorDivBigInt;
  * preview reasons about and the number actually sent can never drift apart.
  */
 export function ratePaiseFromRupees(rate: string | number): number {
-  const parsed = typeof rate === "number" ? rate : parseFloat(rate);
+  // A properly grouped amount ("1,25,000") is read as the number it names: parseFloat stops at the first comma and read it as 1. A comma in a place
+  // nobody writes one ("1,2,5") is no number at all, so it is nil here and the line is refused by the server, not saved at a rupee (POST-A-567).
+  const parsed = typeof rate === "number" ? rate : typedNumber(rate);
   if (!Number.isFinite(parsed)) return 0;
   return Math.round(parsed * 100);
 }
 
 /** Quantity string → the `quantity` number the payload carries. */
 export function quantityFromInput(qty: string | number): number {
-  const parsed = typeof qty === "number" ? qty : parseFloat(qty);
+  const parsed = typeof qty === "number" ? qty : typedNumber(qty);
   return Number.isFinite(parsed) ? parsed : 0;
 }
 

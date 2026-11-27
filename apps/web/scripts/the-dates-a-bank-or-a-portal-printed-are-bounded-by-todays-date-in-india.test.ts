@@ -157,7 +157,7 @@ function allowancesNobodyUses(code: string, setters: string[], patterns: RegExp[
 // template's Save names its variable `err`, the supplier form's `e`. A sentence about a date box (unreadable, blank, after today, out of order) is not here: it is the latch's.
 const SUPPLIER_SENTENCES = [
   /^"Name is required"$/, /^gstinIssue$/, /^removed$/,
-  /^"Opening balance must be an amount in rupees, "\s*\+\s*"e\.g\. 125000 or 125000\.50 — without commas\."$/,
+  /^"Opening balance must be an amount in rupees, "\s*\+\s*"e\.g\. 125000 or 125000\.50 \(commas only where an amount is usually grouped, as in 1,25,000\)\."$/,
   /^"TDS rate must be a percentage, e\.g\. 10 or 7\.5\."$/, /^"Treaty rate must be a percentage, e\.g\. 10 or 7\.5\."$/,
   /^"Withholding nil on business profits rests on the payee having no permanent establishment in India — tick the no-PE declaration, or choose a different nature of income\."$/,
   /^dup\.duplicate_reason\s*\?\?\s*"Not added — [^"]*"$/,
@@ -165,7 +165,7 @@ const SUPPLIER_SENTENCES = [
 const TEMPLATE_SENTENCES = [
   /^err instanceof Error \? err\.message : "[^"]*"$/,
   /^"Select a customer"$/, /^"Title is required"$/, /^"Select a Product\/Service for every line item"$/, /^"Add at least one line item"$/,
-  /^`"\$\{bad\.description\.trim\(\)\}": enter the rate and quantity as plain `\s*\+\s*"numbers, without commas — e\.g\. 125000 and 2\."$/,
+  /^`"\$\{bad\.description\.trim\(\)\}": enter the rate and quantity as plain `\s*\+\s*"numbers — e\.g\. 125000 \(or 1,25,000\) and 2\."$/,
 ];
 
 /** The latch calls in a body: `if (<condition>) { <refusal>.refuse(); return; }`, the condition read with its brackets balanced (it may hold `problems[`back-${id}`]` or `!(a ?? "")`). */

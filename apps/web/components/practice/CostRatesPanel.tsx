@@ -30,7 +30,7 @@ import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 
 /** Said when a typed rate is not an amount. The shared message talks about what an hour BILLS at; this is a cost. */
 export const COST_RATE_HINT =
-  "A cost rate is an amount in rupees per hour, e.g. 600 or 450.50, without commas. " +
+  "A cost rate is an amount in rupees per hour, e.g. 600 or 450.50 (commas only where an amount is usually grouped, as in 1,25,000). " +
   "Leave it empty for none; 0 means these hours cost nothing.";
 
 function show(paise: number | null | undefined): string {

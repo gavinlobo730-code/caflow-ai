@@ -505,7 +505,7 @@ function RecordPaymentModal({ invoice, clientId, outstanding, onClose, onDone, o
     if (dates.first) { onError(dates.first); return; }
     const amountPaise = paiseFromRupeeInput(amount);
     if (amountPaise === null) {
-      onError("Enter the amount in rupees, e.g. 125000 or 125000.50 — without commas.");
+      onError("Enter the amount in rupees, e.g. 125000 or 125000.50 (commas only where an amount is usually grouped, as in 1,25,000).");
       return;
     }
     if (amountPaise <= 0) { onError("Enter a valid amount."); return; }

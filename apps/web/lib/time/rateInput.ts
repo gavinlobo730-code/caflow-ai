@@ -22,7 +22,7 @@ export type RateInput =
   | { kind: "invalid"; message: string };
 
 export const RATE_INPUT_HINT =
-  "A rate is an amount in rupees per hour, e.g. 2500 or 2500.50 — without commas. " +
+  "A rate is an amount in rupees per hour, e.g. 2500 or 2500.50 (commas only where an amount is usually grouped, as in 1,25,000). " +
   "Leave it empty for none; 0 means these hours bill at nothing.";
 
 export function readRateInput(raw: string): RateInput {

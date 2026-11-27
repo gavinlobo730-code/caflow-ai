@@ -12,7 +12,7 @@
  * round_off_paise column).
  */
 import { parseLineAmounts } from "../money/lineInput.ts";
-import { bpsFromPercentInput, paiseFromRupeeInput } from "../money/rupeeInput.ts";
+import { bpsFromPercentInput, paiseFromRupeeInput, typedNumber } from "../money/rupeeInput.ts";
 import { lineCess } from "../money/cessLine.ts";
 import { dnLineGst } from "./debitNoteGst.ts";
 import { blockingUnread, UNREAD_LABEL, type UnreadField } from "./extractedLine.ts";
@@ -175,15 +175,15 @@ export function previewBillTotals(lines: PurchaseBillLine[], isInterstate: boole
     const parsed = parseLineAmounts(l.qty, l.rate);
     if (!parsed || !l.service_catalogue_id) continue;
     const g = dnLineGst(
-      // quantity comes from the strict parse. The RATE stays the string
-      // parseFloat'd, deliberately: dnLineGst takes rupees and delegates to
+      // quantity comes from the strict parse. The RATE stays a string read as a
+      // number, deliberately: dnLineGst takes rupees and delegates to
       // gstLine.ratePaiseFromRupees, which shared/gst-parity-vectors.json pins
       // to the Python backend on exactly these strings. Converting to paise and
       // dividing back would put a float round-trip inside the one calculation
-      // that is pinned. What HAS changed is that parseLineAmounts above has
-      // already refused anything but a plain decimal, so parseFloat can no
-      // longer see "1,25,000" and answer 1.
-      { quantity: parsed.quantity, rate: parseFloat(l.rate), gst_rate_bps: Math.round(l.gst_rate * 100) },
+      // that is pinned. parseLineAmounts above reads grouping ("1,25,000"), so
+      // the rate goes through typedNumber, the same grouping reader, and never
+      // a bare parseFloat, which would answer 1 (POST-A-567).
+      { quantity: parsed.quantity, rate: typedNumber(l.rate), gst_rate_bps: Math.round(l.gst_rate * 100) },
       isInterstate,
     );
     taxable += g.taxable_paise; cgst += g.cgst_paise; sgst += g.sgst_paise; igst += g.igst_paise;
