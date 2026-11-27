@@ -688,7 +688,6 @@ def _client_period_metrics(firm_id: str, fy: str) -> list[dict]:
         return []
     from core.supabase_client import get_supabase
     from core.db_paging import fetch_all
-    from domain.practice import client_metrics as rule
 
     # ⚠️ A LITERAL, not `", ".join(rule.FIGURES)`, for the reason
     # `client_metrics_service` records at its own projection: a `.select()`

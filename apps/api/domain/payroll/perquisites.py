@@ -259,7 +259,7 @@ def value_concessional_loan(
     if outstanding <= LOAN_DE_MINIMIS_PAISE:
         return Perquisite(
             label="Concessional loan", value_paise=0, rule="Rule 3(7)(i)",
-            note=f"Nil — the aggregate does not exceed ₹20,000."), gaps
+            note="Nil — the aggregate does not exceed ₹20,000."), gaps
 
     if sbi_rate_bps_on_first_day is None:
         gaps.append(

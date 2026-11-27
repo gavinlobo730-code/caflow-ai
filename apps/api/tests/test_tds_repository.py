@@ -6,7 +6,6 @@ Verifies that:
 - Router endpoints return success responses (no 500s)
 - Tenant isolation: firm B cannot see firm A's data
 """
-import pytest
 
 FIRM_A = "firm-001"
 FIRM_B = "firm-999"

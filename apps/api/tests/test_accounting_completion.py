@@ -32,7 +32,7 @@ from domain.accounting_service import (
     ACCOUNT_INDEX,
     JOURNAL_INDEX,
 )
-from core.exceptions import ValidationError, NotFoundError
+from core.exceptions import ValidationError
 
 
 # ── Fresh service instance per class to avoid cross-test contamination ────────

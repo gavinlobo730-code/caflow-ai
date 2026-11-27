@@ -22,7 +22,6 @@ import inspect
 import textwrap
 from pathlib import Path
 
-import pytest
 
 from tests._python_source import blank_python_docstrings
 

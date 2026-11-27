@@ -8,8 +8,7 @@ All monetary amounts in integer paise.
 """
 import os
 
-from domain.tds import vocabulary as tds_vocabulary
-from fastapi import APIRouter, HTTPException, Query, status, Depends
+from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel, Field
 from typing import Optional
 from core.permissions import rbac

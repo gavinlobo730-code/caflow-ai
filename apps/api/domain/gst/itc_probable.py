@@ -73,7 +73,7 @@ from typing import Iterable, Optional
 
 from domain.gst import gstin as _gstin
 from domain.gst.itc_matching import (
-    BookBill, Match, PortalDocument, Reconciliation, normalise_document_number,
+    BookBill, PortalDocument, Reconciliation, normalise_document_number,
 )
 
 STRONG = "strong"

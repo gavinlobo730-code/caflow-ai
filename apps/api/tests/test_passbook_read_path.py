@@ -10,7 +10,6 @@ fetch_edge_month_entries month selection, and _serve mode routing.
 """
 from __future__ import annotations
 
-import pytest
 
 from domain.reporting.balance_cache import build_buckets
 from domain.reporting.service import ReportingService

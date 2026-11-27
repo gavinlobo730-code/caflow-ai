@@ -461,7 +461,6 @@ def test_a_195_deduction_reports_that_its_rates_were_never_confirmed():
     """A CA about to pay a challan should be told the rate was reconciled and
     not verified. Not a refusal — refusing every foreign payment until somebody
     reads Part II would stop the work rather than inform it."""
-    from datetime import date
     from domain.tds.residency import GAP_195_RATES_UNVERIFIED
     from services.tds_register_service import sync_for_bill
 

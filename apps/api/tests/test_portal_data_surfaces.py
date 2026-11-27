@@ -18,8 +18,7 @@ Coverage:
   • compliance projection strips internal fields
   • statement delegates to the 4.1 engine with the resolved internal scope
 """
-from datetime import date, datetime, timezone
-from uuid import uuid4
+from datetime import date
 
 import pytest
 

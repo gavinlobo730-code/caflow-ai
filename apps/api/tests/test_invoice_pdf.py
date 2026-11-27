@@ -11,7 +11,6 @@ Scenarios:
 
 References: CGST Act §8; CGST Rule 46, CGST Rules 2017; Section 12, IGST Act 2017.
 """
-import pytest
 from services.invoice_pdf_service import _compute_tax_splits
 
 

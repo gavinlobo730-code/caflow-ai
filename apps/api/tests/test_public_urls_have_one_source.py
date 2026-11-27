@@ -29,7 +29,6 @@ WHY A LITERAL SCAN AND NOT JUST BEHAVIOUR TESTS
     actual failure mode — nobody set out to hardcode a stale host the first
     four times either.
 """
-import os
 import re
 from pathlib import Path
 

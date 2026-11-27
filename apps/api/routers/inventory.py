@@ -984,7 +984,7 @@ def put_costing_policy(
 
 from datetime import date as _date  # noqa: E402 — module already imported above
 
-from pydantic import BaseModel as _BaseModel, Field as _Field, field_validator, model_validator  # noqa: E402
+from pydantic import BaseModel as _BaseModel, field_validator, model_validator  # noqa: E402
 from core.ist_clock import ist_today  # noqa: E402
 from core import db_provider
 from core.query_day import query_day

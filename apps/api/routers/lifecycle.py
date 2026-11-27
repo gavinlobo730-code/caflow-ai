@@ -10,7 +10,7 @@ from core.ist_clock import ist_today
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from typing import Annotated, Any, Optional, ClassVar, FrozenSet
-from datetime import datetime, timezone, date
+from datetime import datetime, timezone
 import logging
 import uuid
 
@@ -1231,7 +1231,7 @@ def convert_lead(
 
     timeline_service.log(
         client_id, "lifecycle", "Lead Converted",
-        f"Lead converted to active client", "success",
+        "Lead converted to active client", "success",
         firm_id=firm_id,
         entity_type="lead", entity_id=lead_id,
         actor_id=current_user.get("auth_user_id"),
@@ -1242,7 +1242,7 @@ def convert_lead(
             "firm_id":     firm_id,
             "client_id":   client_id,
             "event_type":  "client_created_from_lead",
-            "description": f"Client created from lead",
+            "description": "Client created from lead",
             "created_at":  now,
         }).execute()
     except Exception as swallowed:

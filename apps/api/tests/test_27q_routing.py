@@ -481,7 +481,6 @@ def test_omitting_the_filter_does_not_422_a_direct_caller():
 
 def _refusal(vendor):
     """The 422 the bill path raises, or None if it computed."""
-    import pytest
     from fastapi import HTTPException
     try:
         _compute(vendor)

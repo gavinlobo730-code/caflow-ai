@@ -10,7 +10,7 @@ compliance_record_service. Distinct paths from routers/compliance.py (which owns
 """
 from datetime import date, datetime, timedelta, timezone
 from typing import Annotated, Optional
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, field_validator
 
 from models.common import api_response

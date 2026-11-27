@@ -13,7 +13,6 @@ So these are written from the ABSENCES rather than from the feature.
 """
 from __future__ import annotations
 
-import pytest
 
 from domain.gst.gstr2b import parse_gstr2b
 from domain.gst.gstr3b_computer import _apply_rule_36_4_cap

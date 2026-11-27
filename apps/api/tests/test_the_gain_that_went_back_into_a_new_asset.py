@@ -30,7 +30,6 @@ from datetime import date
 from pathlib import Path
 
 import pytest
-from fastapi import HTTPException
 
 import routers.income_tax as it
 import services.capital_gain_exemption_service as cgx

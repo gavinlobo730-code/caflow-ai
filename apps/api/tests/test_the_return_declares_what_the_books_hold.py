@@ -39,7 +39,7 @@ from pathlib import Path
 
 import pytest
 
-from domain.gst.gstr3b_computer import GSTR3BResult, SalesTransaction, compute_gstr3b
+from domain.gst.gstr3b_computer import SalesTransaction, compute_gstr3b
 from domain.gst.gstin import problem_with as gstin_problem
 
 API = Path(__file__).resolve().parents[1]

@@ -31,9 +31,7 @@ a screen to ask.
 """
 from __future__ import annotations
 
-from datetime import date
 
-import pytest
 
 from services import compliance_engine as ce
 

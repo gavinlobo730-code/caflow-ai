@@ -8,7 +8,6 @@ Auth mirrors invoice documents: read/PDF = rbac("invoice","read"); email =
 rbac("invoice","write").
 """
 import logging
-from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query

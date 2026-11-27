@@ -15,7 +15,6 @@ billing screen's own TypeScript declared `status: "Active" | "Paused"`, and
 "Paused" is not a value `fee_engagements` can hold — migration 108's CHECK
 allows seven and that is not one of them.
 """
-import json
 import re
 from pathlib import Path
 

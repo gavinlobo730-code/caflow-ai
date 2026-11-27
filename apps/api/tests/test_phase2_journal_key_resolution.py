@@ -15,7 +15,7 @@ All monetary values are integer paise (never float).
 import os
 import sys
 import unittest
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 _API_ROOT = os.path.join(os.path.dirname(__file__), "..")
 if _API_ROOT not in sys.path:

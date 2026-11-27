@@ -9,7 +9,7 @@ Locking is managed by Partners via the firm settings.
 """
 import os
 import logging
-from datetime import date as date_type, datetime
+from datetime import datetime
 from typing import Optional
 
 from fastapi import HTTPException

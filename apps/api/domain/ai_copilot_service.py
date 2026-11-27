@@ -115,7 +115,6 @@ def _due_within_days_compliance_records(days, firm_id=None, client_id=None):
 
 
 def _due_soon_from_records(records, days):
-    from datetime import date
     today_s = ist_today().isoformat()
     horizon_s = (ist_today() + timedelta(days=days)).isoformat()
     return [

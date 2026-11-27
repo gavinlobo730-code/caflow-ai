@@ -26,7 +26,7 @@ K = 1_000 * 100     # 1 thousand in paise
 class TestComputationSnapshots:
     def test_snapshot_version_increments(self):
         from domain.income_tax.computation_workspace import (
-            save_computation_snapshot, list_snapshots
+            save_computation_snapshot
         )
         kwargs = dict(
             firm_id="f1", client_id="c1",

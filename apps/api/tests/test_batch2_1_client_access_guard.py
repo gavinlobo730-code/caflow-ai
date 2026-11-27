@@ -7,7 +7,6 @@ client's id (in path OR query) gets 404, while Partners and all external-client
 access pass through. Uses the real require_client_access with dependency
 overrides (no DB needed).
 """
-import pytest
 from fastapi import FastAPI, APIRouter, Depends, Query
 from fastapi.testclient import TestClient
 

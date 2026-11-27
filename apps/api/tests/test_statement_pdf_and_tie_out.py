@@ -267,7 +267,6 @@ def _upload(db, monkeypatch, **kw):
     # pytest-asyncio, and get_event_loop() picks up whatever loop an earlier
     # test left behind. These passed alone and failed in the full suite until
     # this changed, which is the whole tell.
-    import asyncio
     return banking.upload_statement(
             file=_Upload(kw.pop("filename", "stmt.csv"), kw.pop("content", _csv_bytes())),
             client_id=CLIENT, bank_name="HDFC Bank", account_number=None,

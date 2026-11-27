@@ -18,7 +18,6 @@ from models.parties import CUSTOMER_IDENTIFIERS, CustomerIn, CustomerUpdateIn
 from core.authz import assert_client_access, can_access_client
 from core.permissions import rbac
 from services import party_erasure
-from core.exceptions import NotFoundError
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
 from core.ist_clock import ist_fy_label

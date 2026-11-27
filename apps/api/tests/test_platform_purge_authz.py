@@ -14,7 +14,6 @@ An unauthorized caller can therefore never reach the purge RPC at all.
 """
 import time
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 

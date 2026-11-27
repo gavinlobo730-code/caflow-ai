@@ -16,7 +16,7 @@ from core.authz import assert_client_access, can_access_client
 from core.permissions import can_user, rbac
 from core.ist_clock import ist_today
 from domain.income_tax.itr_engine import (
-    ITREngine, ITRComputeRequest, Deductions80C, Deductions80D, Donation80G, HRADetails, itr_engine,
+    ITRComputeRequest, Deductions80C, Deductions80D, Donation80G, HRADetails, itr_engine,
 )
 from domain.income_tax.capital_gains_engine import (
     compute_capital_gains, ASSET_TYPES, REGISTER_ASSET_TYPES, CII_BY_FY, LATEST_CII_FY,

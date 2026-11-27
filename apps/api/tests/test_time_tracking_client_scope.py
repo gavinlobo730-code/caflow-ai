@@ -201,8 +201,6 @@ def test_hidden_and_missing_entry_errors_match(deny, monkeypatch):
 def test_export_time_entries_drops_rows_outside_the_effective_scope():
     db = FakeDB()
     import repositories.time_tracking_repository as _tt_repo
-    import repositories.user_repository as _user_repo
-    import repositories.client_repository as _client_repo
     # These two are best-effort in the service (wrapped in try/except) and
     # aren't needed for this assertion, so leave them unwired — they'll
     # raise (no SUPABASE_URL) and the service swallows it into {}.

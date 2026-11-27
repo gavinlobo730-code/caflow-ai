@@ -19,7 +19,7 @@ Engines:
 All monetary figures are integer paise.
 """
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Optional
 from core.ist_clock import ist_now, ist_today
 from core.observability import capture_soft_failure

@@ -20,7 +20,7 @@ matching what was actually validated.
 import pytest
 from fastapi.testclient import TestClient
 
-from core.validators import validate_din, validate_cin, validate_gstin, validate_pan
+from core.validators import validate_din
 
 # These tests authenticate with X-User-Role / X-Firm-Id headers, which
 # core.auth only honours in the documented dev/test mode. Opt in per module

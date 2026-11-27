@@ -45,7 +45,6 @@ from __future__ import annotations
 
 import uuid
 
-import pytest
 
 from domain.inventory_service import apply_purchase_to_inventory, _blocked_tax_on_line
 from services.phase2_journal_service import purchase_bill_journal_ref

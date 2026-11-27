@@ -142,10 +142,10 @@ def test_the_boot_thread_runs_all_four_steps_in_order():
             return ret
         return f
 
-    setattr(guard, "run_startup_check", _stub("schema", {"checked": True, "missing": []}))
-    setattr(main_module, "start_scheduler", _stub("scheduler"))
-    setattr(main_module, "log_scheduler_startup_health", _stub("health_log"))
-    setattr(sched, "run_catchup_if_stale", _stub("catchup"))
+    guard.run_startup_check = _stub("schema", {"checked": True, "missing": []})
+    main_module.start_scheduler = _stub("scheduler")
+    main_module.log_scheduler_startup_health = _stub("health_log")
+    sched.run_catchup_if_stale = _stub("catchup")
     before = dict(main_module._SCHEMA_DRIFT)
     try:
         main_module._boot_background()
@@ -177,10 +177,10 @@ def test_a_failing_step_does_not_stop_the_rest():
     def _boom(*a, **k):
         raise RuntimeError("connection reset by peer")
 
-    setattr(guard, "run_startup_check", _boom)
-    setattr(main_module, "start_scheduler", lambda *a, **k: called.append("scheduler"))
-    setattr(main_module, "log_scheduler_startup_health", lambda *a, **k: called.append("health_log"))
-    setattr(sched, "run_catchup_if_stale", lambda *a, **k: called.append("catchup"))
+    guard.run_startup_check = _boom
+    main_module.start_scheduler = lambda *a, **k: called.append("scheduler")
+    main_module.log_scheduler_startup_health = lambda *a, **k: called.append("health_log")
+    sched.run_catchup_if_stale = lambda *a, **k: called.append("catchup")
     before = dict(main_module._SCHEMA_DRIFT)
     try:
         main_module._boot_background()

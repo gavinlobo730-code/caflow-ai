@@ -201,7 +201,7 @@ def test_a_cancelled_drafts_claim_still_holds_its_key_until_it_is_removed(db):
     # An earlier period's claim is a different key and frees nothing.
     assert _charge(db, p_from="2026-08-22", p_to="2026-09-21", days=30,
                    interest=147945).returncode == 0
-    assert _psql(db, f"DELETE FROM late_interest_charges WHERE period_to = DATE '2026-09-21';"
+    assert _psql(db, "DELETE FROM late_interest_charges WHERE period_to = DATE '2026-09-21';"
                  ).returncode == 0
     assert _charge(db, draft=DRAFT_2).returncode != 0
     assert _psql(db, f"DELETE FROM late_interest_charges WHERE period_to = DATE '2026-10-01' "

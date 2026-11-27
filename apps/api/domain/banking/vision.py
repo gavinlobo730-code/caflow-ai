@@ -58,7 +58,7 @@ from __future__ import annotations
 import io
 import json
 import logging
-from typing import Callable, Optional, Protocol
+from typing import Optional, Protocol
 
 from domain.ai.gateway import ProviderFailed
 

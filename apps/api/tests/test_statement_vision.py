@@ -255,7 +255,6 @@ class _Upload:
 
 
 def _upload(**kw):
-    import asyncio
     return banking.upload_statement(
         file=_Upload(kw.pop("filename"), kw.pop("content")),
         client_id=CLIENT, bank_name="HDFC Bank", account_number=None,

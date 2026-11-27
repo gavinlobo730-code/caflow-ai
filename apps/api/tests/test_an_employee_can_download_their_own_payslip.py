@@ -42,7 +42,6 @@ import core.auth as auth
 import routers.payroll as payroll_mod
 import routers.portal_employee as portal_mod
 import services.payslip_pdf_service as pdf_service
-from core.auth import get_current_user
 from core.portal_auth import get_current_portal_employee
 from domain.payroll.run_status import PAYROLL_RELEASED
 from services import employee_payslip_service as svc

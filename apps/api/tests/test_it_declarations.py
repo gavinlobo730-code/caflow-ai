@@ -5,7 +5,6 @@ Every figure asserted here is arrived at by hand from the statute and checked
 against the FY 2025-26 rates in domain/income_tax/statutory_rates.py, not read
 back off the implementation.
 """
-import pytest
 
 from domain.payroll import declarations as D
 from domain.income_tax.itr_engine import ITRComputeRequest, ITREngine

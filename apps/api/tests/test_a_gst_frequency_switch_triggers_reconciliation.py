@@ -14,7 +14,6 @@ immediately.
 """
 from unittest.mock import patch
 
-import pytest
 
 import routers.clients as clients_router
 from models.client import ClientUpdate

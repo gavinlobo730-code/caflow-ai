@@ -8,7 +8,6 @@ showed up as an asset anywhere in the GL).
 """
 import uuid
 
-import pytest
 
 from domain.inventory_service import seed_opening_balance, seed_opening_balances_batch, record_stock_out
 from tests.e2e_harness import FakeDB, account_balance, trial_balance

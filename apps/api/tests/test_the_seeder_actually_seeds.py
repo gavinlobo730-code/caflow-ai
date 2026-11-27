@@ -239,7 +239,6 @@ def test_the_catalogue_is_written_before_any_document_needs_it(api):
     """The ORDER is the finding, so it is asserted as an order rather than as
     a pair of counts — counts pass on a seeder that writes the catalogue
     afterwards, which is the bug this module exists for."""
-    from domain.demo import fixture
     from scripts.seed_demo_firm import seed
 
     seen: list[str] = []
@@ -350,7 +349,6 @@ def test_a_firm_with_clients_is_refused_without_the_flag(api):
     """The one refusal that protects a real book. Asserted because it is the
     difference between a demo and an unrecoverable merge: a posted journal
     cannot be hard-deleted (migration 251)."""
-    from domain.demo import fixture
     from scripts.seed_demo_firm import seed
 
     seed(api, a_firm_mock_mode_can_carry(), add_to_existing=True)

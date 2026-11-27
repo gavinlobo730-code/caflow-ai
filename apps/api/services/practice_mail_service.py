@@ -45,7 +45,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Callable, Iterable, Optional
 
 from core.ist_clock import ist_today
-from core.urls import frontend_base, portal_login_url
+from core.urls import frontend_base
 from domain import practice_notices as rules
 from services import email_outbox_service, email_service
 from core import db_provider

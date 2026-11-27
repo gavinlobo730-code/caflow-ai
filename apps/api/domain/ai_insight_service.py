@@ -15,7 +15,6 @@ Serves from /api/ai-insights (new router) — does not conflict with /api/insigh
 """
 from datetime import timedelta, datetime
 from typing import Optional
-import uuid
 from core.ist_clock import ist_date_of, ist_today
 from domain.practice.compliance_overdue import is_overdue, is_settled
 from core.observability import capture_soft_failure

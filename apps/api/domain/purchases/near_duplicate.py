@@ -60,7 +60,7 @@ one number again.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date
 from typing import Iterable, Optional
 
 #: How far apart two bills of identical value may sit and still look like one

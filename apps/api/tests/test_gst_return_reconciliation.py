@@ -5,7 +5,6 @@ frontend data: we post real sales invoices / purchase bills through the engine,
 then derive GSTR-3B from the books and assert its output tax == GL GST-output
 credit movement and its ITC == GL gst_input debit movement.
 """
-import pytest
 
 import routers.sales_invoices as si
 import routers.purchase_bills as pb
@@ -15,7 +14,7 @@ import routers.purchase_credit_notes as pcn
 import services.gst_return_service as grs
 from models.invoices import PurchaseBillIn, PurchaseBillLineIn, InvoiceLineIn
 from tests.e2e_harness import (
-    FakeDB, wire_e2e, seed_standard_coa, coa_id, account_balance, trial_balance, with_lines,
+    FakeDB, wire_e2e, seed_standard_coa, coa_id, account_balance, with_lines,
 )
 
 FIRM = "FIRM-A"

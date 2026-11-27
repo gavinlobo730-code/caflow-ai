@@ -39,7 +39,6 @@ from __future__ import annotations
 import os
 from unittest import mock
 
-import pytest
 
 from core.permissions import PERMISSIONS
 from core.security_config import mfa_required_roles

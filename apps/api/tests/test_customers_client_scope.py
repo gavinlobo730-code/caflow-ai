@@ -32,7 +32,7 @@ import pytest
 from fastapi import HTTPException
 
 import routers.customers as cu
-from models.parties import CustomerIn, CustomerUpdateIn
+from models.parties import CustomerUpdateIn
 
 FIRM = "firm-1"
 MINE, THEIRS = "client-mine", "client-theirs"

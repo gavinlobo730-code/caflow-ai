@@ -11,7 +11,6 @@ different remedies, and about reading whatever the portal's screen copies as.
 """
 from __future__ import annotations
 
-import pytest
 
 from domain.payroll import esic_mapped_ips as m
 

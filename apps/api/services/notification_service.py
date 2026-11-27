@@ -4,7 +4,6 @@ Handles auto-notification creation on task assignment, reassignment, due soon, o
 """
 from typing import Optional
 from repositories.notifications_repository import notifications_repo
-from repositories.user_repository import user_repo
 from repositories.client_repository import client_repo
 
 

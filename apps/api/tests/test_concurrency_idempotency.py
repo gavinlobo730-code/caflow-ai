@@ -10,7 +10,7 @@ from fastapi import HTTPException
 import routers.sales_invoices as si
 import services.receipt_service as rsvc
 import services.phase2_journal_service as pjs
-from tests.e2e_harness import FakeDB, wire_e2e, seed_standard_coa, coa_id, account_balance, with_lines
+from tests.e2e_harness import FakeDB, wire_e2e, seed_standard_coa, coa_id, with_lines
 
 FIRM = "FIRM-A"
 CALLER = {"firm_id": FIRM, "id": "u", "auth_user_id": "auth", "email": "ca@f.test", "role": "Partner"}

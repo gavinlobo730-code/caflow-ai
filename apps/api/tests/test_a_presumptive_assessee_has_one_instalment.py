@@ -32,7 +32,6 @@ section.
 """
 from datetime import date
 
-import pytest
 
 from domain.income_tax.advance_tax_interest_engine import (
     INSTALLMENT_RULES, PRESUMPTIVE_INSTALLMENT_RULES, InstallmentPayment,

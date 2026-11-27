@@ -3,7 +3,7 @@ from typing import Optional
 from repositories.task_repository import task_repo
 from repositories.client_repository import client_repo
 from core.permissions import require_permission
-from core.exceptions import NotFoundError, ValidationError
+from core.exceptions import ValidationError
 from services.task_service import is_valid_transition
 from services.activity_service import log_activity
 from core.ist_clock import ist_today
@@ -26,7 +26,7 @@ class TaskDomainService:
     def get_dashboard_summary(self, firm_id: Optional[str] = None, allowed_client_ids: Optional[set] = None) -> dict:
         """The firm's task and compliance counts. `allowed_client_ids` (from `effective_client_ids`) narrows every
         figure to the caller's own clients; None is a caller with no restriction, and an empty set is no clients."""
-        from datetime import date, timedelta
+        from datetime import timedelta
         from domain.compliance_record_service import compliance_record_service
         today = ist_today()
         today_str = today.isoformat()

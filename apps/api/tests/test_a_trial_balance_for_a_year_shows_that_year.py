@@ -40,7 +40,6 @@ WHAT IS ASSERTED, AND WHY THIS SHAPE
 """
 from __future__ import annotations
 
-import pytest
 
 from domain.reporting import (
     Account, JournalEntry, JournalLine, InMemoryLedgerSource, ReportingService,

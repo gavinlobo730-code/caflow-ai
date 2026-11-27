@@ -37,7 +37,6 @@ NEGATIVE CONTROL
 """
 from __future__ import annotations
 
-import pytest
 
 import routers.payroll as pr
 

@@ -32,7 +32,6 @@ here a claim about PROVENANCE rather than about confidence.
 """
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 import pytest

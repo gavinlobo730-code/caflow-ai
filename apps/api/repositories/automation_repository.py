@@ -1,5 +1,4 @@
 import os
-import uuid
 from typing import Optional
 from repositories.base import BaseRepository
 from core import db_provider

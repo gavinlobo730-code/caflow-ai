@@ -126,7 +126,7 @@ def test_an_opening_BILL_needs_net_payable_paise_and_this_proves_it(db):
         VALUES ('{FIRM}', '{CLIENT}', '{VENDOR}', 'TOTALONLY', '2026-03-20',
                 50000, 'received', TRUE);
     """).returncode == 0
-    assert _rows(db, f"""
+    assert _rows(db, """
         SELECT outstanding_paise FROM purchase_bills
          WHERE bill_no = 'TOTALONLY';
     """) == ["0"]

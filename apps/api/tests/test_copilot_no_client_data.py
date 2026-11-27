@@ -85,7 +85,6 @@ def test_client_level_copilot_context_builder_returns_nothing():
 def test_client_level_copilot_is_withdrawn():
     """Driven with asyncio.run rather than pytest.mark.asyncio — this repo has
     no pytest-asyncio plugin, and the marker silently no-ops without it."""
-    import asyncio
     from fastapi import HTTPException
 
     class Body:

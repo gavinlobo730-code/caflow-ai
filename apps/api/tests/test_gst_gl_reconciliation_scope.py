@@ -33,7 +33,6 @@ WHY THE FAKE IMPLEMENTS or_ FOR REAL
     scopes apart — proving nothing, and hiding a leak of another client's
     accounts. The first assertion below is that the fake itself discriminates.
 """
-import pytest
 
 import services.gst_return_service as svc
 

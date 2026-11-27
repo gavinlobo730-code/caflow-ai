@@ -1,5 +1,4 @@
 import os
-from typing import Optional
 from repositories.base import BaseRepository
 from core import db_provider
 from core.db_paging import fetch_all

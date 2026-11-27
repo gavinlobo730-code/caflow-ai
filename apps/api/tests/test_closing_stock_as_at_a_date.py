@@ -28,7 +28,6 @@ THE INVARIANT THAT TIES IT ALL TOGETHER
 """
 from decimal import Decimal
 
-import pytest
 
 from domain.inventory_service import (
     record_stock_in, record_stock_out, get_stock_ledger, seed_opening_balance,

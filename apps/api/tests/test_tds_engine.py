@@ -5,7 +5,6 @@ Section 206AA (PAN not available — 20% default rate).
 Section 206AB (non-filers — doubled rate or 5%).
 All monetary values in integer paise — IT Act Section 145A.
 """
-import pytest
 from domain.tds.tds_computer import TDSComputer, TDSDeducteeRecord, SECTION_THRESHOLDS, has_pan
 from domain.tds.tds_validator import TDSValidator
 

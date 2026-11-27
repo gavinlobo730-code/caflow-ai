@@ -650,7 +650,7 @@ except Exception:
 _SCHEMA_DRIFT: dict = {"checked": False, "missing": []}
 
 # Phase 10B — Workflow Scheduler (daily jobs + workflow schedule runner)
-from jobs.scheduler import start_scheduler, run_due_schedules, log_scheduler_startup_health
+from jobs.scheduler import start_scheduler, log_scheduler_startup_health
 
 
 def _apply_schema_drift(result: dict) -> None:

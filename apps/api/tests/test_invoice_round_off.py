@@ -15,7 +15,6 @@ Pure integer paise throughout. No floating point.
 CGST Act §8 (place-of-supply split) · §15 (round-off does not change the value
 of supply or the GST thereon).
 """
-import os
 from decimal import Decimal
 import pytest
 

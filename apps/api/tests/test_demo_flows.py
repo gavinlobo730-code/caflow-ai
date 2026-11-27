@@ -13,8 +13,6 @@ Demo flows:
   5  AI Memory → Year-End Planning Report
 """
 import os
-import sys
-import types
 import uuid
 from datetime import date, timedelta
 

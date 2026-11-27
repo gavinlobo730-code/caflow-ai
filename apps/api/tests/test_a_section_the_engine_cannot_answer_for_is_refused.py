@@ -47,7 +47,6 @@ import re
 from pathlib import Path
 
 import pytest
-from fastapi import HTTPException
 from pydantic import ValidationError
 
 from domain.tds.residency import (SECTION_192_SALARY, deduction_section_refusal,

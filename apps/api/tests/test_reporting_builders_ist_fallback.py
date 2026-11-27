@@ -11,7 +11,7 @@ core.ist_clock.ist_today() so it can never silently drift back onto a bare
 UTC date.today() if a future caller omits as_of_date.
 """
 import datetime as _datetime_module
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 
 import core.ist_clock as ist_clock
 from domain.reporting import builders

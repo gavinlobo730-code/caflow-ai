@@ -50,7 +50,6 @@ import pytest
 from services.compliance_obligation_service import (
     CLIENT_ENTITY_TYPES,
     is_companies_act_company,
-    normalise_entity_type,
 )
 
 API = pathlib.Path(__file__).resolve().parent.parent

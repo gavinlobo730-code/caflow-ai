@@ -42,7 +42,6 @@ import re
 from domain.payroll import age as age_domain
 from domain.payroll.professional_tax import (
     classify_for_employee as classify_pt_for_employee,
-    classify_state as classify_pt_state,
 )
 
 PAN_RE = re.compile(r"^[A-Z]{5}[0-9]{4}[A-Z]$")

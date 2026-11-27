@@ -153,7 +153,6 @@ def test_the_functions_refusal_reaches_the_ca_verbatim(client, monkeypatch):
     """"GSTR-3B covering this date was filed on 18 Jul 2026" is the difference
     between a rule that reads as protective and one that reads as broken. It
     must not be replaced with something vaguer."""
-    import routers.accounting as acct
     db = client.db
     real_rpc = db.rpc
 

@@ -8,7 +8,6 @@ running/closing are correct, ordering is deterministic (same-day + backdated),
 reversals net out, posted-only + firm/client scoping hold at the Supabase source,
 and the practice client and a normal client produce identical ledgers.
 """
-import pytest
 
 from domain.reporting import (
     Account, JournalEntry, JournalLine, InMemoryLedgerSource, ReportingService,

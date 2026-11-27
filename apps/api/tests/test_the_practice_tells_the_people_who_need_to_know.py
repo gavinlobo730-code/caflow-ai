@@ -500,7 +500,7 @@ def test_the_task_sweep_mails_the_manager_once_and_the_assignee_their_own_overdu
     assert to == sorted([MANAGER["email"], PREPARER["email"]]), (
         "the manager hears it escalated; the assignee hears it is theirs and overdue")
     subjects = {tuple(b["to"]): b["subject"] for b in wire}
-    assert subjects[(PREPARER["email"],)] == f"OVERDUE: File TDS return"
+    assert subjects[(PREPARER["email"],)] == "OVERDUE: File TDS return"
     assert subjects[(MANAGER["email"],)] == "Escalation: File TDS return is overdue"
 
 

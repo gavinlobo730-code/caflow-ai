@@ -37,7 +37,7 @@ from typing import Iterable, Optional
 
 from domain.money_sentence import rupee_text
 from domain.reporting.export_document import (
-    BALANCE, BODY, EMPHASIS, INT, MONEY, SECTION, TEXT,
+    BALANCE, EMPHASIS, INT, MONEY, SECTION, TEXT,
     Column, ExportRefused, ReportDocument, Row, Table,
 )
 

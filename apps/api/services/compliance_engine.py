@@ -6,7 +6,7 @@ import calendar
 from datetime import date, timedelta
 from calendar import monthrange
 from typing import Optional
-from models.compliance import ComplianceType, ComplianceStatus, CompliancePriority
+from models.compliance import ComplianceStatus, CompliancePriority
 from core.ist_clock import ist_today
 
 

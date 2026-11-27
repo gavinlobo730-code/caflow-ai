@@ -16,7 +16,6 @@ import hmac
 import hashlib
 import json
 import logging
-from typing import Optional
 
 from core.request_context import outbound_headers
 from services.payments.base import (

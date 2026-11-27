@@ -5,7 +5,6 @@ Pure unit tests for the migration-file parser and the drift-diff logic;
 no real Postgres needed (that's what get_public_columns()/migration 242
 supplies in production — here we fake its return shape directly).
 """
-from pathlib import Path
 
 from core.schema_guard import check_schema_drift, expected_columns_from_migrations
 

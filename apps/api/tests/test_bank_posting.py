@@ -9,8 +9,6 @@ from domain.banking import posting_map as pmap
 import services.bank_posting_service as bps
 from services.bank_posting_service import bank_posting_service
 import services.journal_posting_service as jpsmod
-from services.journal_posting_service import journal_posting_service
-import services.phase2_journal_service as pjs
 
 
 # ── Pure mapper (line direction / balance) ────────────────────────────────────

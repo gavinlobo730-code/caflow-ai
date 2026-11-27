@@ -9,7 +9,7 @@ test_tenancy_backstop.py (payroll_app fixture + FakeDB).
 from decimal import Decimal
 
 import pytest
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 import routers.payroll as payroll_mod

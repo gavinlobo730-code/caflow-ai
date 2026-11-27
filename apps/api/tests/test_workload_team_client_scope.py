@@ -18,7 +18,6 @@ tasks.client_id is NOT NULL (migration 002).
     compute_team_workload — aggregate counts only, so lower severity, but the
     same underlying firm-wide read.
 """
-import pytest
 
 import routers.team as tm
 import routers.workload as wl

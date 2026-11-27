@@ -33,7 +33,6 @@ apps/web/scripts/a-statutory-due-date-is-never-a-literal.test.ts.
 from datetime import date
 
 import pytest
-from fastapi import HTTPException
 
 import routers.compliance as compliance
 from services.compliance_engine import itr_due_date, tax_audit_report_due_date

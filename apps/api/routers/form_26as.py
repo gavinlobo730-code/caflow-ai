@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client
 from core import db_provider

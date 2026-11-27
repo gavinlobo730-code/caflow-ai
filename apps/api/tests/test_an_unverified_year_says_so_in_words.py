@@ -6,7 +6,6 @@ unverified copy of FY 2025-26, so the engine answered `rates_verified: False`
 with `warnings: []` — and a CA reading the words rather than the flag saw
 nothing. The same gap is asserted closed on the TDS side (`fy_rate_gap`).
 """
-import pytest
 
 from domain.income_tax.itr_engine import ITREngine, ITRComputeRequest
 from domain.income_tax.statutory_rates import RATES_BY_FY, LATEST_VERIFIED_FY

@@ -14,7 +14,6 @@ stops being true.
 """
 from __future__ import annotations
 
-from datetime import date
 
 import pytest
 from fastapi import HTTPException

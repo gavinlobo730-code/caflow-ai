@@ -25,7 +25,6 @@ WHAT IS ASSERTED
     reconcile against the same control account without double-counting a
     quarter.
 """
-import pytest
 
 import routers.purchase_bills as pb
 import routers.purchase_payments as pp

@@ -125,7 +125,7 @@ def test_a_whole_closing_and_a_whole_opening_are_accepted(db):
 
 def test_a_closing_with_a_head_missing_is_refused_not_read_as_nil(db):
     r = _psql(db, _return(
-        "052026", f", credit_closing_igst_paise, credit_closing_as_of",
+        "052026", ", credit_closing_igst_paise, credit_closing_as_of",
         ", 5, '2026-05-31'"))
     assert r.returncode != 0 and "credit_closing_is_a_set" in r.stderr
 

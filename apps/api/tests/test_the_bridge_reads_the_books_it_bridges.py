@@ -33,7 +33,6 @@ from __future__ import annotations
 import ast
 import inspect
 
-import pytest
 
 import routers.income_tax as it
 import services.book_to_tax_service as b2t

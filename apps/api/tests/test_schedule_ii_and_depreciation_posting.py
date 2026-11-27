@@ -34,9 +34,7 @@ THREE DEFECTS, ALL REPRODUCED BEFORE THEY WERE FIXED.
    compares against the furthest month reached. The year was short a month's
    depreciation and nothing said so.
 """
-import json
 import os
-import re
 import sys
 from datetime import date
 from decimal import Decimal

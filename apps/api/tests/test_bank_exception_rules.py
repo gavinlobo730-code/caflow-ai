@@ -13,7 +13,7 @@ from datetime import date
 import pytest
 
 from domain.banking.exceptions import (
-    BankException, ExceptionPolicy, TxnContext,
+    ExceptionPolicy, TxnContext,
     blocks_posting, evaluate, _rupees,
 )
 

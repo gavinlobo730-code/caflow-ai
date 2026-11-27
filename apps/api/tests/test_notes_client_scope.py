@@ -21,7 +21,6 @@ the most rigorous shape established in this sweep, rather than the older
 permissive-in-mock-mode/id-embedded-message shape sales_invoices.py used
 before it.
 """
-import asyncio
 import pytest
 from fastapi import HTTPException
 

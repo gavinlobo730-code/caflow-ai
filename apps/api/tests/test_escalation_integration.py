@@ -2,7 +2,6 @@
 Integration tests for escalation rules engine.
 Tests the flow: rules → applicable logic → notifications/escalations
 """
-import pytest
 from datetime import date, datetime, timedelta
 from typing import Optional
 

@@ -4,7 +4,6 @@ tests (mock mode). Covers the security-critical visibility/authoring helpers (th
 PRIMARY control, since service-role bypasses RLS) and RBAC. DB-level assignment-gated
 RLS + version immutability are verified in test_batch6_migration.py.
 """
-import pytest
 
 from core.permissions import can
 import services.knowledge_service as kb

@@ -38,7 +38,6 @@ import ast
 import re
 from pathlib import Path
 
-import pytest
 
 API_ROOT = Path(__file__).resolve().parents[1]
 

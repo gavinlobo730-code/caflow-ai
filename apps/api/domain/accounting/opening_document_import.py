@@ -58,9 +58,9 @@ WHAT IT STILL DOES NOT DO
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date
-from typing import Any, Iterable, Optional
+from typing import Iterable, Optional
 
 from domain.accounting import opening_documents as od
 from domain.money_sentence import rupee_text

@@ -42,7 +42,6 @@ The four things that are easy to get wrong and expensive to get wrong:
 """
 from datetime import date
 
-import pytest
 
 from domain.income_tax.section_32 import (
     Addition, Block, Deletion, Section32Result, compute, compute_block,

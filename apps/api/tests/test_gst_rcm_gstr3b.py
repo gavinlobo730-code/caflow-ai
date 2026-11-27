@@ -4,7 +4,7 @@ Production Readiness Phase 2 — GSTR-3B correctness (audit C4, C5, H7).
 Pure-domain tests on compute_gstr3b / as_gstn_payload. Integer paise throughout.
 """
 from domain.gst.gstr3b_computer import (
-    SalesTransaction, PurchaseTransaction, GSTR2ARecord, compute_gstr3b,
+    SalesTransaction, PurchaseTransaction, compute_gstr3b,
 )
 
 # ₹ helpers → paise

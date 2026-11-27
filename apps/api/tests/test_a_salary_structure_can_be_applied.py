@@ -42,7 +42,7 @@ from decimal import Decimal
 import pytest
 
 from domain.payroll.salary_structure import (
-    Application, StructureError, apply_structure, drift_note, percent_of)
+    StructureError, apply_structure, drift_note, percent_of)
 
 GROSS = 5_000_000          # ₹50,000 a month
 

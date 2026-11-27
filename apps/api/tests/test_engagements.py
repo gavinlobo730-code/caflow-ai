@@ -4,7 +4,7 @@ Covers: create, list, update, delete (soft-delete), and RBAC.
 """
 import pytest
 from fastapi import HTTPException
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 FIRM_A = "firm-aaa"
 FIRM_B = "firm-bbb"
@@ -144,7 +144,6 @@ class TestCreateEngagement:
         assert exc_info.value.status_code == 404
 
     def test_create_engagement_invalid_fee(self):
-        from routers.engagements import create_engagement
         from routers.engagements import EngagementCreate
         with pytest.raises(ValueError):
             EngagementCreate(

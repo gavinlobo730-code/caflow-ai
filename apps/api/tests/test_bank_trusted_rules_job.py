@@ -12,12 +12,11 @@ WHAT IS ASSERTED
 """
 from __future__ import annotations
 
-import pytest
 
 import jobs.scheduler as sched
 import jobs.bank_trusted_rules_job as job
 import services.bank_entry_service as bes
-from tests.test_bank_entry_service import _db, _rule, _line, _row, _Poster, CHARGES, RENT
+from tests.test_bank_entry_service import _db, _rule, _line, _row, _Poster, RENT
 from tests.test_bank_matching import FIRM, CLIENT
 
 

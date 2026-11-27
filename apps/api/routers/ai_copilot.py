@@ -11,7 +11,7 @@ from fastapi import Request
 from models.common import api_response
 from models.ai_chat import ChatTurn, MAX_QUESTION_CHARS, most_recent
 from core.permissions import rbac
-from core.authz import assert_client_access, effective_client_ids, filter_by_client
+from core.authz import assert_client_access, effective_client_ids, filter_by_client  # noqa: F401  (a test patches ai_copilot.assert_client_access)
 from middleware.rate_limit import check_rate_limit
 from domain.ai import groq_text
 

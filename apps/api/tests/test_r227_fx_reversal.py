@@ -18,8 +18,6 @@ allocation added to paid_txn is recoverable at reversal time; the legacy
 single-bill foreign payment path already stores it directly on the payment
 row (payment.txn_amount), used instead.
 """
-import pytest
-from fastapi import HTTPException
 
 from models.accounting import JournalReversalIn
 from models.parties import CustomerIn, VendorIn

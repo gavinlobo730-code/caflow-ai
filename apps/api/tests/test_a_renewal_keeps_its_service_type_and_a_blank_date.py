@@ -24,7 +24,6 @@ no interesting failure mode beyond "did it apply").
 """
 from unittest.mock import patch
 
-import pytest
 
 from routers.lifecycle import create_renewal, RenewalIn
 

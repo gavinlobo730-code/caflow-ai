@@ -139,7 +139,6 @@ def test_chatting_about_another_clients_book_is_refused(monkeypatch):
     # Driven with asyncio.run rather than pytest.mark.asyncio — this repo has
     # no async pytest plugin installed, and the guard is reached before the
     # first await regardless.
-    import asyncio
 
     def _assert(user, client_id):
         if client_id == THEIRS:

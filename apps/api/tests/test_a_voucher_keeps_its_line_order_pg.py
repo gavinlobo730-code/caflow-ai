@@ -23,7 +23,6 @@ import os
 import shutil
 import subprocess
 import uuid
-from pathlib import Path
 
 import pytest
 

@@ -15,8 +15,6 @@ the pair. The other half — that the DATABASE agrees — is
 test_document_number_scope_matches_the_constraint_pg.py, and that one does
 fail without the migration.
 """
-import pytest
-from fastapi import HTTPException
 
 import routers.sales_invoices as si
 import routers.credit_notes as cn

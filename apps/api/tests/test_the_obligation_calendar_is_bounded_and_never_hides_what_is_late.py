@@ -233,7 +233,6 @@ def test_the_database_read_is_bounded_by_the_window_and_the_overdue_read_is_not(
     not every row the firm has ever generated."""
     from tests.e2e_harness import FakeDB
     import repositories.compliance_records_repository as repo_mod
-    import domain.compliance_record_service as svc_mod
 
     db = FakeDB()
     seeded = 0

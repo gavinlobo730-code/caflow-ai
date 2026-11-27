@@ -26,7 +26,7 @@ WHAT THE JOURNAL LOOKS LIKE AND WHY
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Optional
 
 from fastapi import HTTPException
 

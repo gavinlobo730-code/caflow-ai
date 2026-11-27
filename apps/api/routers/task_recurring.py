@@ -192,7 +192,7 @@ def update_recurring(config_id: str, body: RecurringUpdate, current_user: dict =
 
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     if "frequency" in updates and updates["frequency"] not in VALID_FREQUENCIES:
-        raise HTTPException(status_code=400, detail=f"Invalid frequency")
+        raise HTTPException(status_code=400, detail="Invalid frequency")
     named_row_ownership.member_is_the_firms(db, firm_id, updates.get("assignee_id"))
     # POST-A-451: the person the configuration will name can open the client it will be for (either may change here).
     if "assignee_id" in updates or "client_id" in updates:

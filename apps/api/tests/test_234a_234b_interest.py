@@ -20,7 +20,6 @@ share is the shape:
 """
 from datetime import date
 
-import pytest
 
 from domain.income_tax.advance_tax_interest_engine import (
     _months_or_part, compute_234a_interest, compute_234b_interest,

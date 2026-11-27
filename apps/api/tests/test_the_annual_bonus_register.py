@@ -19,7 +19,6 @@ What these tests hold:
      and each of those is a different column from the obvious wrong one.
 """
 import uuid
-from decimal import Decimal
 
 import pytest
 

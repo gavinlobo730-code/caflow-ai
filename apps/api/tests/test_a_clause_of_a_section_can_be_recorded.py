@@ -37,7 +37,6 @@ carry a `rate_gap`, but its meaning changed: it is no longer "this software
 does not hold the rate", it is "record which clause this is, because the bare
 section cannot tell and defaults to the higher one".
 """
-import json
 import pathlib
 
 import pytest

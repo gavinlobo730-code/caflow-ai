@@ -57,7 +57,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from domain.income_tax.itr_json import (
-    CHAPTER_VI_A_KEYS, INCOME_HEAD_KEYS, build_itr_payload,
+    INCOME_HEAD_KEYS, build_itr_payload,
     itr_field_placements)
 
 #: A filing with no pinned snapshot has no computation to key. Refused rather

@@ -102,7 +102,7 @@ THE ONE THING THIS MODULE MUST NEVER DO: DECIDE ELIGIBILITY
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 VERIFIED = False

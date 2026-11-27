@@ -23,7 +23,6 @@ would report every supplier as compliant.
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from fastapi import HTTPException
 

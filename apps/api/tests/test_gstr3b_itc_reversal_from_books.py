@@ -30,7 +30,6 @@ WHY THIS TEST POSTS REAL DOCUMENTS
 """
 from datetime import datetime, timezone
 
-import pytest
 
 import core.ist_clock as ist_clock
 import routers.sales_invoices as si

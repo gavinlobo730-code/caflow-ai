@@ -16,7 +16,6 @@ every other ledger-facing write in this app (R1.6/R2.12).
 import os
 import uuid
 import logging
-from typing import Optional
 
 from fastapi import HTTPException
 

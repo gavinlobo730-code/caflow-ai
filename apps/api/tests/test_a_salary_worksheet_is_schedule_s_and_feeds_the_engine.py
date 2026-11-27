@@ -44,7 +44,6 @@ from fastapi import HTTPException
 
 from domain.income_tax import schedule_s as ss
 from domain.income_tax.itr_engine import HRADetails, ITRComputeRequest, itr_engine
-from models.income_tax_worksheets import SalaryPayload
 from routers import income_tax_worksheets as wsr
 from services import income_tax_worksheet_service as svc
 

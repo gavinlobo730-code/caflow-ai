@@ -19,7 +19,6 @@ import pytest
 from fastapi import HTTPException
 
 import core.authz as authz
-from tests.e2e_harness import FakeDB
 
 PARTNER_F1 = {"firm_id": "F1", "role": "Partner", "auth_user_id": "p1", "id": "u1", "email": "p1@f1.test"}
 

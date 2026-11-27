@@ -22,7 +22,6 @@ import json
 import pathlib
 
 import httpx
-import pytest
 
 import domain.ai_copilot_service as svc_mod
 from domain.ai import gateway, groq_text

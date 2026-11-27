@@ -34,7 +34,6 @@ from __future__ import annotations
 import io
 
 import pdfplumber
-import pytest
 
 from services.invoice_pdf_service import (
     _accent_colour, _load_branding, _logo, _remote_image,

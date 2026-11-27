@@ -14,7 +14,6 @@ from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from uuid import uuid4
 from xml.etree.ElementTree import Element, SubElement, tostring
-import xml.etree.ElementTree as ET
 
 from domain.money_sentence import rupee_text
 from domain.income_tax.xbrl_taxonomy import (

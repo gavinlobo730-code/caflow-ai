@@ -14,8 +14,6 @@ AT MOST ONCE per payment. These tests cover:
     AR reduced once, receipt_id seals idempotency
   • security — firm isolation, portal Pay-Now ownership gate
 """
-import json
-from datetime import date
 from uuid import uuid4
 
 import pytest
@@ -461,7 +459,6 @@ def client(monkeypatch):
     from fastapi.testclient import TestClient
     from main import app
     import routers.payments as pr
-    import routers.portal_data as pdr
     db = FakeDB(); _seed_invoice(db, total=100000, paid=0)
     # Drive the real router+service against the FakeDB.
     monkeypatch.setattr(pr, "_db", lambda: db)

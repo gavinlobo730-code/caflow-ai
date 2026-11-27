@@ -8,7 +8,7 @@ Module-9 assignment-scope model (only Partner is firm-wide).
 
 Roles: Partner > Manager > Executive > Reviewer > Client.
 """
-from core.permissions import can, is_at_least, Role
+from core.permissions import can, is_at_least
 from core.authz import is_firmwide, can_access_client
 
 

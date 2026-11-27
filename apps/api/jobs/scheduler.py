@@ -37,7 +37,7 @@ import os
 import threading
 from core.request_context import in_job_run
 from core.db_paging import fetch_all
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from typing import Optional
 from core.ist_clock import ist_today
 from core import db_provider

@@ -1,6 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from typing import Optional
 from models.common import api_response
 from core.authz import assert_client_access, effective_client_ids
 from core.permissions import rbac

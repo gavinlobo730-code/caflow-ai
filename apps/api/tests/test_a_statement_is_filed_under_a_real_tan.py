@@ -256,7 +256,6 @@ def test_a_failed_read_reports_the_gap_rather_than_passing_the_identifiers(route
 # 3. TDS-18 — the routing column cannot take a display form.
 # ---------------------------------------------------------------------------
 def test_the_stored_return_type_is_one_of_the_four_routing_keys():
-    from pydantic import ValidationError
     from routers.tds_workspace import CreateReturnRequest
     for key in ("24Q", "26Q", "27Q", "27EQ"):
         assert CreateReturnRequest(client_id="C1", return_type=key, quarter="Q3",

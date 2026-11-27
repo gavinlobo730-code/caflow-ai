@@ -7,7 +7,7 @@ A template says what to post, to which accounts, and how often.
 # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. Nothing here files, transmits or
 # posts. A generated entry sits in the draft queue until a CA issues it.
 """
-from typing import Annotated, Optional
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel, Field, field_validator

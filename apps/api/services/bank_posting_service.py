@@ -16,7 +16,6 @@ from typing import Optional
 from fastapi import HTTPException
 
 
-from domain.accounting.payment_account import resolve_payment_account
 from services.phase2_journal_service import phase2_journal_service
 from services.period_validation_service import period_validation_service
 from services import period_lock_service

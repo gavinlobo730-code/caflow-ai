@@ -9,9 +9,9 @@ Tests for Phase 10B production hardening:
 """
 import pytest
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
-from domain.workflow_engine_v2 import WorkflowEngineV2, _ApprovalPause
+from domain.workflow_engine_v2 import WorkflowEngineV2
 from repositories.workflow_repository import WorkflowRepository
 
 
