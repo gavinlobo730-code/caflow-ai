@@ -183,10 +183,10 @@ def section_43bh_disallowance(db, firm_id: str, client_id: str,
             "The §43B(h) disallowance could not be computed for this year."), True)
     value = int(out.get("disallowed_paise") or 0)
     return DerivedInput(value, (
-        f"§43B(h) — sums payable to a micro or small enterprise beyond the "
-        f"MSMED §15 limit, derived from the purchase ledger. This is the ONLY "
-        f"disallowance derived here; §40(a)(ia), §40A(3) and MSMED §23 are the "
-        f"CA's to add."), True)
+        "§43B(h) — sums payable to a micro or small enterprise beyond the "
+        "MSMED §15 limit, derived from the purchase ledger. This is the ONLY "
+        "disallowance derived here; §40(a)(ia), §40A(3) and MSMED §23 are the "
+        "CA's to add."), True)
 
 
 def resolve_inputs(db, firm_id: str, client_id: str, financial_year: str,

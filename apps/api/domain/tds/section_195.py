@@ -74,7 +74,7 @@ from typing import Optional
 from domain.tds.section_195_rates import (
     NATURE_BUSINESS_PROFITS_NO_PE, PAYEE_AOP_BOI, PAYEE_CLASS_LABELS,
     PAYEE_FIRM_LLP, PAYEE_FOREIGN_COMPANY, PAYEE_INDIVIDUAL_HUF, PAYEE_UNKNOWN,
-    RULE_37BC_NATURES, FY195Rates, PayeeClass, rates_for,
+    RULE_37BC_NATURES, FY195Rates, rates_for,
 )
 
 # Refusal codes, so a caller can branch without matching on prose.

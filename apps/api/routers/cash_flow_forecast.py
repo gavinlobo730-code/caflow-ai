@@ -15,7 +15,6 @@ It decides nothing. `domain/cash_flow/forecast.py` is the rule and
 from __future__ import annotations
 
 import os
-from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 

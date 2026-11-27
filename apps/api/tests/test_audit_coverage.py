@@ -13,7 +13,6 @@ positional pair via call_args_list so the assertions stay tolerant of the option
 kwargs (actor_id, actor_email, old_data, new_data).
 """
 import io
-import asyncio
 from unittest.mock import patch, MagicMock
 
 FIRM_ID = "firm-audit-0001"

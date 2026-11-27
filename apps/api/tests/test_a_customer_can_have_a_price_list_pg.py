@@ -180,7 +180,7 @@ def test_each_table_has_rls_the_firm_policy_and_the_restrictive_assignment_scope
     policies = set(_rows(db, f"""
         SELECT policyname || ':' || permissive FROM pg_policies
          WHERE schemaname = 'public' AND tablename = '{table}';"""))
-    assert f"firm_isolation:PERMISSIVE" in policies
+    assert "firm_isolation:PERMISSIVE" in policies
     assert f"{table}_assignment_scope:RESTRICTIVE" in policies
 
 

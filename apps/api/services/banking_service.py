@@ -31,7 +31,7 @@ from fastapi import HTTPException
 from services.phase2_journal_service import phase2_journal_service
 from services.period_validation_service import period_validation_service
 from services.timeline_service import timeline_service
-from domain.banking.dedup import hash_rows, transaction_hash
+from domain.banking.dedup import hash_rows
 from domain.banking.account_category import category_for_account
 from domain.banking.entry import kind_for
 from domain.banking.posting_map import AUTO_COUNTER

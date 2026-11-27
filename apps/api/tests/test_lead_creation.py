@@ -10,7 +10,7 @@ Covers the five bugs fixed in this PR:
 """
 import pytest
 from fastapi import HTTPException
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import patch, MagicMock
 
 USER_MANAGER = {"auth_user_id": "u-mgr", "firm_id": "firm-aaa", "role": "Manager"}
 
@@ -43,7 +43,7 @@ class TestSourceValidation:
             assert lead_in.source == src
 
     def test_invalid_source_title_case_raises_422(self):
-        from routers.lifecycle import create_lead, _VALID_SOURCES
+        from routers.lifecycle import create_lead
         lead_in = _make_lead_in(source="Referral")  # wrong case — DB rejects this
         with patch("routers.lifecycle._db", return_value=None):
             with pytest.raises(HTTPException) as exc_info:

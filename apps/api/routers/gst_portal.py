@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from core.permissions import rbac
 from core.authz import assert_client_access
 from models.common import api_response
@@ -90,7 +90,7 @@ def run_sync_job(
     Execute GST portal sync. Read-only.
     # CA REVIEW REQUIRED — Data pulled from portal, not submitted.
     """
-    from domain.gst.portal_service import run_sync_job as _run, list_sync_jobs
+    from domain.gst.portal_service import run_sync_job as _run
     _assert_job_scope(current_user, job_id)
     try:
         result = _run(current_user["firm_id"], job_id)

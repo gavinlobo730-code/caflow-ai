@@ -4,7 +4,6 @@ Tests TDS deduction, purchase bill totals, payment tracking, double-entry balanc
 All amounts in paise (integer). Never float.
 IT Act Section 194C/194I/194J: TDS at source on applicable vendor payments.
 """
-import pytest
 from decimal import Decimal
 
 

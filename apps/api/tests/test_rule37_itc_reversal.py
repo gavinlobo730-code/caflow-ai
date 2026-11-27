@@ -17,7 +17,6 @@ from __future__ import annotations
 
 from datetime import date
 
-import pytest
 
 from domain.gst.itc_reversal import (
     RULE37_DAYS, days_outstanding, discharged_paise, is_overdue, parse_iso,

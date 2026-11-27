@@ -25,7 +25,7 @@ from fastapi import HTTPException
 
 from domain.banking.history import (
     learning_key, summarise, describe, HistorySuggestion,
-    KEY_PAYEE_ID, KEY_COUNTERPARTY,
+    KEY_PAYEE_ID,
 )
 from domain.banking.narration import parse_narration, party_matches
 from core.observability import capture_soft_failure

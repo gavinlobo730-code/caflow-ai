@@ -46,7 +46,6 @@ case.
 from __future__ import annotations
 
 import pytest
-from fastapi import HTTPException
 
 import routers.year_end as ye
 import routers.year_end_statements as yes

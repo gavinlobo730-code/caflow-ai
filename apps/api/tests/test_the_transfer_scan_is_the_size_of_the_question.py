@@ -26,7 +26,6 @@ from __future__ import annotations
 
 from datetime import date
 
-import pytest
 
 from domain.banking.transfers import DEFAULT_WINDOW_DAYS, SCAN_PADDING_WINDOWS, scan_window
 import services.bank_transfer_service as bts

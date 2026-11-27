@@ -47,7 +47,7 @@ from dataclasses import dataclass
 from typing import Literal, Optional
 
 from domain.income_tax.entity_rates import (
-    CRORE_PAISE, CompanyRegime, EntityKind, entity_rates_for,
+    CompanyRegime, entity_rates_for,
 )
 from domain.income_tax.statutory_rates import (
     apply_surcharge_with_marginal_relief, cess_paise, rates_for,

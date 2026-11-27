@@ -15,7 +15,7 @@ import pytest
 from fastapi import HTTPException
 
 import routers.purchase_bills as pb
-from services.credit_terms import resolve_credit_terms, apply_credit_days_due_date, apply_due_date_credit_days
+from services.credit_terms import resolve_credit_terms, apply_credit_days_due_date
 from models.invoices import PurchaseBillIn, PurchaseBillLineIn, PurchaseBillUpdateIn
 from tests.e2e_harness import FakeDB, wire_e2e, seed_standard_coa
 

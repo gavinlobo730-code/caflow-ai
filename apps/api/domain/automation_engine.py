@@ -3,7 +3,7 @@ Automation Engine.
 Executes rule-based automations: Risk Detected → Create Task → Notify.
 Rules are evaluated when trigger events occur.
 """
-from datetime import date, timedelta, datetime
+from datetime import timedelta, datetime
 from typing import Optional
 import uuid
 from core.ist_clock import ist_today, ist_date_of

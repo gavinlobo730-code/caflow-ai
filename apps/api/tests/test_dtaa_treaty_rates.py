@@ -191,7 +191,6 @@ def test_no_article_without_a_trc_does_not_reach_the_treaty_branch_at_all():
 # ── The API a CA populates it through ───────────────────────────────────────
 
 def _upsert(**over):
-    from fastapi import HTTPException
     from routers.tds import TreatyRateIn, upsert_treaty_rate
     body = {"country_code": "CH", "nature": "royalty", "rate_bps": 1000}
     body.update(over)

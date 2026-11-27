@@ -34,7 +34,6 @@ statements cover.
 """
 from __future__ import annotations
 
-import ast
 import pathlib
 import re
 

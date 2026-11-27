@@ -26,7 +26,6 @@ from datetime import date, datetime, timezone
 from typing import Optional
 
 from core.db_paging import fetch_all
-from domain.accounting import journal_source as JS
 from domain.fixed_assets import cwip as cwip_domain
 from services.fixed_asset_accumulated_ledger import birth_pointer_fields
 

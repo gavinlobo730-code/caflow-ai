@@ -1,5 +1,5 @@
 from typing import Optional
-from datetime import date, datetime, timezone
+from datetime import date
 from repositories.base import BaseRepository
 from core import db_provider
 from core.db_paging import fetch_all

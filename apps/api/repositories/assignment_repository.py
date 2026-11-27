@@ -7,7 +7,6 @@ access. Dual-path: in-memory in mock/dev, Supabase in production.
 """
 import os
 import uuid
-from typing import Optional
 from core import db_provider
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")

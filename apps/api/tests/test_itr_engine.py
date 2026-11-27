@@ -6,10 +6,9 @@ Every request pins fy="2025-26" (the last training-verified financial year,
 see domain.income_tax.statutory_rates) so these tests stay deterministic
 regardless of which FY "today" resolves to.
 """
-import pytest
 from domain.income_tax.itr_engine import (
     ITREngine, ITRComputeRequest, Deductions80C, Deductions80D, Donation80G, HRADetails,
-    LIMIT_80C_PAISE, LIMIT_80CCD1B_PAISE, LIMIT_80TTA_PAISE, LIMIT_80TTB_PAISE,
+    LIMIT_80C_PAISE, LIMIT_80TTA_PAISE, LIMIT_80TTB_PAISE,
     LIMIT_24B_PAISE, LIMIT_80CCD2_GOVT_PERCENT, LIMIT_80CCD2_OTHER_PERCENT,
 )
 from domain.income_tax.statutory_rates import RATES_BY_FY

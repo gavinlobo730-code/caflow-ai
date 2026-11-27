@@ -15,7 +15,6 @@ by "nothing writes gstr2a_records" (the 2B reconciliation does now), PUR-04 by
 """
 from __future__ import annotations
 
-import pytest
 
 from domain.gst.gstr3b_computer import (
     compute_gstr3b, PurchaseTransaction, GSTR2ARecord, SalesTransaction,

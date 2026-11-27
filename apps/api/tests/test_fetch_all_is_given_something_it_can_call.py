@@ -42,7 +42,6 @@ from __future__ import annotations
 import ast
 import pathlib
 
-import pytest
 
 API = pathlib.Path(__file__).resolve().parent.parent
 

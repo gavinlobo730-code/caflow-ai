@@ -15,7 +15,7 @@ large overdue backlog it looped every open invoice with no bound, could never
 finish a pass, and silently starved every job scheduled after it in the
 nightly sweep for that firm, every day, indefinitely.
 """
-from datetime import date, datetime, timezone, timedelta
+from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest

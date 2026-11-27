@@ -52,7 +52,7 @@ Pure: no database, no model call. `today` is injectable for the tests.
 from __future__ import annotations
 
 import calendar
-from datetime import date, datetime
+from datetime import date
 import re
 from typing import Optional
 

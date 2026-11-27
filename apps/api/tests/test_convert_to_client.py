@@ -19,7 +19,6 @@ from unittest.mock import patch
 import pytest
 from fastapi import HTTPException
 
-import routers.lifecycle as lc
 from routers.lifecycle import convert_lead, LeadConvertIn
 
 FIRM = "firm-aaa"

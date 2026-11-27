@@ -12,7 +12,6 @@ from repositories.ai_insights_repository import ai_insights_repo
 from repositories.engagement_repository import engagement_repo
 from repositories.invoice_repository import invoice_repo
 from mock_data import MOCK_ACTIVITY_LOGS
-from datetime import date
 from services.audit_service import log_event
 from services.internal_client_service import assert_can_view_client
 from core.authz import effective_client_ids, can_access_client

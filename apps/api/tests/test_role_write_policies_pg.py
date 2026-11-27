@@ -111,7 +111,7 @@ def db(pg_template):
             assert mig not in pg_template.failed, (
                 f"{mig} did not apply — everything below would pass vacuously")
         rows = [
-            f"INSERT INTO auth.users (id, email) VALUES "
+            "INSERT INTO auth.users (id, email) VALUES "
             + ", ".join(f"('{u}', '{r}@t.com')" for r, u in UID.items()) + ";",
             f"INSERT INTO firms (id, name, email) VALUES ('{FIRM}', 'T', 't@t.com');",
             f"INSERT INTO clients (id, firm_id, client_name, entity_type, pan) "

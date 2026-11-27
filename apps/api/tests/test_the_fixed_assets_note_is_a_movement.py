@@ -30,7 +30,6 @@ record of what each asset was charged this year, and where that record does not
 speak for the year in question the note says so instead of inventing a split.
 Where the classes do not sum to the ledger's figure, the difference is STATED.
 """
-import pytest
 
 import routers.year_end_notes as yen
 from tests.e2e_harness import FakeDB

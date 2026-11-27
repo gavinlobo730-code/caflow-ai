@@ -354,7 +354,7 @@ def test_post_journal_atomic_carries_the_cost_centre_through(dsn):
             {{"account_id":"{ACC_OWN_CR}","debit_paise":0,"credit_paise":500000}}]'::jsonb);
     """)
     assert r.returncode == 0, r.stderr
-    got = _psql(dsn, f"""
+    got = _psql(dsn, """
         SELECT coalesce(l.cost_centre_id::text,'-')
           FROM journal_lines l JOIN journal_entries e ON e.id = l.journal_entry_id
          WHERE e.reference_no = 'CC-RPC' ORDER BY l.line_order;

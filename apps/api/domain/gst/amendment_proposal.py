@@ -38,7 +38,6 @@ WHAT IT REFUSES TO DECIDE
 """
 from __future__ import annotations
 
-from typing import Any
 
 from domain.gst.amendments import (
     SECTION_TABLE, amendment_section_for, build_b2cs_amendment,

@@ -21,7 +21,7 @@ from typing import Optional
 from fastapi import HTTPException
 
 from domain.banking.splits import (
-    parse_splits, validate_splits, unallocated_paise, SplitError,
+    parse_splits, validate_splits, SplitError,
 )
 from core.observability import capture_soft_failure
 from core.db_provider import privileged_for

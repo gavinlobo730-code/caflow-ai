@@ -11,7 +11,7 @@ CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
-from typing import Annotated, ClassVar, FrozenSet, Optional, List
+from typing import Annotated, ClassVar, FrozenSet, Optional
 from datetime import datetime, timezone
 import uuid
 

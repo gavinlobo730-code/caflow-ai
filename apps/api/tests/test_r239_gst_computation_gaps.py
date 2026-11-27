@@ -15,7 +15,6 @@ Task #239 — 4 GST computation gaps:
      fetch failure into a warning log and always reported "completed"
      regardless of how many (or all) fetches actually failed.
 """
-from decimal import Decimal
 
 import pytest
 

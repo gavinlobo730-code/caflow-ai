@@ -3,7 +3,7 @@ Document Intelligence Service.
 Extraction pipeline: Upload → Classify → Extract → Validate → Risk Detect → Task Generate
 Provider-swappable: mock | aws_textract | google_docai | azure_formrec | claude_vision
 """
-from datetime import date, timedelta
+from datetime import timedelta
 from typing import Optional
 from core.ist_clock import ist_today
 from domain.money_sentence import rupee_whole_text

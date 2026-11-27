@@ -30,9 +30,7 @@ WHAT IS LEFT IS USED, AND THE RECORDED BELIEF ABOUT IT WAS WRONG TWICE
 
     So the fixtures stay and the name stops competing with the service.
 """
-from datetime import date, timedelta, datetime
-from typing import Optional
-import uuid
+from datetime import timedelta
 from core.ist_clock import ist_today
 
 # THE DAY THE FIXTURES BELOW WERE BUILT, AND NOTHING ELSE. `ist_today()` at

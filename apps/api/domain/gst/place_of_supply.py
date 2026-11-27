@@ -36,7 +36,6 @@ from __future__ import annotations
 
 from typing import Optional
 
-from domain.gst.gstin import state_code as _state_code_of_gstin
 
 
 def _VALID_STATE_CODES():

@@ -47,7 +47,7 @@ from domain.banking.normalizer import (
     balance_agreement, parse_statement_detailed,
 )
 from domain.banking.tie_out import (
-    printed_totals, statement_check, totals_agreement,
+    statement_check, totals_agreement,
 )
 from tests.e2e_harness import FakeDB, wire_e2e, seed_standard_coa
 
@@ -268,7 +268,6 @@ class _Upload:
 
 def _upload(**kw):
     # asyncio.run, not get_event_loop() — see test_statement_pdf_and_tie_out.
-    import asyncio
     return banking.upload_statement(
             file=_Upload(kw.pop("filename", "stmt.csv"), kw.pop("content", _csv())),
             client_id=CLIENT, bank_name="Cosmos Co-op Bank", account_number=None,
@@ -314,7 +313,6 @@ def test_the_preview_screen_shows_the_totals_check_too(monkeypatch):
     """The preview is where a mapping is judged before importing under it, and a
     mapping whose parse does not sum to the statement's own totals is wrong
     however plausible the twenty rows above it look."""
-    import asyncio
     import json
     _setup(monkeypatch)
     mapping = {"date": 0, "desc": 1, "ref": 2, "debit": 3, "credit": 4, "balance": 5}

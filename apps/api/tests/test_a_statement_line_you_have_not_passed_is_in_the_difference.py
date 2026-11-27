@@ -43,7 +43,6 @@ import pytest
 from fastapi import HTTPException
 
 from domain.banking import entry as E
-import services.bank_reconciliation_service as brs_mod
 from services.bank_reconciliation_service import bank_reconciliation_service as svc
 from tests.test_bank_reconciliation import (db, FIRM, CLIENT, BA, START, END,   # noqa: F401
                                             _txn, _open, _set_aside)

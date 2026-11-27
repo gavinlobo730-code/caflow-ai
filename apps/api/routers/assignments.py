@@ -7,7 +7,6 @@ view, search, be notified about, and provide as AI context (enforced by
 core.authz). Every mutation is written to the audit_log.
 """
 import os
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel

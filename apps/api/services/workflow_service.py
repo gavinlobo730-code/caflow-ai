@@ -2,7 +2,6 @@
 Workflow template engine.
 Defines standard CA practice workflows with realistic steps.
 """
-from typing import Optional
 import uuid
 from datetime import datetime, timezone
 

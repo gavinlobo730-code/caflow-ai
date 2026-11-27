@@ -23,7 +23,6 @@ unwitting withdrawal closes an option worth lakhs over a career.
 """
 from datetime import date
 
-import pytest
 
 from domain.income_tax.regime_election import (
     PriorElection, election_route, evaluate_election, form_10iea_due_date,

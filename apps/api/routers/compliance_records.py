@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from core.permissions import rbac
 from core.authz import filter_by_client, assert_client_access  # H2/F2: assignment-scope (same engine as compliance_ops)
-from typing import Optional, Any
+from typing import Optional
 from models.common import api_response
 from domain.compliance_record_service import compliance_record_service
 from core.exceptions import NotFoundError, ValidationError

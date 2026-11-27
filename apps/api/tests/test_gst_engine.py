@@ -20,11 +20,9 @@ from domain.gst.gstr3b_computer import (
 )
 from domain.gst.gstr1_builder import (
     InvoiceForGSTR1,
-    InvoiceLine,
     build_gstr1,
     _paise_to_rupees,
     _format_date_gstn,
-    _build_hsn_summary,
 )
 from domain.gst.validator import GSTValidator, InvoiceToValidate
 

@@ -2,7 +2,7 @@
 Task management service.
 Handles task lifecycle, status transitions, and workload calculations.
 """
-from datetime import date, datetime, timezone
+from datetime import date
 from typing import Optional
 from core.ist_clock import ist_today
 

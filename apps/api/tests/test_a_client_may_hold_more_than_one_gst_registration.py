@@ -332,7 +332,6 @@ def test_the_compute_paths_take_a_gstin_and_default_to_the_primary():
     assert "gstin: Optional[str] = None" in src
 
     import ast
-    import routers.gst as gst_router
 
     tree = ast.parse(src)
     resolved = 0

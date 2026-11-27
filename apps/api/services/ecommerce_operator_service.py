@@ -10,7 +10,7 @@ that is the domain module's job, asked by `services.gst_return_service
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Optional
 
 from fastapi import HTTPException
 

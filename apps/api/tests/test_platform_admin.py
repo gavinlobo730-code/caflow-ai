@@ -9,7 +9,6 @@ separately against the live database.
 """
 import time
 
-import pytest
 from fastapi import FastAPI, Depends
 from fastapi.testclient import TestClient
 

@@ -24,8 +24,6 @@ WHY A BARE PERCENTAGE COULD NEVER HAVE DONE IT
     form rather than honouring it precisely because one number cannot carry
     them: a CA typed 1%, saw "1.0%" in the list, and every bill deducted 2%.
 """
-import pytest
-from fastapi import HTTPException
 
 import routers.purchase_bills as pb
 import routers.purchase_payments as pp

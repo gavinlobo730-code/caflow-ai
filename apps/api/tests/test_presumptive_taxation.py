@@ -17,7 +17,6 @@ being written down:
           vehicle weight over 12,000 kg), 7,500 rupees per month otherwise;
           available only while 10 or fewer goods carriages are owned.
 """
-import pytest
 
 from domain.income_tax.itr_engine import ITRComputeRequest, ITREngine
 from domain.income_tax.presumptive import (

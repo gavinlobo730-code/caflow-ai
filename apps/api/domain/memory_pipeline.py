@@ -4,7 +4,7 @@ Transforms raw event data into structured semantic memory.
 """
 import os
 import logging
-from datetime import date, datetime, timezone, timedelta
+from datetime import date, datetime, timezone
 from typing import Optional
 from core.ist_clock import IST, ist_now, ist_today, ist_date_of
 from domain.practice.compliance_overdue import is_settled, overdue_records
@@ -440,7 +440,7 @@ class MemoryPipeline:
                     what_detected=f"Client typically takes {avg_response_days} days to respond but {ct} deadline is only {days_until_due} days away.",
                     evidence=evidence,
                     why_it_matters=f"Based on historical response patterns, this client is unlikely to meet the {ct} deadline without proactive intervention.",
-                    recommended_action=f"Contact client immediately. Expedite document collection. Consider filing extension if available.",
+                    recommended_action="Contact client immediately. Expedite document collection. Consider filing extension if available.",
                     confidence=confidence,
                     severity="critical" if days_until_due <= 2 else "high",
                 )

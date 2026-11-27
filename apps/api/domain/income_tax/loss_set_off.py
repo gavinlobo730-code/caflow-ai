@@ -217,9 +217,9 @@ def apply_brought_forward_losses(
             used = min(offered, result.business_income_paise)
             result.business_income_paise -= used
             _record(loss, "§72", used, ("business",), [
-                f"§72 allows a carried-forward business loss against the profits "
-                f"and gains of business or profession, and nothing else — not "
-                f"salary, which §71(2A) bars even for the current year."])
+                "§72 allows a carried-forward business loss against the profits "
+                "and gains of business or profession, and nothing else — not "
+                "salary, which §71(2A) bars even for the current year."])
 
         elif kind == "speculation":
             _record(loss, "§73", 0, (), [

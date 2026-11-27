@@ -9,7 +9,6 @@ Test 5: Import COA is idempotent — duplicate codes not inserted on second run
 """
 import uuid
 import pytest
-from unittest.mock import patch, MagicMock
 
 FIRM_ID   = str(uuid.uuid4())
 CLIENT_A  = str(uuid.uuid4())

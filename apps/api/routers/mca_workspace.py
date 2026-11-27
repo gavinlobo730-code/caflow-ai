@@ -1082,7 +1082,7 @@ def mca_calendar(
             "client_id": client_id,
             "calendar": calendar,
         })
-    except Exception as e:
+    except Exception:
         _logger.exception("mca_calendar error")
         return api_response(False, None, "Unable to compute MCA calendar. Please try again.")
 

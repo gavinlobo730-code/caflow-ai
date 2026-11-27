@@ -22,7 +22,7 @@ from domain.reporting import (
     Account, JournalEntry, JournalLine, InMemoryLedgerSource, ReportingService,
 )
 from domain.reporting.sources import SupabaseLedgerSource
-from domain.reporting import balance_cache, trend
+from domain.reporting import balance_cache
 from domain.reporting.schedule_iii import build_schedule_iii
 
 FIRM, CLIENT = "firm-trend", "client-trend"

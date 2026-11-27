@@ -12,7 +12,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Annotated, Optional
 from datetime import datetime, timezone, date, timedelta
 from decimal import Decimal as _Decimal, ROUND_HALF_UP as _ROUND_HALF_UP
-import math
 
 from pydantic import BaseModel, EmailStr, Field, ValidationError, field_validator
 
@@ -92,7 +91,6 @@ from domain.payroll.annexure2 import build_annexure_ii
 from domain.payroll.lwf import classify_state as classify_lwf_state
 from domain.payroll.professional_tax import (
     classify_for_employee as classify_pt_for_employee,
-    classify_state as classify_pt_state,
 )
 from domain.payroll import identity as identity_domain
 from domain.payroll import handoff as handoff_domain
@@ -148,7 +146,6 @@ from domain.income_tax.statutory_rates import (
 from models.fy import FYLabel, OptionalFYLabel
 from models.iso_date import IsoDate, OptionalIsoDate, a_real_date
 from services.compliance_obligation_service import fy_months
-from core.ist_clock import ist_today
 from core.query_day import query_day
 from domain.money_sentence import rupee_text, rupee_whole_text
 

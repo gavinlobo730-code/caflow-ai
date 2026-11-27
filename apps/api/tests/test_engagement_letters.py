@@ -16,7 +16,7 @@ Covers:
 """
 import pytest
 from fastapi import HTTPException
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 FIRM_A = "firm-aaaa-0001"
 FIRM_B = "firm-bbbb-0002"

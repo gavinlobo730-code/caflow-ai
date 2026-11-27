@@ -19,7 +19,6 @@ right — the two failure modes above produce the same difference with opposite
 fixes — so adopting either number would hide the discrepancy that is the point
 of checking.
 """
-import pytest
 
 import routers.year_end_notes as yen
 

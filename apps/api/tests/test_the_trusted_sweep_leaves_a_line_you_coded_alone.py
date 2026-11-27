@@ -41,11 +41,10 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-import pytest
 
 from domain.banking import entry as E
 from services.bank_entry_service import bank_entry_service as svc
-from tests.test_bank_entry_service import (CHARGES, RENT, _db, _line, _rule, _row,
+from tests.test_bank_entry_service import (RENT, _db, _line, _rule, _row,
                                            _state, poster)          # noqa: F401
 
 MIGRATION = (Path(__file__).resolve().parents[1] / "migrations"

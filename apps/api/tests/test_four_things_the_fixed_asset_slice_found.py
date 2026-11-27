@@ -30,7 +30,6 @@ from __future__ import annotations
 
 import inspect
 import math
-import re
 from decimal import Decimal
 from pathlib import Path
 
@@ -388,7 +387,7 @@ def test_an_order_the_query_carried_moves_after_the_walk(fn, column):
     assert f'.order("{column}"' not in body, (
         f"{fn} still sorts inside the paged query; the keyset walk will not "
         f"honour it and may repeat or drop rows at a page boundary")
-    assert f'assets.sort(key=' in body and column in body
+    assert 'assets.sort(key=' in body and column in body
 
 
 def test_the_run_depreciation_sort_survives_a_null_asset_code():

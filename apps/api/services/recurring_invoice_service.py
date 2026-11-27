@@ -23,8 +23,7 @@ MOCK_SALES_INVOICES. All functions accept an injectable `db` for DB-mode tests.
 import os
 import uuid
 import logging
-from calendar import monthrange
-from datetime import date, datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 from fastapi import HTTPException
@@ -84,7 +83,7 @@ def _now_iso() -> str:
 # Re-exported under the names this module has always used, so its callers and
 # tests are untouched — the shape routers/fixed_assets.py took when Schedule II
 # moved into domain/fixed_assets/.
-from domain.recurrence import (                                    # noqa: E402
+from domain.recurrence import (                                    # noqa: E402,F401  (names the tests and callers read from this module)
     add_months_clamped as _add_months_clamped,
     occurrence,
     occurrence_on_or_after,

@@ -391,7 +391,6 @@ def test_generate_for_engagement_reports_an_assumed_itr_date(monkeypatch):
     """The daily scheduler runs this. A gap that only reaches a log is the
     failure this shape was invented to fix."""
     from repositories.client_repository import client_repo
-    from repositories.compliance_records_repository import compliance_records_repo
     from mock_data import MOCK_COMPLIANCE_RECORDS
     import services.audit_service as au
     import services.timeline_service as ts

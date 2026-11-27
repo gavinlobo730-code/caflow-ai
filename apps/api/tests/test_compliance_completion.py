@@ -102,7 +102,7 @@ class TestGSTINValidation:
         invalid_state = "99AABCU9603R1ZX"
         # State code 99 is not valid, but the regex only checks numeric format.
         # Use the validator for state code validation.
-        from domain.gst.validator import GSTValidator, VALID_STATE_CODES
+        from domain.gst.validator import VALID_STATE_CODES
         assert "99" not in VALID_STATE_CODES, "State code 99 is not a valid Indian state code"
 
     def test_gstin_must_have_z_at_position_13(self):
@@ -296,7 +296,7 @@ class TestMCADeadlines:
 
     def test_mca_calendar_router_returns_correct_form_types(self):
         """MCA calendar logic: all three required annual forms must be in the calendar."""
-        from datetime import datetime, timedelta
+        from datetime import timedelta
         agm_str = "2026-09-30"
         agm_dt = date.fromisoformat(agm_str)
         # Replicate router logic

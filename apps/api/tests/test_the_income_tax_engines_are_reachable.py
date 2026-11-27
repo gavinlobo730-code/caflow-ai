@@ -21,10 +21,8 @@ Each was complete, tested and imported by nothing outside its own test file:
 Every test here fails against the previous code with 404 or ImportError: the
 endpoints did not exist.
 """
-from datetime import date
 
 import pytest
-from fastapi import HTTPException
 
 import routers.income_tax as it
 

@@ -22,11 +22,9 @@ Runs only when HARNESS_PG is set + psql on PATH; skips in the mock-mode CI job.
 """
 from __future__ import annotations
 
-import json
 import os
 import shutil
 import subprocess
-import sys
 import uuid
 from pathlib import Path
 

@@ -32,7 +32,7 @@ RATES_BY_FY accordingly — that is a pure data change, no code change needed.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date
 
 from core.ist_clock import ist_fy_label

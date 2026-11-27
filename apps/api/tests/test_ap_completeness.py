@@ -14,7 +14,7 @@ import routers.purchase_payments as pp
 import routers.vendors as ve
 from models.invoices import PurchaseBillIn, PurchaseBillLineIn, PurchasePaymentIn
 from services.vendor_statement_service import vendor_statement_service
-from tests.e2e_harness import FakeDB, wire_e2e, seed_standard_coa, coa_id, account_balance
+from tests.e2e_harness import FakeDB, wire_e2e, seed_standard_coa, account_balance
 
 FIRM = "FIRM-A"
 CALLER = {"firm_id": FIRM, "id": "u", "auth_user_id": "auth", "email": "ca@f.test", "role": "Partner"}

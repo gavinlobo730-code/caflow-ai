@@ -16,7 +16,6 @@ advance on money that discharged a bill.
 """
 from datetime import date
 
-import pytest
 
 import routers.purchase_bills as pb
 import routers.purchase_payments as pp

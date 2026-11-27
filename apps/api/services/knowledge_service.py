@@ -16,7 +16,6 @@ Validated model:
   for assigned clients). Reviewer read-only. No acknowledgement/completion.
 """
 import os
-import uuid
 import logging
 from datetime import datetime, timezone
 from typing import Optional

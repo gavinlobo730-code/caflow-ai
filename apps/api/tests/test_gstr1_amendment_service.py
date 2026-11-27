@@ -58,7 +58,7 @@ def _file(db, period):
     db.seed("gstr1_returns", {
         "firm_id": FIRM, "client_id": CLIENT, "period": period, "gstin": GSTIN,
         "status": "submitted", "payload_json": payload,
-        "submitted_at": f"2025-01-01T00:00:00Z", "arn": f"ARN{period}",
+        "submitted_at": "2025-01-01T00:00:00Z", "arn": f"ARN{period}",
     })
 
 

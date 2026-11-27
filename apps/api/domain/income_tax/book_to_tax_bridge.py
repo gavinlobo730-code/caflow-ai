@@ -52,7 +52,7 @@ All monetary values are integer paise. Never float.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Literal, Optional
 
 Direction = Literal["add", "deduct"]

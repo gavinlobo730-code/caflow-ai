@@ -490,7 +490,7 @@ def _compensate_failed_settlement(
             journal_id, receipt_id, firm_id, client_id, attempted_invoice_ids,
         )
     except Exception as e:
-        from core.observability import capture_soft_failure, capture_posting_failure
+        from core.observability import capture_posting_failure
         capture_posting_failure(
             e, operation="receipt_service._compensate_failed_settlement",
             firm_id=firm_id, client_id=client_id, receipt_id=receipt_id, journal_id=journal_id,

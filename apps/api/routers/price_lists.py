@@ -15,7 +15,7 @@ from __future__ import annotations
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from core.authz import assert_client_access
 from core.permissions import rbac

@@ -338,7 +338,7 @@ def extract_notice(
                         "created yet: check the details against the notice, then approve it "
                         "(POST /notices/{id}/approve) to create the response task."),
         })
-    except Exception as e:
+    except Exception:
         _logger.exception("extract_notice error")
         return api_response(False, None, "Unable to complete document processing. Please try again.")
 
@@ -367,7 +367,7 @@ def list_notices(
                 q = q.eq("status", status)
             rows = q.range(offset, offset + limit - 1).execute().data or []
         return api_response(True, rows)
-    except Exception as e:
+    except Exception:
         return api_response(False, None, "Unable to complete document processing. Please try again.")
 
 
@@ -407,7 +407,7 @@ def update_notice_status(
         log_event(firm_id, "government_notice", notice_id, "status_change",
                   actor_id=current_user.get("auth_user_id"), new_data=updates)
         return api_response(True, rec)
-    except Exception as e:
+    except Exception:
         return api_response(False, None, "Unable to complete document processing. Please try again.")
 
 
@@ -563,6 +563,6 @@ def approve_notice(
         else:
             message = "This notice was already approved."
         return api_response(True, {**rec, "task_created": task_created, "message": message})
-    except Exception as e:
+    except Exception:
         _logger.exception("approve_notice error")
         return api_response(False, None, "Unable to complete document processing. Please try again.")

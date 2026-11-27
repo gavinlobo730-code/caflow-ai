@@ -4,7 +4,7 @@ Verifies multi-tenancy isolation, financial integrity, and security guards.
 """
 import uuid
 import pytest
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import MagicMock
 
 
 FIRM_A = str(uuid.uuid4())
@@ -123,7 +123,7 @@ class TestMultiTenancyScoping:
 
     def test_purchase_bills_list_includes_firm_id(self):
         """list_purchase_bills query must include firm_id — verified by code inspection."""
-        import ast, os
+        import os
         path = os.path.join(os.path.dirname(__file__), "../routers/purchase_bills.py")
         with open(path) as f:
             src = f.read()
@@ -208,7 +208,6 @@ class TestDepreciationEngine:
         assert isinstance(annual, int)
 
     def test_fully_depreciated_asset_zero_depreciation(self):
-        import math
         asset = self._make_asset(cost=1_000_000_00, salvage=100_000_00,
                                  accum=900_000_00, method="WDV")
         wdv = asset["purchase_cost_paise"] - asset["accumulated_depreciation_paise"]

@@ -37,7 +37,7 @@ from pathlib import Path
 import pytest
 from fastapi import HTTPException
 
-from core.permissions import PERMISSIONS, can
+from core.permissions import can
 from routers import ais as ais_router
 from services import ais_computation_service as acs
 from services import ais_service

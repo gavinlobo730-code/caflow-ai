@@ -15,7 +15,6 @@ Reconciliation asserted:
 This is validation only — it drives the REAL routers/services through the shared
 in-memory double (production code paths, journals posted for real).
 """
-import pytest
 
 import routers.sales_invoices as si
 import routers.credit_notes as cn

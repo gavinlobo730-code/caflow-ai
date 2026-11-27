@@ -4,12 +4,11 @@ Creates a DRAFT purchase bill — human CA approval required before posting.
 # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
 """
 import os
-import base64
 import logging
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, UploadFile, File, Form
 from fastapi.responses import JSONResponse
 from models.common import api_response
 from core.permissions import rbac

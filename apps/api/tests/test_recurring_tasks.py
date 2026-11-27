@@ -8,10 +8,8 @@ Verifies:
 5. Timeline event logging
 6. Notification sending
 """
-import pytest
-from datetime import date, timedelta, datetime, timezone
-from dateutil.relativedelta import relativedelta
-from unittest.mock import patch, MagicMock, call
+from datetime import date, datetime, timezone
+from unittest.mock import patch, MagicMock
 
 FIRM_ID = "firm-001"
 CLIENT_ID = "client-001"

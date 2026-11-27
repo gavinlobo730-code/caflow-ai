@@ -1,6 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from typing import Optional
 from models.common import api_response
 from core.permissions import rbac
 from core.authz import filter_by_client
@@ -10,7 +9,7 @@ from core.db_paging import fetch_all
 from repositories.capacity_repository import capacity_repo, DEFAULT_WEEKLY_HOURS, DEFAULT_MAX_TASKS
 from services import capacity_risk_service
 
-from datetime import date, timedelta
+from datetime import timedelta
 from core.ist_clock import ist_today
 from core import db_provider
 

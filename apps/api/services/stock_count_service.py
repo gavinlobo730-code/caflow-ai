@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 from decimal import Decimal
-from typing import Any, Optional
+from typing import Optional
 
 from fastapi import HTTPException
 

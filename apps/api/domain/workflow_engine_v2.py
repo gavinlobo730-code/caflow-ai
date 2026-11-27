@@ -16,7 +16,6 @@ import hashlib
 import json
 import logging
 import time
-import uuid
 from datetime import datetime, timedelta
 from typing import Optional, Any
 from core.db_errors import error_code
@@ -363,7 +362,6 @@ class WorkflowEngineV2:
                 if op == ">=": return actual_f >= expected
                 if op == "<=": return actual_f <= expected
             elif value_type == "date":
-                from datetime import date
                 today = ist_today()
                 expected_date = datetime.fromisoformat(str(expected_raw)).date()
                 actual_date = datetime.fromisoformat(str(actual)).date() if actual else today

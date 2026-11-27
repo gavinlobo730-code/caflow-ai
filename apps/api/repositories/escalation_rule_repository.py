@@ -1,6 +1,6 @@
 import os
 from typing import Optional
-from datetime import datetime, timedelta
+from datetime import datetime
 from repositories.base import BaseRepository
 from core import db_provider
 from core.ist_clock import ist_today

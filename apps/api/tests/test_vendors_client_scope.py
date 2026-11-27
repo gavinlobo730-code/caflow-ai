@@ -22,7 +22,7 @@ import pytest
 from fastapi import HTTPException
 
 import routers.vendors as ve
-from models.parties import VendorIn, VendorUpdateIn
+from models.parties import VendorUpdateIn
 
 FIRM = "firm-1"
 MINE, THEIRS = "client-mine", "client-theirs"

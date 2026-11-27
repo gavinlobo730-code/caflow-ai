@@ -3,8 +3,6 @@ Phase 7/8/9 Intelligence Layer Tests
 Covers: Client Lifecycle, Relationship Intelligence, Health Engine, Security
 """
 import uuid
-import pytest
-from unittest.mock import MagicMock
 
 
 FIRM_A = str(uuid.uuid4())

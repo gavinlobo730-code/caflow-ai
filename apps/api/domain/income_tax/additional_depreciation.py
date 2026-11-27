@@ -79,7 +79,7 @@ the caveat travels on every answer.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 #: Not confirmed against a Finance Act from this environment.

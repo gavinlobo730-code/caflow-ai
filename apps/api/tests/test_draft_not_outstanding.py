@@ -26,7 +26,6 @@ Each test proves the draft is excluded while a live (issued/received) document
 of the same shape still counts — so the fix narrows the filter without breaking
 the happy path.
 """
-import pytest
 
 import routers.customers as cu
 import routers.purchase_bills as pb

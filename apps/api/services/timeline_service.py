@@ -183,7 +183,6 @@ class TimelineService:
     ) -> None:
         """Convenience shorthand for log_timeline_event with minimal required args."""
         if not financial_year:
-            from datetime import date
             today = ist_today()
             fy_start = today.year if today.month >= 4 else today.year - 1
             financial_year = f"{fy_start}-{str(fy_start + 1)[-2:]}"

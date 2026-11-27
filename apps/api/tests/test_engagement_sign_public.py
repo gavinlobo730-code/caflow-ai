@@ -6,7 +6,7 @@ A prospect opens a tokenized link, reviews the letter, and electronically accept
 response must expose only a client-safe projection (no firm internals).
 """
 from contextlib import contextmanager
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 

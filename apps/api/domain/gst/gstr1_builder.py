@@ -19,7 +19,6 @@ All amounts in paise internally; converted to rupees (2 decimal) for GSTN JSON.
 """
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from typing import Optional, Sequence
 

@@ -26,7 +26,6 @@ VERIFICATION STATUS
 """
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 from typing import Optional
 from domain.money_sentence import rupee_text

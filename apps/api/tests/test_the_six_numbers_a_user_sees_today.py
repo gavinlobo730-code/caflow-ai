@@ -20,7 +20,6 @@ that moves a number has to argue with a section rather than with a fixture.
 """
 from __future__ import annotations
 
-import pytest
 
 from domain.income_tax.itr_engine import (
     ITRComputeRequest, ITREngine, HRADetails, Deductions80C,

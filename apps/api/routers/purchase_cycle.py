@@ -12,7 +12,6 @@ settles: CGST s.16(2)(b) and MSMED s.15 with s.2(b)).
 # and the payable.
 """
 import os
-from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 

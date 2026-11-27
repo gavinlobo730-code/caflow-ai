@@ -40,7 +40,6 @@ from domain.banking import entry as E
 import services.bank_entry_service as bes
 from services.bank_entry_service import bank_entry_service as svc
 import services.bank_matching_service as bms
-import services.banking_service as bsm
 from tests.test_bank_matching import FakeDB, _Q, FIRM, CLIENT, _seed_txn
 
 CHARGES, RENT = "acc-charges", "acc-rent"

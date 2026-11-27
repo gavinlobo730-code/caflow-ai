@@ -20,7 +20,6 @@ from fastapi import HTTPException
 import routers.sales_invoices as si
 import routers.credit_notes as cn
 import services.receipt_service as rsvc
-from services.customer_statement_service import customer_statement_service
 from tests.e2e_harness import FakeDB, wire_e2e, seed_standard_coa, coa_id, account_balance, trial_balance, with_lines
 
 FIRM = "FIRM-A"

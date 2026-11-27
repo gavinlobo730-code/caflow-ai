@@ -36,8 +36,6 @@ from datetime import date
 import pytest
 
 import routers.gst_credit_ledger as router
-import routers.purchase_bills as pb
-import routers.sales_invoices as si
 import services.gst_credit_ledger_service as svc
 import services.gst_return_service as grs
 from domain.gst import credit_ledger as cl

@@ -1,7 +1,5 @@
 import pytest
 from datetime import date, timedelta
-from repositories.escalation_rule_repository import escalation_rule_repo
-from services.escalation_service import escalation_service
 
 
 @pytest.fixture

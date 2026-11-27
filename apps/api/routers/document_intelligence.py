@@ -8,8 +8,6 @@ from domain.document_intelligence_service import (
     extract_document,
     get_document_risks,
     resolve_risk,
-    classify_document,
-    MOCK_DOCUMENT_EXTRACTIONS,
 )
 from mock_data import MOCK_DOCUMENTS
 
@@ -38,7 +36,6 @@ def get_doc_extraction(doc_id: str, current_user: dict = Depends(rbac("document"
 
 @router.post("/{doc_id}/extract")
 def trigger_extraction(doc_id: str, current_user: dict = Depends(rbac("document", "write"))):
-    from mock_data import MOCK_DOCUMENTS
     from domain.document_intelligence_service import MOCK_EXTRA_DOCUMENTS
     all_docs = MOCK_DOCUMENTS + MOCK_EXTRA_DOCUMENTS
     doc = next((d for d in all_docs if d["id"] == doc_id), None)

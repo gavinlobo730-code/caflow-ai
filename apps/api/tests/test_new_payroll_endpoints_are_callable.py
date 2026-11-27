@@ -15,7 +15,6 @@ assert almost nothing about the answer — because their whole job is to execute
 the handler end to end and let a TypeError, a NameError or a missing column
 surface. The arithmetic is tested properly elsewhere.
 """
-from datetime import date
 
 import pytest
 

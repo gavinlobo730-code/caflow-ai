@@ -28,7 +28,6 @@ WHAT IS PINNED, AND THE ONE THING NOT TO "SIMPLIFY"
 """
 from __future__ import annotations
 
-import json
 import re
 import socket
 import threading

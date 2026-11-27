@@ -46,7 +46,6 @@ WHAT IS STILL NOT HERE
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from domain.banking.charge_gst import split_inclusive_charge
 from core.db_paging import fetch_all

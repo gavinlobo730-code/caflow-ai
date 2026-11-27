@@ -124,7 +124,7 @@ def db(pg_template):
         _psql(admin_dsn, f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE);')
 
 
-BACKFILL = f"""
+BACKFILL = """
 INSERT INTO public.client_payroll_settings (firm_id, client_id, payroll_enabled)
 SELECT DISTINCT c.firm_id, c.id, true
 FROM public.clients c
@@ -190,7 +190,7 @@ def _as_manager(dsn: str, sql: str) -> subprocess.CompletedProcess:
     SET LOCAL ROLE authenticated matters: the table is owned by postgres and an
     owner bypasses both RLS and its own column grants.
     """
-    return _psql(dsn, f"BEGIN; SET LOCAL ROLE authenticated; "
+    return _psql(dsn, "BEGIN; SET LOCAL ROLE authenticated; "
                       'SET LOCAL request.jwt.claims = \'{"sub":"' + MANAGER + '"}\'; ' 
                       f"{sql} ROLLBACK;")
 

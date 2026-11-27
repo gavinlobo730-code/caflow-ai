@@ -19,7 +19,6 @@ These are the rules; the arithmetic that supports them (_compute_line_gst,
 the intra/inter split) is covered elsewhere. What is asserted here is the
 part a reader would otherwise have to take on trust.
 """
-import pytest
 
 from routers.purchase_bills import _compute_bill_lines_and_totals
 

@@ -8,7 +8,6 @@ minimum-tax engine precisely because nothing derived it. Missing was the
 statement that puts them in one column and makes them add up — the document the
 client reads and an assessing officer asks for.
 """
-import pytest
 
 from domain.income_tax.book_to_tax_bridge import build_bridge
 

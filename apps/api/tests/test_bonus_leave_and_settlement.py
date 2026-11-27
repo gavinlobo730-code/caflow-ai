@@ -6,7 +6,6 @@ Figures worked from the statutes by hand.
 """
 from datetime import date
 
-import pytest
 
 from domain.payroll import bonus as B
 from domain.payroll import gratuity as G

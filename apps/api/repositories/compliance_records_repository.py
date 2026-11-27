@@ -1,6 +1,5 @@
 import os
 import uuid
-from datetime import date
 from typing import Optional
 from core.db_paging import fetch_all
 from repositories.base import BaseRepository

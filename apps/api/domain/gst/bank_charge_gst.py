@@ -87,7 +87,7 @@ Pure: rows in, figures out, no database handle — the same shape as
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, Optional
+from typing import Iterable
 
 from domain.banking.charge_gst import ChargeSplit, split_inclusive_charge
 from domain.money_sentence import rupee_text

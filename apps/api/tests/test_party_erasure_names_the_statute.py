@@ -53,7 +53,6 @@ from datetime import date
 
 import pytest
 
-from services import party_erasure
 from services.party_erasure import CUSTOMER, VENDOR, refusal
 
 TODAY = date(2026, 9, 5)

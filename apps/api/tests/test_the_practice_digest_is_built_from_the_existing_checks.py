@@ -26,7 +26,6 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from core import authz
 from core.ist_clock import ist_today
 from domain.ai import groq_text
 from domain.practice import digest as dg

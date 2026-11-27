@@ -20,8 +20,7 @@ domain/udin declining to mint a number.
 import pytest
 
 from domain.income_tax.itr_json import (
-    FIELD_MAPPINGS, FieldMapping, ReturnIncomplete, SchemaNotVerified,
-    SoftwareProviderNotRegistered, build_itr_payload, generate_itr_json,
+    FIELD_MAPPINGS, ReturnIncomplete, SoftwareProviderNotRegistered, build_itr_payload, generate_itr_json,
     itr_field_placements, software_provider_id,
 )
 

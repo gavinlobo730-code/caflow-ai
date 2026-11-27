@@ -25,7 +25,6 @@ from __future__ import annotations
 
 from datetime import date
 
-import pytest
 
 from domain.gst import rule_43
 from domain.gst.rule_43 import (

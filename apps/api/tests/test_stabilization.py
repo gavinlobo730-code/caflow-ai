@@ -9,7 +9,7 @@ Stabilization tests — verifies every router fixed in the post-PR-46 sweep:
 6. task domain service dashboard summary — uses real repos, firm-scoped
 """
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 FIRM_A = "firm-001"
 FIRM_B = "firm-999"

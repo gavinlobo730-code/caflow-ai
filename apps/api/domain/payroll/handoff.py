@@ -414,7 +414,7 @@ def epf_obligation(
         artefact=Artefact(
             available=bool(filable),
             filename=filename,
-            endpoint=f"/api/payroll/runs/{{run_id}}/ecr",
+            endpoint="/api/payroll/runs/{run_id}/ecr",
             why_not=None if filable else (
                 "; ".join(problems) if problems else
                 "No member of this run carries a PF contribution, so there is "
@@ -493,7 +493,7 @@ def esic_obligation(
         artefact=Artefact(
             available=bool(filable),
             filename=filename,
-            endpoint=f"/api/payroll/runs/{{run_id}}/esic",
+            endpoint="/api/payroll/runs/{run_id}/esic",
             why_not=None if filable else (
                 "; ".join(problems) if problems else
                 "No member of this run carries an ESI contribution, so there is "

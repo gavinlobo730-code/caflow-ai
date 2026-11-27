@@ -10,7 +10,7 @@ transport and JWT verification (which are tested separately in test_rbac.py).
 """
 import pytest
 from fastapi import HTTPException
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 
 # ── Shared fixtures ───────────────────────────────────────────────────────────

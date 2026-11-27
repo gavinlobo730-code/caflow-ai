@@ -9,7 +9,6 @@ reconcile until its draft journal is actually posted (deferred downstream action
 import pytest
 from fastapi import HTTPException
 
-import services.phase2_journal_service as pjs
 from services.phase2_journal_service import phase2_journal_service as JSVC
 import services.journal_posting_service as jps
 from services.journal_posting_service import journal_posting_service as JP

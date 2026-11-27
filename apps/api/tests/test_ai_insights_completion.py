@@ -6,7 +6,7 @@ All tests run in mock mode (no SUPABASE_URL required).
 """
 import os
 import uuid
-from datetime import date, timedelta
+from datetime import date
 
 os.environ.pop("SUPABASE_URL", None)
 
@@ -80,7 +80,7 @@ def test_insight_acknowledgement_updates_status():
     """
     Test 4: Acknowledging an insight changes its status from 'open' to 'acknowledged'.
     """
-    from domain.ai_insight_service import MOCK_AI_INSIGHTS_V2, _insight_index
+    from domain.ai_insight_service import MOCK_AI_INSIGHTS_V2
     from domain.ai_insight_service import acknowledge_insight
 
     # Pick an open insight from mock data

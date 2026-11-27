@@ -23,7 +23,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, field_validator
 from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client
 from models.common import api_response

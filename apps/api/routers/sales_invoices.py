@@ -2902,7 +2902,7 @@ def _do_send_invoice(invoice_id: str, body: _SendInvoiceBody, current_user: dict
 
     # 4. Validate email format
     try:
-        from email_validator import validate_email as _ve, EmailNotValidError
+        from email_validator import validate_email as _ve
         _ve(to_email, check_deliverability=False)
     except Exception:
         raise HTTPException(status_code=422, detail=f"Invalid email address: {to_email}")

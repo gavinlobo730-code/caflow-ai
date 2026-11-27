@@ -33,7 +33,6 @@ from fastapi import HTTPException
 
 from models.invoices import InvoiceLineIn, SalesInvoiceIn
 from models.parties import CustomerIn
-from domain.currency.fx_revaluation_service import fx_revaluation_service as REVAL
 from tests.e2e_harness import FakeDB, seed_standard_coa, wire_e2e
 
 API = Path(__file__).resolve().parents[1]

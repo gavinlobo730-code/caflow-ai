@@ -28,7 +28,7 @@ from middleware.rate_limit import ai_limit
 # imported: tests/test_accounting_client_scope.py's shared `deny` fixture
 # monkeypatches `acct.filter_by_client` for the whole file, and
 # monkeypatch.setattr raises if the attribute is not already there.
-from core.authz import assert_client_access, can_access_client, filter_by_client, effective_client_ids
+from core.authz import assert_client_access, can_access_client, filter_by_client, effective_client_ids  # noqa: F401  (tests/conftest monkeypatches acct.filter_by_client)
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
 from services.period_validation_service import period_validation_service

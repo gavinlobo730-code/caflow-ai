@@ -4,7 +4,7 @@ Aggregates risks from: documents, compliance records, tasks, deadlines.
 Severity: critical | high | medium | low | info
 Risk score: 0–100 (critical=100, high=75, medium=50, low=25, info=10)
 """
-from datetime import date, timedelta
+from datetime import timedelta
 from typing import Optional
 from core.ist_clock import ist_today
 from core.authz import within_client_scope

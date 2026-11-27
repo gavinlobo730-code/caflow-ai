@@ -55,7 +55,7 @@ import pytest
 
 from fastapi import HTTPException
 
-from domain.banking.account_category import category_for_account, DerivedCategory
+from domain.banking.account_category import category_for_account
 from domain.banking.categories import CATEGORY_SET
 from domain.banking.entry import kind_for
 from domain.banking.posting_map import (

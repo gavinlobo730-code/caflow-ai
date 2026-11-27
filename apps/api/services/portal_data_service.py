@@ -15,7 +15,7 @@ collections invoice_deliveries reminders (4.2), compliance_record_service (4.4).
 """
 import os
 import logging
-from datetime import date, datetime, timezone
+from datetime import date
 from typing import Optional
 
 from fastapi import HTTPException

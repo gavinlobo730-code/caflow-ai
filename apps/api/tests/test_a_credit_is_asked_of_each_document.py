@@ -16,7 +16,7 @@ import pytest
 
 from domain.gst import rule_36_4 as r36
 from domain.gst.gstr3b_computer import (GSTR2ARecord, PurchaseTransaction,
-                                        SalesTransaction, compute_gstr3b)
+                                        compute_gstr3b)
 
 
 def _book(doc_id, label, cgst=0, sgst=0, igst=0, cess=0, rcm=False,

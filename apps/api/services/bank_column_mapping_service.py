@@ -13,7 +13,7 @@ from typing import Optional
 from core.ist_clock import ist_now
 from core.list_window import probe
 from domain.banking.normalizer import (
-    MAPPING_KEYS, StatementParseError, header_fingerprint, validate_mapping,
+    MAPPING_KEYS, header_fingerprint, validate_mapping,
 )
 from core.authz import scope_query_to_clients
 from core.db_provider import privileged_for

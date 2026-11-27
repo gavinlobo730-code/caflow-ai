@@ -5,7 +5,7 @@ Covers: archive, restore, soft-delete, is_test filtering,
 """
 import pytest
 from fastapi import HTTPException
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 FIRM_A = "firm-aaa"
 FIRM_B = "firm-bbb"

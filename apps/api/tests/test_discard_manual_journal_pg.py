@@ -280,7 +280,7 @@ def test_the_pair_flag_on_an_unpaired_entry_just_deletes_it(db):
     turn a lone entry into anything else."""
     r = _discard(db, MANUAL, with_pair=True)
     assert r.returncode == 0, r.stderr
-    n = _psql(db, f"""
+    n = _psql(db, """
         SELECT count(*) FROM journal_entries WHERE deleted_at IS NOT NULL;""", tuples=True)
     assert n.stdout.strip() == "1", "the flag took something else with it"
 

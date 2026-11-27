@@ -12,13 +12,11 @@ Supabase client, so none of it needs a database.
 """
 from __future__ import annotations
 
-from datetime import date
 
 import pytest
 
 from domain.tds.residency import (
-    FORM_26Q, FORM_27Q, GAP_27Q_IDENTIFIERS_MISSING,
-    GAP_RESIDENCY_NOT_CLASSIFIED, NON_RESIDENT, RESIDENT,
+    FORM_26Q, FORM_27Q, NON_RESIDENT, RESIDENT,
     RESIDENT_ONLY_SECTIONS, SECTIONS_REACHING_NON_RESIDENTS,
     SECTIONS_UNSETTLED_FOR_A_NON_RESIDENT,
     is_classified, is_non_resident, missing_27q_identifiers,

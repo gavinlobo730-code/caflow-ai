@@ -68,7 +68,7 @@ WHAT IS DISALLOWED IS THE DEDUCTION, NOT THE PAYMENT
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Iterable, Optional
 from domain.money_sentence import rupee_text

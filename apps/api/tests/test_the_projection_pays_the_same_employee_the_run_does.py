@@ -31,7 +31,6 @@ WHY THE FIX IS A SHARED MERGE AND NOT A SECOND ONE
 """
 from __future__ import annotations
 
-import pytest
 
 import routers.payroll as pr
 from tests.payroll_create_path import create_path_source

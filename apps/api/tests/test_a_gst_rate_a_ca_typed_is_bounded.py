@@ -97,7 +97,6 @@ def test_every_line_model_still_takes_a_real_rate(model):
 def test_the_four_models_delegate_rather_than_each_carrying_the_rule():
     """One level of indirection, the shape `_validate_quantity` already uses.
     Four copies of a bound is four places for them to drift apart."""
-    import inspect
     from pathlib import Path
     api = Path(__file__).resolve().parents[1]
     for name in ("models/invoices.py", "models/purchase_cycle.py",

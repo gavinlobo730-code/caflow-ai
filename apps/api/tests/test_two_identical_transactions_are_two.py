@@ -32,7 +32,6 @@ NO MIGRATION, WHICH THE FINDING SAID OTHERWISE
 """
 from __future__ import annotations
 
-import pytest
 
 from domain.banking.dedup import hash_rows, transaction_hash
 

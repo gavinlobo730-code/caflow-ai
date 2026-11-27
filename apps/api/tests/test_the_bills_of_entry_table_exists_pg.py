@@ -11,7 +11,6 @@ mode, where the in-memory double accepts anything.
 from __future__ import annotations
 
 import os
-import re
 import shutil
 import subprocess
 import uuid

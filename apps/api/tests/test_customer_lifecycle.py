@@ -12,7 +12,7 @@ import pytest
 from fastapi import HTTPException
 
 import routers.customers as cust
-from models.parties import CustomerIn, CustomerUpdateIn
+from models.parties import CustomerUpdateIn
 from tests.e2e_harness import FakeDB, wire_e2e
 
 FIRM = "FIRM-A"

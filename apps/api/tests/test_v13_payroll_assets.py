@@ -4,7 +4,6 @@ All financial calculations use integer paise arithmetic — no floating point.
 IT Act §192, EPF Act, ESI Act, Companies Act 2013 Schedule II.
 """
 import math
-import pytest
 from routers.payroll import (
     _compute_pf,
     _compute_esi,

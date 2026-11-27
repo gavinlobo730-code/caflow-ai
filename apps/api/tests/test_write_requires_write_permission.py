@@ -25,7 +25,7 @@ would be a test nobody could keep green honestly.
 """
 import pytest
 
-from core.permissions import PERMISSIONS, can
+from core.permissions import can
 
 
 READ_LEVEL = {"read"}

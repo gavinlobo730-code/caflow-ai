@@ -3,8 +3,7 @@ Single source of truth for all mock data.
 All pages and routers import from here — no duplicated mocks.
 All monetary values in paise (integer). Never float.
 """
-import uuid
-from datetime import date, timedelta
+from datetime import timedelta
 from core.ist_clock import ist_today
 from services.compliance_engine import enrich_compliance_task
 

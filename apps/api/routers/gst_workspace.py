@@ -12,7 +12,6 @@ import os
 import uuid
 import logging
 from datetime import datetime
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Annotated, Optional
 from uuid import UUID
 
@@ -549,7 +548,7 @@ def gst_dashboard(
                 "current_period": current_period,
             },
         })
-    except Exception as e:
+    except Exception:
         _logger.exception("gst_dashboard error")
         return api_response(False, None, "Unable to complete GST operation. Please try again.")
 
@@ -665,7 +664,7 @@ def list_returns(
         # The totals are the client's, not the page's: a screen that shows `limit` rows must be able to say "of N".
         return api_response(True, {"gstr1": _ranked(g1), "gstr3b": _ranked(g3b),
                                    "gstr1_total": n1, "gstr3b_total": n3b})
-    except Exception as e:
+    except Exception:
         return api_response(False, None, "Unable to complete GST operation. Please try again.")
 
 
@@ -756,7 +755,7 @@ def save_gstr1(
         # actionable message the CA needs — collapsing it into "Please try again" is
         # actively misleading, since retrying identical input will never succeed.
         raise
-    except Exception as e:
+    except Exception:
         return api_response(False, None, "Unable to complete GST operation. Please try again.")
 
 
@@ -862,7 +861,7 @@ def update_gstr1_status(
             )
         return api_response(True, _answered_with_the_obligation(
             current_user, "GSTR1", rec, body.status, filed_date, body.arn, _reg))
-    except Exception as e:
+    except Exception:
         return api_response(False, None, "Unable to complete GST operation. Please try again.")
 
 
@@ -988,7 +987,7 @@ def save_gstr3b(
         # actionable message the CA needs — collapsing it into "Please try again" is
         # actively misleading, since retrying identical input will never succeed.
         raise
-    except Exception as e:
+    except Exception:
         return api_response(False, None, "Unable to complete GST operation. Please try again.")
 
 
@@ -1008,7 +1007,7 @@ def get_gstr3b(return_id: str, current_user: dict = Depends(rbac("gst", "read"))
             return api_response(False, None, "Not found")
 
         return api_response(True, rec)
-    except Exception as e:
+    except Exception:
         return api_response(False, None, "Unable to complete GST operation. Please try again.")
 
 
@@ -1158,7 +1157,7 @@ def update_gstr3b_status(
         out = {**rec, "stale_at_submission": stale_state["differences"] if submitted_stale else None}
         return api_response(True, _answered_with_the_obligation(
             current_user, "GSTR3B", out, body.status, filed_date, body.arn, _reg))
-    except Exception as e:
+    except Exception:
         return api_response(False, None, "Unable to complete GST operation. Please try again.")
 
 
@@ -1197,7 +1196,7 @@ def filing_history(
 
         return api_response(True, {"gstr1_filed": _ranked(g1), "gstr3b_filed": _ranked(g3b),
                                    "gstr1_filed_total": n1, "gstr3b_filed_total": n3b})
-    except Exception as e:
+    except Exception:
         return api_response(False, None, "Unable to complete GST operation. Please try again.")
 
 

@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from typing import Optional
 from repositories.escalation_rule_repository import escalation_rule_repo
 from repositories.task_repository import task_repo

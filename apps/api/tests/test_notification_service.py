@@ -4,7 +4,6 @@ Verifies notification creation for task lifecycle events.
 """
 import pytest
 from services.notification_service import notification_service
-from repositories.notifications_repository import notifications_repo
 
 
 @pytest.fixture

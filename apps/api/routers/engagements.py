@@ -6,7 +6,6 @@ from core.permissions import rbac
 from core.authz import filter_by_client, assert_client_access, can_access_client
 from repositories.engagement_repository import engagement_repo
 from repositories.client_repository import client_repo
-from datetime import datetime, timezone
 from models.fy import OptionalFYLabel
 from core import db_provider
 from services import named_row_ownership

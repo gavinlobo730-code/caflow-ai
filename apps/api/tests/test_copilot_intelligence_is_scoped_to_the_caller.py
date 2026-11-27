@@ -29,7 +29,6 @@ the queries were narrowed. The scope is now part of the key.
 """
 from __future__ import annotations
 
-import asyncio
 
 import pytest
 

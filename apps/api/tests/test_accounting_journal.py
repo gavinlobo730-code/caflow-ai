@@ -4,7 +4,7 @@ CGST Act Section 2(59): ITC. IT Act Section 44AB: Tax Audit.
 All monetary values in paise (integer arithmetic).
 """
 import pytest
-from domain.accounting_service import AccountingService, MOCK_JOURNAL_ENTRIES, MOCK_ACCOUNTS
+from domain.accounting_service import AccountingService, MOCK_JOURNAL_ENTRIES
 
 
 svc = AccountingService()

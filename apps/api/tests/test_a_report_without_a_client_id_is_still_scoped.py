@@ -36,7 +36,6 @@ import ast
 import inspect
 import pathlib
 
-import pytest
 
 from domain.reporting import InMemoryLedgerSource
 from domain.reporting.model import Account, JournalEntry, JournalLine
