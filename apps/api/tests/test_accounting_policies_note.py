@@ -45,7 +45,7 @@ def db(monkeypatch):
     # from routers.year_end_notes; its OWN _USE_MOCK governs which branch it
     # takes, independently of this module's, so it has to be flipped here too
     # or the resolver reads the (empty) in-memory mock store instead of FakeDB.
-    # Same trap documented in test_r3_8_year_end_review_workflow.
+    # Same trap documented in test_the_year_end_review_workflow_is_reachable_and_locks_the_year.
     monkeypatch.setattr(year_end_mod, "_USE_MOCK", False)
     d.seed("clients", {"id": CLIENT, "firm_id": FIRM,
                        "entity_type": "Private Limited"})

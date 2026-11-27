@@ -24,7 +24,7 @@ with "permission denied" — and the service_role-backed backend path
 journal_entries predates migration 084 (assignment-scoped RLS) and carries
 a client_id column, so it ALSO gets an "AS RESTRICTIVE" can_access_client()
 policy requiring Partner (firm-wide) or an explicit assignment row — same
-subtlety documented in test_r3_1b_capital_gains_rls_pg.py (and, until
+subtlety documented in test_164_capital_gains_is_locked_down_pg.py (and, until
 migration 582 dropped the table, in a compliance_tasks twin of it). Using role='Partner' keeps this
 test focused on migration 171's actual fix.
 

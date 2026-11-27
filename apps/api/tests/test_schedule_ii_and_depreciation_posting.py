@@ -80,7 +80,7 @@ class _Resp:
 
 
 class _Q:
-    """Same shape and semantics as the fake in test_r232_fixed_asset_depreciation
+    """Same shape and semantics as the fake in test_fixed_asset_depreciation_is_charged_from_the_years_opening_value
     (the house pattern for this router), with the type check on every write."""
 
     def __init__(self, store, table):

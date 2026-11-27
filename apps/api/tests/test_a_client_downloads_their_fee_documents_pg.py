@@ -37,7 +37,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.test_r443_portal_client_reads_own_fee_documents_pg import (
+from tests.test_443_a_portal_client_reads_their_own_fee_documents_pg import (
     CUST1, EXT1, FIRM, INTERNAL_CLIENT, INVOICE_1, INVOICE_2, PARTNER_ID, PORTAL_AUTH_1, _SEED_SQL,
 )
 

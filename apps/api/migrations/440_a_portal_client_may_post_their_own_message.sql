@@ -74,7 +74,7 @@
 -- MCP") recreates the exact FOR ALL policy this migration exists to retire —
 -- reopening the bug once, silently, with no error and no later migration
 -- able to notice. Proven, not assumed:
--- tests/test_r294_columns_and_guards_pg.py::
+-- tests/test_294_the_columns_production_lacks_and_their_guards_pg.py::
 -- test_it_is_a_no_op_on_a_database_that_never_had_the_drift re-applies 294's
 -- own file directly against a fully-migrated database and failed against
 -- this migration's first draft, which dropped the name entirely.

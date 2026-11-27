@@ -10,7 +10,7 @@ All findings share the same root cause as task #230: a caller-supplied
 client_id/entity_id used in a write path without checking it belongs to the
 caller's own firm — the platform's established core.authz.assert_client_access
 guard was simply missing. Tests use the same core.authz enforcement-path
-fixture established in test_authz_engine.py / test_r230_cross_tenant_isolation.py.
+fixture established in test_authz_engine.py / test_billing_and_advance_tax_refuse_another_firms_client.py.
 """
 import pytest
 from fastapi import HTTPException

@@ -2,14 +2,14 @@
 
 FOUND BY A NEW TEST FAILING FOR SOMEBODY ELSE'S REASON.
 
-`tests/test_r232_fixed_asset_depreciation.py` did
+`tests/test_fixed_asset_depreciation_is_charged_from_the_years_opening_value.py` did
 
     fa_router._db = lambda: db
 
 eleven times, as a plain assignment. Plain assignment is not undone when the
 test ends, so from that module onwards EVERY test in the same process saw
-`routers.fixed_assets._db` returning test_r232's own database double — a
-different fake, with a different query builder, seeded with test_r232's rows.
+`routers.fixed_assets._db` returning test_fixed_asset_depreciation_is_charged_from_the_years_opening_value's own database double — a
+different fake, with a different query builder, seeded with test_fixed_asset_depreciation_is_charged_from_the_years_opening_value's rows.
 
 `tests/test_fixed_asset_disposal.py` did the same eleven more times, and two
 banking modules once each.
@@ -17,7 +17,7 @@ banking modules once each.
 Nothing failed, for two reasons. The tests that came after happened to patch
 `core.supabase_client.get_supabase` and reach the database a different way, or
 they happened to run BEFORE the leak alphabetically. Both are luck. The first
-test to want a real `create_asset` after `test_r232` — the Rule 43 one, FA-19
+test to want a real `create_asset` after `test_fixed_asset_depreciation_is_charged_from_the_years_opening_value` — the Rule 43 one, FA-19
 — died on `'_Q' object has no attribute 'like'`, which is another module's
 fake failing inside a third module's production code. That is an hour to
 diagnose and says nothing about the code under test.

@@ -206,7 +206,7 @@ def test_create_property_rejects_entity_owned_by_another_firm(monkeypatch):
 # because rbac("client", "read") is role-satisfied. list_loans/
 # section_185_report/list_properties/related_party_report accepted a
 # caller-supplied client_id and never called assert_client_access — proven
-# here the same way test_r231/test_r235 prove it's wired: reject a client_id
+# here the same way test_gst_saves_party_creation_and_relationships_refuse_another_firms_client and test_banking_scoping_settle_on_post_and_reconcile_races prove it's wired: reject a client_id
 # that (per the enforced fixture) doesn't resolve for the caller's firm.
 
 def test_list_loans_rejects_another_firms_client(enforced):
@@ -256,7 +256,7 @@ from tests.e2e_harness import FakeDB
 @pytest.fixture
 def enforced(monkeypatch):
     """Real (non-mock) client-ownership enforcement, same fixture pattern as
-    test_r231/test_r235: c1 belongs to Firm A, c-other belongs to Firm B."""
+    test_gst_saves_party_creation_and_relationships_refuse_another_firms_client and test_banking_scoping_settle_on_post_and_reconcile_races: c1 belongs to Firm A, c-other belongs to Firm B."""
     monkeypatch.setattr(authz, "_USE_MOCK", False)
 
     def fake_belongs(client_id, firm_id):

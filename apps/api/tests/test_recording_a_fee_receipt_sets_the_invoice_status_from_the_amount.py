@@ -5,7 +5,7 @@ apps/web/app/billing/page.tsx's "Record Receipt" flow used to insert directly
 into fee_receipts and force-set fee_invoices.status to "Paid" regardless of
 the amount entered. These tests cover the corrected logic against the
 mock-mode repo (real-Postgres RLS/RPC atomicity is proven separately in
-test_r3_9b_fee_receipt_atomic_pg.py).
+test_172_a_fee_receipt_is_recorded_atomically_pg.py).
 """
 import pytest
 from fastapi import HTTPException

@@ -1,7 +1,7 @@
 """
 R3.14 — health score persistence fix, mock/e2e-mode coverage.
 
-Companion to test_r3_14_health_scores_schema_pg.py (which proves the real
+Companion to test_169_the_health_score_tables_accept_the_routers_payload_pg.py (which proves the real
 Postgres schema now accepts the router's payload). This file covers the two
 pure-Python behaviour changes that a schema-only proof can't exercise:
   1. trend is now a genuinely computed signed delta against the previous
@@ -13,7 +13,7 @@ pure-Python behaviour changes that a schema-only proof can't exercise:
 Uses the FakeDB e2e harness. Note: FakeDB's upsert() is a plain insert (it
 does not implement ON CONFLICT dedup — see e2e_harness.py) — real upsert
 replace-in-place semantics on the (firm_id, client_id) key are proven against
-real Postgres in test_r3_14_health_scores_schema_pg.py instead. This file
+real Postgres in test_169_the_health_score_tables_accept_the_routers_payload_pg.py instead. This file
 isolates the trend arithmetic itself, by seeding an existing health_scores
 row directly and monkeypatching _calculate_scores_db for full determinism.
 """

@@ -935,7 +935,7 @@ class _Rpc:
         (trivially atomic in-memory — a real exception here would need to undo
         prior appends to be a faithful mirror, but no test exercises a
         mid-function failure path against this fake; that's proven for real
-        against Postgres in test_r2_12_atomic_receipt_settlement_pg.py).
+        against Postgres in test_a_receipt_posts_its_journal_row_and_allocations_in_one_transaction_pg.py).
         Unlike post_journal_atomic, this does NOT dedupe/return-existing on a
         matching reference — the real function doesn't either (R2.12: a
         genuine collision must roll back and surface as an error, not silently

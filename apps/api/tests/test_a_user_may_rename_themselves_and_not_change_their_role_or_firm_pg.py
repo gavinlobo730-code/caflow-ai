@@ -51,7 +51,7 @@ def _psql(dsn: str, sql: str) -> subprocess.CompletedProcess:
 
 def _as_user(dsn: str, sql: str) -> subprocess.CompletedProcess:
     """Simulates an authenticated PostgREST session — same technique as
-    test_r3_1b_capital_gains_rls_pg.py / test_r3_3_legacy_invoice_fixed_asset_rls_pg.py."""
+    test_164_capital_gains_is_locked_down_pg.py / test_166_the_legacy_invoice_and_fixed_asset_tables_are_locked_down_pg.py."""
     return _psql(
         dsn,
         f"SET request.jwt.claims = '{{\"sub\": \"{AUTH_UID}\"}}'; SET ROLE authenticated; {sql}",

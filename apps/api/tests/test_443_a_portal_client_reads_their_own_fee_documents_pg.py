@@ -15,7 +15,7 @@ WHY THIS FILE EXISTS ON TOP OF 440/441/442
 
 TWO LAYERS, LIKE THE SIBLING FILE FOR 442
     Layer 1 (raw SQL, `SET request.jwt.claims` + `SET ROLE authenticated` —
-    the technique test_r246_users_column_grant_pg.py established and every
+    the technique test_a_user_may_rename_themselves_and_not_change_their_role_or_firm_pg.py established and every
     sibling in this family reuses): each of the eight tables, on its own,
     before vs. after migration 443.
 

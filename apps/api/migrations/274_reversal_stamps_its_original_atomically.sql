@@ -252,7 +252,7 @@ $$;
 -- returning NULL from a BEFORE DELETE row trigger silently CANCELS the delete
 -- while reporting success. Both pre-266 versions ended in a bare RETURN NEW,
 -- which made deleting a draft a no-op from 055 until 266 returned OLD on that
--- path. tests/test_r266_journal_edit_until_locked_pg.py pins it, and caught
+-- path. tests/test_266_a_posted_journal_may_be_corrected_until_the_period_closes_pg.py pins it, and caught
 -- this exact regression in a first draft of this migration.
 CREATE OR REPLACE FUNCTION public.prevent_posted_journal_modification()
 RETURNS TRIGGER LANGUAGE plpgsql

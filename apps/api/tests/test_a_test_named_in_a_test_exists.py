@@ -13,7 +13,7 @@ THE RULE
     Every `test_...` token in a file under `tests/` resolves to a test file's name or to a name defined somewhere in the
     tests (a function, a class, an assigned name, an argument, an import), read with `ast`. Read on purpose:
       * `test_x.py` must be a test FILE; `test_x.pdf` (or any other extension) is data and is skipped;
-      * `test_x*`, `test_x...` and `test_x…` are prefixes, as is a numbered family (`test_262`, `test_r231`);
+      * `test_x*`, `test_x...` and `test_x…` are prefixes, as is a numbered family (`test_262`, `test_549`);
       * `test_x` where `test_x_pg.py` exists is the same file under its Postgres name;
       * a name broken across two comment lines (`test_a_rate_of_zero_is` / `# _honoured`) is read joined, and one that ends
         in an underscore (broken across two string literals or lines some other way) is read as the start of a name;

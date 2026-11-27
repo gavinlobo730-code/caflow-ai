@@ -24,7 +24,7 @@ import pytest
 from reportlab.pdfgen import canvas
 
 import routers.document_intelligence_v1 as mod
-from tests.test_r2_8_ai_extraction import PARTNER_A, _client_for
+from tests.test_ai_extraction_does_not_fabricate_data_or_persist_mock_notices import PARTNER_A, _client_for
 
 READING = {
     "vendor_name": "Scanned Vendor", "vendor_gstin": None, "invoice_no": "SC-1",

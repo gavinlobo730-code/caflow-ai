@@ -55,7 +55,7 @@ from fastapi import HTTPException
 
 from models.invoices import BillFromDocumentIn
 from models.parties import VendorIn
-import tests.test_r237_ar_ap_hardening as H
+import tests.test_receivables_and_payables_resolve_a_party_of_the_same_client as H
 
 CALLER = H.CALLER
 FIRM = H.FIRM

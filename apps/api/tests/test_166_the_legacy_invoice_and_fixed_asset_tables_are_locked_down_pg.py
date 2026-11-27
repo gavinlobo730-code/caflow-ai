@@ -19,7 +19,7 @@ the service_role-backed backend path (the only remaining real mutation
 path for fixed_assets) is unaffected.
 
 Simulates an authenticated PostgREST session the same way
-test_r3_1b_capital_gains_rls_pg.py does: `SET request.jwt.claims` + `SET
+test_164_capital_gains_is_locked_down_pg.py does: `SET request.jwt.claims` + `SET
 ROLE authenticated` in one psql session.
 
 Runs only when HARNESS_PG is set + psql on PATH; skips in the mock-mode CI
@@ -80,7 +80,7 @@ def seeded(migrated_db):
     # have a client_id column, so they ALSO carry an "AS RESTRICTIVE"
     # can_access_client() policy requiring Partner (firm-wide) or an
     # explicit user_client_assignments row -- same subtlety documented in
-    # test_r3_1b_capital_gains_rls_pg.py. Using role='Partner' keeps this
+    # test_164_capital_gains_is_locked_down_pg.py. Using role='Partner' keeps this
     # test focused on R3.3's actual fix (SELECT allowed, writes denied).
     dsn = migrated_db
     firm1 = str(uuid.uuid4())

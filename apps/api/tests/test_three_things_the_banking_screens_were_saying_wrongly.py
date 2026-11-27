@@ -33,7 +33,7 @@ BANK-29 — a row that carries a BALANCE and no movement became a transaction.
     on both legs) and the correction everywhere else. See
     `test_a_statement_with_no_balance_row_backs_out_the_first_rows_own_movement`
     below and `TestOpeningClosingBalanceBacksOutTheFirstRowsOwnMovement` in
-    `test_r2_11_bank_parser_hardening.py`.
+    `test_bank_statement_parser_dr_cr_suffix_signed_amount_and_opening_balance.py`.
 
 BANK-12 — deleting a bank rule erased why lines posted.
     The docstring said a rule "has never written anything to the ledger". That

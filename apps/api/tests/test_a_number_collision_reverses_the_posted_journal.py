@@ -9,7 +9,7 @@ reintroduced the exact "phantom journal, no sub-ledger row" bug class F7
 fixed for the allocation step — just one step earlier, at the insert itself.
 
 Runs everywhere (mock-mode style, no real database — the real-Postgres
-proof of the constraint itself lives in test_r2_9_document_numbering_pg.py).
+proof of the constraint itself lives in test_debit_note_receipt_and_payment_numbers_are_unique_pg.py).
 A raising fake DB/table stands in for the unique-constraint violation
 Postgres would raise.
 """

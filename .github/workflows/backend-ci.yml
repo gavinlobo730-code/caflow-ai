@@ -366,7 +366,7 @@ jobs:
 
       # Full requirements, not just pytest. The glob below collects every
       # tests/test_*_pg.py, and such a test may legitimately import application
-      # code — test_r3_14_health_scores_schema_pg.py imports routers.health to
+      # code — test_169_the_health_score_tables_accept_the_routers_payload_pg.py imports routers.health to
       # check the Python scoring against the DB schema it asserts on. A
       # module-level import like that runs at COLLECTION time, so a
       # pytest.mark.skipif on the module cannot protect it: with only pytest
