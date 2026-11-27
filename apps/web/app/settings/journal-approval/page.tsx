@@ -73,7 +73,7 @@ export default function JournalApprovalPage() {
         <PageHeader
           icon={<ClipboardCheck size={17} className="text-brand" />}
           title="Journal approval"
-          subtitle="Whether a Partner approves every manual journal before it reaches a client's books."
+          subtitle="Whether every manual journal waits for someone who may approve journal entries before it reaches a client's books."
         />
 
         {/* The box below is switched off by the server's own answer (`may_change_setting`, the same pair); this says why. */}
@@ -92,7 +92,7 @@ export default function JournalApprovalPage() {
               <input type="checkbox" className="mt-1" checked={on} disabled={saving || !rule.may_change_setting}
                      onChange={(e) => change(e.target.checked)} />
               <span>
-                <span className="font-medium">A Partner approves every manual journal</span>
+                <span className="font-medium">Every manual journal needs approval</span>
                 <span className="block text-xs text-ps-label mt-1">
                   {on
                     ? "On. Only someone who may approve journal entries posts a manual journal, posts a saved draft, or corrects or deletes an entry on the books. Everyone else saves a draft, which waits in each client's Approvals tab."

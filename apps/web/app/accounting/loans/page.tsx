@@ -573,7 +573,7 @@ export default function LoansAndFDPage() {
                 className="py-12"
                 icon={<TrendingDown size={40} />}
                 title="No loans recorded yet"
-                description="Press Add Loan at the top of the page to record a client's borrowing. An Executive, Manager or Partner can add one; a Reviewer reads them."
+                description="Press Add Loan at the top of the page to record a client's borrowing."
               />
             ) : (
               <div className="overflow-x-auto">
@@ -782,7 +782,7 @@ export default function LoansAndFDPage() {
                 className="py-12"
                 icon={<Landmark size={40} />}
                 title="No fixed deposits recorded yet"
-                description="Press Add FD at the top of the page to record a client's deposit. An Executive, Manager or Partner can add one; a Reviewer reads them."
+                description="Press Add FD at the top of the page to record a client's deposit."
               />
             ) : (
               <div className="overflow-x-auto">

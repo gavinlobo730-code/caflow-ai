@@ -276,11 +276,11 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
           A rule watches for lines that match its conditions and <strong>proposes</strong> how to book
           them — the proposal shows on the line in Entries, ready to pass. A rule marked{" "}
           <strong>trusted</strong> goes one step further: its lines are passed with no click, after each
-          import and in the daily sweep, as journals created by whoever trusted it. Only a Manager or
-          Partner can trust a rule, and any of its entries can be undone. A trusted rule passes only while
+          import and in the daily sweep, as journals created by whoever trusted it. Only someone with
+          Banking approval can trust a rule, and any of its entries can be undone. A trusted rule passes only while
           the person who trusted it can still let it: if they leave the client, are suspended or lose the
           Banking approval the rule shows as <strong>waiting</strong>, its lines stay ready for someone to
-          pass, and a Manager or Partner can trust it again. When two rules match, the{" "}
+          pass, and someone with Banking approval can trust it again. When two rules match, the{" "}
           <strong>older one wins</strong>, so write the specific rules before the broad ones.
         </p>
       </div>
@@ -500,7 +500,7 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
                   )}
                   {r.is_trusted && r.trusted_waiting && (
                     <span className="inline-flex items-center gap-1 text-3xs px-1.5 py-0.5 rounded-full bg-state-attention-surface text-state-attention border border-state-attention-border"
-                      title={r.trusted_waiting_reason ?? "Waiting for a Manager or Partner to trust it again"}>
+                      title={r.trusted_waiting_reason ?? "Waiting for someone with Banking approval to trust it again"}>
                       <ShieldAlert size={10} /> Trusted — waiting
                     </span>
                   )}
@@ -519,7 +519,7 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <Can resource="banking" action="approve"
-                  fallback={r.is_trusted ? <span className="text-3xs text-ps-hint" title="Only a Manager or Partner can change this">trusted</span> : null}>
+                  fallback={r.is_trusted ? <span className="text-3xs text-ps-hint" title="Only someone with Banking approval can change this">trusted</span> : null}>
                   {r.is_active && (
                     <Button variant="plain" size="none" onClick={() => trust(r, !r.is_trusted)} disabled={busy[r.id] || (!r.is_trusted && !r.suggested_account_id)}
                       title={!r.is_trusted && !r.suggested_account_id ? "Give the rule a ledger first" : r.is_trusted ? "Stop it passing on its own" : "Let it pass its lines without a click"}

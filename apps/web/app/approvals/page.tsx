@@ -133,7 +133,7 @@ export default function ApprovalsPage() {
       <PageHeader
         icon={<ShieldCheck size={18} className="text-brand" />}
         title="Approvals"
-        subtitle="A Partner approves or rejects requests here: a member of staff asking for access to a part of the product, or a request to reset a lost authenticator app. Every decision is recorded in the audit log."
+        subtitle="Requests wait here for someone who may approve them: a member of staff asking for access to a part of the product, or a request to reset a lost authenticator app. Every decision is recorded in the audit log."
         className="mb-4"
       />
 

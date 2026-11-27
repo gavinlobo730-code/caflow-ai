@@ -252,7 +252,7 @@ function monthState(c: ClientMonthState): {
     return {
       label: "Not run", className: "bg-ps-muted text-ps-label",
       // Names the control that exists — the Setup tab has no switch.
-      note: "Payroll is switched off for this client. A Partner turns it on from the client's Payroll page (Switch on, under the Payroll heading).",
+      note: "Payroll is switched off for this client. Someone who may switch payroll on does it from the client's Payroll page (Switch on, under the Payroll heading).",
       needsWork: false,
     };
   }
@@ -351,7 +351,7 @@ function MonthQueueTab({ month, onMonthChange, clients }: {
             </div>
           ) : rows.length === 0 ? (
             <p className="text-center text-ps-hint py-12 text-sm">
-              No client has payroll switched on. A Partner turns it on from a
+              No client has payroll switched on. Someone who may switch payroll on does it from a
               client&apos;s Payroll page (Switch on, under the Payroll heading).
             </p>
           ) : (
