@@ -1450,7 +1450,7 @@ def _at_response(estimated_tax_paise: int, req_installments: list[AdvanceTaxInst
         # An income outside the year, or a kind the proviso does not name, is a
         # refusal the CA reads — never a clamp, because a misdated gain moves
         # the whole answer.
-        raise HTTPException(status_code=422, detail=str(exc))
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {
         "fy": fy,
         "estimated_tax_paise": estimated_tax_paise,
@@ -1676,8 +1676,8 @@ class ComputeSection234ABRequest(BaseModel):
             return None
         try:
             date.fromisoformat(v[:10])
-        except ValueError:
-            raise ValueError("dates must be ISO YYYY-MM-DD")
+        except ValueError as _cause:
+            raise ValueError("dates must be ISO YYYY-MM-DD") from _cause
         return v[:10]
 
 
@@ -2494,7 +2494,7 @@ def msme_section_43bh(
             db, current_user["firm_id"], client_id, fy,
             bank_rate_bps=bank_rate_bps))
     except MSME43BHError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
 
 @router.get("/section-32")

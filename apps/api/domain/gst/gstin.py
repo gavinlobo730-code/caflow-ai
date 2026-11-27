@@ -86,8 +86,8 @@ def checksum_char(first_fourteen: str) -> str:
     for i, ch in enumerate(first_fourteen):
         try:
             value = ALPHABET.index(ch)
-        except ValueError:
-            raise ValueError(f"{ch!r} is not a GSTIN character")
+        except ValueError as _cause:
+            raise ValueError(f"{ch!r} is not a GSTIN character") from _cause
         # Weights alternate 1, 2, 1, 2 … starting at 1 for the first character.
         product = value * (2 if i % 2 else 1)
         total += product // len(ALPHABET) + product % len(ALPHABET)

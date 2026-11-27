@@ -56,8 +56,8 @@ def _journal():
 def _a_date(value: str, what: str) -> str:
     try:
         date.fromisoformat(str(value)[:10])
-    except Exception:
-        raise ValueError(f"{what} must be a date, as YYYY-MM-DD.")
+    except Exception as _cause:
+        raise ValueError(f"{what} must be a date, as YYYY-MM-DD.") from _cause
     return str(value)[:10]
 
 
@@ -210,9 +210,9 @@ def get_schedules(
     as_of = query_day(as_of, "as_of", required=True)
     try:
         when = date.fromisoformat(as_of[:10])
-    except Exception:
+    except Exception as _cause:
         raise HTTPException(status_code=422,
-                            detail="The reporting date must be YYYY-MM-DD.")
+                            detail="The reporting date must be YYYY-MM-DD.") from _cause
     if _mock_enabled():
         # The DOMAIN's empty answer, not a hand-written stub: the bucket
         # order, the row labels and the caveat are what a screen renders, and

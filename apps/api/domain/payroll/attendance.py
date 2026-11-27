@@ -117,9 +117,9 @@ def _whole_number(raw, field: str, who: str) -> int:
         raise AttendanceError(f"{who}: {field} must be a whole number of days.")
     try:
         value = int(str(raw).strip())
-    except (TypeError, ValueError):
+    except (TypeError, ValueError) as _cause:
         raise AttendanceError(
-            f"{who}: {field} must be a whole number of days, got {raw!r}.")
+            f"{who}: {field} must be a whole number of days, got {raw!r}.") from _cause
     if value < 0:
         raise AttendanceError(f"{who}: {field} cannot be negative.")
     return value

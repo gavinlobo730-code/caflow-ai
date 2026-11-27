@@ -76,7 +76,7 @@ def create_sync_job(
         )
         return api_response(True, job)
     except Exception as e:
-        raise HTTPException(500, detail=str(e))
+        raise HTTPException(500, detail=str(e)) from e
 
 
 @router.post("/sync-jobs/{job_id}/run")
@@ -118,7 +118,7 @@ def run_sync_job(
         )
         return api_response(True, result)
     except Exception as e:
-        raise HTTPException(500, detail=str(e))
+        raise HTTPException(500, detail=str(e)) from e
 
 
 @router.get("/sync-jobs")
@@ -151,7 +151,7 @@ def save_manual_snapshot(
         )
         return api_response(True, snap)
     except Exception as e:
-        raise HTTPException(500, detail=str(e))
+        raise HTTPException(500, detail=str(e)) from e
 
 
 @router.get("/snapshots")

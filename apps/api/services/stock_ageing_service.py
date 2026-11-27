@@ -53,9 +53,9 @@ def _as_of(as_of: Optional[str]) -> str:
     text = str(as_of)[:10]
     try:
         date.fromisoformat(text)
-    except ValueError:
+    except ValueError as _cause:
         raise HTTPException(status_code=422,
-                            detail=f"as_of must be YYYY-MM-DD, got {as_of!r}")
+                            detail=f"as_of must be YYYY-MM-DD, got {as_of!r}") from _cause
     return text
 
 

@@ -363,10 +363,10 @@ def create_snapshot(
             raise HTTPException(409, detail=(
                 f"Another computation snapshot for FY {req.financial_year} was "
                 f"saved at the same moment, so this one was not. Save again to "
-                f"record it as the next version."))
+                f"record it as the next version.")) from e
         status, sentence = _database_refusal(
             e, action="save the computation snapshot")
-        raise HTTPException(status, detail=sentence)
+        raise HTTPException(status, detail=sentence) from e
 
 
 class SeasonComputeRequest(BaseModel):
@@ -454,7 +454,7 @@ def review_snapshot(
         )
         return api_response(True, result)
     except Exception as e:
-        raise HTTPException(500, detail=str(e))
+        raise HTTPException(500, detail=str(e)) from e
 
 
 # ── ITR Filings ───────────────────────────────────────────────────────────────
@@ -528,7 +528,7 @@ def create_filing(
     except ValueError as e:
         # `validated_form` refuses an unknown form with a sentence naming the
         # seven. A 500 would hide it behind "something went wrong".
-        raise HTTPException(400, detail=str(e))
+        raise HTTPException(400, detail=str(e)) from e
     except HTTPException:
         raise
     except Exception as e:
@@ -543,9 +543,9 @@ def create_filing(
             form = str(req.itr_form or "").strip().upper() or "ITR"
             raise HTTPException(409, detail=(
                 f"An original {form} for FY {req.financial_year} already exists "
-                f"for this client — open it, or create a revised return."))
+                f"for this client — open it, or create a revised return.")) from e
         status, sentence = _database_refusal(e, action="create the ITR filing")
-        raise HTTPException(status, detail=sentence)
+        raise HTTPException(status, detail=sentence) from e
 
 
 @router.get("/forms")
@@ -623,8 +623,8 @@ def list_return_kinds(
     if furnished_on:
         try:
             when = _date.fromisoformat(str(furnished_on)[:10])
-        except ValueError:
-            raise HTTPException(422, detail="furnished_on must be YYYY-MM-DD.")
+        except ValueError as _cause:
+            raise HTTPException(422, detail="furnished_on must be YYYY-MM-DD.") from _cause
         result = RT.additional_tax(assessment_year, when, tax_paise, interest_paise)
         additional_tax = {
             "furnished_on": result.furnished_on,
@@ -806,9 +806,9 @@ def transition_filing(
             )
         return api_response(True, result)
     except ValueError as e:
-        raise HTTPException(400, detail=str(e))
+        raise HTTPException(400, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(500, detail=str(e))
+        raise HTTPException(500, detail=str(e)) from e
 
 
 @router.post("/filings/{filing_id}/versions")
@@ -829,9 +829,9 @@ def save_version(
         )
         return api_response(True, ver)
     except ValueError as e:
-        raise HTTPException(404, detail=str(e))
+        raise HTTPException(404, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(500, detail=str(e))
+        raise HTTPException(500, detail=str(e)) from e
 
 
 def _filed_after_the_year_it_declares(financial_year: Optional[str], filing_date: str) -> None:
@@ -977,9 +977,9 @@ def record_acknowledgement(
         # The state-machine refusal (IT-23): a draft cannot be marked filed,
         # and an already-filed return cannot be silently re-acknowledged. Both
         # are the CA's to see, not a 500.
-        raise HTTPException(400, detail=str(e))
+        raise HTTPException(400, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(500, detail=str(e))
+        raise HTTPException(500, detail=str(e)) from e
 
 
 # ── Disallowances ─────────────────────────────────────────────────────────────
@@ -1015,7 +1015,7 @@ def create_disallowance(
         )
         return api_response(True, result)
     except Exception as e:
-        raise HTTPException(500, detail=str(e))
+        raise HTTPException(500, detail=str(e)) from e
 
 
 @router.get("/disallowances")
@@ -1085,7 +1085,7 @@ def create_deduction(
         )
         return api_response(True, result)
     except Exception as e:
-        raise HTTPException(500, detail=str(e))
+        raise HTTPException(500, detail=str(e)) from e
 
 
 @router.get("/deductions")
@@ -1148,7 +1148,7 @@ def create_bf_loss(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(500, detail=str(e))
+        raise HTTPException(500, detail=str(e)) from e
 
 
 @router.get("/loss-types")

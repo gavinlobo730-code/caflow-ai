@@ -80,7 +80,7 @@ def create_upload(
         )
         return api_response(True, upload)
     except Exception as e:
-        raise HTTPException(500, detail=str(e))
+        raise HTTPException(500, detail=str(e)) from e
 
 
 @router.post("/uploads/{upload_id}/parse")
@@ -139,7 +139,7 @@ def parse_upload(
         raise
     except Exception as e:
         _logger.exception("Parse failed")
-        raise HTTPException(500, detail=str(e))
+        raise HTTPException(500, detail=str(e)) from e
 
 
 @router.get("/uploads")
@@ -223,7 +223,7 @@ def run_reconciliation(
         return api_response(True, {**result, "ca_review_required": True})
     except Exception as e:
         _logger.exception("Reconciliation failed")
-        raise HTTPException(500, detail=str(e))
+        raise HTTPException(500, detail=str(e)) from e
 
 
 @router.get("/claimable")

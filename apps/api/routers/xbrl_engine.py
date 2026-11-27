@@ -87,7 +87,7 @@ def create_package(
     except UnknownTaxonomy as e:
         raise HTTPException(422, detail=str(e)) from None
     except Exception as e:
-        raise HTTPException(500, detail=str(e))
+        raise HTTPException(500, detail=str(e)) from e
 
 
 @router.get("/packages")
@@ -140,7 +140,7 @@ def update_package_data(
         )
         return api_response(True, result)
     except Exception as e:
-        raise HTTPException(500, detail=str(e))
+        raise HTTPException(500, detail=str(e)) from e
 
 
 @router.post("/packages/{package_id}/validate")
@@ -177,7 +177,7 @@ def validate_package(
     except UnknownTaxonomy as e:
         raise HTTPException(422, detail=str(e)) from None
     except Exception as e:
-        raise HTTPException(500, detail=str(e))
+        raise HTTPException(500, detail=str(e)) from e
 
 
 @router.post("/packages/{package_id}/generate-xml")
@@ -208,9 +208,9 @@ def generate_xml(
     except UnknownTaxonomy as e:
         raise HTTPException(422, detail=str(e)) from None
     except ValueError as e:
-        raise HTTPException(400, detail=str(e))
+        raise HTTPException(400, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(500, detail=str(e))
+        raise HTTPException(500, detail=str(e)) from e
 
 
 @router.post("/packages/{package_id}/review")

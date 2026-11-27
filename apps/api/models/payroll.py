@@ -1080,8 +1080,8 @@ class ApplyStructureIn(BaseModel):
         from datetime import date as _date
         try:
             _date.fromisoformat(s)
-        except ValueError:
-            raise ValueError(f"{s!r} is not a real date.")
+        except ValueError as _cause:
+            raise ValueError(f"{s!r} is not a real date.") from _cause
         return s
 
 

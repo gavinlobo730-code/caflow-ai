@@ -127,7 +127,7 @@ class PeriodValidationService:
                     "Could not verify the financial-year lock status. "
                     "The posting was blocked to protect closed periods — please retry."
                 ),
-            )
+            ) from exc
 
     def validate_posting_date_cached(self, firm_id: str, date_str: str, cache: Optional[dict]) -> None:
         """Same guarantee as validate_posting_date, memoized per (firm's) FY

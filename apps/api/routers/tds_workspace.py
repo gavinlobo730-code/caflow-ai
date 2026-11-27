@@ -782,9 +782,9 @@ def _resolve_manual_deduction(db, firm_id: str, client_id: str, body: dict,
     section = (body.get("section") or "").upper().strip()
     try:
         when = _date.fromisoformat(str(body.get("transaction_date"))[:10])
-    except ValueError:
+    except ValueError as _cause:
         raise HTTPException(status_code=422,
-                            detail="transaction_date must be YYYY-MM-DD")
+                            detail="transaction_date must be YYYY-MM-DD") from _cause
     taxable = int(body.get("payment_amount_paise") or 0)
 
     # ASKED BEFORE THE ENGINE, NOT AFTER IT FAILS. This question used to be put only when `resolve_tds` raised, and two of the
@@ -850,7 +850,7 @@ def _resolve_manual_deduction(db, firm_id: str, client_id: str, body: dict,
         except ValueError as ve:
             # The registry's own words, for what the question above does not name (section 195 is not in the resident registry and has
             # its own module).
-            raise HTTPException(status_code=422, detail=str(ve))
+            raise HTTPException(status_code=422, detail=str(ve)) from ve
         due, applies, rate_bps = res.tds_paise, res.applies, res.rate_bps
         why, is_lower, cert_no, reason = None, False, None, getattr(res, "reason", None)
         # WHOSE YEAR IT WAS: the typed deductions for its PAN that name no supplier (said with the pick it lacks), or, with no usable PAN
@@ -1267,12 +1267,12 @@ def deposit_due(
         try:
             year, mon = (int(part) for part in month.split("-", 1))
             date(year, mon, 1)                  # a month that does not exist is a ValueError
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as _cause:
             raise HTTPException(
                 status_code=422,
                 detail=(f"{month!r} is not a month. Expected YYYY-MM — the "
                         "month the tax was DEDUCTED in, which is what Rule "
-                        "30(2)'s seventh-of-the-following-month runs from."))
+                        "30(2)'s seventh-of-the-following-month runs from.")) from _cause
 
         # What was deposited is the challan register's answer for the quarter the month is in; the reads and the match are
         # `services/tds_deposit_worksheet_service`, which the obligation closer asks as well.
@@ -1980,7 +1980,7 @@ def create_return(
             raise HTTPException(status_code=409, detail=(
                 f"{label} for {body.quarter} FY {body.financial_year} was saved "
                 f"by another request at the same moment. Reload the returns "
-                f"and save again to revise it."))
+                f"and save again to revise it.")) from e
         spoken = unhandled_failure(e)
         return api_response(False, None, spoken[1] if spoken else (
             f"Could not save {label} for {body.quarter} FY "

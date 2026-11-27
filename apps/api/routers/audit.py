@@ -53,7 +53,7 @@ def get_audit_log(
             cursor=cursor, limit=limit))
     except audit_query.AuditQueryRefused as e:
         # A refusal names what to do next, so it is shown as written.
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:                                       # noqa: BLE001
         return api_response(False, None, str(e))
 
@@ -81,6 +81,6 @@ def get_entity_history(
             entity_type=entity_type, entity_id=entity_id,
             cursor=cursor, limit=limit))
     except audit_query.AuditQueryRefused as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:                                       # noqa: BLE001
         return api_response(False, None, str(e))

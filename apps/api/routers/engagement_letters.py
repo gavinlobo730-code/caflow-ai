@@ -1784,8 +1784,8 @@ def change_recipient(
     try:
         from email_validator import validate_email as _ve
         _ve(new_email, check_deliverability=False)
-    except Exception:
-        raise HTTPException(status_code=422, detail=f"Invalid email address: {new_email}")
+    except Exception as _cause:
+        raise HTTPException(status_code=422, detail=f"Invalid email address: {new_email}") from _cause
 
     if not db:
         eng = next((e for e in _MOCK_ENGAGEMENTS

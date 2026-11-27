@@ -67,7 +67,7 @@ def _window(db, firm_id: str, client_id: str, period: str,
     try:
         window = return_period.resolve(period, registration.filing_frequency)
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
     return registration, window
 
 
@@ -132,7 +132,7 @@ def put_opening(
         balance = ledger.CreditBalance(body.igst_paise, body.cgst_paise,
                                        body.sgst_paise, body.cess_paise)
     except ledger.CreditLedgerError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
     note = (body.note or "").strip() or None
     written = service.record_opening(
         db, firm_id=firm_id, client_id=body.client_id, gstin=registration.gstin,

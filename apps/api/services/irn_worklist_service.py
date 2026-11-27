@@ -61,8 +61,8 @@ def _since(as_at: date, since: Optional[str]) -> str:
     if since:
         try:
             asked = date.fromisoformat(str(since)[:10])
-        except ValueError:
-            raise ValueError("`since` must be a date as YYYY-MM-DD.")
+        except ValueError as _cause:
+            raise ValueError("`since` must be a date as YYYY-MM-DD.") from _cause
     return (asked or as_at - timedelta(days=wl.DEFAULT_LOOKBACK_DAYS)).isoformat()
 
 

@@ -62,8 +62,8 @@ def parse_splits(raw: Iterable[dict]) -> list[Split]:
             raise SplitError(f"Split {i + 1} has no account selected.")
         try:
             amount = int(r.get("amount_paise"))
-        except (TypeError, ValueError):
-            raise SplitError(f"Split {i + 1} has no amount.")
+        except (TypeError, ValueError) as _cause:
+            raise SplitError(f"Split {i + 1} has no amount.") from _cause
         narration = r.get("narration")
         out.append(Split(account_id, amount,
                          str(narration).strip() if narration else None))

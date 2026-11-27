@@ -119,8 +119,8 @@ def email_statement(
     try:
         from email_validator import validate_email as _ve
         _ve(to_email, check_deliverability=False)
-    except Exception:
-        raise HTTPException(status_code=422, detail=f"Invalid email address: {to_email}")
+    except Exception as _cause:
+        raise HTTPException(status_code=422, detail=f"Invalid email address: {to_email}") from _cause
 
     delivery_id = customer_statement_service.record_delivery(
         db, firm_id, data.client_id, data.customer_id, data.start_date, data.end_date,

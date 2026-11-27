@@ -123,8 +123,8 @@ def resolve_document_currency(
     if overridden:
         try:
             rate = Decimal(str(exchange_rate))
-        except (InvalidOperation, ValueError, TypeError):
-            raise HTTPException(status_code=422, detail="Invalid exchange rate.")
+        except (InvalidOperation, ValueError, TypeError) as _cause:
+            raise HTTPException(status_code=422, detail="Invalid exchange rate.") from _cause
         source = "manual-override"
     else:
         svc = rate_service
@@ -134,10 +134,10 @@ def resolve_document_currency(
         from domain.currency import RateNotFound
         try:
             quote = svc.get_quote(req, BASE_CURRENCY, _date.fromisoformat(r_date), DEFAULT_RATE_TYPE)
-        except RateNotFound:
+        except RateNotFound as _cause:
             raise HTTPException(status_code=422, detail=(
                 f"No exchange rate available for {req}->{BASE_CURRENCY} on {r_date}. "
-                "Record the rate first or enter it manually."))
+                "Record the rate first or enter it manually.")) from _cause
         rate = quote.rate
         source = quote.source
 

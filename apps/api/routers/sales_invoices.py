@@ -474,7 +474,7 @@ def next_invoice_number(
         # An unparseable invoice_date. The FY cannot be decided, so neither can
         # the series — say so rather than silently answering for today, which is
         # the exact substitution SALES-24 was about.
-        raise HTTPException(status_code=422, detail=f"Invalid invoice date: {e}")
+        raise HTTPException(status_code=422, detail=f"Invalid invoice date: {e}") from e
     typed = (invoice_no or "").strip()
     answer["format_problem"] = invoice_series.format_violation(typed) if typed else None
     answer["sequence_warning"] = (
@@ -955,7 +955,7 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
             document_amount_paise=data.get("discount_paise"),
         )
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
     total_discount_paise = 0
 
@@ -1286,7 +1286,7 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
         raise
     except Exception as e:
         if is_unique_violation(e):
-            raise HTTPException(status_code=409, detail=f"Invoice number '{invoice_no}' already exists for this client.")
+            raise HTTPException(status_code=409, detail=f"Invoice number '{invoice_no}' already exists for this client.") from e
         raise
     invoice_id = invoice.get("id", str(uuid.uuid4()))
 
@@ -1968,7 +1968,7 @@ def update_invoice(
                     document_amount_paise=_doc_amt,
                 )
             except ValueError as e:
-                raise HTTPException(status_code=422, detail=str(e))
+                raise HTTPException(status_code=422, detail=str(e)) from e
 
             for ln, _d in zip(data["lines"], _discounts):
                 qty          = ln.get("quantity", 1)
@@ -2845,10 +2845,10 @@ def download_sales_invoice_pdf(
     try:
         pdf_bytes, filename = get_sales_invoice_pdf(invoice_id, firm_id)
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
     except Exception as e:
         _logger.error("download_sales_invoice_pdf %s: %s", invoice_id, e)
-        raise HTTPException(status_code=500, detail="PDF generation failed")
+        raise HTTPException(status_code=500, detail="PDF generation failed") from e
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -2904,8 +2904,8 @@ def _do_send_invoice(invoice_id: str, body: _SendInvoiceBody, current_user: dict
     try:
         from email_validator import validate_email as _ve
         _ve(to_email, check_deliverability=False)
-    except Exception:
-        raise HTTPException(status_code=422, detail=f"Invalid email address: {to_email}")
+    except Exception as _cause:
+        raise HTTPException(status_code=422, detail=f"Invalid email address: {to_email}") from _cause
 
     # 5. Create delivery record (status=sending)
     delivery = (
@@ -2932,7 +2932,7 @@ def _do_send_invoice(invoice_id: str, body: _SendInvoiceBody, current_user: dict
             "status":        "failed",
             "error_message": f"PDF generation failed: {str(e)[:200]}",
         }).eq("id", delivery_id).execute()
-        raise HTTPException(status_code=500, detail="PDF generation failed")
+        raise HTTPException(status_code=500, detail="PDF generation failed") from e
 
     # 7. WHOSE INVOICE THIS IS, for the email body.
     #

@@ -94,7 +94,7 @@ def get_client_health(client_id: str, current_user: dict = Depends(rbac("complia
         )
         return api_response(True, health)
     except NotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
 
 @router.get("/{record_id}")
@@ -105,7 +105,7 @@ def get_compliance_record(record_id: str, current_user: dict = Depends(rbac("com
         assert_client_access(current_user, record.get("client_id"))
         return api_response(True, record)
     except NotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
 
 @router.patch("/{record_id}")
@@ -130,7 +130,7 @@ def update_compliance_record(record_id: str, data: ComplianceRecordUpdateIn, cur
         record.pop("filing_lock", None)
         return api_response(True, record)
     except NotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
     except ValidationError as e:
         # The sentence as written, as the obligation doors say it (POST-A-392): `str(e)` puts "Validation error on filed_date:"
         # in front of it.

@@ -487,7 +487,7 @@ def set_member_permissions(user_id: str, body: PermissionChangesBody,
     except PermissionWriteRefused as e:
         # 422 rather than 400: the request is well-formed and the firm is not
         # allowed to make this change, which is what the screen has to explain.
-        raise HTTPException(422, str(e))
+        raise HTTPException(422, str(e)) from e
     # Audited like every other mutation in this router, and for a stronger
     # reason: who may do what is the record an ICAI peer review asks for.
     log_event(current_user["firm_id"], "user_permissions", user_id, "update",

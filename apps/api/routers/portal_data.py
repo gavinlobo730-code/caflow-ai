@@ -67,10 +67,10 @@ def portal_invoice_pdf(invoice_id: str, portal: dict = Depends(get_current_porta
         # portal contact cannot read, on the privileged client now that ownership is proved (POST-A-237).
         pdf_bytes, filename = get_sales_invoice_pdf(invoice_id, portal["firm_id"], rest_db=db_provider.service_db())
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
     except Exception as e:
         _logger.error("portal_invoice_pdf %s: %s", invoice_id, e)
-        raise HTTPException(status_code=500, detail="PDF generation failed")
+        raise HTTPException(status_code=500, detail="PDF generation failed") from e
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -145,7 +145,7 @@ def portal_statement_pdf(
         raise
     except Exception as e:
         _logger.error("portal_statement_pdf %s/%s: %s", portal["firm_id"], portal["client_id"], e)
-        raise HTTPException(status_code=500, detail="PDF generation failed")
+        raise HTTPException(status_code=500, detail="PDF generation failed") from e
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -237,7 +237,7 @@ def portal_document_download(document_id: str,
             doc["file_path"], 60)
     except Exception as e:
         _logger.error("portal_document_download %s: %s", document_id, e)
-        raise HTTPException(status_code=500, detail="Could not prepare the download.")
+        raise HTTPException(status_code=500, detail="Could not prepare the download.") from e
     url = (signed or {}).get("signedURL") or (signed or {}).get("signedUrl")
     if not url:
         raise HTTPException(status_code=500, detail="Could not prepare the download.")

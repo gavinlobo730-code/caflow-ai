@@ -1252,8 +1252,8 @@ def position_detail(
     as_of = query_day(as_of, "as_of", required=True)
     try:
         when = _date.fromisoformat(as_of[:10])
-    except Exception:
-        raise HTTPException(status_code=422, detail="The date must be YYYY-MM-DD.")
+    except Exception as _cause:
+        raise HTTPException(status_code=422, detail="The date must be YYYY-MM-DD.") from _cause
     if _USE_MOCK:
         return api_response(True, {"as_of": when.isoformat(), "rows": [],
                                    "total_value_paise": 0})
@@ -1274,8 +1274,8 @@ def expiry_report(
     as_of = query_day(as_of, "as_of", required=True)
     try:
         when = _date.fromisoformat(as_of[:10])
-    except Exception:
-        raise HTTPException(status_code=422, detail="The date must be YYYY-MM-DD.")
+    except Exception as _cause:
+        raise HTTPException(status_code=422, detail="The date must be YYYY-MM-DD.") from _cause
     if _USE_MOCK:
         from domain.inventory import batches as _b
         return api_response(True, _b.expiry_report([], as_of=when).as_dict())

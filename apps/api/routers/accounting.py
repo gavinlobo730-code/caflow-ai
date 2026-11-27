@@ -173,7 +173,7 @@ def create_account(
                 "is_active": data.is_active,
                 "client_id": client_id, "firm_id": current_user.get("firm_id")}))
         except ValidationError as e:
-            raise HTTPException(status_code=422, detail=str(e))
+            raise HTTPException(status_code=422, detail=str(e)) from e
     try:
         # Payload written INLINE with literal keys — see
         # services/ageing_schedule_service._write for why.
@@ -204,7 +204,7 @@ def create_account(
     except Exception as e:                                      # noqa: BLE001
         _logger.error("create_account failed for firm %s: %s", current_user.get("firm_id"), e)
         raise HTTPException(status_code=422,
-                            detail=document_failure_detail(e, action="create the account"))
+                            detail=document_failure_detail(e, action="create the account")) from e
     if not res.data:
         raise HTTPException(status_code=502, detail="The account was not written.")
     return api_response(True, res.data[0])
@@ -227,8 +227,8 @@ def _assert_account_scope(current_user: dict, account_id: str) -> dict:
     """
     try:
         account = accounting_service.get_account(account_id)
-    except NotFoundError:
-        raise HTTPException(status_code=404, detail="Account not found.")
+    except NotFoundError as _cause:
+        raise HTTPException(status_code=404, detail="Account not found.") from _cause
     if not can_access_client(current_user, account.get("client_id")):
         raise HTTPException(status_code=404, detail="Account not found.")
     return account
@@ -317,7 +317,7 @@ def update_account(account_id: str, data: AccountUpdateIn, current_user: dict = 
             return api_response(True, accounting_service.update_account(
                 account_id, data.model_dump(exclude_none=True)))
         except NotFoundError as e:
-            raise HTTPException(status_code=404, detail=str(e))
+            raise HTTPException(status_code=404, detail=str(e)) from e
 
     fields = data.model_dump(exclude_none=True)
     if not fields:
@@ -382,7 +382,7 @@ def update_account(account_id: str, data: AccountUpdateIn, current_user: dict = 
     except Exception as e:                                      # noqa: BLE001
         _logger.error("update_account failed for %s: %s", account_id, e)
         raise HTTPException(status_code=422,
-                            detail=document_failure_detail(e, action="update the account"))
+                            detail=document_failure_detail(e, action="update the account")) from e
     if not res.data:
         raise HTTPException(status_code=404, detail="Account not found.")
     return api_response(True, res.data[0])
@@ -440,7 +440,7 @@ def create_journal_entry(data: JournalEntryIn, current_user: dict = Depends(rbac
     except HTTPException:
         raise
     except ValidationError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
     except Exception as exc:
         # Anything else is a server-side failure the CA cannot act on, and until
         # now it reached them as a bare 500 "Internal server error" with nothing
@@ -470,7 +470,7 @@ def create_journal_entry(data: JournalEntryIn, current_user: dict = Depends(rbac
             status_code=500,
             detail="Could not post this journal entry — nothing was written to the "
                    "ledger. The failure has been logged for the team.",
-        )
+        ) from exc
 
     # Audit deliberately sits OUTSIDE the block above. It is not part of the
     # posting transaction, and a failed audit write must never be reported to
@@ -537,7 +537,7 @@ def post_opening_balances_endpoint(
         raise
     except ValueError as e:
         # e.g. required COA account missing
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
 
 class TrialBalanceRowIn(BaseModel):
@@ -606,9 +606,9 @@ def import_trial_balance_endpoint(
     except TrialBalanceError as e:
         # The trial balance itself is inadmissible — the message names the row
         # and the problem, and is meant to be shown to the CA verbatim.
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
 
 class VoucherLegIn(BaseModel):
@@ -863,7 +863,7 @@ def discard_journal_entry(
             # a SQLSTATE. That sentence is the difference between a rule that
             # reads as protective and one that reads as broken.
             _logger.exception("discard_posted_journal failed for %s", entry_id)
-            raise HTTPException(status_code=422, detail=postgres_message(exc))
+            raise HTTPException(status_code=422, detail=postgres_message(exc)) from exc
     else:
         # A draft is off-books, so nothing above applies — but the deletion
         # record still has to hold the money. The same snapshot the posted path
@@ -1136,9 +1136,9 @@ def reverse_journal_entry(
 
     except HTTPException:
         raise
-    except Exception:
+    except Exception as _cause:
         _logger.exception("reverse_journal_entry failed for entry %s", entry_id)
-        raise HTTPException(status_code=500, detail="Unable to reverse journal entry. Please try again.")
+        raise HTTPException(status_code=500, detail="Unable to reverse journal entry. Please try again.") from _cause
 
     # OUTSIDE the try, deliberately. The reversal is posted and committed by
     # this point; an audit or timeline failure after it must not be reported to

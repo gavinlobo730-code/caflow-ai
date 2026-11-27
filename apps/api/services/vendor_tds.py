@@ -512,7 +512,7 @@ def resolve_resident_tds(
         # internal string with no statute and no next step. Ask the same rule
         # the vendor master asks, so the legacy row gets the same sentence.
         named = deduction_section_refusal(tds_section, event_fy)
-        raise HTTPException(status_code=422, detail=named or str(ve))
+        raise HTTPException(status_code=422, detail=named or str(ve)) from ve
     # Persist the rate ACTUALLY applied — 0 when below threshold (nothing
     # deducted), the section/payee rate when TDS was deducted (H6, §203 audit).
     #

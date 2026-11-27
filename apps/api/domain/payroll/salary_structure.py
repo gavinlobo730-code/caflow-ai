@@ -132,8 +132,8 @@ class Application:
 def _pct(structure: dict, key: str) -> Decimal:
     try:
         return Decimal(str(structure.get(key) or 0))
-    except Exception:
-        raise StructureError(f"{key} is not a percentage: {structure.get(key)!r}")
+    except Exception as _cause:
+        raise StructureError(f"{key} is not a percentage: {structure.get(key)!r}") from _cause
 
 
 def _as_percent_of_basic(amount_paise: int, basic_paise: int) -> Decimal:

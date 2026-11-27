@@ -70,9 +70,9 @@ def _parse_as_of(as_of: Optional[str]) -> date:
         return _today()
     try:
         return date.fromisoformat(str(as_of)[:10])
-    except (ValueError, TypeError):
+    except (ValueError, TypeError) as _cause:
         raise HTTPException(status_code=422,
-                            detail=f"as_of must be YYYY-MM-DD, got {as_of!r}")
+                            detail=f"as_of must be YYYY-MM-DD, got {as_of!r}") from _cause
 
 
 # ── The Python half's data fetch ─────────────────────────────────────────────
@@ -448,11 +448,11 @@ def classify(db, firm_id: str, client_id: str, target: str, target_id: str,
             else:
                 try:
                     days = int(v)
-                except (TypeError, ValueError):
+                except (TypeError, ValueError) as _cause:
                     raise HTTPException(
                         status_code=422,
                         detail="msmed_agreement_days must be a whole number of "
-                               "days or null.")
+                               "days or null.") from _cause
                 if days <= 0:
                     raise HTTPException(
                         status_code=422,

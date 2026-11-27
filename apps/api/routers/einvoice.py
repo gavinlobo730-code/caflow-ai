@@ -232,7 +232,7 @@ def create_record(
             raise HTTPException(409, detail=(
                 "This invoice already has an e-invoice record that is not cancelled, made a moment ago. "
                 "Open the invoice to see it.")) from e
-        raise HTTPException(500, detail=str(e))
+        raise HTTPException(500, detail=str(e)) from e
 
 
 @router.get("/missing-irn")
@@ -283,7 +283,7 @@ def invoices_that_owe_an_irn_and_have_none(
         return api_response(True, irn_worklist_service.worklist(
             get_supabase(), firm_id, client_id=client_id, scope=scope, since=since))
     except ValueError as e:
-        raise HTTPException(422, detail=str(e))
+        raise HTTPException(422, detail=str(e)) from e
     except HTTPException:
         raise
     except Exception as e:                                       # noqa: BLE001
@@ -353,7 +353,7 @@ def record_irn_generated(
         )
         return api_response(True, result)
     except Exception as e:
-        raise HTTPException(500, detail=str(e))
+        raise HTTPException(500, detail=str(e)) from e
 
 
 @router.post("/records/{record_id}/cancel")
@@ -385,4 +385,4 @@ def cancel_irn(
         )
         return api_response(True, result)
     except Exception as e:
-        raise HTTPException(500, detail=str(e))
+        raise HTTPException(500, detail=str(e)) from e

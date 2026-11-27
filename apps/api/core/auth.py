@@ -492,10 +492,10 @@ def get_current_user(
 
     try:
         payload = decode_supabase_jwt(token)
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired")
+    except jwt.ExpiredSignatureError as _cause:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired") from _cause
     except jwt.InvalidTokenError as e:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid token: {e}")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid token: {e}") from e
 
     auth_user_id: str = payload.get("sub", "")
     if not auth_user_id:
@@ -576,10 +576,10 @@ def get_jwt_user(authorization: Optional[str] = Header(default=None)) -> dict:
     token = authorization.removeprefix("Bearer ").strip()
     try:
         payload = decode_supabase_jwt(token)
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired")
+    except jwt.ExpiredSignatureError as _cause:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired") from _cause
     except jwt.InvalidTokenError as e:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid token: {e}")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid token: {e}") from e
 
     auth_user_id = payload.get("sub", "")
     if not auth_user_id:

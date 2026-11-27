@@ -111,7 +111,7 @@ def create_job(
         )
         return api_response(True, job)
     except Exception as e:
-        raise HTTPException(500, detail=str(e))
+        raise HTTPException(500, detail=str(e)) from e
 
 
 @router.get("/jobs")
@@ -161,7 +161,7 @@ def parse_xml(
         })
     except Exception as e:
         _logger.exception("Parse failed for job %s", job_id)
-        raise HTTPException(500, detail=str(e))
+        raise HTTPException(500, detail=str(e)) from e
 
 
 @router.get("/jobs/{job_id}/preview")
@@ -176,7 +176,7 @@ def preview_import(
         preview = get_migration_preview(current_user["firm_id"], job_id)
         return api_response(True, preview)
     except Exception as e:
-        raise HTTPException(500, detail=str(e))
+        raise HTTPException(500, detail=str(e)) from e
 
 
 @router.post("/jobs/{job_id}/import")
@@ -277,10 +277,10 @@ def execute_import(
         })
     except ValueError as e:
         # Job not found for THIS firm — cross-firm ids must 404, not 500.
-        raise HTTPException(404, detail=str(e))
+        raise HTTPException(404, detail=str(e)) from e
     except Exception as e:
         _logger.exception("Dry run failed for job %s", job_id)
-        raise HTTPException(500, detail=str(e))
+        raise HTTPException(500, detail=str(e)) from e
 
 
 # A job in either status has written something a discard must not silently
@@ -341,6 +341,6 @@ def rollback_import(
         return api_response(True, result)
     except ValueError as e:
         # Job not found for THIS firm — cross-firm ids must 404, not 500.
-        raise HTTPException(404, detail=str(e))
+        raise HTTPException(404, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(500, detail=str(e))
+        raise HTTPException(500, detail=str(e)) from e

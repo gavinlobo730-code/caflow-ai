@@ -47,9 +47,9 @@ def _as_of(as_of: Optional[str]) -> str:
     text = str(as_of)[:10]
     try:
         date.fromisoformat(text)
-    except ValueError:
+    except ValueError as _cause:
         raise HTTPException(status_code=422,
-                            detail=f"as_of must be YYYY-MM-DD, got {as_of!r}")
+                            detail=f"as_of must be YYYY-MM-DD, got {as_of!r}") from _cause
     return text
 
 
@@ -127,9 +127,9 @@ def opening_for_item(db, firm_id: str, client_id: str, item_id: str,
     day = str(before)[:10]
     try:
         prior = (date.fromisoformat(day).toordinal() - 1)
-    except ValueError:
+    except ValueError as _cause:
         raise HTTPException(status_code=422,
-                            detail=f"start_date must be YYYY-MM-DD, got {before!r}")
+                            detail=f"start_date must be YYYY-MM-DD, got {before!r}") from _cause
     at = date.fromordinal(prior).isoformat()
 
     out = position(db, firm_id, client_id, at, item_id)

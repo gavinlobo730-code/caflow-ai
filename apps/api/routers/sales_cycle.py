@@ -309,7 +309,7 @@ def itc_04_statement(
             _db(), current_user.get("firm_id"), client_id, financial_year,
             window=window))
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
 
 @router.post("/challans/{challan_id}/returns")

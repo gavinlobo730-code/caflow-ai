@@ -138,8 +138,8 @@ def clean_filed_date(v: object, what: str = "The date filed") -> str:
     a CA who gets past a screen's own box (or a caller that is not a screen) is told what to correct."""
     try:
         when = date.fromisoformat(str(v or "").strip())
-    except ValueError:
-        raise ValueError(f"{what} is not a date: write it as YYYY-MM-DD.")
+    except ValueError as _cause:
+        raise ValueError(f"{what} is not a date: write it as YYYY-MM-DD.") from _cause
     today = ist_today()
     if when > today:
         raise ValueError(f"{what}, {when:%d %b %Y}, is after today's date in India, {today:%d %b %Y}: a return cannot have been "
@@ -193,7 +193,7 @@ def _filed_date_for(record: dict, data: dict) -> Optional[str]:
         try:
             filed = clean_filed_date(given)
         except ValueError as e:
-            raise ValidationError("filed_date", str(e))
+            raise ValidationError("filed_date", str(e)) from e
     else:
         filed = record.get("filed_date") or None
     if filed is None:

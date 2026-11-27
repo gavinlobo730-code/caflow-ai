@@ -48,8 +48,8 @@ def fy_bounds(fy_label: str) -> tuple[str, str]:
     """
     try:
         start_year = int(str(fy_label).split("-")[0])
-    except (ValueError, IndexError, AttributeError):
-        raise ValueError(f"fy must look like '2026-27', got {fy_label!r}")
+    except (ValueError, IndexError, AttributeError) as _cause:
+        raise ValueError(f"fy must look like '2026-27', got {fy_label!r}") from _cause
     if not (1900 <= start_year <= 2999):
         raise ValueError(f"fy must look like '2026-27', got {fy_label!r}")
     return f"{start_year}-04-01", f"{start_year + 1}-03-31"

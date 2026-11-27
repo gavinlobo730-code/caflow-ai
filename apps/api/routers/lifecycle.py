@@ -1127,7 +1127,7 @@ def convert_lead(
                 status_code=422,
                 detail="We couldn't create the client. Please check the details and try again, "
                        "or contact support if the problem continues.",
-            )
+            ) from e
 
     # H16: stamp the signed engagement with the resulting client so it is no longer
     # lead-only — keeps the engagement from being orphaned. Reported, not silent.

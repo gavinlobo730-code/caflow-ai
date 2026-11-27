@@ -124,7 +124,7 @@ def create_cost_centre(
     try:
         row = svc.create_centre(_db(), firm_id, body.client_id, body.model_dump())
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
     log_event(firm_id, "cost_centre", str((row or {}).get("id") or ""), "create",
               actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
               new_data={"client_id": body.client_id, **{k: v for k, v in body.model_dump().items() if k != "client_id"}})
@@ -144,7 +144,7 @@ def update_cost_centre(
     try:
         row = svc.update_centre(_db(), firm_id, client_id, centre_id, patch)
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
     log_event(firm_id, "cost_centre", centre_id, "update",
               actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
               new_data={"client_id": client_id, **patch})

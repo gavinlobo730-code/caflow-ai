@@ -928,7 +928,7 @@ def save_gstr3b(
             try:
                 record.update(credit_ledger.statement_columns(body.credit_ledger))
             except credit_ledger.CreditLedgerError as e:
-                raise HTTPException(status_code=422, detail=str(e))
+                raise HTTPException(status_code=422, detail=str(e)) from e
             if not _USE_MOCK:
                 from core.supabase_client import get_supabase
                 from services import client_gst_registration_service as _regs
@@ -936,7 +936,7 @@ def save_gstr3b(
                 try:
                     _window = return_period.resolve(body.period, _reg.filing_frequency)
                 except ValueError as e:
-                    raise HTTPException(status_code=422, detail=str(e))
+                    raise HTTPException(status_code=422, detail=str(e)) from e
                 if record["credit_closing_as_of"] != _window.end:
                     raise HTTPException(
                         status_code=422,
@@ -1327,7 +1327,7 @@ def upload_gstr2b(
         raise
     except ValueError as e:
         # A bad period is the caller's mistake and its message is useful.
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
     except Exception:
         _logger.exception("gstr2b reconciliation failed for %s %s",
                           body.client_id, body.period)
@@ -1617,7 +1617,7 @@ def compute_cmp08(
             db, firm_id, client_id, period, gstin,
             interest_paise=interest_paise))
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
 
 @router.get("/gstr8/compute")
@@ -1663,7 +1663,7 @@ def compute_gstr8(
         return api_response(True, gst_return_service.gstr8_statement(
             db, firm_id, client_id, period, gstin))
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
 
 @router.get("/gstr4-annual/compute")
@@ -1710,7 +1710,7 @@ def compute_gstr4_annual(
         return api_response(True, gstr4_annual_service.gstr4_annual_statement(
             db, firm_id, client_id, financial_year, gstin))
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
 
 @router.get("/gstr9/compute")
@@ -1817,7 +1817,7 @@ def compute_gstr9c(
         return api_response(True, gstr9c_service.gstr9c_statement(
             db, firm_id, client_id, financial_year, gstin))
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
 
 @router.post("/gstr9")
@@ -2163,7 +2163,7 @@ def itc_register_reversal(
             purchase_bill_id=body.purchase_bill_id, notes=body.notes,
             actor_id=current_user.get("id")))
     except ITCRegisterError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
 
 @router.post("/itc/register/reclaim")
@@ -2188,7 +2188,7 @@ def itc_register_reclaim(
             reverses_id=body.reverses_id, amounts=body.model_dump(),
             notes=body.notes, actor_id=current_user.get("id")))
     except ITCRegisterError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
 
 @router.get("/gstr1/advances")
@@ -2310,7 +2310,7 @@ def rule43_capital_goods(
             get_supabase(), current_user["firm_id"], client_id, period,
             turnover=override))
     except Rule43Error as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
 
 @router.get("/itc/rule37")

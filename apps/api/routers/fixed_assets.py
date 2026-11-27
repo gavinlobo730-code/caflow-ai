@@ -1135,7 +1135,7 @@ def _post_one_month(db, asset: dict, period: str, firm_id: str, created_by: Opti
     except ValueError as e:
         # No Schedule II basis and none recorded on the row — refuse with the
         # reason rather than charging a made-up rate to the ledger.
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
     if annual <= 0:
         return {"message": "Asset fully depreciated", "depreciation_paise": 0,
                 "asset_id": asset["id"], "period": period, "posted": False}

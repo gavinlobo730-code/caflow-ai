@@ -317,10 +317,10 @@ def act_for_fy(fy_label: str) -> str:
     """
     try:
         start_year = int(str(fy_label).split("-")[0])
-    except (ValueError, AttributeError, IndexError):
+    except (ValueError, AttributeError, IndexError) as _cause:
         raise VocabularyError(
             f"{fy_label!r} is not a financial year label. Use YYYY-YY, the form "
-            f"core.ist_clock.normalise_fy_label produces.")
+            f"core.ist_clock.normalise_fy_label produces.") from _cause
     return act_for_date(date(start_year, 4, 1))
 
 
@@ -336,10 +336,10 @@ def statement_form(kind: str, *, fy_label: str | None = None,
     act = _act_from(fy_label, event_date)
     try:
         return _STATEMENT_FORMS[act][kind]
-    except KeyError:
+    except KeyError as _cause:
         raise VocabularyError(
             f"{kind!r} is not a statement kind. It is one of "
-            f"{', '.join(STATEMENT_KINDS)}.")
+            f"{', '.join(STATEMENT_KINDS)}.") from _cause
 
 
 def certificate_form(kind: str, *, fy_label: str | None = None,
@@ -347,10 +347,10 @@ def certificate_form(kind: str, *, fy_label: str | None = None,
     act = _act_from(fy_label, event_date)
     try:
         return _CERTIFICATE_FORMS[act][kind]
-    except KeyError:
+    except KeyError as _cause:
         raise VocabularyError(
             f"{kind!r} is not a certificate kind. It is one of "
-            f"{', '.join(CERTIFICATE_KINDS)}.")
+            f"{', '.join(CERTIFICATE_KINDS)}.") from _cause
 
 
 def certificate_note(kind: str, *, fy_label: str | None = None,

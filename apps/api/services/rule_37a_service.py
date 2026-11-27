@@ -61,7 +61,7 @@ def build(db, firm_id: str, client_id: str, *, financial_year: str) -> dict:
     try:
         fy_bounds(financial_year)
     except (ValueError, TypeError) as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
     rows = fetch_all(
         lambda: db.table("gstr2a_records").select(

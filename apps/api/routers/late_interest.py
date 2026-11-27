@@ -84,8 +84,8 @@ class LateInterestDraftIn(BaseModel):
             return v
         try:
             date.fromisoformat(v)
-        except ValueError:
-            raise ValueError("as_of_date must be a date (YYYY-MM-DD).")
+        except ValueError as _cause:
+            raise ValueError("as_of_date must be a date (YYYY-MM-DD).") from _cause
         return v
 
 

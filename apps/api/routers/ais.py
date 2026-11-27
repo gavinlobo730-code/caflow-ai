@@ -100,10 +100,10 @@ def upload_statement(
                {"client_id": req.client_id, "assessment_year": req.assessment_year, "file_name": req.file_name})
         return api_response(True, uploaded)
     except ais_service.AISRefused as e:
-        raise _refusal(e)
-    except Exception:
+        raise _refusal(e) from e
+    except Exception as _cause:
         _logger.exception("AIS upload failed")
-        raise HTTPException(500, detail="Could not read that statement.")
+        raise HTTPException(500, detail="Could not read that statement.") from _cause
 
 
 @router.get("/uploads")
@@ -156,7 +156,7 @@ def save_working(
                {"client_id": req.client_id, "books_amount_paise": req.books_amount_paise, "status": req.status})
         return api_response(True, saved)
     except ais_service.AISRefused as e:
-        raise _refusal(e)
+        raise _refusal(e) from e
 
 
 @router.post("/records")
@@ -182,7 +182,7 @@ def add_manual_record(
                 "tds_deducted_paise": req.tds_deducted_paise})
         return api_response(True, added)
     except ais_service.AISRefused as e:
-        raise _refusal(e)
+        raise _refusal(e) from e
 
 
 @router.delete("/records/{record_id}")
@@ -201,7 +201,7 @@ def delete_record(
         _audit(current_user, record_id, "delete_record", {"client_id": record["client_id"]})
         return api_response(True, deleted)
     except ais_service.AISRefused as e:
-        raise _refusal(e)
+        raise _refusal(e) from e
 
 
 @router.get("/computation-lines")
@@ -256,7 +256,7 @@ def decide_computation_line(
                {"client_id": req.client_id, "financial_year": req.financial_year, "decision": req.decision})
         return api_response(True, decided)
     except ais_computation_service.DecisionRefused as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.get("/meta")
