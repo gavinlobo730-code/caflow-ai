@@ -85,6 +85,42 @@ export function firstFormField(root: HTMLElement | null): HTMLElement | null {
 }
 
 /**
+ * THE LAST CONTROL A PERSON PRESSED, KEPT FOR A DIALOG WHOSE OPENER LOST THE FOCUS BEFORE IT WAS DRAWN (POST-A-568).
+ *
+ * A button that is DISABLED while its dialog's data is fetched loses the keyboard focus (a disabled button cannot hold it), so by the time
+ * the dialog is drawn nothing holds the focus and there is nobody to hand it back to: the page's top took it on close. The inventory
+ * screen's Physical count button had it and refocused itself; the same is true of any button that is disabled while a request runs and
+ * opens a dialog after it. The element the person PRESSED is the opener whatever happened to the focus since, so the page remembers it
+ * (a click, or Enter or Space on a focused control) and the dialog falls back to it when the focus holds nobody, within `PRESS_MEMORY_MS`
+ * so an old press cannot claim a dialog that something else opened.
+ */
+export const PRESS_MEMORY_MS = 20_000;
+const PRESSABLE = 'button, a[href], [role="button"], [role="menuitem"], summary, input[type="button"], input[type="submit"]';
+
+let lastPressed: { el: HTMLElement; at: number } | null = null;
+
+/** Start remembering pressed controls on `doc`; returns the function that stops it. Called once, at import, in a browser. */
+export function rememberPressedControls(doc: Document): () => void {
+  const note = (e: Event) => {
+    const hit = (e.target as Element | null)?.closest?.(PRESSABLE) as HTMLElement | null;
+    if (hit) lastPressed = { el: hit, at: Date.now() };
+  };
+  const key = (e: KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") note(e); };
+  doc.addEventListener("click", note, true);
+  doc.addEventListener("keydown", key, true);
+  return () => { doc.removeEventListener("click", note, true); doc.removeEventListener("keydown", key, true); };
+}
+
+/** The control pressed within the last `PRESS_MEMORY_MS`, or null. */
+export function lastPressedControl(now: number = Date.now()): HTMLElement | null {
+  return lastPressed && now - lastPressed.at <= PRESS_MEMORY_MS ? lastPressed.el : null;
+}
+
+if (typeof document !== "undefined") rememberPressedControls(document);
+
+const isThePage = (el: HTMLElement | null) => typeof document !== "undefined" && el === document.body;
+
+/**
  * WHO OPENED A DIALOG: the element that held the focus when it was first DRAWN, unless that is gone by the time it is mounted (POST-A-555).
  *
  * A dialog has to read its opener twice, because two things happen in the same commit and each hides the opener from one reading.
@@ -94,13 +130,19 @@ export function firstFormField(root: HTMLElement | null): HTMLElement | null {
  * opener when it unmounts, so the element read in the render is gone at effect time and the focused element then is the right one.
  *
  * So: the element read in the render, if it is still on the page and is not inside the dialog; otherwise whatever holds the focus now,
- * unless that is inside the dialog (an autofocused field), in which case there is nobody to give it back to but the page.
+ * unless that is inside the dialog (an autofocused field); otherwise the control last pressed (POST-A-568, an opener that lost the focus
+ * because it was disabled while the dialog's data was fetched); and if there is none of those, nobody but the page.
  */
 export function whoOpenedTheDialog(
   readInTheRender: HTMLElement | null, panel: HTMLElement | null,
   now: HTMLElement | null = typeof document === "undefined" ? null : (document.activeElement as HTMLElement | null),
+  pressed: HTMLElement | null = lastPressedControl(),
 ): HTMLElement | null {
-  if (readInTheRender && readInTheRender.isConnected && !(panel && panel.contains(readInTheRender))) return readInTheRender;
-  if (now && !(panel && panel.contains(now))) return now;
+  const outside = (x: HTMLElement | null): x is HTMLElement => !!x && !(panel && panel.contains(x));
+  if (readInTheRender && readInTheRender.isConnected && outside(readInTheRender) && !isThePage(readInTheRender)) return readInTheRender;
+  if (outside(now) && !isThePage(now)) return now;
+  if (pressed && pressed.isConnected && outside(pressed)) return pressed;
+  if (readInTheRender && readInTheRender.isConnected && outside(readInTheRender)) return readInTheRender;
+  if (outside(now)) return now;
   return readInTheRender;
 }

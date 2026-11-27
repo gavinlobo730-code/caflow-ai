@@ -127,3 +127,40 @@ test("the element read in the render that is inside the dialog is never the open
   const rowButton = el("row button");
   assert.equal(whoOpenedTheDialog(field, panel, rowButton), rowButton);
 });
+
+// POST-A-568 — an opener that lost the focus (it was disabled while the dialog's data was fetched) is found again from the last control pressed.
+test("nothing holds the focus when the dialog is drawn: the control last pressed is who it gives the focus back to", () => {
+  const panel = el("panel");
+  const pressed = el("Physical count button");
+  assert.equal(whoOpenedTheDialog(null, panel, null, pressed), pressed);
+});
+
+test("the control last pressed never beats an opener that still holds the focus, and is never one inside the dialog", () => {
+  const field = el("autofocused field");
+  const panel = el("panel", true, [field]);
+  const opener = el("Edit button");
+  const stale = el("some other button");
+  assert.equal(whoOpenedTheDialog(opener, panel, field, stale), opener, "the opener the render saw wins");
+  assert.equal(whoOpenedTheDialog(null, panel, field, field), null, "a pressed control inside the dialog is not an opener");
+});
+
+test("a control that has gone from the page is not given the focus", () => {
+  const panel = el("panel");
+  const gone = el("removed button", false);
+  assert.equal(whoOpenedTheDialog(null, panel, null, gone), null);
+});
+
+test("a press is remembered for a short time only, so an old press cannot claim a dialog something else opened", async () => {
+  const { lastPressedControl, PRESS_MEMORY_MS, rememberPressedControls } = await import("./focusTrap.ts");
+  assert.equal(lastPressedControl(), null, "nothing was pressed in this process");
+  assert.ok(PRESS_MEMORY_MS >= 5_000 && PRESS_MEMORY_MS <= 60_000, "the window is seconds, not minutes");
+  const target = { closest: () => target } as unknown as Element;
+  const handlers = new Map<string, (e: Event) => void>();
+  const doc = { addEventListener: (t: string, f: (e: Event) => void) => handlers.set(t, f), removeEventListener: () => {} } as unknown as Document;
+  rememberPressedControls(doc);
+  handlers.get("click")!({ target } as unknown as Event);
+  assert.equal(lastPressedControl(), target as unknown as HTMLElement);
+  assert.equal(lastPressedControl(Date.now() + PRESS_MEMORY_MS + 1), null, "a press older than the window is forgotten");
+  handlers.get("keydown")!({ target, key: "a" } as unknown as KeyboardEvent);
+});
+
