@@ -20,6 +20,7 @@ from domain.tds.residency import NON_RESIDENT
 from domain.tds.section_rates import threshold_class_problem
 from domain.tds.no_pe_declaration import declarant_write
 from core.authz import assert_client_access, can_access_client
+from core.exceptions import ROW_NOT_CONFIRMED, confirmed_pairs
 from core.permissions import can_user, rbac
 from services import party_erasure
 from services.audit_service import log_event
@@ -411,6 +412,14 @@ def _classify_db_error(msg_lower: str) -> str:
     return "Unable to complete vendor operation. Please try again."
 
 
+def _vendors_the_batch_answered_for(sent: list, answered: list, errors: list) -> list:
+    """((index, payload), stored vendor) for each vendor the batch insert answered for; the ones it did not answer for are added to
+    `errors` as not confirmed (POST-A-573)."""
+    pairs, unanswered = confirmed_pairs(sent, answered)
+    errors.extend({"index": i, "name": payload.get("name"), "error": ROW_NOT_CONFIRMED} for i, payload in unanswered)
+    return pairs
+
+
 def _finish_vendor_creation(db, vendor: dict, payload: dict, current_user: dict) -> Optional[str]:
     """Post-insert side effects for ONE newly-created vendor row — same
     opening-balance GL sync (rollback-on-failure) and audit/timeline logging
@@ -581,7 +590,7 @@ def create_vendors_bulk(
         batch_rows = None
         try:
             resp = db.table("vendors").insert([p for _, p in valid_items]).execute()
-            if resp.data and len(resp.data) == len(valid_items):
+            if resp.data:
                 batch_rows = resp.data
         except Exception as batch_err:
             _logger.info(
@@ -591,7 +600,10 @@ def create_vendors_bulk(
             batch_rows = None
 
         if batch_rows is not None:
-            for (i, payload), vendor in zip(valid_items, batch_rows, strict=False):
+            # POST-A-573: the batch was accepted, so NOTHING is inserted again. An answer shorter than what was sent used to send the
+            # whole batch down the per-row path below, which inserts every row a second time; the rows it did not answer for are
+            # reported as not confirmed instead.
+            for (i, payload), vendor in _vendors_the_batch_answered_for(valid_items, batch_rows, errors):
                 err = _finish_vendor_creation(db, vendor, payload, current_user)
                 if err:
                     errors.append({"index": i, "name": payload.get("name"), "error": err})

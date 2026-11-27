@@ -173,6 +173,19 @@ def tenant_guard_sentence(exc: Exception) -> "str | None":
     return None
 
 
+#: What a bulk import says of a row the database did not answer for (POST-A-573). A batch insert answers with the rows it stored; an answer
+#: shorter than what was sent says nothing either way about the rest, so they are not reported as recorded and are NOT sent again (that
+#: could record them twice). The person is told to look before importing them again.
+ROW_NOT_CONFIRMED = ("The database did not confirm that this row was recorded. Check whether it is in the books before importing it again.")
+
+
+def confirmed_pairs(sent: list, answered) -> tuple[list, list]:
+    """Pair what a batch insert sent with the rows it answered for: (pairs of (sent item, stored row), the sent items with no answer).
+    The answer is paired by position, as the database returns the rows in the order they were sent, and never beyond its own length."""
+    rows = list(answered or [])[:len(sent)]
+    return list(zip(sent[:len(rows)], rows, strict=True)), list(sent[len(rows):])
+
+
 def document_failure_detail(exc: Exception, *, action: str) -> str:
     """A sentence a CA can act on, for a document that would not save.
 

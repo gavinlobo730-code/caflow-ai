@@ -16,6 +16,7 @@ from models.common import api_response
 from models.clearable import drop_empty, patch_dict, removed_identifier_problem
 from models.parties import CUSTOMER_IDENTIFIERS, CustomerIn, CustomerUpdateIn
 from core.authz import assert_client_access, can_access_client
+from core.exceptions import ROW_NOT_CONFIRMED, confirmed_pairs
 from core.permissions import rbac
 from services import party_erasure
 from services.audit_service import log_event
@@ -400,6 +401,15 @@ class CustomerBulkIn(BaseModel):
     customers: list[dict]
 
 
+
+def _rows_the_batch_answered_for(sent: list, answered: list, errors: list) -> list:
+    """(index, stored row) for each customer the batch insert answered for; the ones it did not answer for are added to `errors` as not
+    confirmed (POST-A-573)."""
+    pairs, unanswered = confirmed_pairs(sent, answered)
+    errors.extend({"index": idx, "name": payload.get("name"), "error": ROW_NOT_CONFIRMED} for idx, payload in unanswered)
+    return [(idx, row) for (idx, _payload), row in pairs]
+
+
 @router.post("/bulk")
 def bulk_create_customers(
     data: CustomerBulkIn,
@@ -530,7 +540,9 @@ def bulk_create_customers(
         else:
             resp = db.table("customers").insert([p for _, p in to_insert]).execute()
             data_rows = resp.data or [p for _, p in to_insert]
-            inserted_rows = list(zip((idx for idx, _ in to_insert), data_rows, strict=False))
+            # POST-A-573: an answer shorter than what was sent says nothing about the rest. They used to drop out of the result
+            # (neither created nor an error); each is reported as not confirmed, and nothing is sent again.
+            inserted_rows = _rows_the_batch_answered_for(to_insert, data_rows, errors)
 
         # ── Step 5: opening-balance GL sync per newly-created row — same
         # rollback-on-failure isolation as the single endpoint (post_opening_
