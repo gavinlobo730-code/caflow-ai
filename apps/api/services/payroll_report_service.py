@@ -84,8 +84,8 @@ _EMPLOYEE_SUM_KEYS = ("gross_paise", "net_paise", "tds_paise", "pt_paise", "pf_e
 def _from_the_database(db, label: str, firm_id: str, call: Callable) -> Optional[list]:
     """The database function's answer, or None when there is none to ask (mock mode, a database without migration 779) or it failed.
 
-    `call` takes the privileged client and returns the `.rpc(...)` builder, so the function's NAME is a literal at its call site (the
-    schema checks read `.rpc("name", ...)` literals and a name passed through a variable is one nothing checks).
+    `call` takes the privileged client and returns the builder of the function call, so the function's NAME is a literal at its call site
+    (the schema checks read the quoted name in each such call, and a name passed through a variable is one nothing checks).
 
     None is never an empty answer: the caller then adds the figures up itself from the paged payslips, so a missing function costs
     speed and never a figure. A failure is reported, not swallowed."""
