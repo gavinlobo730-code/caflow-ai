@@ -477,7 +477,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A 2025-ACT DEDUCTEE ROW CARRIES ITS s.393 PAYMENT CODE, OR NAMES WHY NOT
 - THE TDS WORKSPACE ANSWERS A FAILURE WITH ITS OWN SENTENCE, AND A CONTENDED SNAPSHOT SAVE TAKES THE NEXT VERSION
 
-### `docs/design-record/tenancy-and-security.md` (95 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
+### `docs/design-record/tenancy-and-security.md` (96 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
 
 - EVERY QUERY ON A FIRM TABLE CARRIES ITS FIRM'S SCOPE OR IS NAMED ON A FROZEN LIST, THE TABLE SET IS THE SNAPSHOT'S, AND HOW LITTLE
 - ACCESS IS DECIDED PER PERSON, AND A ROLE IS THE TEMPLATE IT FALLS BACK TO
@@ -574,6 +574,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A PURGED FIRM'S PEOPLE ARE TOLD THEIR FIRM IS CLOSED BY A MARKER THAT OUTLIVES THEIR MEMBER ROW
 - AN EMPLOYEE'S PORTAL INVITATION LINK EXISTS ONLY IN THE MAIL THE SERVER SENDS, AND THE SCREEN IS TOLD ONLY WHETHER THAT MAIL WENT
 - ONE SIGN-IN MAY BE BOTH A MEMBER OF STAFF AND A PORTAL EMPLOYEE
+- THE PLATFORM PAGES ASK FOR THE AUTHENTICATOR CODE ON EVERY VISIT, REFUSE A FIRM'S ACCOUNT ONCE A FIRM-LESS ONE IS LISTED, TELL THE LIST BY MAIL OF EVERY SIGN-IN AND ACTION, AND HAVE A SITE OF THEIR OWN
 
 ### `docs/design-record/workflow-and-team.md` (4 entries): Workflow engine slices and the Team screen's permission notice
 

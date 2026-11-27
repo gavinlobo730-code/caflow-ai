@@ -1262,6 +1262,9 @@ EXEMPT: dict[str, str] = {
     "/api/platform/me":
         "UI gating only — returns whether the caller is a platform admin. "
         "Touches no table at all.",
+    "/api/platform/activity":
+        "the platform owner's own sign-in and action log (`platform_audit`): rows about firms and platform "
+        "administrators, never about a client, read by the platform list alone.",
     "/api/platform/stats":
         "firm-count/user-count/client-count TALLIES across the whole "
         "platform — the platform owner's dashboard, not scoped to any one "

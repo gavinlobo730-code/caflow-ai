@@ -140,6 +140,10 @@ class _DB:
 def _client(monkeypatch, *, code_age=0.0, aal="aal2"):
     db = _DB()
     monkeypatch.setattr(pa, "_is_platform_admin", lambda uid: True)
+    from services import platform_notice as _notice   # POST-B-351: no database read for lock 3 and no mail
+    monkeypatch.setattr(pa, "_firm_standing", lambda uid: pa.Standing(belongs_to=(), firmless_admin_on_list=True))
+    monkeypatch.setattr(_notice, "note_visit", lambda *a, **k: None)
+    monkeypatch.setattr(_notice, "note_action", lambda *a, **k: None)
     monkeypatch.setattr(plat, "get_service_supabase", lambda: db)
     monkeypatch.setattr(plat, "log_event", lambda *a, **k: None)
     app = FastAPI()
@@ -239,10 +243,12 @@ def test_a_code_entered_a_minute_ago_is_enough(monkeypatch, verb, path, body):
     assert r.status_code == 200
 
 
-def test_without_the_second_factor_at_all_the_older_sentence_still_comes_first(monkeypatch):
+def test_without_the_second_factor_at_all_the_sign_in_sentence_comes_first(monkeypatch):
+    # Since POST-B-351 every platform page asks for the second factor, so a session without it is told to sign in
+    # again with the code before any action is considered; the fresh-code sentence is for a session that has it.
     c, _ = _client(monkeypatch, code_age=0, aal="aal1")
     r = c.delete("/api/platform/firms/FIRM-1")
-    assert r.status_code == 403 and "Multi-factor" in r.json()["detail"]
+    assert r.status_code == 403 and r.json()["detail"] == pa.SECOND_FACTOR_SENTENCE
 
 
 def test_the_router_no_longer_says_there_is_no_hard_delete():

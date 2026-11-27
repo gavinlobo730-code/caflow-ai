@@ -29,6 +29,7 @@ from models.common import api_response
 from core.platform_auth import require_platform_admin, require_platform_admin_mfa, is_platform_admin
 from core.supabase_client import get_service_supabase
 from services.audit_service import log_event
+from services import platform_notice
 
 router = APIRouter(prefix="/api/platform", tags=["platform"])
 _logger = logging.getLogger("caflow.platform")
@@ -112,7 +113,8 @@ def _firm_status(firm: dict) -> str:
 @router.get("/me")
 def me(ctx: dict = Depends(is_platform_admin)):
     """UI gating — non-failing; returns whether the caller is a platform admin."""
-    return api_response(True, {"is_platform_admin": ctx.get("is_platform_admin", False)})
+    return api_response(True, {"is_platform_admin": ctx.get("is_platform_admin", False),
+                               "second_factor_needed": ctx.get("second_factor_needed", False)})
 
 
 # ─── Stats ───────────────────────────────────────────────────────────────────
@@ -180,13 +182,32 @@ def firm_users(firm_id: str, _admin: dict = Depends(require_platform_admin)):
     } for r in rows])
 
 
+# ─── What has been done on the platform pages (POST-B-351) ────────────────────
+@router.get("/activity")
+def activity(_admin: dict = Depends(require_platform_admin)):
+    """The last fifty platform sign-ins and actions, newest first, from `platform_audit`: what the mails said, kept
+    where the platform pages can show it, so a sign-in nobody remembers is seen on the page as well as in the inbox."""
+    db = get_service_supabase()
+    rows = (db.table("platform_audit").select("action, firm_name, actor_email, metadata, created_at")
+            .order("created_at", desc=True).order("id", desc=True).limit(50).execute().data or [])
+    return api_response(True, [{
+        "action": r.get("action"),
+        "firm_name": r.get("firm_name"),
+        "by": r.get("actor_email"),
+        "address": (r.get("metadata") or {}).get("address"),
+        "mailed": (r.get("metadata") or {}).get("mailed"),
+        "at": r.get("created_at"),
+    } for r in rows])
+
+
 # ─── Suspend / unsuspend / soft-delete ──────────────────────────────────────
 @router.post("/firms/{firm_id}/suspend")
-def suspend_firm(firm_id: str, body: SuspendBody, admin: dict = Depends(require_platform_admin_mfa)):
+def suspend_firm(firm_id: str, body: SuspendBody,
+                 admin: dict = Depends(require_platform_admin_mfa)):
     if not body.reason or not body.reason.strip():
         raise HTTPException(status_code=400, detail="A reason is required to suspend a firm.")
     db = get_service_supabase()
-    firm = db.table("firms").select("id, is_active").eq("id", firm_id).maybe_single().execute().data
+    firm = db.table("firms").select("id, name, is_active").eq("id", firm_id).maybe_single().execute().data
     if not firm:
         raise HTTPException(status_code=404, detail="Firm not found")
     # The sessions are ended FIRST: a stamp that fails then leaves the firm open and the request refused, to be tried again,
@@ -196,13 +217,15 @@ def suspend_firm(firm_id: str, body: SuspendBody, admin: dict = Depends(require_
     log_event(firm_id, "firm", firm_id, "platform_suspend",
               actor_id=admin.get("auth_user_id"), actor_email=admin.get("email"),
               metadata={"reason": body.reason.strip(), "sessions_ended": signed_out})
+    platform_notice.later(platform_notice.note_action, admin, "platform_suspend", firm_id, firm.get("name"),
+                              f"Reason given: {body.reason.strip()}. {signed_out} people were signed out.")
     return api_response(True, {"firm_id": firm_id, "status": "suspended", "sessions_ended": signed_out})
 
 
 @router.post("/firms/{firm_id}/unsuspend")
 def unsuspend_firm(firm_id: str, admin: dict = Depends(require_platform_admin)):
     db = get_service_supabase()
-    firm = db.table("firms").select("id, deleted_at").eq("id", firm_id).maybe_single().execute().data
+    firm = db.table("firms").select("id, name, deleted_at").eq("id", firm_id).maybe_single().execute().data
     if not firm:
         raise HTTPException(status_code=404, detail="Firm not found")
     if firm.get("deleted_at"):
@@ -210,13 +233,14 @@ def unsuspend_firm(firm_id: str, admin: dict = Depends(require_platform_admin)):
     db.table("firms").update({"is_active": True}).eq("id", firm_id).execute()
     log_event(firm_id, "firm", firm_id, "platform_unsuspend",
               actor_id=admin.get("auth_user_id"), actor_email=admin.get("email"))
+    platform_notice.later(platform_notice.note_action, admin, "platform_unsuspend", firm_id, firm.get("name"))
     return api_response(True, {"firm_id": firm_id, "status": "active"})
 
 
 @router.delete("/firms/{firm_id}")
 def soft_delete_firm(firm_id: str, admin: dict = Depends(require_platform_admin_mfa)):
     db = get_service_supabase()
-    firm = db.table("firms").select("id").eq("id", firm_id).maybe_single().execute().data
+    firm = db.table("firms").select("id, name").eq("id", firm_id).maybe_single().execute().data
     if not firm:
         raise HTTPException(status_code=404, detail="Firm not found")
     # SOFT delete only — records are preserved. Sessions first, for the reason in suspend_firm.
@@ -228,6 +252,8 @@ def soft_delete_firm(firm_id: str, admin: dict = Depends(require_platform_admin_
     log_event(firm_id, "firm", firm_id, "platform_delete",
               actor_id=admin.get("auth_user_id"), actor_email=admin.get("email"),
               metadata={"sessions_ended": signed_out})
+    platform_notice.later(platform_notice.note_action, admin, "platform_delete", firm_id, firm.get("name"),
+                              f"{signed_out} people were signed out.")
     return api_response(True, {"firm_id": firm_id, "status": "deleted", "sessions_ended": signed_out})
 
 
@@ -260,6 +286,9 @@ def purge_firm(firm_id: str, admin: dict = Depends(require_platform_admin_mfa)):
     except Exception:
         _unmark_closed_accounts(db, marked)              # the firm is still whole, so nobody of it is "closed"
         raise
+    # Told BEFORE the audit row is written, so a purge whose row then fails is still mailed (the review of 27-11-2026).
+    platform_notice.later(platform_notice.note_action, admin, "platform_purge", firm_id, firm.get("name"),
+                          f"{len(marked)} people were told their firm is closed.", record=False)
     # Durable platform-level audit — written AFTER the purge so it is not swept
     # away with the firm's own (firm-scoped) audit_logs.
     db.table("platform_audit").insert({

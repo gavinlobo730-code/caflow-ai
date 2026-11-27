@@ -16,6 +16,12 @@ core/auth.py | _get_user_and_firm | call:_read_user_row | read | 1 | principal-l
 core/auth.py | _read_user_row | users | read | 2 | principal-lookup
 core/auth.py | get_current_user | call:_get_user_and_firm | read | 1 | principal-lookup
 core/auth.py | refuse_a_member_whose_session_has_ended | call:_get_user_and_firm | read | 1 | principal-lookup
+core/platform_auth.py | _firm_standing | call:_tables_holding | read | 2 | principal-lookup
+core/platform_auth.py | _tables_holding | client_portal_users | read | 1 | principal-lookup
+core/platform_auth.py | _tables_holding | clients | read | 1 | principal-lookup
+core/platform_auth.py | _tables_holding | payroll_employees | read | 1 | principal-lookup
+core/platform_auth.py | _tables_holding | users | read | 1 | principal-lookup
+core/platform_auth.py | require_platform_admin | call:_firm_standing | read | 1 | principal-lookup
 core/portal_auth.py | get_current_portal_client | call:list_portal_memberships | read | 1 | principal-lookup
 core/portal_auth.py | get_current_portal_employee | payroll_employees | read | 1 | principal-lookup
 domain/ai_copilot_service.py | AICopilotService._build_context | repo:client_repo.find_by_id | read | 1 | gated-by-route | route=routers/ai_copilot_v2.py::send_message via=chat

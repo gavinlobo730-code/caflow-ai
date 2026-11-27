@@ -38,6 +38,9 @@ SCAN_DIRS = ("routers", "services", "domain", "repositories", "jobs", "core")
 
 #: (module, function) -> why the practice is in this read's answer. Each was read on 16-11-2026.
 PRACTICE_IN_ON_PURPOSE: dict[tuple[str, str], str] = {
+    ("core/platform_auth.py", "_tables_holding"):
+        "asks whether a sign-in account is the legacy portal contact of ANY client row, the firm's own practice included: whoever "
+        "a client row names belongs to a firm, and the platform pages refuse such an account (POST-B-351)",
     ("routers/payroll.py", "payroll_client_states"):
         "names for the clients payroll settings and runs already chose; the answer goes through `_the_firms_clients_only`, which leaves the practice out unless a Partner names it (POST-A-532)",
     ("routers/payroll.py", "payroll_employee_exceptions"):

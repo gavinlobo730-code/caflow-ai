@@ -66,7 +66,8 @@ jobs:
           # frontend change: without it a vector edited to fit the backend could leave the browser's copy of the rule failing unrun.
           # --no-renames and a here-string for the reasons given in backend-ci.yml's detect step.
           changed="$(git diff --name-only --no-renames "$base" "$head")"
-          if grep -qE '^(apps/web/|shared/|\.github/workflows/frontend-ci\.yml$)' <<<"$changed"; then
+          # apps/platform-admin/ is the separate platform administration site (POST-B-351); its own tests run in this job.
+          if grep -qE '^(apps/web/|apps/platform-admin/|shared/|\.github/workflows/frontend-ci\.yml$)' <<<"$changed"; then
             echo "web=true" >> "$GITHUB_OUTPUT"
             echo "Frontend files changed — running the full frontend suite."
           else
@@ -124,6 +125,12 @@ jobs:
         if: needs.scope.outputs.web == 'true'
         working-directory: apps/web
         run: pnpm test
+
+      # The separate platform administration site (POST-B-351): no dependencies, no install, node's own test runner.
+      - name: Test the platform administration site
+        if: needs.scope.outputs.web == 'true'
+        working-directory: apps/platform-admin
+        run: node --test scripts/*.test.mjs
 
       - name: Build
         if: needs.scope.outputs.web == 'true'

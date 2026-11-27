@@ -17,8 +17,17 @@ import core.platform_auth as pa
 from core.auth import get_jwt_user
 
 
+def _quiet(monkeypatch, standing=None):
+    """No database and no mail: lock 3's facts are given, and the sign-in notice records nothing."""
+    from services import platform_notice
+    monkeypatch.setattr(pa, "_firm_standing", lambda uid: standing or pa.Standing(belongs_to=(), firmless_admin_on_list=True))
+    monkeypatch.setattr(platform_notice, "note_visit", lambda *a, **k: None)
+    monkeypatch.setattr(platform_notice, "note_action", lambda *a, **k: None)
+
+
 def _client(monkeypatch, *, is_admin: bool, aal: str = "aal1"):
     monkeypatch.setattr(pa, "_is_platform_admin", lambda uid: is_admin)
+    _quiet(monkeypatch)
     app = FastAPI()
 
     @app.get("/guarded")
@@ -44,9 +53,16 @@ def test_non_admin_gets_404_not_403(monkeypatch):
     assert c.post("/destructive").status_code == 404
 
 
-def test_admin_passes_read_guard(monkeypatch):
-    c = _client(monkeypatch, is_admin=True, aal="aal1")
+def test_admin_passes_read_guard_with_the_second_factor(monkeypatch):
+    c = _client(monkeypatch, is_admin=True, aal="aal2")
     assert c.get("/guarded").status_code == 200
+
+
+def test_every_platform_read_needs_the_second_factor(monkeypatch):
+    # POST-B-351 lock 4: the authenticator code on every visit, not only before a destructive action.
+    r = _client(monkeypatch, is_admin=True, aal="aal1").get("/guarded")
+    assert r.status_code == 403
+    assert r.json()["detail"] == pa.SECOND_FACTOR_SENTENCE
 
 
 # ── MFA step-up on destructive actions ───────────────────────────────────────
@@ -54,7 +70,7 @@ def test_destructive_requires_aal2(monkeypatch):
     c = _client(monkeypatch, is_admin=True, aal="aal1")
     r = c.post("/destructive")
     assert r.status_code == 403
-    assert "Multi-factor" in r.json()["detail"]
+    assert r.json()["detail"] == pa.SECOND_FACTOR_SENTENCE
 
 
 def test_destructive_allowed_with_aal2(monkeypatch):
@@ -75,6 +91,7 @@ def _real_router_client(monkeypatch, *, is_admin: bool, aal: str):
     import importlib
     mod = importlib.import_module("routers.platform")
     monkeypatch.setattr(pa, "_is_platform_admin", lambda uid: is_admin)
+    _quiet(monkeypatch)
     app = FastAPI()
     app.include_router(mod.router)
     app.dependency_overrides[get_jwt_user] = lambda: {"auth_user_id": "u1", "email": "x@y.z", "aal": aal, "last_authenticator_code_at": time.time()}
@@ -90,7 +107,7 @@ def test_purge_admin_without_mfa_gets_403(monkeypatch):
     c = _real_router_client(monkeypatch, is_admin=True, aal="aal1")
     r = c.delete("/api/platform/firms/abc/permanent")
     assert r.status_code == 403
-    assert "Multi-factor" in r.json()["detail"]
+    assert r.json()["detail"] == pa.SECOND_FACTOR_SENTENCE
 
 
 # ── Router imports cleanly + no firm-RBAC coupling ───────────────────────────
