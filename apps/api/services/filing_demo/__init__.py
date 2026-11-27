@@ -6,8 +6,8 @@ built raises ValueError so the endpoint answers honestly instead of 500ing.
 """
 from __future__ import annotations
 
-from services.filing_demo import (  # noqa: F401 — `common` is imported so `services.filing_demo.common` is an attribute of the package
-    common,
+from services.filing_demo import (
+    common,  # noqa: F401 — imported so `services.filing_demo.common` is an attribute of the package
     esi,
     gstr1,
     gstr3b,

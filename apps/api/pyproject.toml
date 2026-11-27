@@ -18,7 +18,7 @@ select = ["F", "B", "E722", "C901", "PLR0915"]
 extend-immutable-calls = [
     "fastapi.Depends", "fastapi.Query", "fastapi.Body", "fastapi.Header", "fastapi.Path",
     "fastapi.Form", "fastapi.File", "fastapi.Cookie", "fastapi.Security",
-    # Frozen dataclasses: a shared default instance of either cannot be changed by a caller (POST-A-026).
+    # A frozen dataclass: a shared default instance of it cannot be changed by a caller (POST-A-026).
     "domain.gst.credit_ledger.CreditBalance",
 ]
 
