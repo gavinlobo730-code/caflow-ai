@@ -200,6 +200,7 @@ export default function InventoryPage() {
   // variance, its direction and whether a line may post are all the server's
   // answers — this page only opens the sheet and reloads the register after.
   const [countSessionId, setCountSessionId] = useState<string | null>(null);
+  const countButtonRef = useRef<HTMLButtonElement>(null);
   const [countError, setCountError] = useState("");
   // Opening a sheet is a server WRITE, so the button has to be disabled while
   // it is in flight. Migration 387 allows only one OPEN sheet per client per
@@ -437,7 +438,7 @@ export default function InventoryPage() {
               Show today
             </button>
           ) : null}
-          {mayWriteBooks && <Button variant="plain" size="none" onClick={startCount} disabled={openingCount}
+          {mayWriteBooks && <Button ref={countButtonRef} variant="plain" size="none" onClick={startCount} disabled={openingCount}
                   className="px-3 py-[7px] text-xs border border-emerald-200 text-emerald-700 rounded-lg hover:bg-emerald-50 whitespace-nowrap disabled:opacity-50">
             {openingCount ? "Opening…" : "Physical count"}
           </Button>}
@@ -528,7 +529,12 @@ export default function InventoryPage() {
         <StockCountSheetPanel
           clientId={clientId}
           sessionId={countSessionId}
-          onClose={() => setCountSessionId(null)}
+          onClose={() => {
+            setCountSessionId(null);
+            // The button is disabled while the sheet is being opened, and a disabled button loses the focus, so the dialog's own
+            // hand-back finds nothing to return to (the count sheet's first drive in a browser, POST-A-555).
+            countButtonRef.current?.focus();
+          }}
           onPosted={load}
         />
       )}
