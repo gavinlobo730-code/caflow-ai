@@ -69,14 +69,14 @@ def db(pg_template):
             for (emp, gross, net, tds, pt, pf_ee, pf_er, esi_ee, esi_er) in slips:
                 n += 1
                 stmts.append(
-                    "INSERT INTO payroll_slips (firm_id, client_id, run_id, employee_id, gross_paise, net_paise, tds_paise, pt_paise, "
+                    "INSERT INTO payroll_slips (run_id, employee_id, gross_paise, net_paise, tds_paise, pt_paise, "
                     "pf_employee_paise, pf_employer_paise, esi_employee_paise, esi_employer_paise) "
-                    f"VALUES ('{FIRM}', '{CLIENT}', '{RUN[i]}', '{emp}', {gross}, {net}, {tds}, {pt}, {pf_ee}, {pf_er}, {esi_ee}, {esi_er});")
+                    f"VALUES ('{RUN[i]}', '{emp}', {gross}, {net}, {tds}, {pt}, {pf_ee}, {pf_er}, {esi_ee}, {esi_er});")
         # another firm's run and payslip, which must add nothing for this firm
         stmts.append(f"INSERT INTO payroll_employees (id, firm_id, client_id, name, status) VALUES ('77900000-0000-0000-0000-0000000000e9', '{OTHER_FIRM}', '{OTHER_CLIENT}', 'Zed', 'active');")
         stmts.append(f"INSERT INTO payroll_runs (id, firm_id, client_id, month, status) VALUES ('{OTHER_RUN}', '{OTHER_FIRM}', '{OTHER_CLIENT}', '2026-04-01', 'finalized');")
-        stmts.append("INSERT INTO payroll_slips (firm_id, client_id, run_id, employee_id, gross_paise, net_paise) "
-                     f"VALUES ('{OTHER_FIRM}', '{OTHER_CLIENT}', '{OTHER_RUN}', '77900000-0000-0000-0000-0000000000e9', 999999, 999999);")
+        stmts.append("INSERT INTO payroll_slips (run_id, employee_id, gross_paise, net_paise) "
+                     f"VALUES ('{OTHER_RUN}', '77900000-0000-0000-0000-0000000000e9', 999999, 999999);")
         seed = _psql(dsn, "\n".join(stmts))
         assert seed.returncode == 0, seed.stderr
         yield dsn
