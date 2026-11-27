@@ -24,7 +24,7 @@ export interface JournalApprovalState {
 }
 
 export const RULE_UNREAD =
-  "Could not read whether this firm has a Partner approve manual journals, so Post is offered and the server decides.";
+  "Could not read whether this firm has manual journals approved before they post, so Post is offered and the server decides.";
 
 /** The rule as the server sent it, or null when the payload is not that shape (a payload is not a rule until something checked). */
 export function readJournalApprovalRule(data: unknown): JournalApprovalRule | null {

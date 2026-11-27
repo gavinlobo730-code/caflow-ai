@@ -3768,7 +3768,7 @@ function ApprovalQueue({ clientId }: { clientId: string }) {
         Approving posts the draft to the books and triggers any deferred action (e.g. bank settlement); locked financial years are blocked.{" "}
         {postingRule.rule
           ? (postingRule.rule.approval_required
-            ? "This firm has a Partner approve every manual journal: only someone who may approve posts a draft."
+            ? "This firm has every manual journal approved before it posts: only someone who may approve posts a draft."
             : "This firm lets anyone who may write the books post a draft; a Partner can require approval in Settings.")
           : postingRule.error ?? ""}
       </p>

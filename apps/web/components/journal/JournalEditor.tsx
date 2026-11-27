@@ -451,7 +451,7 @@ export function JournalEditor({
       )}
       {postedHeldForApproval && !locked && (
         <p role="status" className="text-xs text-ps-label bg-ps-bg rounded px-3 py-2">
-          This firm has a Partner approve every manual journal, and you may not approve, so an entry on the books is shown to read
+          This firm has every manual journal approved before it posts, and you may not approve, so an entry on the books is shown to read
           here. Someone who may approve corrects it, or reverses it.
         </p>
       )}
@@ -733,7 +733,7 @@ export function JournalEditor({
                     {saving ? "Saving…" : "Post Entry"}
                   </Button>
                 ) : (
-                  <p className="text-xs text-ps-label self-center">This firm has a Partner approve every manual journal, and you may not approve, so Post Entry is not shown to you: Save Draft, and the entry waits in the Approvals tab.</p>
+                  <p className="text-xs text-ps-label self-center">This firm has every manual journal approved before it posts, and you may not approve, so Post Entry is not shown to you: Save Draft, and the entry waits in the Approvals tab.</p>
                 )}
               </>
             )}

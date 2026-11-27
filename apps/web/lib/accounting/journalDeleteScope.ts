@@ -24,6 +24,6 @@ export function deleteAppliesTo(mayPost: boolean | null, rows: readonly HasPoste
 
 /** What the confirm says when posted entries in the selection will be left alone. */
 export const POSTED_LEFT_ALONE =
-  "Delete the selected drafts? This firm has a Partner approve every manual journal and you may not approve, so posted " +
+  "Delete the selected drafts? This firm has every manual journal approved before it posts and you may not approve, so posted " +
   "entries in the selection stay on the books and are counted as skipped. Deleted drafts leave every screen and stay in " +
   "Settings → Audit Log with their lines.";

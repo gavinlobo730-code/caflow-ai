@@ -40,11 +40,11 @@ _COLUMN = "manual_journals_need_approval"
 _MOCK_SETTING: dict[str, bool] = {}
 
 #: The refusal, said once, so the five doors cannot word it differently.
-REFUSAL_TO_POST = ("This firm has a Partner approve every manual journal, and you may not approve. Save the entry as a draft: it waits in "
+REFUSAL_TO_POST = ("This firm has every manual journal approved before it posts, and you may not approve. Save the entry as a draft: it waits in "
                    "Approvals for someone who may approve it.")
-REFUSAL_TO_CHANGE_POSTED = ("This firm has a Partner approve every manual journal, and you may not approve, so you cannot change or delete "
+REFUSAL_TO_CHANGE_POSTED = ("This firm has every manual journal approved before it posts, and you may not approve, so you cannot change or delete "
                             "an entry that is on the books. Ask someone who may approve, or reverse it through them.")
-UNREADABLE = ("Could not read whether this firm has a Partner approve manual journals, so the entry was not posted. Try again in a "
+UNREADABLE = ("Could not read whether this firm has manual journals approved before they post, so the entry was not posted. Try again in a "
               "moment, or save it as a draft.")
 
 
