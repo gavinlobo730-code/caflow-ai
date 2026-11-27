@@ -25,8 +25,10 @@ from pathlib import Path
 import pytest
 
 API_ROOT = Path(__file__).resolve().parents[1]
-MIGRATION = next(API_ROOT.glob("migrations/660_*.sql"))
-ROLLBACK = next(API_ROOT.glob("migrations/660_*_rollback.sql"))
+# Named in full: "660_*.sql" matches the rollback too, and which of the two a directory listing gives first depends on the machine
+# (the real-database job once ran the rollback as "the migration" and the table was gone; POST-A-574).
+MIGRATION = API_ROOT / "migrations" / "660_the_nightly_check_stores_what_three_engines_found_for_each_client.sql"
+ROLLBACK = API_ROOT / "migrations" / "660_the_nightly_check_stores_what_three_engines_found_for_each_client_rollback.sql"
 _ADMIN = os.environ.get("HARNESS_PG")
 
 pytestmark = pytest.mark.skipif(not _ADMIN or shutil.which("psql") is None, reason="requires HARNESS_PG + psql")

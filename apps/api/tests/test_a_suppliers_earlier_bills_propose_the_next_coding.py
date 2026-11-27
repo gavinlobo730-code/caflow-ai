@@ -488,7 +488,7 @@ def test_every_column_the_service_names_exists():
     prod = json.loads((API / "tests/fixtures/production_schema_2026-09-03.json").read_text())
     named = _columns_named(API / "services/purchase_history_service.py")
     assert set(named) == {"vendors", "purchase_bills", "purchase_bill_lines", "chart_of_accounts"}
-    migration_391 = next((API / "migrations").glob("391_*.sql")).read_text()
+    migration_391 = (API / "migrations" / "391_an_opening_balance_is_made_of_documents.sql").read_text()   # in full: "391_*.sql" matches the rollback too
     for table, cols in named.items():
         for col in cols:
             if table == "purchase_bills" and col == "is_opening":
