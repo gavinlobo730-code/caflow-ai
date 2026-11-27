@@ -49,7 +49,7 @@ import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { useDirtyFields, useReportDirty } from "@/lib/forms/useDirtyFields";
 import { removedEmployeeIdentifiers, type EmployeeIdentifier, type IdentifierValues } from "@/lib/payroll/employeeIdentifiers";
 import { useUnsavedChanges } from "@/lib/invoices/dirtyState";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 
 export type DrawerEmployee = {
   id: string;
@@ -807,7 +807,7 @@ function RevisionsSection({ employee, clientId, onSaved, onDirtyChange }: {
         </div>
       </div>
 
-      {loading ? <LoadingRegion label="Loading the salary revisions" className="text-xs text-ps-hint">Loading…</LoadingRegion>
+      {loading ? <LoadingRegion label="Loading the salary revisions"><SkeletonText lines={3} /></LoadingRegion>
         : rows.length === 0
           ? <EmptyState className="py-4" title="No revisions recorded" description="The employee master's own figures apply. Record a revision with the form above when the pay changes from a date." />
           : (
@@ -932,7 +932,7 @@ function LoansSection({ employee, clientId, onDirtyChange }: {
         </div>
       </div>
 
-      {loading ? <LoadingRegion label="Loading the loans and advances" className="text-xs text-ps-hint">Loading…</LoadingRegion>
+      {loading ? <LoadingRegion label="Loading the loans and advances"><SkeletonText lines={3} /></LoadingRegion>
         : rows.length === 0
           ? <EmptyState className="py-4" title="No loans or advances recorded" description="Record a loan or salary advance with the form above; its recovery is then deducted from the payslips." />
           : (

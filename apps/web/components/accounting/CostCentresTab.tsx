@@ -12,7 +12,7 @@ import type {
 import { objectWithLists, arrayOrEmpty } from "@/lib/api/shape";
 import { formatPaise } from "@/lib/services/formatting";
 import { EmptyState, ErrorState } from "@/components/ui/states";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 
 /**
  * Cost centres — the master, and income and expenditure by department (ACC-13).
@@ -222,7 +222,7 @@ export function CostCentresTab({
       )}
 
       {error && <ErrorState message={error} onRetry={() => void loadCentres()} />}
-      {!error && loading && <LoadingRegion label="Loading the cost centres" className="text-sm text-ps-hint">Loading…</LoadingRegion>}
+      {!error && loading && <LoadingRegion label="Loading the cost centres"><SkeletonText lines={4} /></LoadingRegion>}
 
       {!error && !loading && centres.length === 0 && (
         <EmptyState
@@ -283,7 +283,7 @@ export function CostCentresTab({
             <ErrorState message={reportError} onRetry={() => void loadReport()} />
           )}
           {!reportError && reportLoading && (
-            <LoadingRegion label="Loading the departmental result" className="text-sm text-ps-hint">Loading the departmental result…</LoadingRegion>
+            <LoadingRegion label="Loading the departmental result"><SkeletonText lines={3} /></LoadingRegion>
           )}
           {!reportError && !reportLoading && rows.length > 0 && (
             <section className="bg-white rounded-xl border border-ps-border overflow-hidden">

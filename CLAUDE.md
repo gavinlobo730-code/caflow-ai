@@ -264,7 +264,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - AN ASSET'S PLACE AND KEEPER HAVE A DATED HISTORY, WRITTEN WITH THE ASSET IN ONE STEP, AND A TYPO IS AN EDIT, NOT A MOVEMENT
 - A PHYSICAL COUNT OF A CLIENT'S ASSETS IS A DATED WORKING PAPER WITH A FINDING PER ASSET HELD THAT DAY, AND A CLOSED COUNT NEVER CHANGES
 
-### `docs/design-record/frontend.md` (17 entries): Frontend rules: payload shapes, the browser's second data path, money input, loading and recurring screens
+### `docs/design-record/frontend.md` (18 entries): Frontend rules: payload shapes, the browser's second data path, money input, loading and recurring screens
 
 - A PAYLOAD IS NOT A LIST UNTIL SOMETHING HAS CHECKED, AND THE STATE TYPE HIDES IT
 - A THIRD path existed and it was not a database at all: `localStorage`
@@ -283,6 +283,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE RESET PAGE IS TOLD WHICH PAGE LOAD CAME BY A RECOVERY LINK BEFORE THE SIGN-IN LIBRARY CLEANS THE ADDRESS, BECAUSE THE GUARD HOLDS THE PAGE BACK UNTIL AFTER
 - EVIDENCE IN A TEXT BOX IS CORRECTED AND NOT REMOVED, AND ONLY A DRAFT MAY TAKE AWAY ITS LINK, ITS REASON OR ITS PLACE OF SUPPLY
 - A ROW'S MENU IS THE SHARED GROUP OF BUTTONS, WITH NO LAYER OVER THE WINDOW BEHIND IT
+- A LOADING REGION DRAWS A SHAPE FOR A PLAIN READ AND KEEPS WORDS FOR A COMPUTATION
 
 ### `docs/design-record/identifiers.md` (5 entries): Identifiers: GSTIN, UAN, IFSC, party identifiers in imports, the firm's own GSTIN, FY and AY labels, ITR forms
 
@@ -576,7 +577,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A PURGED FIRM'S PEOPLE ARE TOLD THEIR FIRM IS CLOSED BY A MARKER THAT OUTLIVES THEIR MEMBER ROW
 - AN EMPLOYEE'S PORTAL INVITATION LINK EXISTS ONLY IN THE MAIL THE SERVER SENDS, AND THE SCREEN IS TOLD ONLY WHETHER THAT MAIL WENT
 - ONE SIGN-IN MAY BE BOTH A MEMBER OF STAFF AND A PORTAL EMPLOYEE
-- THE PLATFORM PAGES ASK FOR THE AUTHENTICATOR CODE ON EVERY VISIT, REFUSE A FIRM'S ACCOUNT ONCE A FIRM-LESS ONE IS LISTED, TELL THE LIST BY MAIL OF EVERY SIGN-IN AND ACTION, AND HAVE A SITE OF THEIR OWN
+- THE PLATFORM PAGES ASK FOR THE AUTHENTICATOR CODE ON EVERY VISIT, REFUSE A FIRM'S ACCOUNT ONCE A FIRM-LESS ONE IS LISTED, TELL THE LIST BY MAIL
 
 ### `docs/design-record/workflow-and-team.md` (4 entries): Workflow engine slices and the Team screen's permission notice
 

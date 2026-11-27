@@ -15,7 +15,7 @@
  */
 import { useEffect, useState } from "react";
 import { getEngagementChoices, type EngagementChoices } from "@/lib/data/timeTracking";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 
 export function EngagementPicker({
   clientId, value, onChange, id,
@@ -50,7 +50,7 @@ export function EngagementPicker({
       </p>
     );
   }
-  if (!choices) return <LoadingRegion label="Loading engagements" className="text-2xs text-ps-hint">Loading engagements…</LoadingRegion>;
+  if (!choices) return <LoadingRegion label="Loading engagements"><SkeletonText lines={3} /></LoadingRegion>;
   if (choices.engagements.length === 0 && !choices.reason) return null;
 
   const byId = new Map(choices.engagements.map((e) => [e.id, e]));

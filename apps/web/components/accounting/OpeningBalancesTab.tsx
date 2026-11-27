@@ -42,7 +42,7 @@ import { Drawer } from "@/components/ui/drawer";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { formatDate } from "@/lib/dates/format";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 
 type Kind = "receivable" | "payable";
 type Msg = { type: "ok" | "err"; text: string } | null;
@@ -342,7 +342,7 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
       )}
 
       {loading ? (
-        <LoadingRegion label="Loading the opening documents" className="text-xs text-ps-hint">Loading…</LoadingRegion>
+        <LoadingRegion label="Loading the opening documents"><SkeletonText lines={4} /></LoadingRegion>
       ) : !listing || (listing.documents ?? []).length === 0 ? (
         <EmptyState
           className="py-8"

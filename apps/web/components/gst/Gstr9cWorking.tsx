@@ -30,7 +30,7 @@ import { formatPaise } from "@/lib/money/format";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { objectOrNull, arrayOrEmpty } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 
 function money(paise: number | null | undefined): string {
   return paise == null ? "—" : formatPaise(paise);
@@ -303,7 +303,7 @@ export default function Gstr9cWorking({ clientId, financialYear }: { clientId: s
 
       {loadingRecon && (
         <LoadingRegion label="Loading the reconciliation">
-          <p className="text-2xs text-ps-hint inline-flex items-center gap-1"><Loader2 size={11} className="animate-spin" /> Loading…</p>
+          <SkeletonText lines={2} />
         </LoadingRegion>
       )}
       {saveError && <Callout tone="problem">{saveError}</Callout>}

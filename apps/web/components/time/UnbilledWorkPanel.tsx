@@ -23,7 +23,7 @@ import { readRateInput } from "@/lib/time/rateInput";
 import { nothingUnbilled, readUnbilledWork, type UnbilledWork } from "@/lib/time/unbilledWork";
 import { formatDate } from "@/lib/services/formatting";
 import type { Client } from "@/lib/types";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 import BillTimeDialog from "@/components/time/BillTimeDialog";
 
 export function UnbilledWorkPanel({ clients, canEdit }: { clients: Client[]; canEdit: boolean }) {
@@ -79,9 +79,7 @@ export function UnbilledWorkPanel({ clients, canEdit }: { clients: Client[]; can
   if (!work && !error) {
     return (
       <LoadingRegion label="Loading unbilled work" noticeClassName="justify-center text-center">
-        <div className="flex items-center justify-center py-10 text-ps-hint">
-          <Loader2 className="animate-spin mr-2" size={16} /> Loading…
-        </div>
+        <SkeletonText lines={4} className="py-10" />
       </LoadingRegion>
     );
   }

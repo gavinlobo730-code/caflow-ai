@@ -32,7 +32,7 @@ import { Callout, GapList } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
 import { Drawer } from "@/components/ui/drawer";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 
 interface Charge {
   id: string;
@@ -195,7 +195,7 @@ export function LandedCostPanel({
           </p>
           {error && <Callout tone="problem">{error}</Callout>}
 
-          {busy && !data && <LoadingRegion label="Loading the landed cost" className="text-xs text-ps-hint">Loading…</LoadingRegion>}
+          {busy && !data && <LoadingRegion label="Loading the landed cost"><SkeletonText lines={3} /></LoadingRegion>}
 
           {data && (
             <>

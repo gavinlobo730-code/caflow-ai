@@ -10,7 +10,7 @@ import { useEffect, useState, useCallback } from "react";
 import { CheckCircle, FileText, Download } from "lucide-react";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { api } from "@/lib/api";
-import { StatementSkeleton, LoadingRegion } from "@/components/ui/skeleton";
+import { StatementSkeleton, LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 
 import { fmt } from "@/components/banking/shared";
 import { objectOrNull, objectWithLists } from "@/lib/api/shape";
@@ -708,7 +708,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
             <div className="bg-white rounded-xl border border-ps-border p-4 space-y-2">
               <p className="text-xs font-semibold text-ps-body">Certification history</p>
               {!history ? (
-                <LoadingRegion label="Loading the certification history" className="text-2xs text-ps-hint">Loading…</LoadingRegion>
+                <LoadingRegion label="Loading the certification history"><SkeletonText lines={3} /></LoadingRegion>
               ) : !history.current && history.superseded.length === 0 ? (
                 <p className="text-2xs text-ps-hint">
                   This reconciliation has never been completed, so there is nothing certified yet.

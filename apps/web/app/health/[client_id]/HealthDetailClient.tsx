@@ -8,7 +8,7 @@ import Link from "next/link";
 import { ChevronLeft, Plus, ChevronDown, AlertTriangle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton, LoadingRegion } from "@/components/ui/skeleton";
+import { Skeleton, LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { formatDate } from "@/lib/dates/format";
 import { Callout } from "@/components/ui/callout";
@@ -246,7 +246,7 @@ function DimensionCard({ dimKey, value, clientId }: DimensionCardProps) {
         {expanded && (
           <div className="mt-3 pt-3 border-t border-ps-border">
             {loadingFactors ? (
-              <LoadingRegion label="Loading the factors"><p className="text-xs text-gray-400 animate-pulse">Loading factors…</p></LoadingRegion>
+              <LoadingRegion label="Loading the factors"><SkeletonText lines={3} /></LoadingRegion>
             ) : factorsFailed ? (
               <div className="flex items-center justify-between gap-3">
                 <p className="text-xs text-red-600">Couldn&apos;t load factors — the request failed or timed out.</p>

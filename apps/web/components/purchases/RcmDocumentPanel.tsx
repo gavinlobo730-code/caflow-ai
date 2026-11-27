@@ -28,7 +28,7 @@ import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
 import { Drawer } from "@/components/ui/drawer";
 import { formatDate } from "@/lib/dates/format";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 
 export function RcmDocumentPanel({
   clientId, kind, purchaseBillId, purchasePaymentId, onClose, onIssued,
@@ -106,7 +106,7 @@ export function RcmDocumentPanel({
           </p>
           {error && <Callout tone="problem">{error}</Callout>}
 
-          {busy && !preview && <LoadingRegion label="Loading the document" className="text-xs text-ps-hint">Loading…</LoadingRegion>}
+          {busy && !preview && <LoadingRegion label="Loading the document"><SkeletonText lines={3} /></LoadingRegion>}
 
           {issued && (
             <div className="bg-state-ready-surface border border-state-ready-border rounded-lg px-3 py-2 text-xs text-state-ready flex gap-2">

@@ -41,7 +41,7 @@ import { formatPaise } from "@/lib/money/format";
 import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/dates/format";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 
 function money(paise?: number | null) {
   const p = Number(paise ?? 0);
@@ -253,9 +253,7 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
       {/* A read the Load button starts (POST-A-449): the button keeps its own label, and the place the register will be drawn
           says what is being read, and that the server may be waking up, while the read is out. */}
       {busy === "load" && (
-        <LoadingRegion label="Loading the ITC register" className="text-xs text-ps-hint">
-          <p>Loading the register and the period&apos;s advances…</p>
-        </LoadingRegion>
+        <LoadingRegion label="Loading the ITC register"><SkeletonText lines={3} /></LoadingRegion>
       )}
 
       {register && (

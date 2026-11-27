@@ -46,7 +46,7 @@ import { newInvoiceHref } from "@/lib/invoices/workspaceNav";
 import { invoiceDetailFromOrderSeed } from "@/lib/sales/orderInvoiceSeed";
 import { ServiceCataloguePicker } from "@/components/lookups/ServiceCataloguePicker";
 import { serviceToLine, type ServiceCatalogueItem } from "@/lib/catalogue/service";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 
 type Tab = "quotations" | "orders" | "challans";
 type Msg = { type: "ok" | "err"; text: string } | null;
@@ -418,7 +418,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
   }
 
   if (loading) {
-    return <LoadingRegion label="Loading the sales cycle" className="p-6 text-sm text-ps-hint">Loading…</LoadingRegion>;
+    return <LoadingRegion label="Loading the sales cycle" className="p-6"><SkeletonText lines={4} /></LoadingRegion>;
   }
   if (loadFailed) {
     return (

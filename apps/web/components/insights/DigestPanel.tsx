@@ -9,7 +9,7 @@ import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
 import { digestClientHref, digestSectionHref } from "@/lib/insights/digestLinks";
 import { cn } from "@/lib/utils";
 import { GapList } from "@/components/ui/callout";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 
 /**
  * Today — what needs attention across the clients you can see (ai-25).
@@ -91,7 +91,7 @@ export function DigestPanel() {
         </button>
       </div>
 
-      {loading && <LoadingRegion label="Loading the digest" className="px-5 py-4 text-xs text-ps-hint">Loading…</LoadingRegion>}
+      {loading && <LoadingRegion label="Loading the digest" className="px-5 py-4"><SkeletonText lines={4} /></LoadingRegion>}
 
       {!loading && failed && (
         <p className="px-5 py-4 text-xs text-ps-label">{failed}</p>

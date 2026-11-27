@@ -25,7 +25,7 @@ import { rupeeInputFromPaise } from "@/lib/money/rupeeInput";
 import { readRateInput } from "@/lib/time/rateInput";
 import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
 import type { Client } from "@/lib/types";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 
 function show(paise: number | null | undefined): string {
   return paise === null || paise === undefined ? "" : rupeeInputFromPaise(paise);
@@ -83,9 +83,7 @@ export function BillingRatesPanel({ clients, canEdit }: { clients: Client[]; can
   if (!loaded) {
     return (
       <LoadingRegion label="Loading billing rates" noticeClassName="justify-center text-center">
-        <div className="flex items-center justify-center py-10 text-ps-hint">
-          <Loader2 className="animate-spin mr-2" size={16} /> Loading…
-        </div>
+        <SkeletonText lines={4} className="py-10" />
       </LoadingRegion>
     );
   }

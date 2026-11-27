@@ -48,7 +48,7 @@ import { usePermissions } from "@/lib/auth/AuthContext";
 import type { Gstr2bBulkResult, Gstr2bBulkStatus } from "@/lib/api";
 import { objectWithLists } from "@/lib/api/shape";
 import type { Gstr2bBulkAnswer, Gstr2bBulkDrops } from "@/lib/api";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 import { readGstr2bText } from "@/lib/gst/gstr2bFile";
 import { notRecordedSentence } from "@/lib/gst/bulkDropRecord";
 import { gstPeriodLabel } from "@/lib/gst/period";
@@ -322,7 +322,7 @@ function RecentDrops({ recent, error, loading, mayCompute }: {
       ) : !recent ? (
         loading ? (
           <LoadingRegion label="Loading your recent drops">
-            <p className="text-xs text-ps-label">Loading…</p>
+            <SkeletonText lines={2} />
           </LoadingRegion>
         ) : null
       ) : !recent.recorded ? (

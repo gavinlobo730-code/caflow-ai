@@ -30,7 +30,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { CLIENT_LIST_UNREAD } from "@/lib/clients/clientListUnread";
 import { istToday } from "@/lib/dateMath";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 import { openedForChoice } from "@/lib/payroll/openedFor";
 import { useOpenedFor } from "@/lib/payroll/useOpenedFor";
 
@@ -203,11 +203,7 @@ export default function DeclarationsPage() {
       )}
 
       {loading && (
-        <LoadingRegion label="Loading declarations" noticeClassName="justify-center text-center">
-          <div className="flex items-center gap-2 text-sm text-ps-label py-8 justify-center">
-            <Loader2 className="w-4 h-4 animate-spin" /> Loading declarations…
-          </div>
-        </LoadingRegion>
+        <LoadingRegion label="Loading declarations" noticeClassName="justify-center text-center"><SkeletonText lines={3} /></LoadingRegion>
       )}
 
       {!loading && loadFailed && (

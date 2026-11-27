@@ -49,7 +49,7 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { formatDate } from "@/lib/dates/format";
 import { selectAll } from "@/lib/supabase/selectAll";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 
 type OpenBill = {
   id: string;
@@ -179,7 +179,7 @@ export default function AllocatePaymentModal({
   return (
     // POST-A-130: the shared dialog (named, Escape, Tab kept inside, focus given back). It stays open while the allocation is being saved.
     <Modal title={`Apply ${label}`} note={<>{payment.vendor_name ?? "Vendor"} · {fmt(settlement)} paid</>} maxWidthClass="max-w-[720px]" onClose={() => { if (!saving) onClose(); }}>
-          {loading ? <LoadingRegion label="Loading open bills" className="text-xs text-ps-hint">Loading open bills…</LoadingRegion>
+          {loading ? <LoadingRegion label="Loading open bills"><SkeletonText lines={3} /></LoadingRegion>
             : loadFailed ? (
               <div className="flex items-center gap-3">
                 <p className="text-xs text-state-problem">

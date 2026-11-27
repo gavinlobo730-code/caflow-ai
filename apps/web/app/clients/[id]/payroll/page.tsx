@@ -32,7 +32,7 @@ import ApplyStructureModal from "@/components/payroll/ApplyStructureModal";
 import { useAuth, usePermissions } from "@/lib/auth/AuthContext";
 import { StaffLinksPanel } from "@/components/payroll/StaffLinksPanel";
 import { useStaffLinks } from "@/lib/payroll/useStaffLinks";
-import { MetricCardSkeleton, StatementSkeleton, TransactionListSkeleton, TableSkeleton, CardGridSkeleton, Skeleton, LoadingRegion } from "@/components/ui/skeleton";
+import { MetricCardSkeleton, StatementSkeleton, TransactionListSkeleton, TableSkeleton, CardGridSkeleton, Skeleton, LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 import StatutoryHandoff from "@/components/payroll/StatutoryHandoff";
 import { BonusRegisterTab } from "@/components/payroll/BonusRegister";
@@ -2305,7 +2305,7 @@ function PayrollEnablementLine({ clientId }: { clientId: string }) {
           </button>
         </>
       ) : enabled === null ? (
-        <LoadingRegion label="Checking whether payroll is switched on" className="text-ps-hint">Checking whether payroll is switched on…</LoadingRegion>
+        <LoadingRegion label="Checking whether payroll is switched on"><SkeletonText lines={3} /></LoadingRegion>
       ) : enabled ? (
         <span className="text-ps-body">Payroll is <strong>on</strong> for this client.</span>
       ) : (

@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
-import { Skeleton, LoadingRegion } from "@/components/ui/skeleton";
+import { Skeleton, LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 import { Callout } from "@/components/ui/callout";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -688,9 +688,7 @@ export default function EntityDetailPage() {
               <div className="px-5 py-2.5 border-b border-gray-700 text-xs text-red-400">{matchActionError}</div>
             )}
             {matchesLoading ? (
-              <LoadingRegion label="Loading cross-client matches" className="text-center py-12" noticeClassName="justify-center text-center">
-                <p className="text-sm text-slate-500">Loading cross-client matches…</p>
-              </LoadingRegion>
+              <LoadingRegion label="Loading cross-client matches" className="py-12" noticeClassName="justify-center text-center"><SkeletonText lines={3} /></LoadingRegion>
             ) : matchesError ? (
               <div className="text-center py-12 space-y-2">
                 <p className="text-sm text-red-400 font-medium">{matchesError}</p>

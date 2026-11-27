@@ -37,7 +37,7 @@ import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state
 import { EmptyState } from "@/components/ui/states";
 import { ServiceCataloguePicker } from "@/components/lookups/ServiceCataloguePicker";
 import type { ServiceCatalogueItem } from "@/lib/catalogue/service";
-import { LoadingRegion } from "@/components/ui/skeleton";
+import { LoadingRegion, SkeletonText } from "@/components/ui/skeleton";
 
 type Msg = { type: "ok" | "err"; text: string } | null;
 
@@ -224,7 +224,7 @@ export default function PriceListsPanel({
           </p>
 
           {msg && <Callout tone={msg.type === "ok" ? "note" : "problem"}>{msg.text}</Callout>}
-          {loading && !loaded && <LoadingRegion label="Reading the price lists" className="text-xs text-ps-hint">Reading the price lists…</LoadingRegion>}
+          {loading && !loaded && <LoadingRegion label="Reading the price lists"><SkeletonText lines={3} /></LoadingRegion>}
 
           <div className="flex flex-wrap items-end gap-2">
             <label className="text-2xs text-ps-label">
