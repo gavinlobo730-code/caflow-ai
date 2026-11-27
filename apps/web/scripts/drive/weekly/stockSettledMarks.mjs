@@ -11,7 +11,9 @@
  *   2. the server's refusal of a mark is read inside the dialog, which stays open for the reason to be corrected;
  *   3. Take the mark off asks first (Cancel sends nothing); saying yes sends ONE delete for that mark;
  *   4. a read of the marks that failed says it could not read them and is NOT drawn as "none are marked";
- *   5. somebody who may read the books and not write them is shown neither button, and is told why.
+ *   5. somebody who may read the books and not write them is shown neither button, and is told why;
+ *   6. a purchase bill the retry cannot finish (landed charges, an oversold true-up) shows the server's sentence on its row and is not offered
+ *      Complete the stock, while the document beside it is.
  *
  * No scenario has a date of its own, so none has a zone.
  */
@@ -145,6 +147,28 @@ export const scenarios = [
       await page.getByRole("alertdialog").getByRole("button", { name: "Take the mark off" }).click();
       await page.getByText("The mark is taken off Sales invoice INV-77.").waitFor({ timeout: 8000 });
       assert.equal(stub.writesTo(UNSETTLE, "DELETE").length, 1, "the mark was not taken off exactly once");
+    },
+  },
+  {
+    id: "a-bill-the-retry-cannot-finish-says-what-to-do-by-hand-and-is-not-offered-complete-the-stock",
+    title: "A purchase bill with landed charges or an oversold true-up that was not posted: the server's sentence is shown on its row, Complete the stock is not offered for it, and Mark as settled still is",
+    async run(env) {
+      const { page, stub } = env;
+      const SAYS = "Purchase bill BILL-9 received goods that covered units sold earlier while the item was oversold, so the cost of those units belongs in Cost of Goods Sold, and the entry that moves it was not posted. Post that true-up by hand, then mark it as settled by hand, with a note of what you posted.";
+      const HAND = { kind: "purchase_bill", document_id: "22222222-2222-4222-8222-222222222222", reference: "BILL-9", document_date: "2026-05-04",
+        owed_lines: 1, moved_lines: 1, unjournalled_rows: 0, hand_fix: "oversold_trueup", hand_fix_says: SAYS };
+      stub.route({ method: "GET", re: LIST, reply: () => ok({ total: 2, documents: [HAND, DOC] }) });
+      stub.route({ method: "GET", re: SETTLED, reply: () => ok({ settlements: [] }) });
+      await page.goto(env.at("/inventory/"), { waitUntil: "networkidle" });
+      await page.getByText("Documents whose stock was not all recorded").waitFor();
+      const handRow = page.getByRole("row").filter({ hasText: "BILL-9" });
+      await handRow.getByText(SAYS).waitFor({ timeout: 8000 });
+      assert.equal(await handRow.getByRole("button", { name: "Complete the stock" }).count(), 0, "Complete the stock is offered for a bill the retry cannot finish");
+      assert.equal(await handRow.getByRole("button", { name: "Mark as settled", exact: true }).count(), 1, "Mark as settled is not offered for it");
+      // The ordinary document beside it is unchanged: it is still offered both.
+      const ordinary = page.getByRole("row").filter({ hasText: "INV-77" });
+      assert.equal(await ordinary.getByRole("button", { name: "Complete the stock" }).count(), 1, "the ordinary document lost its Complete the stock button");
+      assert.equal(stub.writesTo(/api\/inventory\/stock-effects\/retry/, "POST").length, 0, "something was sent");
     },
   },
   {

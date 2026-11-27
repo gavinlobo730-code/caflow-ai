@@ -39,7 +39,7 @@ from core.db_paging import fetch_all
 from core.db_provider import privileged_for
 from core.observability import capture_soft_failure
 from domain.inventory import stock_effect as stock_effects
-from domain.inventory import stock_settlement
+from domain.inventory import stock_hand_fix, stock_settlement
 
 _logger = logging.getLogger("caflow.stock_effect_retry")
 
@@ -125,7 +125,16 @@ def unrecorded_documents(db, *, firm_id: str, client_id: str) -> Optional[dict]:
         # list, and it is said: every screen that asks would otherwise show nothing for as long as the shape stays wrong (POST-A-505).
         capture_soft_failure(unreadable, operation="stock_effect.unrecorded_documents_shape", firm_id=firm_id, client_id=client_id)
         return None
-    return {"total": total, "documents": data["documents"]}
+    return {"total": total, "documents": [_with_hand_fix_words(d) for d in data["documents"]]}
+
+
+def _with_hand_fix_words(document):
+    """A document the CA has to put right by hand carries the sentence that says so (migration 780's `hand_fix`); every other document is as it was.
+    A kind this code does not know carries no sentence, so a newer database never makes this answer a guess."""
+    if not isinstance(document, dict) or not stock_hand_fix.known(document.get("hand_fix")):
+        return document
+    label = f"Purchase bill {document.get('reference') or 'this bill'}"
+    return {**document, "hand_fix_says": stock_hand_fix.says(document["hand_fix"], label)}
 
 
 def _load(db, kind: str, *, firm_id: str, client_id: str, document_id: str) -> dict:
@@ -253,6 +262,13 @@ def retry(db, *, firm_id: str, client_id: str, kind: str, document_id: str, crea
     mark = _mark_of(db, firm_id=firm_id, client_id=client_id, kind=kind, document_id=document_id)
     if mark:
         raise Refused(stock_settlement.settled_refusal(label, str(mark.get("reason") or "").strip() or "no reason recorded"))
+
+    # A BILL A RETRY CANNOT HONESTLY FINISH (migration 780): its charges' split or its oversold true-up is not something the rows keep, so the
+    # same words the list shows are the answer, before anything is moved. A finder that could not be asked is not a reason to refuse.
+    found = unrecorded_documents(db, firm_id=firm_id, client_id=client_id)
+    for listed in (found or {}).get("documents", []):
+        if listed.get("document_id") == str(document_id) and listed.get("kind") == kind and stock_hand_fix.known(listed.get("hand_fix")):
+            raise Refused(stock_hand_fix.refusal(listed["hand_fix"], label))
 
     # A year the firm locked, or this client's finalised year-end, takes no new stock row or journal: asked BEFORE anything is written,
     # because the journal behind a line the kernel would refuse would be left unposted while the stock row stood in a closed year, and

@@ -1958,6 +1958,10 @@ export type UnrecordedStockDocument = {
   owed_lines: number;
   moved_lines: number;
   unjournalled_rows: number;
+  /** Set by the server for a purchase bill that "Complete the stock" cannot finish (migration 780): which of the two kinds, and the sentence that says
+   *  what to do by hand. Absent for every other document, which the retry can finish. */
+  hand_fix?: "landed_charges" | "oversold_trueup" | null;
+  hand_fix_says?: string | null;
 };
 
 export type UnrecordedStock = { total: number; documents: UnrecordedStockDocument[] };
