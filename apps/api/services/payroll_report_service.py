@@ -54,19 +54,121 @@ EVERY READ HERE IS PAGED, AND A LIST OF RUNS IS SENT IN PIECES (POST-A-535)
     for the runs, `fetch_all_in` for the payslips of a list of runs), so every
     projection names `id`, which is what the pager walks on.
 
-    WHAT THIS DOES NOT CHANGE: the year-end sums are still added up here from
-    the year's payslips, so the rows read grow with the payroll. They are all
-    read now; moving the sum into the database is the rest of that ledger line.
+    THE SUMS ARE ADDED UP IN THE DATABASE (POST-A-536, migration 779). The two
+    functions `payroll_run_summaries` and `payroll_year_end_totals` return the
+    sums as one JSON document each, so what crosses the wire is the size of the
+    ANSWER and not of the payroll. The route still narrows the runs to the
+    caller's clients first and hands the database the run ids it may answer for.
+    THE PYTHON PATH BELOW IS KEPT, not replaced: mock mode and local dev have no
+    such function, and a database that has not applied 779 yet (or answers it
+    wrongly) must still answer, so a missing or failing function is reported
+    (`capture_soft_failure`) and the same figures are added up here from the
+    paged payslips. `tests/test_779_the_payroll_reports_add_up_in_the_database_pg.py`
+    runs the same payslips through both and compares them.
 """
 from __future__ import annotations
 
 import re
 from typing import Callable, Optional
-from core.db_paging import fetch_all, fetch_all_in
+from core.db_paging import fetch_all, fetch_all_in, fetch_document
 from core.db_provider import privileged_for
 from core.observability import capture_soft_failure
 
 _MONTH_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
+
+_RUN_SUM_KEYS = ("gross_paise", "net_paise", "tds_paise", "pf_employee_paise", "pf_employer_paise",
+                 "esi_employee_paise", "esi_employer_paise")
+_EMPLOYEE_SUM_KEYS = ("gross_paise", "net_paise", "tds_paise", "pt_paise", "pf_employee_paise", "esi_employee_paise")
+
+
+def _from_the_database(db, label: str, firm_id: str, call: Callable) -> Optional[list]:
+    """The database function's answer, or None when there is none to ask (mock mode, a database without migration 779) or it failed.
+
+    `call` takes the privileged client and returns the builder of the function call, so the function's NAME is a literal at its call site
+    (the schema checks read the quoted name in each such call, and a name passed through a variable is one nothing checks).
+
+    None is never an empty answer: the caller then adds the figures up itself from the paged payslips, so a missing function costs
+    speed and never a figure. A failure is reported, not swallowed."""
+    client = privileged_for(db)
+    if not callable(getattr(client, "rpc", None)):
+        return None
+    try:
+        return fetch_document(lambda: call(client), label=f"payroll_report.{label}", expect=list)
+    except Exception as exc:                                  # noqa: BLE001 — reported below, and the Python path answers
+        capture_soft_failure(exc, operation=f"payroll_report.{label}", firm_id=firm_id)
+        return None
+
+
+def run_totals_from_slips(run_ids: list[str], rows: list[dict]) -> dict[str, dict]:
+    """The five figures per run, added up from the payslip rows (the Python path, and the other half of the parity test)."""
+    out: dict[str, dict] = {
+        rid: {"run_id": rid, "slip_count": 0, "gross_paise": 0, "net_paise": 0,
+              "tds_paise": 0, "pf_count": 0, "esi_count": 0,
+              "pf_employee_paise": 0, "pf_employer_paise": 0,
+              "esi_employee_paise": 0, "esi_employer_paise": 0}
+        for rid in run_ids
+    }
+    for r in rows:
+        b = out.get(str(r.get("run_id")))
+        if b is None:
+            continue
+        b["slip_count"] += 1
+        for key in _RUN_SUM_KEYS:
+            b[key] += int(r.get(key) or 0)
+        # What the slip CARRIED, never a re-derived ceiling test — see the module docstring for the member this got wrong.
+        if int(r.get("pf_employee_paise") or 0) > 0:
+            b["pf_count"] += 1
+        if (int(r.get("esi_employee_paise") or 0) > 0
+                or int(r.get("esi_employer_paise") or 0) > 0):
+            b["esi_count"] += 1
+    return out
+
+
+def run_totals_from_answer(run_ids: list[str], answer: list[dict]) -> dict[str, dict]:
+    """The same figures, from the database function's document."""
+    out = run_totals_from_slips(run_ids, [])
+    for r in answer:
+        b = out.get(str(r.get("run_id")))
+        if b is None:
+            continue
+        b["slip_count"] = int(r.get("slip_count") or 0)
+        for key in (*_RUN_SUM_KEYS, "pf_count", "esi_count"):
+            b[key] = int(r.get(key) or 0)
+    return out
+
+
+def employee_totals_from_slips(rows: list[dict]) -> list[dict]:
+    """One row per employee from the payslip rows, ordered by name (the Python path, and the other half of the parity test)."""
+    out: dict[str, dict] = {}
+    for r in rows:
+        key = str(r.get("employee_id"))
+        b = out.setdefault(key, {
+            "employee_id": key,
+            "employee": r.get("payroll_employees") or None,
+            "months": 0, "gross_paise": 0, "net_paise": 0, "tds_paise": 0,
+            "pt_paise": 0, "pf_employee_paise": 0, "esi_employee_paise": 0,
+        })
+        b["months"] += 1
+        for k in _EMPLOYEE_SUM_KEYS:
+            b[k] += int(r.get(k) or 0)
+    return _by_name(out.values())
+
+
+def employee_totals_from_answer(answer: list[dict]) -> list[dict]:
+    """The same rows, from the database function's document."""
+    out = []
+    for r in answer:
+        out.append({
+            "employee_id": str(r.get("employee_id")),
+            "employee": ({k: r.get(k) for k in ("name", "pan", "designation", "department")} if r.get("has_employee") else None),
+            "months": int(r.get("months") or 0),
+            **{k: int(r.get(k) or 0) for k in _EMPLOYEE_SUM_KEYS},
+        })
+    return _by_name(out)
+
+
+def _by_name(rows) -> list[dict]:
+    return sorted(rows, key=lambda b: ((b["employee"] or {}).get("name") or "").lower())
 
 
 def fy_of_month(month: str) -> Optional[str]:
@@ -119,37 +221,17 @@ def run_summaries(db, firm_id: str, run_ids: list[str]) -> dict[str, dict]:
     """
     if not run_ids:
         return {}
+    answer = _from_the_database(
+        db, "payroll_run_summaries", firm_id, lambda c: c.rpc("payroll_run_summaries", {"p_firm": firm_id, "p_run_ids": run_ids}))
+    if answer is not None:
+        return run_totals_from_answer(run_ids, answer)
     rows = fetch_all_in(
         lambda: (privileged_for(db).table("payroll_slips")
                  .select("id, run_id, gross_paise, net_paise, tds_paise, "
                          "pf_employee_paise, pf_employer_paise, "
                          "esi_employee_paise, esi_employer_paise")),
         "run_id", run_ids, label="payroll_report.run_summaries")
-
-    out: dict[str, dict] = {
-        rid: {"run_id": rid, "slip_count": 0, "gross_paise": 0, "net_paise": 0,
-              "tds_paise": 0, "pf_count": 0, "esi_count": 0,
-              "pf_employee_paise": 0, "pf_employer_paise": 0,
-              "esi_employee_paise": 0, "esi_employer_paise": 0}
-        for rid in run_ids
-    }
-    for r in rows:
-        b = out.get(str(r.get("run_id")))
-        if b is None:
-            continue
-        b["slip_count"] += 1
-        for key in ("gross_paise", "net_paise", "tds_paise",
-                    "pf_employee_paise", "pf_employer_paise",
-                    "esi_employee_paise", "esi_employer_paise"):
-            b[key] += int(r.get(key) or 0)
-        # What the slip CARRIED, never a re-derived ceiling test — see the
-        # module docstring for the member this got wrong.
-        if int(r.get("pf_employee_paise") or 0) > 0:
-            b["pf_count"] += 1
-        if (int(r.get("esi_employee_paise") or 0) > 0
-                or int(r.get("esi_employer_paise") or 0) > 0):
-            b["esi_count"] += 1
-    return out
+    return run_totals_from_slips(run_ids, rows)
 
 
 def employee_year_totals(db, firm_id: str, financial_year: str,
@@ -181,28 +263,18 @@ def employee_year_totals(db, firm_id: str, financial_year: str,
     if not run_rows:
         return []
 
+    run_ids = [str(r["id"]) for r in run_rows]
+    answer = _from_the_database(
+        db, "payroll_year_end_totals", firm_id, lambda c: c.rpc("payroll_year_end_totals", {"p_firm": firm_id, "p_run_ids": run_ids}))
+    if answer is not None:
+        return employee_totals_from_answer(answer)
     rows = fetch_all_in(
         lambda: (privileged_for(db).table("payroll_slips")
                  .select("id, employee_id, gross_paise, net_paise, tds_paise, pt_paise, "
                          "pf_employee_paise, esi_employee_paise, "
                          "payroll_employees(name, pan, designation, department)")),
-        "run_id", [str(r["id"]) for r in run_rows], label="payroll_report.year_slips")
-
-    out: dict[str, dict] = {}
-    for r in rows:
-        key = str(r.get("employee_id"))
-        b = out.setdefault(key, {
-            "employee_id": key,
-            "employee": r.get("payroll_employees") or None,
-            "months": 0, "gross_paise": 0, "net_paise": 0, "tds_paise": 0,
-            "pt_paise": 0, "pf_employee_paise": 0, "esi_employee_paise": 0,
-        })
-        b["months"] += 1
-        for k in ("gross_paise", "net_paise", "tds_paise", "pt_paise",
-                  "pf_employee_paise", "esi_employee_paise"):
-            b[k] += int(r.get(k) or 0)
-    return sorted(out.values(),
-                  key=lambda b: ((b["employee"] or {}).get("name") or "").lower())
+        "run_id", run_ids, label="payroll_report.year_slips")
+    return employee_totals_from_slips(rows)
 
 
 def financial_years(db, firm_id: str, *, narrow: Callable[[list[dict]], list[dict]]) -> list[str]:
