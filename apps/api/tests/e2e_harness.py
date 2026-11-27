@@ -930,12 +930,14 @@ class _Rpc:
         return header
 
     def _fn_settle_receipt_atomic(self):
-        """Mirror migrations/160+162+235+574 settle_receipt_atomic: insert the journal
-        header+lines, the receipt row, and every allocation's invoice update
-        (trivially atomic in-memory — a real exception here would need to undo
-        prior appends to be a faithful mirror, but no test exercises a
-        mid-function failure path against this fake; that's proven for real
-        against Postgres in test_a_receipt_posts_its_journal_row_and_allocations_in_one_transaction_pg.py).
+        """Mirror migrations/160+162+235+574+781 settle_receipt_atomic: insert the journal
+        header+lines, the receipt row, and every allocation's invoice update.
+        The real function is one transaction, so a refusal part-way leaves
+        nothing: this double takes back what it appended before it raises a
+        refusal met in the allocation loop (`refuse`, below), which is what the
+        retry of a foreign receipt is driven against. The real thing is proven
+        against Postgres in test_a_receipt_posts_its_journal_row_and_allocations_in_one_transaction_pg.py
+        and test_781_..._pg.py.
         Unlike post_journal_atomic, this does NOT dedupe/return-existing on a
         matching reference — the real function doesn't either (R2.12: a
         genuine collision must roll back and surface as an error, not silently
@@ -962,10 +964,11 @@ class _Rpc:
         entry.setdefault("id", str(uuid.uuid4()))
         self.db._tables.setdefault("journal_entries", []).append(entry)
         line_store = self.db._tables.setdefault("journal_lines", [])
-        for l in lines:
+        for position, l in enumerate(lines):
             lr = dict(l)
             lr["journal_entry_id"] = entry["id"]
             lr.setdefault("id", str(uuid.uuid4()))
+            lr["line_order"] = position          # migration 781: the place the line held in the array
             line_store.append(lr)
 
         receipt["journal_entry_id"] = entry["id"]
@@ -975,13 +978,39 @@ class _Rpc:
         invoices = self.db._tables.setdefault("client_sales_invoices", [])
         alloc_store = self.db._tables.setdefault("receipt_allocations", [])
         alloc_results = []
+        # Migration 781: a receipt in a foreign currency settles each invoice in two amounts and compares what the caller read.
+        ccy = (str(self.params["p_receipt"].get("txn_currency") or "").strip() or "INR").upper()
+        foreign = ccy != "INR"
         by_invoice: dict = {}
+        txn_by_invoice: dict = {}
+        expect_by_invoice: dict = {}
+        readings_by_invoice: dict = {}
         for a in allocations:
             allocated_paise = int(a.get("allocated_paise") or 0)
-            if allocated_paise <= 0:
+            allocated_txn = int(a.get("allocated_txn") or 0)
+            if allocated_paise <= 0 and not (foreign and allocated_txn > 0):
                 continue
             inv_id = a.get("sales_invoice_id")
             by_invoice[inv_id] = by_invoice.get(inv_id, 0) + allocated_paise
+            txn_by_invoice[inv_id] = txn_by_invoice.get(inv_id, 0) + allocated_txn
+            expect_by_invoice.setdefault(inv_id, (a.get("expect_paid_paise"), a.get("expect_paid_txn"), a.get("expect_credited_paise")))
+            readings_by_invoice.setdefault(inv_id, set()).add((a.get("expect_paid_paise"), a.get("expect_paid_txn"), a.get("expect_credited_paise")))
+
+        # The real function is one transaction: a refusal part-way leaves nothing. This double appends as it goes, so it remembers
+        # what it has written and takes it back before it raises (the journal, its lines and the receipt are already in the tables).
+        def refuse(message: str, code: str | None = None):
+            self.db._tables["journal_entries"].remove(entry)
+            self.db._tables["journal_lines"][:] = [l for l in self.db._tables["journal_lines"] if l.get("journal_entry_id") != entry["id"]]
+            self.db._tables["receipts"].remove(receipt)
+            alloc_store[:] = [r for r in alloc_store if r.get("receipt_id") != receipt["id"]]
+            for inv, before in undo:
+                inv.clear()
+                inv.update(before)
+            err = Exception(message)
+            if code:
+                err.code = code
+            raise err
+        undo: list = []
 
         for inv_id, allocated_paise in by_invoice.items():
             inv = next(
@@ -992,19 +1021,57 @@ class _Rpc:
                 None,
             )
             if inv is None:
-                raise Exception(f"settle_receipt_atomic: invoice {inv_id} is not part of this client's books")
+                refuse(f"settle_receipt_atomic: invoice {inv_id} is not part of this client's books")
             # task #227 / migration 235: a draft invoice was never issued (no AR
             # journal exists to settle) and a cancelled one is terminal.
             if inv.get("status") in ("draft", "cancelled"):
-                raise Exception(f"settle_receipt_atomic: invoice {inv_id} is {inv.get('status')} and cannot receive a payment")
+                refuse(f"settle_receipt_atomic: invoice {inv_id} is {inv.get('status')} and cannot receive a payment")
             # A sales debit note (CGST Act §34(3)) increases what's collectible —
             # mirrors migration 211's patch to the real settle_receipt_atomic.
             total = int(inv.get("total_paise", 0)) + int(inv.get("debit_note_paise", 0) or 0)
             credited = int(inv.get("credited_paise", 0) or 0)
-            new_paid = int(inv.get("paid_paise", 0) or 0) + allocated_paise
+            paid = int(inv.get("paid_paise", 0) or 0)
+            new_paid = paid + allocated_paise
+            if foreign:
+                # asked before any amount is judged, as the function does: a receipt that lost a race is told so
+                allocated_txn = txn_by_invoice[inv_id]
+                inv_ccy = (str(inv.get("txn_currency") or "").strip() or "INR").upper()
+                txn_total = int(inv.get("txn_total") or 0)
+                paid_txn = int(inv.get("paid_txn") or 0)
+                expect_paid, expect_paid_txn, expect_credited = expect_by_invoice[inv_id]
+                if inv_ccy != ccy:
+                    refuse(f"settle_receipt_atomic: the receipt is in {ccy} and invoice {inv_id} is billed in {inv_ccy}")
+                if allocated_txn <= 0:
+                    refuse(f"settle_receipt_atomic: the allocation to invoice {inv_id} names no foreign amount")
+                if len(readings_by_invoice[inv_id]) > 1:
+                    refuse(f"settle_receipt_atomic: the allocations to invoice {inv_id} do not agree about what was read of the invoice")
+                if expect_paid is None or expect_paid_txn is None:
+                    refuse(f"settle_receipt_atomic: the allocation to invoice {inv_id} does not say what was read of the invoice (expect_paid_paise, expect_paid_txn)")
+                if (paid != int(expect_paid) or paid_txn != int(expect_paid_txn)
+                        or (expect_credited is not None and credited != int(expect_credited))):
+                    refuse(f"settle_receipt_atomic: invoice {inv_id} changed while this receipt was being prepared", code="RC001")
             if new_paid + credited > total:
-                raise Exception(f"settle_receipt_atomic: allocation to invoice {inv_id} exceeds its outstanding")
+                refuse(f"settle_receipt_atomic: allocation to invoice {inv_id} exceeds its outstanding")
+            if foreign:
+                if allocated_txn > txn_total - paid_txn:
+                    refuse(f"settle_receipt_atomic: allocation to invoice {inv_id} ({allocated_txn} in {ccy}) exceeds its outstanding")
+                new_paid_txn = paid_txn + allocated_txn
+                new_status = "paid" if new_paid_txn >= txn_total else "partially_paid"
+                undo.append((inv, dict(inv)))
+                inv["paid_paise"] = new_paid
+                inv["paid_txn"] = new_paid_txn
+                inv["status"] = new_status
+                alloc_store.append({
+                    "id": str(uuid.uuid4()), "receipt_id": receipt["id"], "sales_invoice_id": inv_id,
+                    "allocated_paise": allocated_paise, "allocated_txn": allocated_txn,
+                })
+                alloc_results.append({
+                    "sales_invoice_id": inv_id, "allocated_paise": allocated_paise, "allocated_txn": allocated_txn,
+                    "new_paid_paise": new_paid, "new_paid_txn": new_paid_txn, "new_status": new_status,
+                })
+                continue
             new_status = "paid" if new_paid + credited >= total else "partially_paid"
+            undo.append((inv, dict(inv)))
             inv["paid_paise"] = new_paid
             inv["status"] = new_status
             alloc_row = {
@@ -1017,11 +1084,24 @@ class _Rpc:
                 "new_paid_paise": new_paid, "new_status": new_status,
             })
 
+        fx_delta = 0
+        fx = self.params["p_receipt"].get("fx_adjustment")
+        if foreign and isinstance(fx, dict):
+            fx_delta = int(fx.get("base_delta_paise") or 0)
+            if fx_delta != 0:
+                self.db._tables.setdefault("fx_adjustments", []).append({
+                    "id": str(uuid.uuid4()), "firm_id": receipt.get("firm_id"), "client_id": receipt.get("client_id"),
+                    "kind": "realized", "document_type": "receipt", "document_id": receipt["id"], "currency": ccy,
+                    "settlement_rate": fx.get("settlement_rate"), "base_delta_paise": fx_delta,
+                    "journal_entry_id": entry["id"], "rate_source": fx.get("rate_source"), "created_by": fx.get("created_by"),
+                })
+
         return {
             "receipt_id": receipt["id"],
             "journal_entry_id": entry["id"],
             "receipt": dict(receipt),
             "allocations": alloc_results,
+            "realized_fx_paise": fx_delta,
         }
 
     def _fn_file_it_declaration(self):

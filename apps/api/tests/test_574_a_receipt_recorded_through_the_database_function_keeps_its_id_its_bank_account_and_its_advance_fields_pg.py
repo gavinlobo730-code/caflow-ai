@@ -291,6 +291,9 @@ def test_the_wrapper_is_the_one_door_and_hands_the_receipt_to_the_body_whole(db)
 # ── 574: the file ───────────────────────────────────────────────────────────────────────────────────────────────────
 
 def test_the_rollback_restores_the_text_production_held_and_the_file_can_be_run_again(db):
+    # Migration 781 defines the body again (a foreign receipt goes through it too), so a migrated database starts on 781's text. This
+    # test is about 574's own two files: put 574's body in place first, then roll it back and forward.
+    assert _file(db, F574).returncode == 0
     after = _body(db)
     assert after != PRODUCTION_BEFORE_574
     assert _file(db, R574).returncode == 0
