@@ -368,3 +368,18 @@ def fetch_all_in(
         out.extend(fetch_all(lambda part=part: make_query().in_(column, part),
                              key, label=label))
     return out
+
+
+def fetch_document(build: Callable[[], Any], *, label: str, expect: type) -> Any:
+    """The ONE JSON document a database function returns, checked to be the type the caller expects (POST-A-536).
+
+    A function that SUMS in the database (`payroll_run_summaries`, `payroll_year_end_totals`, `cash_flow_report`) answers with a
+    single document and not a row set, so the thousand-row cap that every other read here pages past cannot cut it short. What can
+    go wrong instead is an answer that is not a document at all (a null, an error body, a different shape), and that is a failure
+    to say aloud, never a thin answer to render: this raises, and the caller decides what to fall back to.
+    """
+    res = build().execute()
+    data = getattr(res, "data", None)
+    if not isinstance(data, expect):
+        raise ValueError(f"{label} returned {type(data).__name__}, not {expect.__name__}")
+    return data
