@@ -25,8 +25,15 @@ test("the question carries what was typed, in paise and basis points, and nothin
   assert.equal(unit.question.discount_percent_bps, null);
 });
 
+test("a price typed with grouping is read as what it says (POST-A-567)", () => {
+  const got = inclusiveQuestion("c-1", "1,25,000", "line", LINE);
+  assert.ok(!("problem" in got), "a properly grouped price was refused");
+  if ("problem" in got) return;
+  assert.equal(got.question.inclusive_paise, 12_500_000);
+});
+
 test("what is not a figure is refused in words, before the server is asked", () => {
-  for (const price of ["", "   ", "0", "abc", "12abc", "1e3", "-50", "1.2.3", "1,25,000"]) {
+  for (const price of ["", "   ", "0", "abc", "12abc", "1e3", "-50", "1.2.3", "1,2,5"]) {
     const got = inclusiveQuestion("c-1", price, "line", LINE);
     assert.ok("problem" in got, `"${price}" was sent as a price`);
     assert.match(got.problem, /price including GST/);

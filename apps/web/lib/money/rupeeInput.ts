@@ -28,13 +28,49 @@
 const AMOUNT = /^(-?)(\d*)(?:\.(\d{0,2}))?$/;
 
 /**
+ * THE WHOLE-RUPEE PART, GROUPED THE WAY A PERSON TYPES IT (POST-A-567).
+ *
+ * Either the Indian way (1,25,000: groups of two, the last of three) or the Western way (1,250,000: groups of three), and nothing else.
+ * Both name the same digits, so there is no reading in which the two disagree about the value; what is refused is a comma in a place
+ * neither puts one (1,2,5 and 12,50 and ,500 and 1,,250), because a comma there is a typing mistake and not a grouping.
+ */
+const GROUPED_WHOLE = /^(?:\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})*,\d{3})$/;
+
+/**
+ * The text as a plain decimal: the commas of a properly grouped whole part taken out, anything else as it was.
+ *
+ * Returns null only for a comma in a wrong place, or one in the decimals. Text with no comma is returned unchanged, so the readers below
+ * judge it exactly as they always did. This is the ONE place that decides what a grouped amount is: a reader that took the commas out by
+ * itself would accept 1,2,5 as 125.
+ *
+ * WHY THIS HAD TO BE ONE FUNCTION AND NOT ONE READER. `gstLine.ratePaiseFromRupees` and `quantityFromInput` still read a string with
+ * `parseFloat`, which reads "1,25,000" as 1. They are pinned to the backend by shared/gst-parity-vectors.json and are handed the same text
+ * a line editor's reader has already accepted, so a reader that accepted grouping while they did not would put the original defect back
+ * (a line of ₹1,25,000 saved at ₹1). Both now take their text through here first.
+ */
+export function plainDecimalText(raw: string): string | null {
+  const s = raw.trim();
+  if (!s.includes(",")) return s;
+  const m = /^(-?)([\d,]*)((?:\.\d*)?)$/.exec(s);
+  if (!m) return null;
+  const [, sign, whole, frac] = m;
+  if (!GROUPED_WHOLE.test(whole)) return null;
+  return `${sign}${whole.replace(/,/g, "")}${frac}`;
+}
+
+/** What an amount box may look like, in the words a refusal uses. One sentence, so every box that refuses an amount says the same thing. */
+export const AMOUNT_MAY_LOOK_LIKE = "Type the amount in rupees, for example 1250, 1250.50 or 1,25,000, with commas only where they are usually written.";
+
+/**
  * Parse a rupee amount as typed. Returns integer paise, or null if the text is
  * not an amount. Blank is 0 — an empty field means "nothing here", which is
  * how every amount column in this app already reads.
  */
 export function paiseFromRupeeInput(raw: string): number | null {
-  const s = raw.trim();
-  if (s === "") return 0;
+  const typed = raw.trim();
+  if (typed === "") return 0;
+  const s = plainDecimalText(typed);
+  if (s === null) return null;
 
   const m = AMOUNT.exec(s);
   if (!m) return null;
@@ -95,6 +131,8 @@ export function rupeeInputFromPaise(paise: number): string {
  * is pinned to the backend's own rounding by shared/gst-parity-vectors.json.
  */
 export function bpsFromPercentInput(raw: string): number | null {
+  // A percentage has no grouping: "1,0" there is a typing mistake or somebody's decimal comma, and "1,000" would be a thousand per cent.
+  if (raw.includes(",")) return null;
   return paiseFromRupeeInput(raw);
 }
 
@@ -119,8 +157,10 @@ const QUANTITY = /^(-?)(\d*)(?:\.(\d{0,3}))?$/;
  * payload builder would silently coerce ever reaches it.
  */
 export function parseQuantity(raw: string): number | null {
-  const s = raw.trim();
-  if (s === "") return null;
+  const typed = raw.trim();
+  if (typed === "") return null;
+  const s = plainDecimalText(typed);
+  if (s === null) return null;
 
   const m = QUANTITY.exec(s);
   if (!m) return null;

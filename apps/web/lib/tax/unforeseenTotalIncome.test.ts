@@ -21,12 +21,16 @@ test("an amount is read by the one parser, to the paise", () => {
   assert.deepEqual(readTotalIncome("0"), { kind: "amount", paise: 0 });
 });
 
-for (const text of ["1e7", "12abc", "1,25,00,000", ".", "1.234"]) {
+for (const text of ["1e7", "12abc", "1,25,0,000", ".", "1.234"]) {
   test(`text that is not an amount is a problem, not a figure (${JSON.stringify(text)})`, () => {
     const r = readTotalIncome(text);
     assert.equal(r.kind, "problem");
   });
 }
+
+test("a total grouped the Indian way is read as what it says (POST-A-567)", () => {
+  assert.deepEqual(readTotalIncome("1,25,00,000"), { kind: "amount", paise: 1_250_000_000 });
+});
 
 test("a total below zero is refused in words", () => {
   const r = readTotalIncome("-5");

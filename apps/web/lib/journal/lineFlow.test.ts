@@ -27,8 +27,9 @@ test("a cell that is not an amount means no figure is guessed", () => {
   // The editor already flags the cell; offering a balancing figure built on
   // text that does not parse would be a guess about what the CA meant.
   assert.equal(balancingLeg([L("12abc"), L("", "600")]), null);
-  assert.equal(balancingLeg([L("1,25,000"), L("", "600")]), null,
-    "the amount parser refuses grouped input, and so does this");
+  // A comma in the wrong place is a typing mistake and is refused by the amount parser, and so is it here.
+  assert.equal(balancingLeg([L("1,2,5"), L("", "600")]), null,
+    "the amount parser refuses a misplaced comma, and so does this");
 });
 
 test("the leg is exact in paise, never a float", () => {

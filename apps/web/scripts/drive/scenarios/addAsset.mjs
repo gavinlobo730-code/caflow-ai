@@ -14,8 +14,8 @@
  *      pressed again and then succeeds with ONE more create.
  *
  * Not here, and why: a grouped amount (`1,25,000`) cannot be typed into these boxes at all. They are `<input type="number">`:
- * Playwright refuses text in one and Chromium drops a comma keyed into it, so `paiseFromRupeeInput`'s refusal of grouped text is
- * `lib/money/rupeeInput.test.ts`'s to hold, as `amounts.mjs` already says of the Record Payment modals.
+ * Playwright refuses text in one and Chromium drops a comma keyed into it, so how `paiseFromRupeeInput` reads grouped text (it reads
+ * properly grouped amounts since 27-11-2026) is `lib/money/rupeeInput.test.ts`'s to hold, as `amounts.mjs` already says of the Record Payment modals.
  */
 import assert from "node:assert/strict";
 import { sameTickDouble, expectWrites, until } from "../kit.mjs";

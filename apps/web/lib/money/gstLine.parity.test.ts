@@ -343,3 +343,17 @@ test("a half-typed field previews nil rather than throwing", () => {
   }
   assert.equal(lineCess(100_000, 1, null, undefined).cess_paise, 0);
 });
+
+// POST-A-567 — the two functions that still read a string with parseFloat take it through the one grouping reader first. Before that,
+// "1,25,000" was ₹1 here while the line editor's reader (which accepts grouping since 27-11-2026) said ₹1,25,000, and a line would have
+// been previewed and saved at a rupee. A string with no comma goes through exactly as it did, so the backend vectors above still hold.
+test("a grouped rate and quantity are read as the numbers they name, and a misplaced comma keeps the old reading", async () => {
+  const { ratePaiseFromRupees, quantityFromInput } = await import("./gstLine.ts");
+  assert.equal(ratePaiseFromRupees("1,25,000"), 12_500_000);
+  assert.equal(ratePaiseFromRupees("1,250.50"), 125_050);
+  assert.equal(quantityFromInput("1,000"), 1000);
+  assert.equal(quantityFromInput("1,25,000.5"), 125000.5);
+  // A comma in the wrong place is not grouping: the old coercion stands (it is refused at the form, before it gets here).
+  assert.equal(ratePaiseFromRupees("1,2,5"), 100);
+  assert.equal(ratePaiseFromRupees("1250.5"), 125_050);
+});

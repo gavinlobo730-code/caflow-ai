@@ -37,6 +37,7 @@
  */
 
 import { decimalTruncate, floorDivBigInt } from "./decimalMath.ts";
+import { plainDecimalText } from "./rupeeInput.ts";
 
 /** Python's `//`. Re-exported name kept local so the arithmetic below reads
  *  the same as it did when these primitives lived in this file; the
@@ -50,14 +51,15 @@ const floorDiv = floorDivBigInt;
  * preview reasons about and the number actually sent can never drift apart.
  */
 export function ratePaiseFromRupees(rate: string | number): number {
-  const parsed = typeof rate === "number" ? rate : parseFloat(rate);
+  // A properly grouped amount ("1,25,000") is read as the number it names: parseFloat stops at the first comma and read it as 1 (POST-A-567).
+  const parsed = typeof rate === "number" ? rate : parseFloat(plainDecimalText(rate) ?? rate);
   if (!Number.isFinite(parsed)) return 0;
   return Math.round(parsed * 100);
 }
 
 /** Quantity string → the `quantity` number the payload carries. */
 export function quantityFromInput(qty: string | number): number {
-  const parsed = typeof qty === "number" ? qty : parseFloat(qty);
+  const parsed = typeof qty === "number" ? qty : parseFloat(plainDecimalText(qty) ?? qty);
   return Number.isFinite(parsed) ? parsed : 0;
 }
 

@@ -27,7 +27,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Truck, Trash2, Lock } from "lucide-react";
 import { apiGet, apiCall, getAuthToken, fmt, HELD_DIALOG_MS } from "@/lib/invoices/shared";
-import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
+import { AMOUNT_MAY_LOOK_LIKE, paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { Callout, GapList } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
@@ -114,8 +114,18 @@ export function LandedCostPanel({
     // One parser for a typed rupee amount (lib/money/rupeeInput) — null for
     // anything that is not an amount, so "1,25,000" is not one rupee.
     const paise = paiseFromRupeeInput(amount);
-    if (!description.trim() || paise === null || paise <= 0) {
-      setError("Say what the charge is and what it came to.");
+    // Each refusal names its own box (POST-A-567): one sentence for both said "what the charge is and what it came to" to a person whose
+    // description was fine and whose amount had a comma in the wrong place, and so never said which box was wrong.
+    if (!description.trim()) {
+      setError("Say what the charge is, for example Freight inward.");
+      return;
+    }
+    if (paise === null) {
+      setError(`The amount is not readable. ${AMOUNT_MAY_LOOK_LIKE}`);
+      return;
+    }
+    if (paise <= 0) {
+      setError("The amount must be more than nothing.");
       return;
     }
     // The panel is held while the WRITE is out and let go when it returns; the re-read that follows is not a write (POST-A-395).

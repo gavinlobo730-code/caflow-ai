@@ -10,10 +10,10 @@
  *
  * NO SCENARIO HERE TYPES A GROUPED AMOUNT, and none can in these two modals. Both use `<input type="number">` for
  * the amount: Playwright's `fill` refuses text in it, and a comma keyed in is dropped by Chromium (measured on
- * Chromium 1194: keying `1,25,000` leaves the value 125000, the figure meant), so `paiseFromRupeeInput`'s refusal of
- * grouped text and its "without commas" error are not reachable from them. That refusal belongs to the amount
- * fields that take text and is `lib/money/rupeeInput.test.ts`'s to hold (it pins `1,000` as null); whether to accept
- * validly grouped Indian commas there is a product decision, and this drive does not take it.
+ * Chromium 1194: keying `1,25,000` leaves the value 125000, the figure meant), so how `paiseFromRupeeInput` reads grouped
+ * text is not reachable from them. The decision was taken on 27-11-2026 (POST-A-567): properly grouped amounts are READ,
+ * and a misplaced comma is refused, in every amount box that takes text. That is `lib/money/rupeeInput.test.ts`'s to hold,
+ * and the weekly drive's Landed costs scenarios type grouped text into a text box and read what reaches the server.
  */
 import assert from "node:assert/strict";
 import { expectWrites } from "../kit.mjs";
