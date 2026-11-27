@@ -12,11 +12,12 @@
 --
 -- WHAT THIS DOES
 --   The function is replaced with migration 620's body (the last definition, found by number) and three additions:
---     * a bill with a purchase row of NIL value for an item whose bill line has a cost, and no standing -COGSTRUEUP entry for the bill, is found;
+--     * a bill with a purchase row that covered an earlier oversold sale (a row of NIL value, or one written while the item's quantity was below
+--       nil) for an item whose bill line has a cost, and no standing -COGSTRUEUP entry for the bill, is found;
 --     * every found document carries `hand_fix`: 'landed_charges' (a bill with recorded charges and unjournalled rows), 'oversold_trueup' (the
 --       shape in 1), or null (a retry can finish it). The sentence that says what to do is the API's, not the database's.
---   It rebuilds no ledger figure and posts nothing. A bill that PARTLY covered an earlier oversold sale cannot be told from the stored rows (the
---   true-up amount is not kept on them) and is not found by shape 1: that limit is said in the screen.
+--   It rebuilds no ledger figure and posts nothing. The AMOUNT of a true-up is not kept on the rows, so for a bill that only partly covered an
+--   earlier sale the finder says that one is owed and the screen tells the CA to work out the covered part; it cannot say how much.
 --   Privileges are the ones 579 gave, asserted again at the end: the service role and nobody signed in or anonymous.
 --
 -- Reversible: 780_..._rollback.sql puts 620's function back.
@@ -91,9 +92,12 @@ moved AS (
     SELECT s.source_type AS kind, s.source_id AS doc_id,
            COUNT(*)::int AS moved_lines,
            (COUNT(*) FILTER (WHERE s.journal_entry_id IS NULL AND s.value_delta_paise <> 0))::int AS unjournalled_rows,
-           -- a purchase row of NIL value for an item whose bill line has a cost: the whole cost went to cover units sold while the item was
-           -- oversold, and what records that is a separate entry (reference ending -COGSTRUEUP), not the row
-           (COUNT(*) FILTER (WHERE s.movement_type = 'purchase' AND s.value_delta_paise = 0
+           -- a purchase row, for an item whose bill line has a cost, that covered units sold while the item was oversold: either its value is NIL
+           -- (the whole cost went to cover them) or the quantity before it was below nil (a part did: running quantity less the quantity it added,
+           -- the rule `stock_resume.was_short_when_recorded` uses). What records the covered cost is a separate entry (reference ending
+           -- -COGSTRUEUP), not the row
+           (COUNT(*) FILTER (WHERE s.movement_type = 'purchase'
+                              AND (s.value_delta_paise = 0 OR s.running_qty_units - s.quantity_delta < 0)
                               AND EXISTS (SELECT 1 FROM public.purchase_bill_lines l
                                            WHERE l.bill_id = s.source_id AND l.service_catalogue_id = s.service_catalogue_id
                                              AND COALESCE(l.quantity, 0) > 0 AND COALESCE(l.taxable_amount_paise, 0) > 0)))::int AS nil_cost_rows

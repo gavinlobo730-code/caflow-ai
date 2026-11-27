@@ -63,9 +63,12 @@ def test_a_sentence_never_names_an_amount_because_the_product_does_not_know_it()
         assert "₹" not in said and "Rs" not in said and not any(ch.isdigit() for ch in said), said
 
 
-def test_the_true_up_sentence_says_what_the_finder_cannot_see_and_the_charges_one_does_not():
-    assert "only in part" in hf.says(hf.OVERSOLD_TRUEUP, "x")
-    assert "only in part" not in hf.says(hf.LANDED_CHARGES, "x")
+def test_the_true_up_sentence_covers_a_line_covered_only_in_part_and_says_a_cancelled_bill_does_not_undo_it_and_the_charges_one_says_a_late_charge_is_outside():
+    true_up, landed = hf.says(hf.OVERSOLD_TRUEUP, "x"), hf.says(hf.LANDED_CHARGES, "x")
+    assert "only in part" in true_up and "reverse that entry yourself" in true_up and "never posted, or it was reversed" in true_up
+    assert "only in part" not in landed
+    assert "added after the bill was received is not part of that value" in landed
+    assert "Inventory with the value this bill's rows show in the stock ledger" in landed, "the figure is the ledger's own, not a recomputed cost"
 
 
 def test_a_kind_it_does_not_know_and_no_kind_have_no_sentence():
@@ -155,3 +158,16 @@ def test_a_finder_that_could_not_be_asked_is_not_a_reason_to_refuse(monkeypatch)
     monkeypatch.setattr("domain.inventory.stock_effect.guarded", lambda kind, ref, run, on_error: run())
     svc.retry(db, firm_id=FIRM, client_id=CLIENT, kind="purchase_bill", document_id=bill, created_by="u")
     assert ran == [1]
+
+
+def test_a_retry_names_the_bill_in_upper_case_and_is_still_refused_in_the_lists_words(monkeypatch):
+    # The database keeps (and the finder answers) the id in lower case; a caller may send it in upper case, which Postgres reads as the same uuid.
+    db = FakeDB()
+    bill = str(uuid.uuid4()).upper()
+    db.seed("purchase_bills", {"id": bill, "firm_id": FIRM, "client_id": CLIENT, "bill_no": "GS/114", "bill_date": "2026-04-20", "status": "received"})
+    monkeypatch.setattr(svc, "unrecorded_documents", lambda *a, **k: {"total": 1, "documents": [_doc(bill.lower(), hand_fix="landed_charges")]})
+    monkeypatch.setattr("domain.inventory_service.apply_purchase_to_inventory", lambda *a, **k: pytest.fail("a stock function ran"))
+    with pytest.raises(svc.Refused) as refused:
+        svc.retry(db, firm_id=FIRM, client_id=CLIENT, kind="purchase_bill", document_id=bill, created_by="u")
+    assert str(refused.value).endswith("Nothing was moved.")
+

@@ -6,8 +6,9 @@ WHAT WAS MISSING
       * LANDED CHARGES. A bill with freight, insurance or duty recorded against it whose stock rows have no journal. The split of each charge over
         the goods is not kept on the row, so rebuilding the journal would be a guess about a ledger figure. The retry refuses it.
       * OVERSOLD TRUE-UP. A bill received while the item was already oversold: the cost of the units that covered the earlier sales belongs in
-        Cost of Goods Sold, and a separate entry moves it. When that entry failed, the stock rows carry NIL value, so nothing owed a journal by the
-        finder's rule and the bill was never listed.
+        Cost of Goods Sold, and a separate entry moves it. When that entry failed, a row of the bill is of NIL value (all of it covered earlier sales)
+        or was written while the item's quantity was below nil (a part did), and the bill was never listed, because the finder only looked for a valued
+        row with no journal.
 
 WHAT THIS MODULE IS, AND IS NOT
     It is the two kinds and the words, nothing else. It reads no database, rebuilds no figure and posts nothing. The database finder says WHICH
@@ -15,9 +16,10 @@ WHAT THIS MODULE IS, AND IS NOT
     refuses the retry with the same sentence; the screen shows it in place of the Complete the stock button. The CA puts the books right by hand and
     then marks the bill settled with a note of what they posted, which is the mark that already exists.
 
-WHAT IT CANNOT SEE
-    A bill that only PARTLY covered an earlier oversold sale keeps a valued row and a separate true-up entry for the covered part; the amount of
-    that entry is not kept on the row, so the finder cannot tell that bill from a whole one. The sentence for the true-up says so.
+WHAT IT CANNOT DO
+    It cannot say HOW MUCH: the amount of a true-up, and the split of a charge over the goods, are not kept on the stock row, so the sentences name
+    what to post and leave the figure to the person who reads the books. A bill whose true-up was posted and later reversed on purpose is listed
+    too, and the words say "it was never posted, or it was reversed".
 """
 from __future__ import annotations
 
@@ -33,13 +35,18 @@ _SAYS = {
     LANDED_CHARGES: (
         "{label} has freight, insurance or duty recorded against it, and its stock rows were written without their journal. "
         "The product cannot rebuild how each charge was spread over the goods, so it does not offer Complete the stock for it. "
-        "Post the journal by hand that moves the cost of these goods, charges included, from the expense accounts they were booked to into Inventory. "
+        "Post by hand the journal that debits Inventory with the value this bill's rows show in the stock ledger and credits the expense accounts "
+        "that value was booked to: the goods' own account and, where a charge is part of that value, the charge's account. "
+        "A charge added after the bill was received is not part of that value. "
         + _WHAT_NEXT),
     OVERSOLD_TRUEUP: (
         "{label} received goods that covered units sold earlier while the item was oversold, so the cost of those units belongs in Cost of Goods Sold, "
-        "and the entry that moves it was not posted. The figure depends on what was sold, so the product does not offer Complete the stock for it. "
-        "Post that true-up by hand: debit Cost of Goods Sold and credit the expense account the bill was booked to, for the cost of the units that covered the earlier sale. "
-        + _WHAT_NEXT + " A bill that covered an earlier sale only in part cannot be told from the stored rows and is not listed for this."),
+        "and no entry for it stands (it was never posted, or it was reversed). The product does not offer Complete the stock for it. "
+        "Post it by hand: debit Cost of Goods Sold with the cost of the units that covered the earlier sale and credit the expense accounts the bill and "
+        "its charges were booked to. For a line whose stock row shows no value, that is the whole cost of the line (its taxable value, any tax on it that "
+        "cannot be claimed as credit, and its share of any freight or duty); for a line that covered the earlier sale only in part, that part of it. "
+        "If the bill is cancelled later, reverse that entry yourself. "
+        + _WHAT_NEXT),
 }
 
 

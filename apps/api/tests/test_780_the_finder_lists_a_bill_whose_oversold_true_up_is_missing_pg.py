@@ -75,12 +75,13 @@ def _bill(dsn, n, lines, *, status="received"):
     return bill
 
 
-def _row(dsn, bill, item, *, value, journal=False):
+def _row(dsn, bill, item, *, value, journal=False, short=False):
+    """A stock-in row of 3 units. `short` is a row written while the item was already below nil (the quantity before it was -2)."""
     r = _psql(dsn, f"""
         INSERT INTO inventory_stock_ledger (firm_id, client_id, service_catalogue_id, movement_date, movement_type, quantity_delta,
             unit_cost_paise, value_delta_paise, running_qty_units, running_avg_cost_paise, running_value_paise, source_type, source_id,
             journal_entry_id)
-        VALUES ('{FIRM}', '{CLIENT}', '{item}', '2026-04-20', 'purchase', 3, 0, {value}, 0, 0, 0, 'purchase_bill', '{bill}',
+        VALUES ('{FIRM}', '{CLIENT}', '{item}', '2026-04-20', 'purchase', 3, 0, {value}, {1 if short else 3}, 0, 0, 'purchase_bill', '{bill}',
                 {f"'{SENTINEL_JOURNAL}'" if journal else "NULL"});""")
     assert r.returncode == 0, r.stderr
 
@@ -133,6 +134,32 @@ def test_a_true_up_entry_that_was_reversed_or_deleted_does_not_count(dsn):
     _row(dsn, deleted_bill, GOOD_A, value=0)
     _true_up(dsn, deleted_bill, deleted=True)
     assert _fixes(_found(dsn)) == {"B-3": "oversold_trueup", "B-4": "oversold_trueup"}
+
+
+def test_a_bill_that_only_partly_covered_an_oversold_sale_and_has_no_true_up_entry_is_listed(dsn):
+    # a valued, journalled row written while the item was already below nil: a part of the cost belongs in Cost of Goods Sold and the entry for it is missing
+    bill = _bill(dsn, 11, [(GOOD_A, 300000)])
+    _row(dsn, bill, GOOD_A, value=200000, journal=True, short=True)
+    assert _fixes(_found(dsn)) == {"B-11": "oversold_trueup"}
+
+
+def test_the_same_part_covered_bill_with_its_true_up_entry_standing_is_whole(dsn):
+    bill = _bill(dsn, 12, [(GOOD_A, 300000)])
+    _row(dsn, bill, GOOD_A, value=200000, journal=True, short=True)
+    _true_up(dsn, bill)
+    assert _found(dsn) == {"total": 0, "documents": []}
+
+
+def test_an_ordinary_bill_received_into_stock_that_was_not_short_is_not_listed(dsn):
+    bill = _bill(dsn, 13, [(GOOD_A, 300000)])
+    _row(dsn, bill, GOOD_A, value=300000, journal=True)
+    assert _found(dsn) == {"total": 0, "documents": []}
+
+
+def test_a_short_row_for_a_line_with_no_cost_owes_no_true_up(dsn):
+    bill = _bill(dsn, 14, [(GOOD_B, 0)])
+    _row(dsn, bill, GOOD_B, value=0, journal=True, short=True)
+    assert _found(dsn) == {"total": 0, "documents": []}
 
 
 def test_a_nil_row_for_a_line_with_no_cost_is_free_goods_and_not_a_missing_true_up(dsn):

@@ -267,7 +267,7 @@ def retry(db, *, firm_id: str, client_id: str, kind: str, document_id: str, crea
     # same words the list shows are the answer, before anything is moved. A finder that could not be asked is not a reason to refuse.
     found = unrecorded_documents(db, firm_id=firm_id, client_id=client_id)
     for listed in (found or {}).get("documents", []):
-        if listed.get("document_id") == str(document_id) and listed.get("kind") == kind and stock_hand_fix.known(listed.get("hand_fix")):
+        if str(listed.get("document_id")).lower() == str(document_id).lower() and listed.get("kind") == kind and stock_hand_fix.known(listed.get("hand_fix")):
             raise Refused(stock_hand_fix.refusal(listed["hand_fix"], label))
 
     # A year the firm locked, or this client's finalised year-end, takes no new stock row or journal: asked BEFORE anything is written,
