@@ -399,13 +399,13 @@ def holders_of(db, *, firm_id: str, gstins: Sequence[str]) -> list[Holder]:
     for i in range(0, len(wanted), 100):
         chunk = wanted[i:i + 100]
         clients = fetch_all(
-            lambda: db.table("clients").select("id, gstin")
+            lambda chunk=chunk: db.table("clients").select("id, gstin")
             .eq("firm_id", firm_id).in_("gstin", chunk).is_("deleted_at", "null"),
             key="id", label="2b holders: clients")
         out.extend(Holder(str(c["id"]), _normalise_gstin(c.get("gstin")), True)
                    for c in clients if c.get("id"))
         regs = fetch_all(
-            lambda: db.table("client_gst_registrations")
+            lambda chunk=chunk: db.table("client_gst_registrations")
             .select("id, client_id, gstin")
             .eq("firm_id", firm_id).in_("gstin", chunk).is_("deleted_at", "null"),
             key="id", label="2b holders: registrations")

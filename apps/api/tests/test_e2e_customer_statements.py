@@ -53,7 +53,7 @@ def _make_invoice(si, rate_paise, date, invoice_no="STMT-001"):
 def _seed_setup_with_activity(monkeypatch):
     si, rc, cs, db = _setup(monkeypatch)
     inv1 = _make_invoice(si, 1_000_000, "2026-04-10", "STMT-001")   # total 1,180,000
-    inv2 = _make_invoice(si, 500_000, "2026-04-15", "STMT-002")     # total   590,000
+    _make_invoice(si, 500_000, "2026-04-15", "STMT-002")     # total   590,000
     rc.create_receipt(ReceiptIn(
         client_id="CLI", customer_id="CUST", receipt_date="2026-04-20",
         amount_paise=1_180_000,

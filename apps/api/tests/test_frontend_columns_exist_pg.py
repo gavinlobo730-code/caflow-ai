@@ -229,7 +229,7 @@ def test_no_frontend_select_names_a_column_that_does_not_exist(schema):
 def test_the_columns_fixed_here_stay_fixed(schema):
     """Names the specific regressions, so a revert reports itself instead of
     arriving as an anonymous line in the list above."""
-    for col, real in FIXED_HERE.items():
+    for col, _real in FIXED_HERE.items():
         assert col not in schema, (
             f"{col} now exists in the schema — this pin assumed it did not. "
             f"If a migration added it, delete the entry; do not weaken the test.")

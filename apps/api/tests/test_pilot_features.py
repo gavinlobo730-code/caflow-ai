@@ -306,7 +306,6 @@ class TestTenantIsolationPilotFeatures:
     def test_ai_copilot_firm_context_uses_firm_id(self):
         from routers.ai_copilot import get_firm_context
         mock_clients_a = [{"id": "c-A1", "client_name": "Firm A Client", "status": "active"}]
-        mock_clients_b = [{"id": "c-B1", "client_name": "Firm B Client", "status": "active"}]
 
         with patch("repositories.client_repository.client_repo.find_all", return_value=mock_clients_a):
             result_a = get_firm_context(current_user=USER_A)

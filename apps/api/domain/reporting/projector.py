@@ -198,7 +198,7 @@ class CashBasisProjector:
             weights = [w for _, w in legs]
             if legs and sum(weights) > 0:
                 parts = apportion(amount, weights)
-                for (aid, _), p in zip(legs, parts):
+                for (aid, _), p in zip(legs, parts, strict=False):
                     if p:
                         out.append(self._signed(aid, 0, p, sign))  # Cr revenue/GST
                 recognised += amount
@@ -231,7 +231,7 @@ class CashBasisProjector:
             weights = [w for _, w in legs]
             if legs and sum(weights) > 0:
                 parts = apportion(ap_cleared, weights)
-                for (aid, _), p in zip(legs, parts):
+                for (aid, _), p in zip(legs, parts, strict=False):
                     if p:
                         out.append(self._signed(aid, p, 0, sign))  # Dr expense / GST input
                 recognised = ap_cleared

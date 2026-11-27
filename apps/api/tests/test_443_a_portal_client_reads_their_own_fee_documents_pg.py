@@ -462,7 +462,7 @@ def test_the_authenticated_grants_are_the_documented_set(post_fix_db):
     "receipts", "credit_notes", "sales_debit_notes",
 ])
 def test_no_for_all_restrictive_assignment_scope_survives(post_fix_db, table):
-    r = _psql(post_fix_db,
+    _psql(post_fix_db,
               f"SELECT policyname FROM pg_policies WHERE tablename='{table}' "
               f"AND permissive='RESTRICTIVE' AND cmd='ALL' AND policyname LIKE '%assignment%';")
     n = _count(post_fix_db,
@@ -483,7 +483,7 @@ def test_only_select_carries_the_portal_branch_not_insert_update_delete(post_fix
     portal-authenticated ever writes any of these tables (confirmed in the
     migration's own header), so only SELECT gained the OR-branch."""
     for cmd in ("INSERT", "UPDATE", "DELETE"):
-        qual = _psql(post_fix_db,
+        _psql(post_fix_db,
                      f"SELECT coalesce(qual,'')||coalesce(with_check,'') FROM pg_policies "
                      f"WHERE tablename='{table}' AND permissive='RESTRICTIVE' AND cmd='{cmd}' "
                      f"AND policyname LIKE '%assignment_scope%';")

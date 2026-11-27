@@ -364,7 +364,6 @@ def _fetch_schedule_from_db(db, eng: dict, schedule_type: str) -> dict:
     engagement_id = eng["id"]
     firm_id       = eng["firm_id"]
     client_id     = eng["client_id"]
-    fy_start      = eng["fy_start"]
     fy_end        = eng["fy_end"]
 
     # Which schedule_line codes each schedule tab is made of. This is the

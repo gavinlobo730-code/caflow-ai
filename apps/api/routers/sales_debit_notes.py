@@ -547,7 +547,6 @@ def issue_sales_debit_note(sdn_id: str, current_user: dict = Depends(rbac("accou
             _logger.error("issue_sales_debit_note: journal posting failed; application rolled back: %s", jerr)
             return api_response(False, None, "Unable to issue debit note. Please try again.")
 
-        now_iso = datetime.now(timezone.utc).isoformat()
         applied = sdn_total if (inv_id and sdn_total > 0) else 0
         upd = update_header(
             db, "sales_debit_notes", sdn_id,

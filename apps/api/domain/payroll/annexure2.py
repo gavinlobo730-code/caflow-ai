@@ -245,7 +245,6 @@ def build_annexure_ii(
     declarations_by_employee = declarations_by_employee or {}
     perquisites_by_employee = perquisites_by_employee or {}
     settlements_by_employee = settlements_by_employee or {}
-    perquisites_possible = False
     any_undeclared = False
     any_unvalued_perquisites = False
 
@@ -289,7 +288,6 @@ def build_annexure_ii(
         perquisite_value = sum(int(p.get("value_paise") or 0)
                                for p in perquisites_by_employee.get(emp_id, []))
         if salary > 0 and not perquisites_by_employee.get(emp_id):
-            perquisites_possible = True
             any_unvalued_perquisites = True
 
         decl = declarations_by_employee.get(emp_id)

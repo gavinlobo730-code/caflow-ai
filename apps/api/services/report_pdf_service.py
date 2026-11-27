@@ -159,7 +159,7 @@ def build_report_pdf(doc: ReportDocument, *, holder: dict, firm: dict,
         for r, row in enumerate(tbl.rows, start=1):
             plain = row.style in (EMPHASIS, SECTION)
             out = []
-            for i, (col, value) in enumerate(zip(tbl.columns, row.cells)):
+            for i, (col, value) in enumerate(zip(tbl.columns, row.cells, strict=False)):
                 text = cell_text(col.kind, value)
                 # An ordinary text cell WRAPS when it has to (a narration can
                 # run to several lines) and is otherwise a plain string, which

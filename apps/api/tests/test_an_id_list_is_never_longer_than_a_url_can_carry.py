@@ -64,7 +64,7 @@ def _table(n_bills: int, per_bill: int = 2):
 def test_a_long_list_is_sent_in_pieces_no_longer_than_the_chunk():
     bills, rows = _table(755)
     log: list = []
-    got = fetch_all_in(lambda: _Query(rows, log), "purchase_bill_id", bills)
+    fetch_all_in(lambda: _Query(rows, log), "purchase_bill_id", bills)
     assert log, "nothing was requested"
     assert max(len(v) for v in log) <= IN_CHUNK
     assert len(log) == -(-755 // IN_CHUNK)

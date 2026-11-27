@@ -297,7 +297,6 @@ def build_payslip_pdf(slip: dict, employee: dict, run: dict, employer: dict,
     # and the "computer-generated" note.
     small = ParagraphStyle("small", parent=styles["Normal"], fontSize=8,
                            textColor=pdf_style.C_LABEL)
-    bold = ParagraphStyle("bold", parent=styles["Normal"], fontName="Helvetica-Bold")
     # THE SAME VISUAL MECHANISM `services/year_end_pdf_service.py` USES for its
     # own draft cover page — apex-payroll-yearend-08. `run` carries `status`,
     # and this function never read it, so a DRAFT run's payslip was

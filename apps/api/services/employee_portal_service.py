@@ -440,7 +440,7 @@ def revoke_employee_portal(firm_id: str, employee_id: str,
     and that mints a fresh token for whoever is meant to have it now.
     """
     db = db or (None if _USE_MOCK else _db())
-    employee = _employee(firm_id, employee_id, db, actor)
+    _employee(firm_id, employee_id, db, actor)
     _update(employee_id, {
         "portal_enabled": False,
         "auth_user_id": None,

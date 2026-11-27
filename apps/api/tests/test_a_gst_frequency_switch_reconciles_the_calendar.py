@@ -179,7 +179,7 @@ def test_switching_quarterly_to_monthly_is_the_same_reconciliation_reversed():
     assert first["generated"] == 17    # 4 + 4 + 8 + 1
 
     CLIENT_INDEX["apex-4"]["gst_filing_frequency"] = "monthly"
-    second = ob.generate_default_for_client(FIRM, "apex-4", FY)
+    ob.generate_default_for_client(FIRM, "apex-4", FY)
 
     recs = _records("apex-4")
     assert {r["obligation_type"] for r in recs} == {"GSTR1", "GSTR3B", "GSTR9"}

@@ -225,7 +225,7 @@ def test_create_run_happy_path_still_works_with_the_new_try_except(monkeypatch):
 def test_create_run_other_db_errors_still_propagate_unmasked(monkeypatch):
     """A non-unique-violation insert failure must NOT be swallowed into the
     friendly 409 — only a genuine constraint collision should be reinterpreted."""
-    db = FakeDB()
+    FakeDB()
 
     class _BoomQ(_Q):
         def execute(self):

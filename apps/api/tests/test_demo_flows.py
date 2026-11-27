@@ -300,7 +300,7 @@ def _compute_health(dimension_scores: dict[str, int], hard_override: str | None 
         "grade": grade,
         "dimensions": {
             k: {"score": v, "weight_pct": w // 100}
-            for (k, v), w in zip(dimension_scores.items(), DIMENSION_WEIGHTS_BP.values())
+            for (k, v), w in zip(dimension_scores.items(), DIMENSION_WEIGHTS_BP.values(), strict=False)
         },
         "action_links": action_links,
     }

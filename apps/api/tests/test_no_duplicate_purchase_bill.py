@@ -157,7 +157,7 @@ def test_nothing_upserts_purchase_bills():
         if "/tests/" in str(py):
             continue
         src = py.read_text(errors="ignore")
-        for m in re.finditer(r'table\(\s*["\']purchase_bills["\']\s*\)\.upsert', src):
+        for _m in re.finditer(r'table\(\s*["\']purchase_bills["\']\s*\)\.upsert', src):
             offenders.append(str(py.relative_to(root)))
     assert not offenders, (
         f"these upsert purchase_bills, which a partial unique index cannot "

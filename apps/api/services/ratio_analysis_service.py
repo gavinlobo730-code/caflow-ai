@@ -146,7 +146,7 @@ def ratio_note(reporting, db, firm_id: str, client_id: str,
     )
     out["fy"] = fy
     out["preceding_fy"] = prior_fy if prior is not None else None
-    out["period"] = dict(zip(("start", "end"), fy_bounds(fy)))
+    out["period"] = dict(zip(("start", "end"), fy_bounds(fy), strict=False))
     return out
 
 

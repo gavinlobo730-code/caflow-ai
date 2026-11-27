@@ -43,7 +43,7 @@ class TestRecurringTaskService:
         with patch("services.recurring_task_service._get_db") as mock_db, \
              patch("repositories.user_repository.user_repo") as mock_user_repo, \
              patch("repositories.assignment_rule_repository.assignment_rule_repo") as mock_rule_repo, \
-             patch("repositories.task_extras_repository.task_extras_repo") as mock_extras_repo:
+             patch("repositories.task_extras_repository.task_extras_repo"):
 
             mock_db_instance = MagicMock()
             mock_db.return_value = mock_db_instance

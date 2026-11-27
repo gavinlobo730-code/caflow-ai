@@ -560,7 +560,7 @@ def _payment_codes(fy: str, deductees) -> tuple[list[dict], list[str]]:
                 "payment_code_gap": a.gap,
                 "payment_code_assumption": a.assumption} for a in answers]
     notes = _deductee_payment_code.statement_notes(
-        [(d.section, a) for d, a in zip(deductees, answers)])
+        [(d.section, a) for d, a in zip(deductees, answers, strict=False)])
     return per_row, notes
 
 
@@ -1106,7 +1106,7 @@ def tds_27q_from_books(
                 "surcharge_paise": d.surcharge_paise, "cess_paise": d.cess_paise,
                 "non_deduction_reason": d.non_deduction_reason,
             }
-            for d, _pc in zip(payload.deductees, _pay_rows)
+            for d, _pc in zip(payload.deductees, _pay_rows, strict=False)
         ],
         "challans": payload.challans,
         "challan_gaps": mapping.gaps,
@@ -1268,7 +1268,7 @@ def tds_24q_from_books(
                 "tds_deposited_paise": d.tds_deposited_paise, "challan_no": d.challan_no,
                 "bsr_code": d.bsr_code, "challan_date": d.challan_date,
             }
-            for d, _pc in zip(payload.deductees, _pay_rows)
+            for d, _pc in zip(payload.deductees, _pay_rows, strict=False)
         ],
         "challans": payload.challans,
         "validation_errors": payload.validation_errors,

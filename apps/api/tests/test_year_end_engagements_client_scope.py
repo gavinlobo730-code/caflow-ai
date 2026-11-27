@@ -298,7 +298,7 @@ def test_live_list_engagements_without_a_client_id_narrows_to_assigned_clients(d
 
 
 def test_live_list_engagements_with_an_explicit_hidden_client_id_is_refused(deny, monkeypatch):
-    db = _e2e_setup(monkeypatch)
+    _e2e_setup(monkeypatch)
     with pytest.raises(HTTPException) as exc:
         ye.list_engagements(client_id=THEIRS, financial_year=None, current_user=EXEC_USER)
     assert exc.value.status_code == 404

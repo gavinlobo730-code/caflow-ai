@@ -197,7 +197,7 @@ def test_the_browser_mirror_answers_every_vector_the_same_way():
     cases = VECTORS["cases"]
     theirs = _mirror_answers(cases)
     assert len(theirs) == len(cases)
-    for case, got in zip(cases, theirs):
+    for case, got in zip(cases, theirs, strict=False):
         mine = PA.row_notice(case["bank_account_id"], case["payment_mode"])
         assert got == mine, (
             f"apps/web/lib/accounting/postingAccountNotice.ts disagrees with "

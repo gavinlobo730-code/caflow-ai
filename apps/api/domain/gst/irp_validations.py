@@ -267,7 +267,7 @@ def assess(*, document_number: Optional[str],
     # ZIPPED against `units` rather than indexed into it: a caller that knows
     # the HSN codes and not the units is answered about the codes only, which
     # is honest rather than reporting a missing unit on a line nobody described.
-    for i, (unit, svc) in enumerate(zip(units, is_service_flags)):
+    for i, (unit, svc) in enumerate(zip(units, is_service_flags, strict=False)):
         found = goods_unit_finding(is_service=svc, unit=unit, line_no=i)
         if found:
             out.append(found)

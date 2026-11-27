@@ -260,7 +260,7 @@ def test_a_deleted_note_adjusts_nothing(db):
 
 
 def test_a_note_against_another_bill_does_not_reach_this_one(db):
-    b1 = _bill(db, "B-1")
+    _bill(db, "B-1")
     b2 = _bill(db, "B-2")
     _debit_note(db, b2["id"], total=59_000_00, cgst=4_500_00, sgst=4_500_00)
 

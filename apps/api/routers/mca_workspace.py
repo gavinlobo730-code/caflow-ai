@@ -876,7 +876,6 @@ def update_filing_status(
 def get_filing(filing_id: str, current_user: dict = Depends(rbac("mca", "read"))):
     """Get MCA filing details."""
     try:
-        firm_id = current_user["firm_id"]
         rec = _load_or_none(current_user, "mca_filings", _MOCK_FILINGS, filing_id)
         if not rec:
             return api_response(False, None, "Filing not found")

@@ -137,13 +137,15 @@ def _names(db, firm_id: str, customer_ids: set, vendor_ids: set) -> dict:
     """
     names: dict[str, str] = {}
     if customer_ids:
-        for r in fetch_all(lambda i=sorted(customer_ids): db.table("customers")
-                           .select("id, name").eq("firm_id", firm_id).in_("id", i),
+        customer_list = sorted(customer_ids)
+        for r in fetch_all(lambda ids=customer_list: db.table("customers")
+                           .select("id, name").eq("firm_id", firm_id).in_("id", ids),
                            key="id", label="party_ledger.customers"):
             names[str(r["id"])] = r.get("name") or "(unnamed)"
     if vendor_ids:
-        for r in fetch_all(lambda i=sorted(vendor_ids): db.table("vendors")
-                           .select("id, name").eq("firm_id", firm_id).in_("id", i),
+        vendor_list = sorted(vendor_ids)
+        for r in fetch_all(lambda ids=vendor_list: db.table("vendors")
+                           .select("id, name").eq("firm_id", firm_id).in_("id", ids),
                            key="id", label="party_ledger.vendors"):
             names[str(r["id"])] = r.get("name") or "(unnamed)"
     return names

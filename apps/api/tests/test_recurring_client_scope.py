@@ -87,7 +87,7 @@ def test_every_template_endpoint_refuses_before_it_acts(fn, args, deny, monkeypa
     reached = []
     for name in ("set_status", "template_history", "run_for_template"):
         monkeypatch.setattr(ri.recurring, name,
-                            lambda *a, **k: reached.append(name) or {})
+                            lambda *a, _name=name, **k: reached.append(_name) or {})
     with pytest.raises(HTTPException) as e:
         getattr(ri, fn)("T-THEIRS", *args, current_user=USER)
     assert e.value.status_code == 404

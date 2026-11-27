@@ -113,7 +113,7 @@ class Table:
             if len(row.cells) != width:
                 raise ValueError(
                     f"row {i} has {len(row.cells)} cells for {width} columns")
-            for cell, col in zip(row.cells, self.columns):
+            for cell, col in zip(row.cells, self.columns, strict=False):
                 if cell is None:
                     continue
                 if col.kind in (MONEY, BALANCE, INT):

@@ -29,7 +29,8 @@ from tests.e2e_harness import FakeDB
 
 FIRM, CLIENT, OTHER = "FIRM-A", "CLI-A", "CLI-B"
 TODAY = date(2026, 11, 16)
-MIGRATION = next(Path(__file__).resolve().parents[1].glob("migrations/660_*.sql"))
+# Named in full: "660_*.sql" matches the rollback too (POST-A-574).
+MIGRATION = Path(__file__).resolve().parents[1] / "migrations" / "660_the_nightly_check_stores_what_three_engines_found_for_each_client.sql"
 
 
 def _e(id_, d, narration, accounts=("a", "b"), client=CLIENT):

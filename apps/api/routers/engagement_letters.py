@@ -1360,7 +1360,6 @@ def update_engagement(
                                 detail=f"Cannot update engagement in '{eng['status']}' status. Only Draft engagements can be updated.")
         if touches_dates and _lapses_before_it_starts(updates.get("start_date", eng.get("start_date")), updates.get("expiry_date", eng.get("expiry_date"))):
             raise HTTPException(status_code=422, detail=_LAPSE_SENTENCE)
-        old_data = {k: eng.get(k) for k in updates}
         eng.update(updates)
         _log_engagement_event(db, engagement_id, firm_id, "updated",
                               current_user.get("auth_user_id"))

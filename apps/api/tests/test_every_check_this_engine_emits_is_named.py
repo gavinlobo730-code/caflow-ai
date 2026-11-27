@@ -194,7 +194,7 @@ def test_the_fixed_asset_vocabulary_matches_its_own_source():
     for node in ast.walk(tree):
         if not isinstance(node, ast.Dict):
             continue
-        for key, value in zip(node.keys, node.values):
+        for key, value in zip(node.keys, node.values, strict=False):
             if (isinstance(key, ast.Constant) and key.value == "kind"
                     and isinstance(value, ast.Constant)
                     and isinstance(value.value, str)):

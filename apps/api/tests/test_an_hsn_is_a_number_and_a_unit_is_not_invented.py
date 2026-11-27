@@ -392,7 +392,7 @@ def test_the_stamp_and_the_filter_are_ONE_definition():
             + [{"kind": k, "reference_no": "", "reason": ""}
                for k in ("SEZ_WOP", "DEEMED_EXPORT", "CDNUR", "")])
     kept = {id(g) for g in withheld_gaps(gaps)}
-    for original, stamped in zip(gaps, stamp_withheld(gaps)):
+    for original, stamped in zip(gaps, stamp_withheld(gaps), strict=False):
         assert stamped["withheld"] == (id(original) in kept)
 
 

@@ -93,7 +93,7 @@ def test_the_write_is_partner_only_and_the_read_is_not():
         dep = getattr(d, "dependency", None)
         assert dep is not None, f"{fn.__name__} has no dependency at all"
         return dict(zip(dep.__code__.co_freevars,
-                        (c.cell_contents for c in dep.__closure__ or ())))
+                        (c.cell_contents for c in dep.__closure__ or ()), strict=False))
 
     assert _pair(R.record_fx_rate) == {"resource": "settings", "action": "write"}, (
         "a rate is shared across the platform, so the write is Partner-only")

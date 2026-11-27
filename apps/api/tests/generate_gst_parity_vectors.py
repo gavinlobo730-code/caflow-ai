@@ -217,12 +217,12 @@ def build():
             [{"gross_paise": g,
               "discount_percent_bps": pl["discount_percent_bps"],
               "discount_paise": pl["discount_paise"]}
-             for g, pl in zip(gross, payload_lines)],
+             for g, pl in zip(gross, payload_lines, strict=False)],
             document_percent_bps=doc_pct, document_amount_paise=doc_amt)
 
         out_lines, t = [], 0
         c = g_ = i_ = 0
-        for pl, gr, r in zip(payload_lines, gross, resolved):
+        for pl, gr, r in zip(payload_lines, gross, resolved, strict=False):
             bps = int(round(float(pl["gst_rate_percent"]) * 100))
             taxable = int(r["taxable_paise"])
             lc, ls, li = _compute_line_gst(taxable, bps, inter)

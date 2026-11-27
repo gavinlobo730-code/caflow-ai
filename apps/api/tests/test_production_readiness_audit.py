@@ -135,7 +135,6 @@ class TestMultiTenancyScoping:
         """firm_id must come from JWT (current_user), never from request body."""
         # Simulated: user from firm A cannot claim firm B's firm_id
         jwt_firm_id   = FIRM_A
-        request_data  = {"firm_id": FIRM_B, "client_id": CLIENT_A}
         # The router always overwrites with current_user["firm_id"]
         effective_firm_id = jwt_firm_id  # never request_data["firm_id"]
         assert effective_firm_id == FIRM_A

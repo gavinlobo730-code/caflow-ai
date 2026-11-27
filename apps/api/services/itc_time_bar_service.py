@@ -85,7 +85,7 @@ def _unbooked_documents(db, firm_id: str, client_id: str,
     # `.in_` over the NAMED months and never a range: MMYYYY is TEXT.
     for i in range(0, len(periods), 24):
         out.extend(fetch_all(
-            lambda: db.table("gstr2a_records").select(
+            lambda i=i: db.table("gstr2a_records").select(
                 "id, return_period, document_type, supplier_gstin, supplier_name, "
                 "invoice_number, invoice_date, igst_paise, cgst_paise, "
                 "sgst_paise, cess_paise, itc_available, match_status")

@@ -247,7 +247,7 @@ class TestEngagementsRLS:
         # Use information schema instead
         result = db.table("pg_class").select("relrowsecurity").eq("relname", "engagements").execute() if False else None
         # Direct SQL check
-        check = db.rpc("pg_catalog.pg_tables", {}).execute() if False else None
+        db.rpc("pg_catalog.pg_tables", {}).execute() if False else None
         # Verify via a direct SQL query using execute_sql equivalent
         # Since we only have the Python client, we verify indirectly:
         # If RLS is enabled, an anon query returns empty (not all rows).

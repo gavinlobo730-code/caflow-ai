@@ -652,7 +652,7 @@ PARTNER = {"id": "u1", "firm_id": FIRM, "role": "Partner", "email": "p@f.test",
 REVIEWER = {**PARTNER, "id": "u2", "role": "Reviewer"}
 
 
-def _http(monkeypatch, user=PARTNER, *, db=object()):
+def _http(monkeypatch, user=PARTNER, *, db=object()):  # noqa: B008 — a sentinel meaning "any database", never mutated
     app = FastAPI()
     app.include_router(door.router)
     app.dependency_overrides[get_current_user] = lambda: user

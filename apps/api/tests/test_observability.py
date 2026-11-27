@@ -18,7 +18,6 @@ def test_captures_exception_with_operation_fingerprint_and_context(monkeypatch):
     monkeypatch.setattr(sentry_sdk, "capture_exception", fake_capture_exception)
 
     scopes = []
-    real_new_scope = sentry_sdk.new_scope
 
     class _RecordingScope:
         def __init__(self):

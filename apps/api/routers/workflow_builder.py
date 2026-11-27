@@ -205,7 +205,7 @@ def toggle_template(
 @router.post("/templates/{template_id}/trigger")
 def manually_trigger(
     template_id: str,
-    payload: dict = {},
+    payload: dict = {},   # noqa: B006 — FastAPI deep-copies a default body per request, so no request shares it
     current_user: dict = Depends(rbac("task", "write")),
 ):
     """Start ONE workflow template by hand, with optional trigger data."""
@@ -308,7 +308,6 @@ def list_approvals(
     from what is left once the caller's clients are narrowed, so a scoped caller is never told the list is complete
     because the narrowing ate the overflow (POST-A-262)."""
     firm_id = current_user["firm_id"]
-    user_id = current_user.get("auth_user_id")
     approvals, has_more = split(_repo().list_approvals(firm_id, status=status, limit=probe(limit)), limit)
     # Enrich with template names
     for a in approvals:

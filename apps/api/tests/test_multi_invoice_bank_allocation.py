@@ -308,7 +308,7 @@ def test_bank_multi_match_claim_prevents_double_posting_when_second_call_races_i
     import services.bank_posting_service as bps
     cust = cu.create_customer(CustomerIn(client_id="CLI", name="Cust F", state_code="27"), CALLER)["data"]
     inv1 = _invoice(si, cust["id"], 30_000, "INV-RACE-2A")
-    inv2 = _invoice(si, cust["id"], 30_000, "INV-RACE-2B")
+    _invoice(si, cust["id"], 30_000, "INV-RACE-2B")
     txn = _txn(db, 30_000, is_credit=True)
 
     original_claim_update = db.table

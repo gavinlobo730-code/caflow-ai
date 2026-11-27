@@ -44,7 +44,7 @@ def _seed_opening_stock(db, qty="10", avg_cost_paise=100000):
 
 
 def test_adjust_rejects_reverse_itc_on_increase(monkeypatch):
-    db = _setup(monkeypatch)
+    _setup(monkeypatch)
     with pytest.raises(HTTPException) as exc:
         inv.adjust_stock("PROD-1", StockAdjustmentIn(
             client_id="CLI", adjustment_date="2026-04-15", quantity=2,
@@ -54,7 +54,7 @@ def test_adjust_rejects_reverse_itc_on_increase(monkeypatch):
 
 
 def test_adjust_rejects_unknown_item(monkeypatch):
-    db = _setup(monkeypatch)
+    _setup(monkeypatch)
     with pytest.raises(HTTPException) as exc:
         inv.adjust_stock("NOPE", StockAdjustmentIn(
             client_id="CLI", adjustment_date="2026-04-15", quantity=2,
@@ -64,7 +64,7 @@ def test_adjust_rejects_unknown_item(monkeypatch):
 
 
 def test_adjust_rejects_service_kind_items(monkeypatch):
-    db = _setup(monkeypatch)
+    _setup(monkeypatch)
     with pytest.raises(HTTPException) as exc:
         inv.adjust_stock("SVC-1", StockAdjustmentIn(
             client_id="CLI", adjustment_date="2026-04-15", quantity=1,
@@ -105,7 +105,7 @@ def test_adjust_writeoff_records_movement_and_posts_journal_with_valid_entry_typ
 # ── POST /api/inventory/items/{id}/writedown (AS-2/ICDS-II lower-of-cost-or-NRV) ─
 
 def test_writedown_rejects_service_kind_items(monkeypatch):
-    db = _setup(monkeypatch)
+    _setup(monkeypatch)
     with pytest.raises(HTTPException) as exc:
         inv.writedown_stock_to_nrv("SVC-1", NrvWritedownIn(
             client_id="CLI", writedown_date="2026-04-15", nrv_per_unit_paise=50_00,
@@ -114,7 +114,7 @@ def test_writedown_rejects_service_kind_items(monkeypatch):
 
 
 def test_writedown_rejects_unknown_item(monkeypatch):
-    db = _setup(monkeypatch)
+    _setup(monkeypatch)
     with pytest.raises(HTTPException) as exc:
         inv.writedown_stock_to_nrv("NOPE", NrvWritedownIn(
             client_id="CLI", writedown_date="2026-04-15", nrv_per_unit_paise=50_00,
@@ -178,7 +178,7 @@ def test_list_stock_items_reads_ledger_running_value_not_a_recompute(monkeypatch
 
 
 def test_list_stock_items_item_with_no_ledger_history_shows_zero(monkeypatch):
-    db = _setup(monkeypatch)
+    _setup(monkeypatch)
     resp = inv.list_stock_items(client_id="CLI", current_user=CALLER)
     assert resp["success"] is True
     item = next(r for r in resp["data"] if r["id"] == "PROD-1")

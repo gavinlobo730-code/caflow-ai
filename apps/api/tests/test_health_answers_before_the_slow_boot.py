@@ -107,7 +107,7 @@ def test_the_slow_work_is_not_done_at_import():
         (sched, "start_scheduler"): sched.start_scheduler,
         (sched, "run_catchup_if_stale"): sched.run_catchup_if_stale,
     }
-    for (mod, name), fn in originals.items():
+    for (mod, name), _fn in originals.items():
         setattr(mod, name, lambda *a, _n=name, **k: called.append(_n) or {"checked": True, "missing": []})
     try:
         importlib.reload(main_module)

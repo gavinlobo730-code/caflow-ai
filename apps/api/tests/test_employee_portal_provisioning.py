@@ -422,8 +422,6 @@ def test_portal_status_never_returns_the_hash(monkeypatch):
     assert status["activated"] is False
     assert "portal_invite_token_hash" not in status
     # No VALUE is the hash either — a renamed key would still be a leak.
-    import hashlib as _h
-    leaked = _h.sha256(b"x").hexdigest()[:0]  # length probe only
     assert not any(isinstance(v, str) and len(v) == 64 and all(c in "0123456789abcdef" for c in v)
                    for v in status.values()), "a sha256-shaped value is in the status payload"
 

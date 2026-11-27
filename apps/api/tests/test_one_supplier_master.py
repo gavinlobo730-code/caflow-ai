@@ -255,8 +255,8 @@ def test_the_customer_limit_IS_enforced_and_is_a_different_column():
     creator = (api / "routers/sales_invoices.py").read_text()
     assert "credit_assessment.blocks" in creator, (
         "the sales-invoice create path no longer asks the customer's limit")
-    m414 = next(api.glob("migrations/414_*.sql"), None)
-    assert m414 is not None and "credit_limit_blocks" in m414.read_text()
+    m414 = api / "migrations" / "414_a_customer_credit_limit_warns_and_blocks_only_if_asked.sql"   # in full: "414_*.sql" matches the rollback too
+    assert m414.exists() and "credit_limit_blocks" in m414.read_text()
 
 
 # ── 3. The models carry it, and refuse a negative ────────────────────────────

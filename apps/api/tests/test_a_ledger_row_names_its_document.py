@@ -120,7 +120,7 @@ def test_the_document_changes_no_figure():
     for key in ("opening_balance_paise", "closing_balance_paise",
                 "total_debit_paise", "total_credit_paise"):
         assert plain[key] == stamped[key]
-    for a, b in zip(plain["lines"], stamped["lines"]):
+    for a, b in zip(plain["lines"], stamped["lines"], strict=False):
         for key in ("debit_paise", "credit_paise", "running_balance_paise", "is_debit"):
             assert a[key] == b[key]
 

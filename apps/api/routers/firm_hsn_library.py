@@ -292,7 +292,7 @@ def bulk_add_codes(
         # ── Step 4: ONE batch insert for every brand-new code. ───────────────
         if to_insert:
             if _USE_MOCK:
-                for idx, payload in to_insert:
+                for _idx, payload in to_insert:
                     MOCK_LIBRARY.append(payload)
                     created.append(payload)
             else:
@@ -300,7 +300,7 @@ def bulk_add_codes(
                 created.extend(resp.data or [p for _, p in to_insert])
 
         # ── Step 5: reactivations — per-row (see docstring: expected rare). ──
-        for idx, payload, existing in to_reactivate:
+        for _idx, payload, existing in to_reactivate:
             patch = {**payload, "is_active": True, "updated_at": now}
             patch.pop("firm_id", None)
             patch.pop("hsn_code", None)  # immutable after creation, per FirmHsnLibraryUpdateIn

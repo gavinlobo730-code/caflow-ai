@@ -181,7 +181,7 @@ def test_192_3_spreads_over_the_months_that_REMAIN(app_db):
     _employee(db)
     early = _get(client).json()["data"]["projected_monthly_paise"]
 
-    for i, mo in enumerate(["2026-04", "2026-05", "2026-06", "2026-07", "2026-08",
+    for _i, mo in enumerate(["2026-04", "2026-05", "2026-06", "2026-07", "2026-08",
                             "2026-09", "2026-10", "2026-11", "2026-12", "2027-01"]):
         _released_run(db, mo, tds_paise=0)
     late = _get(client).json()["data"]["projected_monthly_paise"]

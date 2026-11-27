@@ -67,7 +67,7 @@ def test_verify_books_rejects_client_in_another_firm(monkeypatch):
 
 
 def test_list_runs_returns_most_recent_first(monkeypatch):
-    db = _setup(monkeypatch)
+    _setup(monkeypatch)
     verify_books(VerifyBooksRequest(client_id=CLIENT), PARTNER)
     verify_books(VerifyBooksRequest(client_id=CLIENT), PARTNER)
     resp = list_runs(client_id=CLIENT, limit=20, current_user=PARTNER)
@@ -83,7 +83,7 @@ def test_list_runs_rejects_client_in_another_firm(monkeypatch):
 
 
 def test_get_run_returns_run_and_its_findings(monkeypatch):
-    db = _setup(monkeypatch)
+    _setup(monkeypatch)
     monkeypatch.setattr(
         "domain.reporting.sources.SupabaseLedgerSource._entries",
         lambda self, firm_id, client_id: {

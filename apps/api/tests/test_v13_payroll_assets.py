@@ -228,7 +228,6 @@ class TestTDS192:
         rates = rates_for("2025-26")
         taxable = 6000000000  # ₹6 Cr
         monthly = _compute_tds_192(taxable, fy="2025-26")
-        annual = monthly * 12
         plain_tax = slab_tax_paise(taxable, rates.new_regime_slabs)
         # annual (tax+surcharge+cess) must stay within a 25%-surcharge +
         # 4%-cess envelope of plain slab tax, not a 37%-surcharge envelope.

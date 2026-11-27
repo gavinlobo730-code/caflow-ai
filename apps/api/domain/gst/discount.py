@@ -124,7 +124,7 @@ def allocate(total_paise: int, weights: Sequence[int]) -> list[int]:
     # than as fractions.
     numerators = [total_paise * w for w in weights]
     out = [num // base for num in numerators]
-    remainder = [num - q * base for num, q in zip(numerators, out)]
+    remainder = [num - q * base for num, q in zip(numerators, out, strict=False)]
 
     # Each floor loses less than one whole paise, so the residue is strictly
     # less than the number of lines and every line gets at most one.
@@ -166,7 +166,7 @@ def apply_to_lines(lines: Sequence[dict],
     shares = allocate(doc_total, nets)
 
     out = []
-    for r, share in zip(resolved, shares):
+    for r, share in zip(resolved, shares, strict=False):
         out.append({
             "discount_paise": r["line_discount_paise"] + share,
             "discount_percent_bps": r["discount_percent_bps"],

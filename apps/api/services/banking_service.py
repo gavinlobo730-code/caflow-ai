@@ -127,8 +127,8 @@ def _opening_closing_balance(rows: list[dict]) -> tuple[int, int]:
     if min_date == max_date:
         return _balance_before_own_movement(rows[0]), rows[-1]["balance_paise"]
 
-    ascending_votes = sum(1 for a, b in zip(dates, dates[1:]) if a <= b)
-    descending_votes = sum(1 for a, b in zip(dates, dates[1:]) if a >= b)
+    ascending_votes = sum(1 for a, b in zip(dates, dates[1:], strict=False) if a <= b)
+    descending_votes = sum(1 for a, b in zip(dates, dates[1:], strict=False) if a >= b)
     is_descending = descending_votes > ascending_votes
 
     first_at_min = next(r for r in rows if r["transaction_date"] == min_date)
@@ -298,7 +298,7 @@ class BankingService:
         #    stored. Keeping them both is what makes the checked set and the
         #    stored set the same rows.
         hashes, repeated_in_file = hash_rows(client_id, bank_account_id, norm)
-        deduped = [{**r, "import_hash": h} for r, h in zip(norm, hashes)]
+        deduped = [{**r, "import_hash": h} for r, h in zip(norm, hashes, strict=False)]
 
         total_rows = len(norm)
         # 2) drop rows already stored for this client (idempotent re-import).

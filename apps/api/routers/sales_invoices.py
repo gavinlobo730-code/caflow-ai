@@ -950,7 +950,7 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
             [{"gross_paise": g,
               "discount_percent_bps": l.get("discount_percent_bps"),
               "discount_paise": l.get("discount_paise")}
-             for g, l in zip(_gross, lines_data)],
+             for g, l in zip(_gross, lines_data, strict=False)],
             document_percent_bps=data.get("discount_percent_bps"),
             document_amount_paise=data.get("discount_paise"),
         )
@@ -959,7 +959,7 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
 
     total_discount_paise = 0
 
-    for ln, _d in zip(lines_data, _discounts):
+    for ln, _d in zip(lines_data, _discounts, strict=False):
         qty        = ln.get("quantity", 1)
         rate_paise = int(ln.get("rate_paise", 0))
         # Model uses gst_rate_percent (e.g. 18.0), convert to bps (10000 bps = 100%)
@@ -1963,14 +1963,14 @@ def update_invoice(
                     [{"gross_paise": g,
                       "discount_percent_bps": l.get("discount_percent_bps"),
                       "discount_paise": l.get("discount_paise")}
-                     for g, l in zip(_gross, data["lines"])],
+                     for g, l in zip(_gross, data["lines"], strict=False)],
                     document_percent_bps=_doc_pct,
                     document_amount_paise=_doc_amt,
                 )
             except ValueError as e:
                 raise HTTPException(status_code=422, detail=str(e)) from e
 
-            for ln, _d in zip(data["lines"], _discounts):
+            for ln, _d in zip(data["lines"], _discounts, strict=False):
                 qty          = ln.get("quantity", 1)
                 rate_paise   = int(ln.get("rate_paise", 0))
                 gst_rate_percent = float(ln.get("gst_rate_percent", 0) or ln.get("gst_rate_bps", 0) / 100)

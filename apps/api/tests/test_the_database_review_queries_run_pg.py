@@ -49,7 +49,7 @@ def _blocks() -> dict[int, str]:
     text = SQL.read_text(encoding="utf-8")
     parts = re.split(r"^-- \[(\d+)\] .*$", text, flags=re.M)
     # parts = [preamble, "1", body1, "2", body2, ...]
-    return {int(n): body.strip() for n, body in zip(parts[1::2], parts[2::2])}
+    return {int(n): body.strip() for n, body in zip(parts[1::2], parts[2::2], strict=False)}
 
 
 @pytest.fixture(scope="module")

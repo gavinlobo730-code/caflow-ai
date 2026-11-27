@@ -325,7 +325,7 @@ def _one_item(meta, movements: list[Movement], as_of: date) -> ItemAgeing:
     # where it should round once.
     band_weights = [row.band_qty[k] for k in BAND_KEYS]
     shares = _split_pro_rata(row.value_paise, band_weights)
-    for k, share in zip(BAND_KEYS, shares):
+    for k, share in zip(BAND_KEYS, shares, strict=False):
         row.band_value_paise[k] = share
     return row
 

@@ -531,7 +531,7 @@ def create_vendors_bulk(
 
     try:
         if _USE_MOCK:
-            for i, payload in valid_items:
+            for _i, payload in valid_items:
                 payload["id"] = str(uuid.uuid4())
                 MOCK_VENDORS.append(payload)
                 created.append(payload)
@@ -591,7 +591,7 @@ def create_vendors_bulk(
             batch_rows = None
 
         if batch_rows is not None:
-            for (i, payload), vendor in zip(valid_items, batch_rows):
+            for (i, payload), vendor in zip(valid_items, batch_rows, strict=False):
                 err = _finish_vendor_creation(db, vendor, payload, current_user)
                 if err:
                     errors.append({"index": i, "name": payload.get("name"), "error": err})

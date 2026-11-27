@@ -85,7 +85,7 @@ def test_the_quarters_are_april_to_march_and_cover_every_month(fy):
             y, m = (y + 1, 1) if m == 12 else (y, m + 1)
     assert len(months) == 12, "twelve months"
     assert len(set(months)) == 12, "no month counted twice"
-    for earlier, later in zip(months, months[1:]):
+    for earlier, later in zip(months, months[1:], strict=False):
         step = (later[0] - earlier[0]) * 12 + (later[1] - earlier[1])
         assert step == 1, f"a gap between {earlier} and {later}"
 

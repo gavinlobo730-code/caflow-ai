@@ -369,7 +369,7 @@ def test_the_override_is_on_the_clients_timeline_as_a_warning(monkeypatch):
     Spied rather than read back, because the e2e harness stubs the timeline out
     (tests/e2e_harness.wire_e2e) so an import is not judged on a side effect."""
     from services.timeline_service import timeline_service
-    db = _setup(monkeypatch)
+    _setup(monkeypatch)
     logged: list[dict] = []
     monkeypatch.setattr(timeline_service, "log",
                         lambda *a, **kw: logged.append({"args": a, "kw": kw}))

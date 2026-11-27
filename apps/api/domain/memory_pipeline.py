@@ -99,9 +99,6 @@ class MemoryPipeline:
 
             avg_response = round(sum(response_times) / len(response_times), 1) if response_times else None
             # Portal engagement = % of tasks completed on time
-            on_time = len([t for t in completed
-                          if t.get("due_date") and t.get("updated_at")
-                          and t["updated_at"] <= t.get("due_date", "9999")])
             engagement_score = round((len(completed) / total) * 100, 1) if total > 0 else 50.0
 
             profile_data["avg_response_time_days"] = avg_response
@@ -250,10 +247,8 @@ class MemoryPipeline:
             logger.warning("Portfolio profile error: %s", e)
 
         try:
-            # Workflow intelligence
-            wf_repo = _get_workflow_repo()
-            templates = wf_repo.list_templates(firm_id)
-            active_automations = len([t for t in templates if t.get("is_active")])
+            # Workflow intelligence: nothing is derived from the automation templates here (a count of the active ones was computed and never stored,
+            # and is removed with the read behind it, POST-A-026).
 
             # Capacity: derive from task load. THESE TWO FIELDS ARE THE SAME
             # ARITHMETIC THE CLIENT PROFILE'S "financial patterns" USED TO DO,

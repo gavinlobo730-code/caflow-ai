@@ -176,7 +176,7 @@ def test_update_draft_recomputes_lines_and_replaces_old_ones(monkeypatch):
 
 
 def test_update_draft_lines_rejects_empty_list(monkeypatch):
-    db = _setup(monkeypatch)
+    _setup(monkeypatch)
     res = pb.create_purchase_bill(PurchaseBillIn(
         client_id="CLI", vendor_id="VEND1", bill_date="2025-06-01", bill_no="B-EMPTY",
         lines=[PurchaseBillLineIn(service_catalogue_id="PROD-1", description="Only line", rate_paise=100_00, quantity=1, gst_rate_percent=18.0)],

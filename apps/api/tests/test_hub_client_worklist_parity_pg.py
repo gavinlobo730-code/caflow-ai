@@ -311,7 +311,7 @@ def _double(dsn: str) -> Double:
                 continue
             parts = line.split("|")
             row = {}
-            for k, v in zip(names, parts):
+            for k, v in zip(names, parts, strict=False):
                 if v == "":
                     row[k] = None
                 elif k.endswith("_paise"):

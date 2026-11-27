@@ -118,7 +118,6 @@ def test_have_2b_is_not_derived_from_the_row_count():
     edit reintroduces that derivation this fails, whatever it is spelled."""
     import inspect
     from domain.gst import gstr3b_computer
-    src = inspect.getsource(gstr3b_computer.compute_gstr3b)
     assert "have_2b: Optional[bool]" in inspect.getsource(gstr3b_computer.compute_gstr3b) \
         or "have_2b" in str(inspect.signature(gstr3b_computer.compute_gstr3b)), \
         "compute_gstr3b must ACCEPT have_2b — a caller that knows must be able to say"

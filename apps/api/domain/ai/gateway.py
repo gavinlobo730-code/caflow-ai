@@ -365,7 +365,7 @@ class Scope:
     feature: Optional[str] = None
 
 
-_scope: contextvars.ContextVar[Scope] = contextvars.ContextVar("ai_usage_scope", default=Scope())
+_scope: contextvars.ContextVar[Scope] = contextvars.ContextVar("ai_usage_scope", default=Scope())  # noqa: B039 — Scope is a frozen dataclass: the shared default cannot be changed by a caller
 
 
 def current_scope() -> Scope:

@@ -56,7 +56,7 @@ class _Q:
     def execute(self):
         rows = [r for r in self.store.get(self.table, [])
                 if all(r.get(k) == v for k, v in self.f.items())]
-        for k, v in self.isnull.items():
+        for k, _v in self.isnull.items():
             rows = [r for r in rows if r.get(k) is None]
         for k in self.notnull:
             rows = [r for r in rows if r.get(k) is not None]

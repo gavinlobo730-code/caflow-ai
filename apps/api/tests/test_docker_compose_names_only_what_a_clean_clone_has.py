@@ -114,7 +114,7 @@ def _services(text: str) -> dict[str, dict]:
     for name, body in chunks.items():
         svc = {"build": None, "env_files": [], "binds": [], "depends_on": []}
 
-        def section(key: str) -> list[str]:
+        def section(key: str, body=body) -> list[str]:
             """The lines nested under `    <key>:` (indent 4), or [] — plus the inline value, if any."""
             for i, l in enumerate(body):
                 m = re.fullmatch(rf"    {key}:\s*(.*)", l)

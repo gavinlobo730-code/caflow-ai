@@ -289,7 +289,7 @@ def test_every_account_posts_to_itself():
     for name, acc in _real_chart(FakeDB()).items():
         db = FakeDB()
         chart = _real_chart(db)
-        txn = _txn(db, credit_paise=118000, debit_paise=0)
+        _txn(db, credit_paise=118000, debit_paise=0)
         res = banking_service.set_account(db, FIRM, "t1", chart[name]["id"],
                                           derive_category=True)
         if res["category"] == TRANSFER:

@@ -101,7 +101,7 @@ def bands_cover_every_wage(bands: list[dict]) -> bool:
     ordered = sorted(bands, key=lambda b: int(b.get("from_paise") or 0))
     if int(ordered[0].get("from_paise") or 0) != 0:
         return False
-    for lower, upper in zip(ordered, ordered[1:]):
+    for lower, upper in zip(ordered, ordered[1:], strict=False):
         if lower.get("to_paise") is None:
             return False           # an open band that is not the last one
         if int(lower["to_paise"]) != int(upper.get("from_paise") or 0):
