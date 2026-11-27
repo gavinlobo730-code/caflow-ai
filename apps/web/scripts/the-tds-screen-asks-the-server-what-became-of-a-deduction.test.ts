@@ -198,7 +198,7 @@ test("a register row its document left behind shows the server's sentence and is
     "the name cell does not show the server's left-behind sentence");
   assert.ok(!/left_behind_by_its_document\s*=/.test(PAGE), "the screen sets the left-behind sentence itself");
   // The button is offered to the tier the remove door asks (tds:write), and everyone else is told who can.
-  assert.ok(/\{canRetract \? \(\s*<button type="button"[^>]*onClick=\{\(\) => setLeftBehindToRemove\(d\)\}>Remove this row<\/button>\s*\) : "A Manager or Partner can remove it\."\}/.test(PAGE),
+  assert.ok(/\{canRetract \? \(\s*<button type="button"[^>]*onClick=\{\(\) => setLeftBehindToRemove\(d\)\}>Remove this row<\/button>\s*\) : "Someone who may write TDS records can remove it\."\}/.test(PAGE),
     "Remove is not offered by tier, or the other members are not told who can remove it");
   // The remove asks in the product's dialog (never a browser pop-up), calls the one remove door, and reads the register again.
   const effect = PAGE.slice(PAGE.indexOf("const row = leftBehindToRemove;"), PAGE.indexOf("}, [leftBehindToRemove]);"));

@@ -2367,7 +2367,7 @@ function Vendors({ clientId }: { clientId: string }) {
                         : !declarant.found ? "Recorded here by a member who is no longer in this practice."
                         : `Recorded here by ${declarant.name}.`)
                       : "Not yet recorded by a member who can approve TDS, so the TDS register names this declaration as a gap. "
-                        + "It is recorded when a Manager or Partner saves this supplier with the declaration on file."}
+                        + "It is recorded when someone who may approve TDS saves this supplier with the declaration on file."}
                   </p>
                 )}
                 {natureOfIncome === "business_profits_no_pe" && (

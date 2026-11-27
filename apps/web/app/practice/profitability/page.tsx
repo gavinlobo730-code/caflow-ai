@@ -356,7 +356,7 @@ export default function ProfitabilityPage() {
               {formatHours(m.unrated_minutes)} recorded by{" "}
               {missingRates.slice(0, 3).map((c) => (missingRates.length === 1 ? c.user_name : `${c.user_name} (${formatHours(c.minutes)})`)).join(", ")}
               {missingRates.length > 3 ? ` and ${missingRates.length - 3} more` : ""}{" "}
-              has no cost rate, so it is in no client&apos;s cost.{canEditRates ? " Set the rates at the foot of this page." : " A Partner sets the rates."}
+              has no cost rate, so it is in no client&apos;s cost.{canEditRates ? " Set the rates at the foot of this page." : " Someone who may edit billing sets the rates."}
             </p>
           )}
           {clients.some((c) => c.status === "no_time") && (

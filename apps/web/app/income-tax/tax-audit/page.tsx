@@ -67,7 +67,7 @@ const STATUS_OPTIONS: AuditStatus[] = ["not_started", "in_progress", "completed"
  * audit already in it (migration 496). The form says so instead of offering a choice that would be refused.
  */
 const FINISHED_STATUSES: AuditStatus[] = ["completed", "filed"];
-const APPROVER_ONLY = "Only someone who may approve income tax work (a Manager or Partner) can record an audit as completed or filed, or change one that is.";
+const APPROVER_ONLY = "Only someone who may approve income tax work can record an audit as completed or filed, or change one that is.";
 // FROM THE CLOCK, NOT A LITERAL. This list ended at a year that is now in the
 // past, so the current financial year could not be selected at all — broken on
 // 1 April with nothing saying so. `financialYearChoicesAround` is the one
@@ -379,7 +379,7 @@ function AuditModal({ clients, editAudit, presetClientId, onClose, onSaved }: {
         if (!reached || reached.length === 0) {
           throw new Error(
             "This audit was not changed. Either you may not edit tax audits for this client, or it is recorded as "
-            + "completed or filed, which only someone who may approve income tax work (a Manager or Partner) can change.",
+            + "completed or filed, which only someone who may approve income tax work can change.",
           );
         }
       } else {

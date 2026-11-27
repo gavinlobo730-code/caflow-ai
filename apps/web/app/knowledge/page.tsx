@@ -181,7 +181,7 @@ function KnowledgeInner() {
               className="py-10"
               icon={<Library size={32} />}
               title="No articles found"
-              description="The firm's own articles are listed here. A Partner or Manager writes one with New article."
+              description="The firm's own articles are listed here. New article adds one, for whoever may write them."
               action={
                 <EmptyStateActions>
                   <EmptyStateAction requires={["knowledge", "write"]} icon={<Plus size={14} />} label="New article" onClick={() => setShowForm(true)} />

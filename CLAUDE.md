@@ -345,7 +345,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A SEARCH ON A STATEMENT CHOOSES THE ROWS DRAWN, AND EVERY TOTAL STAYS THE WHOLE LEDGER'S
 - A MEMBER'S HOURS FOR A PERIOD ARE SUMMED BY THE DATABASE
 
-### `docs/design-record/screens-and-site.md` (34 entries): Screens that state what they read, double-click and keyboard rules, the public site's claims, dates and empty states
+### `docs/design-record/screens-and-site.md` (35 entries): Screens that state what they read, double-click and keyboard rules, the public site's claims, dates and empty states
 
 - AN ABSENT VALUE IS UNKNOWN, AND A GENUINE ZERO IS A READING
 - A RETURN FOR ONE OF SEVERAL REGISTRATIONS SAYS ITS DOCUMENTS ARE NOT SPLIT
@@ -379,6 +379,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE PAGES A PERSON SEES BEFORE THEY ARE INSIDE WEAR ONE WASH, A WORD ON IT IS WHITE AND SITS WHERE WHITE READS, AND THE SIGN-IN
 - A REFUSAL SAYS WHAT TO CORRECT IN A PERSON'S WORDS
 - A BUTTON THAT SAVES TELLS THE PERSON WHEN IT FAILS, AND A SCAN OVER EVERY BUTTON HOLDS THE RULE WITH A LIST OF WHAT WAS READ THAT MAY ONLY SHRINK
+- A SENTENCE THAT SAYS WHO MAY NAMES THE PERMISSION THE CODE ASKS, AND NOBODY IS LEFT WITH A ROLE NAMED UNREAD
 
 ### `docs/design-record/tax-gst.md` (40 entries): GST: returns, e-invoice and e-way, ITC and the 2B reconciliation, late fees, HSN and UQC, registrations
 

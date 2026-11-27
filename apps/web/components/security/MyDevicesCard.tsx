@@ -133,8 +133,8 @@ export function MyDevicesCard() {
           </>
         )}
         <p className="text-xs text-ps-label">
-          PracticeSync records the address and the browser you sign in from and keeps them with your sign-in history, which your firm&apos;s
-          Partners and Managers can read. Nothing limits how many devices one login can be used on; the firm&apos;s other Partners are told in the app
+          PracticeSync records the address and the browser you sign in from and keeps them with your sign-in history, which people with access to your firm&apos;s
+          sign-in history can read. Nothing limits how many devices one login can be used on; the firm&apos;s other Partners are told in the app
           when a second one signs in.
         </p>
       </div>

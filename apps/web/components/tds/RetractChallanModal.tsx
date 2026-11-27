@@ -46,7 +46,7 @@ export function RetractChallanModal({
           This takes the challan out of the register: it no longer counts toward what has been deposited, the deposit worksheet or
           the quarter&apos;s statement. The challan and your reason are kept in the audit log. A monthly deposit on the compliance
           calendar that was closed on this challan is reopened if your access includes approving Compliance; otherwise the answer
-          names it and a Manager or Partner can reopen it. A month closed before the product recorded which challan closed it is
+          names it and someone who may approve Compliance can reopen it. A month closed before the product recorded which challan closed it is
           named and left as it is.
         </p>
         <div>

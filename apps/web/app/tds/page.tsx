@@ -1224,7 +1224,7 @@ export default function TDSPage() {
               {d.left_behind_by_its_document}{" "}
               {canRetract ? (
                 <button type="button" className="underline font-medium" onClick={() => setLeftBehindToRemove(d)}>Remove this row</button>
-              ) : "A Manager or Partner can remove it."}
+              ) : "Someone who may write TDS records can remove it."}
             </span>
           )}
         </span>

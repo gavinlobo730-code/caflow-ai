@@ -80,21 +80,10 @@ const ROLE_NAMED = /\b(?:open|visible|available|limited|restricted) to (?:Partne
 /** True by role: My practice is the Partner's alone (G1), which no tick opens. */
 const ROLE_NAMED_TRUE: Record<string, number> = { "components/practice/PartnerGuard.tsx": 1 };
 
-const ROLE_NAMED_UNREAD: Record<string, number> = {
-  "app/accounting/loans/page.tsx": 2,
-  "app/approvals/page.tsx": 1,
-  "app/clients/[id]/purchases/page.tsx": 1,
-  "app/income-tax/tax-audit/page.tsx": 2,
-  "app/knowledge/page.tsx": 1,
-  "app/payroll/page.tsx": 2,
-  "app/practice/profitability/page.tsx": 1,
-  "app/settings/journal-approval/page.tsx": 2,
-  "app/tds/page.tsx": 1,
-  "components/banking/RulesTab.tsx": 3,
-  "components/payroll/StatutoryHandoff.tsx": 1,
-  "components/security/MyDevicesCard.tsx": 1,
-  "components/tds/RetractChallanModal.tsx": 1,
-};
+// EMPTY since 27-11-2026 (POST-A-556): the nineteen sentences were read against what the code asks and each now names the
+// permission it asks ("someone who may approve TDS", "someone with Banking approval") or says nothing about who. A new one
+// goes in ROLE_NAMED_TRUE with the reason, or is worded the same way; this list only shrinks and has nothing left to shrink.
+const ROLE_NAMED_UNREAD: Record<string, number> = {};
 
 test("a sentence that names a role as the one who may, in softer words, is counted on a list that only shrinks", () => {
   const found: Record<string, number> = {};
