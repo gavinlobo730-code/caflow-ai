@@ -83,7 +83,7 @@ def _items():
 
 
 def test_the_ledger_has_its_files():
-    for name in [*SECTIONS, NEW_FINDINGS_FILE, PARKED_FILE, "README.md", "progress.md", "decisions-and-strategy.md", "checked-closed.md", "deletion-plan.md", "coming-soon.md", "decisions-taken-2026-10-14.md", "owner-list.md"]:
+    for name in [*SECTIONS, NEW_FINDINGS_FILE, PARKED_FILE, "README.md", "progress.md", "decisions-and-strategy.md", "checked-closed.md", "deletion-plan.md", "coming-soon.md", "decisions-taken-2026-10-14.md", "owner-list.md", "depends-on-something.md"]:
         assert (LEDGER / name).is_file(), f"docs/open-items/{name} is missing"
 
 
@@ -143,7 +143,7 @@ def _all_ids() -> set[str]:
 def test_no_list_cites_an_id_that_no_longer_exists():
     ids = _all_ids()
     dangling = []
-    for name in ("README.md", "decisions-and-strategy.md"):
+    for name in ("README.md", "decisions-and-strategy.md", "depends-on-something.md"):
         text = (LEDGER / name).read_text(encoding="utf-8")
         for cited in sorted(set(ANY_ID.findall(text))):
             if cited not in ids:

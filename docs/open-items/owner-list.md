@@ -6,6 +6,15 @@ Everything that is yours to decide, do or supply, and every statutory or legal p
 
 **How many ledger items wait on you:** the ledger README's "Who must act" line counts them and is generated from the ledger itself. It is every item lettered B (you decide first) or C (only you or someone outside can do), plus the items lettered A that carry the `waits on owner` marker. Those marked items are the ones whose question is in section 4 below: S14 (POST-A-343), S15 (POST-A-348), S16 (POST-A-055), S17 (POST-A-059 and POST-A-064), S18 (POST-A-067), S19 (POST-A-114) and S20 (POST-A-063). Answering a question removes the marker and Claude builds the item.
 
+## 00. FOUR THINGS FOR YOU, WHEN YOU ARE FREE (written 27-11-2026, IST; nothing is blocked on them tonight)
+
+1. **Set up the platform administration portal** (about an hour of clicks, then half an hour of testing with me). The seven steps with their click paths are in section 0f, directly below the next heading: the site's own Cloudflare project, the gate in front of it, the one Render setting, the dedicated account in Supabase, the one database line that lists it, the first sign-in, and the live test. Until it is done the old platform page in the product still works, but it now asks for your authenticator code on every visit and emails the platform list each time it is opened.
+2. **Choose what happens to the 163 old branches** (answer a, b or c, no clicks needed now): (a) I add a one-click job you run once that deletes exactly those 163, **my recommendation**; (b) you delete them yourself on GitHub's Branches page; (c) leave them, they cost nothing. This environment cannot delete a branch itself.
+3. **Tick one setting on GitHub so old branches stop piling up:** the repository, then Settings, then General, then "Automatically delete head branches".
+4. **Answer one bank question (POST-A-496):** a saved bank rule that names an expense ledger but states no GST currently posts the whole amount with no input credit, without asking. (a) require every such rule to carry its GST answer, a rate or "no GST", and let lines from a rule that says nothing wait for a person, **my recommendation**; or (b) leave it and only warn on the bank screen.
+
+Smaller, whenever convenient: the Render setting called PORTAL_BASE_URL has still not been read (Render, the API service, Environment). It decides whether the client portal's old forwarding address can go (POST-A-562), and a screenshot of that page, with the value hidden if you prefer, is enough.
+
 ## 0a. THE WALKTHROUGH OF THE FIVE QUESTIONS: where we are (kept current; read this first)
 
 The owner's plan, set on 19 November 2026 at about 17:20 IST: **one question at a time; we discuss it until both sides are satisfied; then he says it is closed and the next starts. A finding on the owner's side is told to him and he fixes it right then. A finding on Claude's side is written on the Claude-only list and done when he is off.** Claude does not leave a question open to chase a finding, and does not move on until the owner says "closed".
