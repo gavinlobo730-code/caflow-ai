@@ -332,7 +332,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE ECR'S COLUMNS ARE EPFO'S OWN, A RETURN AND ITS CHALLAN HAVE TWO REFERENCES
 - A FIXED-TERM EMPLOYEE'S FIVE YEARS ARE WAIVED ON THE EXPIRY OF THE TERM, GRATUITY IS NAMED UNDER THE CODE,
 
-### `docs/design-record/reporting.md` (12 entries): Reporting: Schedule III captions, report performance, paging, exports
+### `docs/design-record/reporting.md` (13 entries): Reporting: Schedule III captions, report performance, paging, exports
 
 - The fixed-assets note is a MOVEMENT, and there is one of it
 - PAGING IS NOT THE SAME AS BOUNDING, AND A RECONCILIATION NEEDED BOTH
@@ -346,6 +346,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE ASSIGNMENT SCOPE READS THE CALLER'S CLIENTS ONCE PER QUERY, AND THE DRIFT GUARD FOLDS THE REWRITE BACK TO THE CALL IT REPLACED
 - A SEARCH ON A STATEMENT CHOOSES THE ROWS DRAWN, AND EVERY TOTAL STAYS THE WHOLE LEDGER'S
 - A MEMBER'S HOURS FOR A PERIOD ARE SUMMED BY THE DATABASE
+- A PAYROLL REPORT IS SUMMED BY THE DATABASE AND RETURNED AS ONE DOCUMENT
 
 ### `docs/design-record/screens-and-site.md` (35 entries): Screens that state what they read, double-click and keyboard rules, the public site's claims, dates and empty states
 
