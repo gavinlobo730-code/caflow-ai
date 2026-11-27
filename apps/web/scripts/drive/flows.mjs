@@ -99,7 +99,7 @@ export async function openNoteDrawer(env, kind) {
 }
 
 /** The TDS screen with a client chosen, for a person who may record on it. */
-async function atTheTdsScreen(env) {
+export async function atTheTdsScreen(env) {
   const { page, stub } = env;
   stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { tds: ["read", "compute", "write"] } }) });
   await page.goto(`${env.base}/tds/`, { waitUntil: "networkidle" });

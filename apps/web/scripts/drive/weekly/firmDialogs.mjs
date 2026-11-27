@@ -11,13 +11,17 @@
  *   2. Manual Time Entry and Start Timer: each named, Escape closes, focus returns to the button that opened it;
  *   3. the task template form: named New Template, Tab kept inside, Escape closes, focus returns.
  *
- * The six not driven here (the two fee dialogs, the template's task dialog, the two TDS dialogs and the MCA filing) are opened by the
- * nightly date checks, which type into them and save: those ran on the same build.
+ * The six this file did not drive at first (the two fee dialogs, the two TDS dialogs and the MCA filing, and the template's task dialog) were
+ * opened only by the nightly date checks, which type into them and save. Three of them are driven here as well since POST-A-555: named, Tab
+ * kept inside, Escape closes, focus returns. The two fee dialogs are NOT: Billing's Add Engagement and Record Receipt are not offered at all
+ * (the page is a record, `FEE_BILLING_IS_A_RECORD`), so there is nothing to open. The template's Create Task from Template needs a template
+ * row and is still on the ledger.
  *
  * No scenario has a date of its own, so none has a zone.
  */
 import assert from "node:assert/strict";
 import { until } from "../kit.mjs";
+import { atTheTdsScreen } from "../flows.mjs";
 
 export const group = "firm-dialogs";
 
@@ -86,4 +90,27 @@ export const scenarios = [
       await namedDialogThatGivesFocusBack(page, page.getByRole("button", { name: "New Template", exact: true }).first(), "New Template", { tabs: 8 });
     },
   },
+  // ── the dialogs the first note said the nightly date checks open (POST-A-555): each now held to the shared dialog's promises as well ─────────────────────────────
+  {
+    id: "add-tds-deduction-and-add-challan-are-named-dialogs-that-give-focus-back",
+    title: "TDS > Deductions > Add Deduction and Challans > Add Challan: each a named dialog, Tab kept inside, Escape closes it and focus returns to the button",
+    async run(env) {
+      const { page } = env;
+      await atTheTdsScreen(env);
+      await namedDialogThatGivesFocusBack(page, page.getByRole("button", { name: "Add Deduction", exact: true }).first(), "Add TDS Deduction", { tabs: 12 });
+      await page.getByRole("button", { name: "Challans", exact: true }).click();
+      await namedDialogThatGivesFocusBack(page, page.getByRole("button", { name: "Add Challan", exact: true }).first(), "Add Challan 281", { tabs: 12 });
+    },
+  },
+  {
+    id: "add-mca-filing-is-a-named-dialog-that-gives-focus-back",
+    title: "MCA > Filings > Add Filing: a named dialog, Tab kept inside, Escape closes it and focus returns to the button",
+    async run(env) {
+      const { page } = env;
+      await page.goto(`${env.base}/mca/`, { waitUntil: "networkidle" });
+      await page.getByRole("button", { name: /^Filings/ }).first().click();
+      await namedDialogThatGivesFocusBack(page, page.getByRole("button", { name: /^Add Filing$/ }).first(), "Add MCA Filing", { tabs: 10 });
+    },
+  },
 ];
+
