@@ -87,4 +87,4 @@ def test_it_never_raises_on_a_hostile_exception():
     try:
         postgres_message(Hostile())
     except Exception as exc:  # pragma: no cover
-        raise AssertionError(f"postgres_message raised while reporting: {exc}")
+        raise AssertionError(f"postgres_message raised while reporting: {exc}") from exc

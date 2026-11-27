@@ -86,7 +86,7 @@ def get_financial_statements(
             fy_end=eng["fy_end"],
         )
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
     return api_response(True, statements)
 
@@ -122,7 +122,7 @@ def create_snapshot(
             fy_end=eng["fy_end"],
         )
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
     now = datetime.now(timezone.utc).isoformat()
     version_id = str(uuid.uuid4())

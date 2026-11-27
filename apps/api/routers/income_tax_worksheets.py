@@ -72,11 +72,11 @@ def read_worksheet(
             firm_id=current_user["firm_id"], client_id=client_id,
             fy=financial_year, kind=kind, use_new_regime=use_new_regime))
     except svc.UnknownKind as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
     except (ValidationError, *svc.Refused) as e:
         # A row written under an older vocabulary, or one the domain now
         # refuses. A sentence, never a 500.
-        raise _unprocessable(e)
+        raise _unprocessable(e) from e
 
 
 @router.put("/{kind}")
@@ -100,9 +100,9 @@ def save_worksheet(
                             "use_new_regime": req.use_new_regime, "payload": req.payload})
         return api_response(True, saved)
     except svc.UnknownKind as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
     except (ValidationError, *svc.Refused) as e:
-        raise _unprocessable(e)
+        raise _unprocessable(e) from e
 
 
 #: The kinds this router serves, for a guard that asserts the migration's CHECK

@@ -110,7 +110,7 @@ class BankBatchService:
         try:
             updated = att.add(txn.get("attachments"), name, url, document_id)
         except att.AttachmentError as e:
-            raise HTTPException(status_code=422, detail=str(e))
+            raise HTTPException(status_code=422, detail=str(e)) from e
         return self._save_attachments(db, firm_id, txn_id, updated, actor_id)
 
     def remove_attachment(self, db, firm_id: str, txn_id: str, url: Optional[str] = None,
@@ -120,7 +120,7 @@ class BankBatchService:
         try:
             updated = att.remove(txn.get("attachments"), url, document_id)
         except att.AttachmentError as e:
-            raise HTTPException(status_code=422, detail=str(e))
+            raise HTTPException(status_code=422, detail=str(e)) from e
         return self._save_attachments(db, firm_id, txn_id, updated, actor_id)
 
     def list_attachments(self, db, firm_id: str, txn_id: str) -> dict:

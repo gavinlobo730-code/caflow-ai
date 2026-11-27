@@ -102,11 +102,11 @@ def employee_tds_projection(
         data = compute_tds_projection(
             _db(), firm_id=employee["firm_id"], client_id=employee["client_id"],
             employee_id=employee["employee_id"], fy=financial_year)
-    except EmployeeNotFound:
+    except EmployeeNotFound as _cause:
         # The ids came from the principal, so a miss means the principal no
         # longer matches a live employee row — deleted, or moved between
         # clients. That is a 403 about the caller, not a 404 about a request.
-        raise HTTPException(status_code=403, detail="Not an employee portal user.")
+        raise HTTPException(status_code=403, detail="Not an employee portal user.") from _cause
     return api_response(True, data)
 
 
@@ -150,26 +150,26 @@ def employee_payslip_pdf(
                             detail="Payslip PDF unavailable in mock mode")
     try:
         own_released_slip(db, employee, slip_id)
-    except PayslipNotFound:
-        raise not_found
+    except PayslipNotFound as _cause:
+        raise not_found from _cause
 
     try:
         # The employer block is read with the privileged client: ownership was proved above, and an employee's own
         # sign-in cannot read the `clients` row the letterhead comes from (POST-A-220).
         pdf_bytes, filename = get_payslip_pdf(slip_id, employee["firm_id"], employer_db=db)
-    except PermissionError:
+    except PermissionError as _cause:
         # Ownership was proven above, so the renderer's own firm check failing
         # means the two disagree about whose slip this is. Nothing is handed
         # over, and it says the same thing every other refusal says.
-        raise not_found
-    except ValueError:
+        raise not_found from _cause
+    except ValueError as _cause:
         # The renderer refuses a run that carries no client (PAY-03 — the slip
         # would be headed with the CA firm's name). That is the EMPLOYER's to
         # fix and is worded for the CA on the staff route; an employee is told
         # it cannot be produced and who can put it right.
         raise HTTPException(status_code=409, detail=(
             "This payslip cannot be produced right now. Please ask your "
-            "employer to check it."))
+            "employer to check it.")) from _cause
 
     return Response(
         content=pdf_bytes,

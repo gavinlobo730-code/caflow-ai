@@ -134,7 +134,7 @@ class BankSplitService:
             except SplitError as e:
                 # A business message, not a database error — the CA is being
                 # told which figure is wrong and by how much.
-                raise HTTPException(status_code=422, detail=str(e))
+                raise HTTPException(status_code=422, detail=str(e)) from e
             self._validate_accounts(db, firm_id, txn["client_id"],
                                     [s.account_id for s in parsed])
             payload = [{"account_id": s.account_id, "amount_paise": s.amount_paise,
@@ -158,7 +158,7 @@ class BankSplitService:
             capture_posting_failure(e, operation="bank_splits.replace",
                                     firm_id=firm_id, transaction_id=txn_id)
             raise HTTPException(status_code=422,
-                                detail=f"Could not save the split: {e}")
+                                detail=f"Could not save the split: {e}") from e
 
         try:
             from services.audit_service import log_event
@@ -189,7 +189,7 @@ class BankSplitService:
             raise HTTPException(
                 status_code=422,
                 detail=(f"The saved split no longer matches the transaction: {e} "
-                        "Re-open the split and correct it before posting."))
+                        "Re-open the split and correct it before posting.")) from e
         return parsed
 
 

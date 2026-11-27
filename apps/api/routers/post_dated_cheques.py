@@ -46,8 +46,8 @@ def _a_date(v: Optional[str]) -> Optional[str]:
         return v
     try:
         date.fromisoformat(v)
-    except ValueError:
-        raise ValueError("Dates are written YYYY-MM-DD.")
+    except ValueError as _cause:
+        raise ValueError("Dates are written YYYY-MM-DD.") from _cause
     return v
 
 

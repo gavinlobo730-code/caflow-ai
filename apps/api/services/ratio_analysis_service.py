@@ -68,7 +68,7 @@ def fy_bounds(fy_label: str) -> tuple[str, str]:
     try:
         return _fy_bounds(fy_label)
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
 
 def _components_for(reporting, firm_id: str, client_id: Optional[str],

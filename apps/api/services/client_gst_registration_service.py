@@ -154,7 +154,7 @@ def resolve(db, firm_id: str, client_id: str,
     try:
         return reg.resolve(client, _rows(db, firm_id, client_id), gstin)
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
 
 def documents_not_split_caveat(db, firm_id: str, client_id: str,

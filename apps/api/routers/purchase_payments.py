@@ -807,14 +807,14 @@ def _create_foreign_payment(db, firm_id: str, client_id: str, data: dict, actor:
     if overridden:
         try:
             R1 = Decimal(str(data["exchange_rate"]))
-        except (InvalidOperation, ValueError, TypeError):
-            raise HTTPException(status_code=422, detail="Invalid exchange rate.")
+        except (InvalidOperation, ValueError, TypeError) as _cause:
+            raise HTTPException(status_code=422, detail="Invalid exchange rate.") from _cause
         r1_source = "manual-override"
     else:
         try:
             q = K.exchange_rate_service(db).get_quote(ccy, "INR", _date.fromisoformat(str(payment_date)[:10]), "booking")
-        except RateNotFound:
-            raise HTTPException(status_code=422, detail=f"No exchange rate available for {ccy}->INR on {payment_date}.")
+        except RateNotFound as _cause:
+            raise HTTPException(status_code=422, detail=f"No exchange rate available for {ccy}->INR on {payment_date}.") from _cause
         R1, r1_source = q.rate, q.source
     if R1 <= 0:
         raise HTTPException(status_code=422, detail="Exchange rate must be positive.")

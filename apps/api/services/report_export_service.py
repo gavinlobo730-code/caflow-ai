@@ -238,7 +238,7 @@ def load_holder(db, firm_id: str, client_id: str) -> dict:
     except ValueError as e:
         # The client row is the document's subject; without it there is no
         # letterhead to print, and a guess would put somebody else's name on it.
-        raise ExportRefused(str(e))
+        raise ExportRefused(str(e)) from e
 
 
 # ── The door ──────────────────────────────────────────────────────────────────

@@ -29,8 +29,8 @@ def _parse_financial_year(financial_year: str) -> tuple[str, str]:
     """
     try:
         start_year = int(financial_year.split("-")[0])
-    except (ValueError, IndexError):
-        raise HTTPException(status_code=422, detail="financial_year must be in 'YYYY-YY' format e.g. '2024-25'")
+    except (ValueError, IndexError) as _cause:
+        raise HTTPException(status_code=422, detail="financial_year must be in 'YYYY-YY' format e.g. '2024-25'") from _cause
     fy_start = f"{start_year}-04-01"
     fy_end = f"{start_year + 1}-03-31"
     return fy_start, fy_end

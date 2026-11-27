@@ -88,7 +88,7 @@ class Api:
                 "Nothing further was written. Fix the cause and re-run; this "
                 "script only ever ADDS, so the rows already created stay.",
                 e.code,
-            )
+            ) from e
 
     def get(self, path: str) -> dict:
         return self._request("GET", path)

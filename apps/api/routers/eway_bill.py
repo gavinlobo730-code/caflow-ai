@@ -109,8 +109,8 @@ class ExtendEWBRequest(BaseModel):
     def _a_date(cls, v: str) -> str:
         try:
             return date.fromisoformat(str(v)[:10]).isoformat()
-        except ValueError:
-            raise ValueError("new_valid_upto must be an ISO date (YYYY-MM-DD)")
+        except ValueError as _cause:
+            raise ValueError("new_valid_upto must be an ISO date (YYYY-MM-DD)") from _cause
 
     @field_validator("extension_reason")
     @classmethod
@@ -162,7 +162,7 @@ def create_eway_bill(
         )
         return api_response(True, {**rec, "ca_review_required": True})
     except Exception as e:
-        raise HTTPException(500, detail=str(e))
+        raise HTTPException(500, detail=str(e)) from e
 
 
 @router.get("/records")
@@ -332,7 +332,7 @@ def record_ewb_generated(
         }
         return api_response(True, result)
     except Exception as e:
-        raise HTTPException(500, detail=str(e))
+        raise HTTPException(500, detail=str(e)) from e
 
 
 @router.post("/records/{record_id}/extend")
@@ -368,7 +368,7 @@ def extend_ewb(
         )
         return api_response(True, result)
     except Exception as e:
-        raise HTTPException(500, detail=str(e))
+        raise HTTPException(500, detail=str(e)) from e
 
 
 @router.post("/records/{record_id}/cancel")
@@ -394,4 +394,4 @@ def cancel_ewb(
         )
         return api_response(True, result)
     except Exception as e:
-        raise HTTPException(500, detail=str(e))
+        raise HTTPException(500, detail=str(e)) from e

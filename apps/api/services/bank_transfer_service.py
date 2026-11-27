@@ -134,7 +134,7 @@ class BankTransferService:
                 "p_counter_id": counterpart_id, "p_actor_id": actor_id,
             }).execute()
         except Exception as e:
-            raise HTTPException(status_code=422, detail=f"Could not pair the transfer: {e}")
+            raise HTTPException(status_code=422, detail=f"Could not pair the transfer: {e}") from e
 
         self._log(firm_id, primary_id, actor_auth_id,
                   {"transfer_pair_id": counterpart_id, "transfer_is_primary": True})
@@ -149,7 +149,7 @@ class BankTransferService:
                 "p_firm_id": firm_id, "p_txn_id": txn_id,
             }).execute()
         except Exception as e:
-            raise HTTPException(status_code=422, detail=f"Could not unpair the transfer: {e}")
+            raise HTTPException(status_code=422, detail=f"Could not unpair the transfer: {e}") from e
         self._log(firm_id, txn_id, actor_auth_id, {"transfer_pair_id": None})
         return self.get(db, firm_id, txn_id)
 

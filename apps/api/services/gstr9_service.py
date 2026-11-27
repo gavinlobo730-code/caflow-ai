@@ -118,7 +118,7 @@ def build(db, firm_id: str, client_id: str, *, financial_year: str,
     try:
         periods = gstr9_fy_periods(financial_year)
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
     in_fy = set(periods)
     g1 = {str(r.get("period")): r for r in _gstr1_rows(db, firm_id, client_id, gstin)

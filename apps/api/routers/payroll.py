@@ -3044,7 +3044,7 @@ def create_run(
         }).execute()
     except Exception as e:
         if is_unique_violation(e):
-            raise HTTPException(status_code=409, detail=f"Payroll run for {month} already exists")
+            raise HTTPException(status_code=409, detail=f"Payroll run for {month} already exists") from e
         raise
     run = (run_res.data or [{}])[0]
     run_id = run["id"]
@@ -3436,7 +3436,7 @@ def get_slips(
     try:
         payroll_report_service.assert_narrowed(run_id, month, employee_id)
     except payroll_report_service.PayrollReportRefused as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
     db = _db()
     if not db:
@@ -3538,9 +3538,9 @@ def download_salary_slip_pdf(
         # both to "not found" told the CA the slip does not exist when it does,
         # and hid the one thing they could act on. The runs ZIP route below has
         # always done this correctly; this one had not.
-        raise HTTPException(status_code=404, detail=str(e))
-    except PermissionError:
-        raise HTTPException(status_code=403, detail="Access denied")
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except PermissionError as _cause:
+        raise HTTPException(status_code=403, detail="Access denied") from _cause
 
     return Response(
         content=pdf_bytes,
@@ -3578,9 +3578,9 @@ def download_run_payslips(
     try:
         blob, filename, problems = build_run_payslip_zip(run_id, current_user.get("firm_id"))
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except PermissionError:
-        raise HTTPException(status_code=403, detail="Access denied")
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except PermissionError as _cause:
+        raise HTTPException(status_code=403, detail="Access denied") from _cause
 
     headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
     if problems:
@@ -5013,7 +5013,7 @@ def assert_payroll_enabled(db, firm_id: str, client_id: str) -> None:
         raise HTTPException(
             status_code=503,
             detail=document_failure_detail(
-                exc, action="check whether payroll is switched on for this client, so nothing was written"))
+                exc, action="check whether payroll is switched on for this client, so nothing was written")) from exc
 
     if not row.get("payroll_enabled"):
         raise HTTPException(
@@ -5107,7 +5107,7 @@ def get_attendance(
     try:
         year, mon = attendance_domain.parse_month(month)
     except attendance_domain.AttendanceError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
     db = _db()
     firm_id = current_user["firm_id"]
@@ -5349,7 +5349,7 @@ def put_attendance(
             [r.model_dump() for r in body.rows], period=body.month,
             names_by_id=roster)
     except attendance_domain.AttendanceError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
     year, mon = attendance_domain.parse_month(body.month)
     # UTC on disk, as every timestamptz in this schema is. CLAUDE.md's IST
@@ -5765,7 +5765,7 @@ def put_one_time_earnings(
     try:
         attendance_domain.parse_month(body.month)
     except attendance_domain.AttendanceError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
     # Whole-request validation. Every problem at once, addressed to a row a CA
     # can find on the screen, rather than the first one the loop happens to hit.
@@ -5853,7 +5853,7 @@ def one_time_earning_defaults(
     try:
         d = one_time_domain.statutory_defaults(kind, payment_interval_months)
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
     return api_response(True, {
         "kind": kind, "payment_interval_months": payment_interval_months,
         "pf_wages": d.pf_wages, "esi_wages": d.esi_wages, "taxable": d.taxable,
@@ -6269,7 +6269,7 @@ def put_statutory_identity(
         try:
             update["tan"] = identity_domain.normalise_tan(sent["tan"])
         except identity_domain.IdentityError as e:
-            raise HTTPException(status_code=422, detail=str(e))
+            raise HTTPException(status_code=422, detail=str(e)) from e
     for col in ("epf_establishment_code", "esic_employer_code", "lin"):
         if col in sent:
             update[col] = identity_domain.normalise_code(sent[col])
@@ -6436,11 +6436,11 @@ def _finalised_run_inputs(db, current_user: dict, run_id: str, *, what: str):
     try:
         y, m = int(month[:4]), int(month[5:7])
         days_in_month = calendar.monthrange(y, m)[1]
-    except (ValueError, IndexError):
+    except (ValueError, IndexError) as _cause:
         # An unparseable month must not silently become 31 and let a bad NCP
         # figure through the day-count check.
         raise HTTPException(status_code=422,
-                            detail=f"Run month {month!r} is not YYYY-MM; cannot bound NCP days.")
+                            detail=f"Run month {month!r} is not YYYY-MM; cannot bound NCP days.") from _cause
     return run, month, days_in_month, slips, by_id
 
 
@@ -6640,7 +6640,7 @@ def record_ecr_filed(
             members=ecr_filings.members_from_ecr(ecr),
             recorded_by=current_user.get("id"))
     except ecr_filings.ECRFilingError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     prior = ecr_filings.read_filings(db, firm_id=current_user["firm_id"],
                                      client_id=run.get("client_id"))
@@ -6786,7 +6786,7 @@ def record_remittance(
             run_id=body.run_id, notes=body.notes,
             recorded_by=current_user.get("id"))
     except remittances.RemittanceError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return api_response(True, {"client_id": client_id, "remittance": row,
                                "compliance_obligations": _close_the_esi_deposit_obligation(db, current_user, client_id, row)})
 
@@ -8371,8 +8371,8 @@ def statutory_position(
     try:
         y, m = int(month[:4]), int(month[5:7])
         as_at = date(y, m, calendar.monthrange(y, m)[1])
-    except (ValueError, IndexError):
-        raise HTTPException(status_code=422, detail='month must be "YYYY-MM"')
+    except (ValueError, IndexError) as _cause:
+        raise HTTPException(status_code=422, detail='month must be "YYYY-MM"') from _cause
     fy = _fy_for_month(month)
 
     db = _db()
@@ -8623,9 +8623,9 @@ def _parse_leaving_date(value: str) -> date:
     """
     try:
         return date.fromisoformat(value)
-    except (ValueError, TypeError):
+    except (ValueError, TypeError) as _cause:
         raise HTTPException(status_code=422,
-                            detail="leaving_date must be ISO (YYYY-MM-DD)")
+                            detail="leaving_date must be ISO (YYYY-MM-DD)") from _cause
 
 
 def _fixed_term_for_gratuity(emp: dict, on: date, stated_expired: bool = False) -> dict:
@@ -9417,9 +9417,9 @@ def add_salary_revision(
     assert_practice_payroll_is_the_partners(body.client_id, current_user)
     try:
         effective = date.fromisoformat(body.effective_from)
-    except ValueError:
+    except ValueError as _cause:
         raise HTTPException(status_code=422,
-                            detail="effective_from must be ISO (YYYY-MM-DD)")
+                            detail="effective_from must be ISO (YYYY-MM-DD)") from _cause
     if body.basic_paise < 0:
         raise HTTPException(status_code=422, detail="basic cannot be negative")
 

@@ -72,9 +72,9 @@ def ist_day_bounds(date_from: Optional[str],
     def _parse(text: str, field: str):
         try:
             return datetime.strptime(text.strip(), "%Y-%m-%d").date()
-        except (ValueError, AttributeError):
+        except (ValueError, AttributeError) as _cause:
             raise AuditQueryRefused(
-                f"{field} must be a date like 2026-09-10.")
+                f"{field} must be a date like 2026-09-10.") from _cause
 
     lo = hi = None
     if date_from:
@@ -103,8 +103,8 @@ def decode_cursor(cursor: Optional[str]) -> Optional[tuple[str, str]]:
     try:
         raw = base64.urlsafe_b64decode(cursor.encode("ascii")).decode("utf-8")
         created_at, _, row_id = raw.partition("|")
-    except (binascii.Error, UnicodeDecodeError, ValueError):
-        raise AuditQueryRefused("That page cursor is not one this log issued.")
+    except (binascii.Error, UnicodeDecodeError, ValueError) as _cause:
+        raise AuditQueryRefused("That page cursor is not one this log issued.") from _cause
     if not created_at or not _UUID.fullmatch(row_id):
         # The id half goes into a PostgREST filter that casts to uuid. A
         # malformed one would come back as the database's error rather than

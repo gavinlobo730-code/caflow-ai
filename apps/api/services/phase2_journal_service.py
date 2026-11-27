@@ -2627,12 +2627,12 @@ class Phase2JournalService:
         from datetime import date as _date
         try:
             _d = _date.fromisoformat(str(entry_date)[:10])
-        except (TypeError, ValueError):
+        except (TypeError, ValueError) as _cause:
             raise ValueError(
                 f"'{entry_date}' is not a posting date. Use YYYY-MM-DD — a "
                 f"date this cannot read is a date the year-end lock cannot "
                 f"be checked against."
-            )
+            ) from _cause
 
         if firm_id and client_id:
             from services import period_lock_service

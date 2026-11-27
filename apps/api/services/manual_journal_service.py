@@ -85,7 +85,7 @@ def _cost_centre(db, firm_id: str, client_id: str, centre_id):
     try:
         return cost_centre_service.resolve(db, firm_id, client_id, centre_id)
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
 
 class ManualJournalService:
@@ -409,7 +409,7 @@ class ManualJournalService:
                 # is surfaced rather than replaced with something vaguer.
                 _logger.exception("edit_posted_journal failed for %s", entry_id)
                 from core.exceptions import postgres_message
-                raise HTTPException(status_code=422, detail=postgres_message(e))
+                raise HTTPException(status_code=422, detail=postgres_message(e)) from e
         else:
             header = {k: v for k, v in {
                 "entry_date": data.get("entry_date"),

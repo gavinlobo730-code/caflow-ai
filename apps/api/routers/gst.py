@@ -533,7 +533,7 @@ def gstr3b_from_books_endpoint(req: FromBooksRequest, current_user: dict = Depen
             frequency=req.filing_frequency or reg.filing_frequency,
             state_code=reg.state_code)
     except ValueError as ve:
-        raise HTTPException(status_code=422, detail=str(ve))
+        raise HTTPException(status_code=422, detail=str(ve)) from ve
     return api_response(True, data)
 
 
@@ -576,7 +576,7 @@ def gstr3b_detail_endpoint(
             db, firm_id, client_id, period, line,
             frequency=reg.filing_frequency)
     except ValueError as ve:
-        raise HTTPException(status_code=422, detail=str(ve))
+        raise HTTPException(status_code=422, detail=str(ve)) from ve
     return api_response(True, data)
 
 
@@ -647,7 +647,7 @@ def gstr1_from_books_endpoint(req: GSTR1FromBooksRequest, current_user: dict = D
             req.aggregate_turnover_paise,
             frequency=req.filing_frequency or reg.filing_frequency)
     except ValueError as ve:
-        raise HTTPException(status_code=422, detail=str(ve))
+        raise HTTPException(status_code=422, detail=str(ve)) from ve
 
     if not req.include_amendments:
         # Nothing is computed for an excluded build: it must keep working when
@@ -657,14 +657,14 @@ def gstr1_from_books_endpoint(req: GSTR1FromBooksRequest, current_user: dict = D
     try:
         payload, block = _with_outstanding_amendments(
             db, firm_id, req.client_id, req.period, data)
-    except Exception:                                           # noqa: BLE001
+    except Exception as _cause:                                           # noqa: BLE001
         _logger.exception("gstr1 from-books: outstanding amendments failed for "
                           "client %s period %s", req.client_id, req.period)
         raise HTTPException(status_code=500, detail=(
             "The amendments this GSTR-1 has to carry could not be worked out, "
             "so the return was NOT built — a file that silently left them out "
             "would look complete. Build it again with amendments switched off "
-            "to get the return without them, and check the Amendments tab."))
+            "to get the return without them, and check the Amendments tab.")) from _cause
     return api_response(True, {**data, "payload": payload, "amendments": block})
 
 
@@ -706,7 +706,7 @@ def gstr1_with_amendments_endpoint(req: FromBooksRequest, current_user: dict = D
             req.aggregate_turnover_paise,
             frequency=req.filing_frequency or reg.filing_frequency)
     except ValueError as ve:
-        raise HTTPException(status_code=422, detail=str(ve))
+        raise HTTPException(status_code=422, detail=str(ve)) from ve
     # The same fold `/gstr1/from-books` now does by default (gst-33), through
     # the one helper — see `_with_outstanding_amendments` for the period rule.
     payload, block = _with_outstanding_amendments(

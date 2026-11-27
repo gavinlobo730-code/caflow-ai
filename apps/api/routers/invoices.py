@@ -193,11 +193,11 @@ def generate_from_engagement(
     except HTTPException:
         raise
     except PeriodAlreadyBilled as e:
-        raise HTTPException(status_code=409, detail=str(e))
+        raise HTTPException(status_code=409, detail=str(e)) from e
     except Exception as e:
         _logger.exception("Failed to raise invoice for engagement %s", engagement_id)
         status, sentence = _database_refusal(e, action="raise the invoice")
-        raise HTTPException(status_code=status, detail=sentence)
+        raise HTTPException(status_code=status, detail=sentence) from e
 
 
 # `POST /api/invoices/from-time/{engagement_id}` WAS HERE AND IS GONE (POST-B-194, 21-11-2026). No screen called it. It

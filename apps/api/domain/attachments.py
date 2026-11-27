@@ -92,8 +92,8 @@ def _validate_url(url: str) -> str:
         raise AttachmentError(f"That link is too long (limit {MAX_URL_LENGTH} characters).")
     try:
         parsed = urlparse(text)
-    except ValueError:
-        raise AttachmentError("That link could not be read as a URL.")
+    except ValueError as _cause:
+        raise AttachmentError("That link could not be read as a URL.") from _cause
     # `scheme` is already lower-cased and whitespace-stripped by urlparse, which
     # is what makes an allow-list safe against JaVaScRiPt: and friends.
     if parsed.scheme not in ALLOWED_SCHEMES:
@@ -114,8 +114,8 @@ def _validate_document_id(document_id: str) -> str:
         raise AttachmentError("An attachment needs a document.")
     try:
         return str(UUID(text))
-    except (ValueError, AttributeError, TypeError):
-        raise AttachmentError("That document reference is not a document id.")
+    except (ValueError, AttributeError, TypeError) as _cause:
+        raise AttachmentError("That document reference is not a document id.") from _cause
 
 
 def _validate_name(name: str) -> str:
@@ -162,7 +162,7 @@ def parse_attachments(raw: Optional[Iterable]) -> list[Attachment]:
         try:
             out.append(parse_attachment(r))
         except AttachmentError as e:
-            raise AttachmentError(f"Attachment {i + 1}: {e}")
+            raise AttachmentError(f"Attachment {i + 1}: {e}") from e
     return out
 
 

@@ -65,8 +65,8 @@ class DSCRenew(BaseModel):
 def _parse_date(value: str, field: str) -> date:
     try:
         return date.fromisoformat(value)
-    except (ValueError, TypeError):
-        raise HTTPException(status_code=422, detail=f"{field} must be a valid ISO date (YYYY-MM-DD).")
+    except (ValueError, TypeError) as _cause:
+        raise HTTPException(status_code=422, detail=f"{field} must be a valid ISO date (YYYY-MM-DD).") from _cause
 
 
 def _normalize_pan(pan: Optional[str]) -> Optional[str]:

@@ -300,11 +300,11 @@ class BankPostingService:
         try:
             return phase2_journal_service._find_account(
                 db, firm_id, client_id, "%GST Output%", system_key=f"gst_{head.lower()}")
-        except Exception:
+        except Exception as _cause:
             raise HTTPException(
                 status_code=422,
                 detail=(f"No active 'GST Output - {head}' account in this client's chart. "
-                        "Add one, or record this receipt without a GST split."))
+                        "Add one, or record this receipt without a GST split.")) from _cause
 
     def _charge_lines(self, db, firm_id, txn, amount, bank_id, counter_id,
                       gst_rate_bps: int, is_interstate: bool,
@@ -327,7 +327,7 @@ class BankPostingService:
         try:
             split = split_inclusive_charge(amount, gst_rate_bps, is_interstate)
         except ValueError as e:
-            raise HTTPException(status_code=422, detail=str(e))
+            raise HTTPException(status_code=422, detail=str(e)) from e
 
         find = ((lambda h: self._gst_output_account(db, firm_id, client_id, h))
                 if is_credit
@@ -346,7 +346,7 @@ class BankPostingService:
                 is_credit=is_credit, cgst_account_id=cgst_id,
                 sgst_account_id=sgst_id, igst_account_id=igst_id)
         except ValueError as e:
-            raise HTTPException(status_code=422, detail=str(e))
+            raise HTTPException(status_code=422, detail=str(e)) from e
 
     @staticmethod
     def _settles_a_document(txn: dict) -> bool:
@@ -409,7 +409,7 @@ class BankPostingService:
                 lines = build_split_lines(splits, is_credit=is_credit,
                                           bank_account_id=bank_id, amount_paise=amount)
             except SplitError as e:
-                raise HTTPException(status_code=422, detail=str(e))
+                raise HTTPException(status_code=422, detail=str(e)) from e
             return pmap.entry_type_for(cat, is_credit), lines, bank_id
 
         if cat == pmap.TRANSFER:
@@ -461,7 +461,7 @@ class BankPostingService:
             try:
                 lines = pmap.build_transfer_lines(amount, is_credit, bank_id, to_id)
             except ValueError as e:
-                raise HTTPException(status_code=422, detail=str(e))
+                raise HTTPException(status_code=422, detail=str(e)) from e
         else:
             counter_id = self._resolve_counter(db, firm_id, txn, account_id)
             # A GST split works in BOTH directions — out is input credit, in is
@@ -495,7 +495,7 @@ class BankPostingService:
                 try:
                     lines = pmap.build_lines(amount, is_credit, bank_id, counter_id)
                 except ValueError as e:
-                    raise HTTPException(status_code=422, detail=str(e))
+                    raise HTTPException(status_code=422, detail=str(e)) from e
         return pmap.entry_type_for(cat, is_credit), lines, bank_id
 
     # ── B.3 review preview (no writes) ───────────────────────────────────────

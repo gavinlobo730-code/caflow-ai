@@ -90,7 +90,7 @@ def compute_lines(lines: list, *, is_inter_state: bool,
             document_amount_paise=document_amount_paise,
         )
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
     priced: list = []
     totals = {"taxable_paise": 0, "cgst_paise": 0, "sgst_paise": 0,

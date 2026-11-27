@@ -360,9 +360,9 @@ def statement_columns(block: object) -> dict:
         raise CreditLedgerError("The opening balance is missing.")
     try:
         date.fromisoformat(str(as_of))
-    except ValueError:
+    except ValueError as _cause:
         raise CreditLedgerError(
-            f"The closing balance's date must be written YYYY-MM-DD, not {as_of!r}.")
+            f"The closing balance's date must be written YYYY-MM-DD, not {as_of!r}.") from _cause
     out: dict = {}
     for prefix, src in (("credit_opening", open_bal), ("credit_closing", closing)):
         for h in HEADS:

@@ -246,7 +246,7 @@ def compute_26q_from_books(req: FromBooksRequest, user: dict = Depends(rbac("tds
             who.tan, who.name, who.pan, who.address,
         )
     except ValueError as ve:
-        raise HTTPException(status_code=422, detail=str(ve))
+        raise HTTPException(status_code=422, detail=str(ve)) from ve
     return {"success": True, "data": data, "error": None}
 
 
@@ -276,7 +276,7 @@ def compute_27q_from_books(req: FromBooksRequest, user: dict = Depends(rbac("tds
             who.tan, who.name, who.pan, who.address,
         )
     except ValueError as ve:
-        raise HTTPException(status_code=422, detail=str(ve))
+        raise HTTPException(status_code=422, detail=str(ve)) from ve
     return {"success": True, "data": data, "error": None}
 
 
@@ -312,7 +312,7 @@ def compute_24q_from_books(
             who.tan, who.name, who.pan, who.address,
         )
     except ValueError as ve:
-        raise HTTPException(status_code=422, detail=str(ve))
+        raise HTTPException(status_code=422, detail=str(ve)) from ve
     return {"success": True, "data": data, "error": None}
 
 
@@ -335,8 +335,8 @@ def compute_tds_amount(req: TDSAmountRequest, user: dict = Depends(rbac("tds", "
         resolution = computer.resolve_tds(
             req.section, req.payment_amount_paise, is_company=is_company, fy=req.fy,
             has_pan=has_pan_on_file, threshold_class=klass)
-    except ValueError:
-        raise HTTPException(status_code=400, detail=f"Unknown TDS section: {req.section}")
+    except ValueError as _cause:
+        raise HTTPException(status_code=400, detail=f"Unknown TDS section: {req.section}") from _cause
 
     rates = tds_rates_for(req.fy)
     rule = rates.sections[resolution.section]
@@ -640,7 +640,7 @@ def upsert_treaty_rate(body: TreatyRateIn,
         }, on_conflict="firm_id,country_code,nature").execute().data) or []
     except Exception as e:                                      # noqa: BLE001
         raise HTTPException(status_code=400, detail=document_failure_detail(
-            e, action="save this treaty rate"))
+            e, action="save this treaty rate")) from e
     return {"success": True, "data": (got[0] if got else None), "error": None}
 
 
@@ -656,5 +656,5 @@ def delete_treaty_rate(rate_id: str, user: dict = Depends(rbac("tds", "write")))
             "id", rate_id).eq("firm_id", user["firm_id"]).execute()
     except Exception as e:                                      # noqa: BLE001
         raise HTTPException(status_code=400, detail=document_failure_detail(
-            e, action="delete this treaty rate"))
+            e, action="delete this treaty rate")) from e
     return {"success": True, "data": {"deleted": rate_id}, "error": None}

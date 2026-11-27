@@ -1150,10 +1150,10 @@ def upload_statement(
     if column_mapping:
         try:
             mapping = json.loads(column_mapping)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError) as _cause:
             raise HTTPException(
                 status_code=422,
-                detail="column_mapping must be a JSON object of column positions.")
+                detail="column_mapping must be a JSON object of column positions.") from _cause
         mapping_source = "supplied"
     elif db and bank_account_id:
         try:
@@ -1181,13 +1181,13 @@ def upload_statement(
             rate_key=(current_user.get("firm_id") or "", current_user.get("id")),
             pdf_password=pdf_password)
     except StatementParseError as e:
-        raise _statement_refusal(e)
+        raise _statement_refusal(e) from e
     except gateway.ProviderFailed as e:
         # The vision model did not answer. The gateway has already retried and
         # tried any configured fallback; the CA is told the classified sentence
         # and the status that goes with it (504 for a timeout), as on every other
         # AI route — not a 422 that reads as "your file is wrong".
-        raise HTTPException(status_code=e.http_status, detail=e.sentence)
+        raise HTTPException(status_code=e.http_status, detail=e.sentence) from e
 
     # ── BANK-21: a card statement states its balances the other way up ──────
     # A card statement's "total amount due" is a positive figure where the
@@ -1399,7 +1399,7 @@ def inspect_statement_file(
     try:
         info = inspect_statement(file.filename or "", content, pdf_password=pdf_password)
     except StatementParseError as e:
-        raise _statement_refusal(e)
+        raise _statement_refusal(e) from e
 
     saved = (column_mappings.find_mapping(db, current_user["firm_id"], bank_account_id,
                                           info["header_fingerprint"])
@@ -1437,9 +1437,9 @@ def preview_statement_with_mapping(
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
     try:
         mapping = json.loads(column_mapping)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError) as _cause:
         raise HTTPException(status_code=422,
-                            detail="column_mapping must be a JSON object of column positions.")
+                            detail="column_mapping must be a JSON object of column positions.") from _cause
     try:
         info = inspect_statement(file.filename or "", content, pdf_password=pdf_password)
         validate_mapping(mapping, len(info["headers"]))
@@ -1447,7 +1447,7 @@ def preview_statement_with_mapping(
                                           pdf_password=pdf_password)
         txns = parsed.transactions
     except StatementParseError as e:
-        raise _statement_refusal(e)
+        raise _statement_refusal(e) from e
 
     return api_response(True, {
         "headers": info["headers"],

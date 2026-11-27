@@ -116,7 +116,7 @@ def add_dependency(task_id: str, body: AddDependencyBody, current_user: dict = D
     try:
         dep = task_extras_repo.add_dependency(task_id, body.depends_on_task_id, firm_id=firm_id)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     try:
         task_extras_repo.log_event(
             task_id=task_id,

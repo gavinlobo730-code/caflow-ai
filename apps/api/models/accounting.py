@@ -48,10 +48,10 @@ def _posting_date(v: Optional[str]) -> Optional[str]:
     s = str(v).strip()
     try:
         _date.fromisoformat(s)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError) as _cause:
         raise ValueError(
             f"entry_date must be an ISO date, YYYY-MM-DD — got '{v}'."
-        )
+        ) from _cause
     return s
 
 

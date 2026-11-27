@@ -47,8 +47,8 @@ def _assert_obligation_scope(current_user: dict, record_id: str) -> dict:
     (independent) checks are untouched."""
     try:
         rec = compliance_record_service.get_record(record_id, firm_id=current_user["firm_id"])
-    except NotFoundError:
-        raise HTTPException(status_code=404, detail="Compliance obligation not found.")
+    except NotFoundError as _cause:
+        raise HTTPException(status_code=404, detail="Compliance obligation not found.") from _cause
     assert_client_access(current_user, rec.get("client_id"), detail="Compliance obligation not found.")
     return rec
 
@@ -217,9 +217,9 @@ def transition_obligation(record_id: str, body: TransitionBody,
     except ValidationError as e:
         # The sentence as written, as the reopen door says it: `str(e)` puts "Validation error on filed_date:" in front of it. (No screen shows this door's
         # refusal in a dialog today: the Mark as Filed prompt asks `mark-filed`, below. It is the same speaker so that the two never disagree.)
-        raise HTTPException(status_code=422, detail=e.message)
-    except NotFoundError:
-        raise HTTPException(status_code=404, detail="Compliance obligation not found.")
+        raise HTTPException(status_code=422, detail=e.message) from e
+    except NotFoundError as _cause:
+        raise HTTPException(status_code=404, detail="Compliance obligation not found.") from _cause
     return api_response(True, {"obligation": updated, **_filing_fields(updated)})
 
 
@@ -242,14 +242,14 @@ def mark_filed_obligation(record_id: str, body: MarkFiledBody,
         updated = compliance_record_service.mark_filed(
             record_id, firm_id=current_user["firm_id"], actor=current_user,
             acknowledgement_no=body.acknowledgement_no, filed_date=body.filed_date)
-    except NotFoundError:
-        raise HTTPException(status_code=404, detail="Compliance obligation not found.")
+    except NotFoundError as _cause:
+        raise HTTPException(status_code=404, detail="Compliance obligation not found.") from _cause
     except ValidationError as e:
         # mark_filed fast-forwards through update_record, which is where
         # apex-overview-practice-02's period-end check lives (a return whose
         # own period has not ended yet cannot be walked to Filed here either).
         # The sentence as written (see the transition door): the prompt shows it inside its dialog.
-        raise HTTPException(status_code=422, detail=e.message)
+        raise HTTPException(status_code=422, detail=e.message) from e
     return api_response(True, {"obligation": updated, **_filing_fields(updated)})
 
 

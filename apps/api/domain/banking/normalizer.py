@@ -727,8 +727,8 @@ def validate_mapping(mapping: dict, header_count: int) -> dict[str, Optional[int
             continue
         try:
             idx = int(raw)
-        except (TypeError, ValueError):
-            raise StatementParseError(f"Column '{key}' must be a column position, got {raw!r}.")
+        except (TypeError, ValueError) as _the_cause:
+            raise StatementParseError(f"Column '{key}' must be a column position, got {raw!r}.") from _the_cause
         if idx < 0 or idx >= header_count:
             raise StatementParseError(
                 f"Column '{key}' points at position {idx + 1}, but the file has "

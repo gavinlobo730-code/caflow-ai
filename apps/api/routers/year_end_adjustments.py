@@ -701,7 +701,7 @@ def post_adjustment(
         if isinstance(jerr, ValueError):
             # The kernel's own rejections — imbalance, a zero-value entry, a
             # client financial year already finalised.
-            raise HTTPException(status_code=422, detail=str(jerr))
+            raise HTTPException(status_code=422, detail=str(jerr)) from jerr
         _logger.error(
             "post_adjustment: journal posting failed for adjustment %s; the "
             "adjustment was rolled back to approved: %s", adjustment_id, jerr,
@@ -711,7 +711,7 @@ def post_adjustment(
             status_code=500,
             detail="Could not post this year-end adjustment — nothing was written "
                    "to the ledger. The failure has been logged for the team.",
-        )
+        ) from jerr
 
     # Link the journal only after it exists, so journal_entry_id never names an
     # entry that was not written.

@@ -62,7 +62,7 @@ def set_email_preference(body: EmailPreferenceIn,
         practice_mail_service.set_preference(
             current_user["firm_id"], me, body.event_type, body.email_enabled)
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return api_response(True, {
         "events": practice_mail_service.effective_preferences(current_user["firm_id"], me),
         "mail_enabled": practice_mail_service.mail_enabled(),

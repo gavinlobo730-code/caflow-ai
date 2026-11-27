@@ -91,7 +91,7 @@ def export_report(
                     "basis": basis})
     except ExportRefused as e:
         # A refusal is the answer, in words — not an "Internal server error".
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
     return Response(
         content=out.content, media_type=out.media_type,
         headers={"Content-Disposition": f'attachment; filename="{out.filename}"'})

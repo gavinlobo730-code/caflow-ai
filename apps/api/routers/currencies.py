@@ -395,16 +395,16 @@ def record_fx_rate(
                             detail=f"rate_type must be one of {', '.join(_RATE_TYPES)}.")
     try:
         parsed = Decimal(str(rate).strip())
-    except (InvalidOperation, ValueError):
-        raise HTTPException(status_code=422, detail="rate must be a decimal number.")
+    except (InvalidOperation, ValueError) as _cause:
+        raise HTTPException(status_code=422, detail="rate must be a decimal number.") from _cause
     if parsed <= 0:
         # The column CHECKs rate > 0; saying so here costs a keystroke rather
         # than a 500 from the database.
         raise HTTPException(status_code=422, detail="rate must be greater than zero.")
     try:
         when = _date.fromisoformat(str(rate_date)[:10]).isoformat()
-    except ValueError:
-        raise HTTPException(status_code=422, detail="rate_date must be YYYY-MM-DD.")
+    except ValueError as _cause:
+        raise HTTPException(status_code=422, detail="rate_date must be YYYY-MM-DD.") from _cause
 
     if _USE_MOCK:
         return api_response(True, {"base": base, "quote": quote, "rate_date": when,

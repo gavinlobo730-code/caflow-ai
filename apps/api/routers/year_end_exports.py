@@ -178,7 +178,7 @@ def _upload_and_record(
         if os.environ.get("APP_ENV") == "development":
             pass
         else:
-            raise HTTPException(status_code=500, detail=f"Storage upload failed: {e}")
+            raise HTTPException(status_code=500, detail=f"Storage upload failed: {e}") from e
 
     record = _create_export_record(
         engagement_id=engagement_id,
@@ -243,7 +243,7 @@ def export_financial_statements(
     try:
         statements = _get_statements_data(db, eng)
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
     pdf_bytes = generate_financial_statements_pdf(_with_firm_name(eng), statements)
     filename  = f"financial_statements_{engagement_id[:8]}_{ist_now().strftime('%Y%m%d_%H%M%S')}.pdf"
@@ -345,7 +345,7 @@ def export_complete_pack(
     try:
         statements = _get_statements_data(db, eng)
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
     notes       = _get_notes_data(db, engagement_id, current_user["firm_id"])
     adjustments = _get_adjustments_data(db, engagement_id, current_user["firm_id"])
@@ -443,7 +443,7 @@ def get_download_url(
     except StoragePathRefused as refused:
         raise HTTPException(status_code=404, detail="Export not found") from refused
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Could not generate signed URL: {e}")
+        raise HTTPException(status_code=500, detail=f"Could not generate signed URL: {e}") from e
 
     return api_response(True, {
         "export_id":          export_id,
