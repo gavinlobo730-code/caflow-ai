@@ -5006,20 +5006,21 @@ export const scenarios = [
       assert.equal(await page.getByText(`Date: ${FEB_SENTENCE}`).count(), 0, "the refusal stayed on the panel after the date was put right");
     },
   },
-  // A quantity the server cannot read ("1,500", "5 kg") raised inside the service and came back as a generic failure naming nothing.
+  // A quantity the server cannot read ("5 kg", a comma in a wrong place) raised inside the service and came back as a generic failure naming nothing. A quantity grouped
+  // properly ("1,500") is READ since POST-A-567 and is sent as the plain digits, because the server refuses a comma.
   {
     id: "stock-transfer-a-quantity-that-is-not-a-number-is-refused-and-nothing-is-sent",
-    title: "Inventory > Locations > Move stock: a quantity that is not a number is refused in a sentence and nothing is sent, and a number is sent as typed",
+    title: "Inventory > Locations > Move stock: a quantity that is not a number is refused in a sentence and nothing is sent, and a number, grouped or plain, is sent as plain digits",
     async run(env) {
       const { page, stub } = env;
       await openStockLocations("transfer")(env);
       const quantity = transferPanel(page).locator("input[inputmode=decimal]");
-      await quantity.fill("1,500");
+      await quantity.fill("15,00");
       await page.getByRole("button", { name: "Move stock", exact: true }).click();
-      await shownInTheDialog(page, TRANSFER_QUANTITY_SENTENCE, "a quantity with a comma was not refused in a sentence");
+      await shownInTheDialog(page, TRANSFER_QUANTITY_SENTENCE, "a quantity with a comma in a wrong place was not refused in a sentence");
       await stub.quiet();
       assert.equal(stub.writesTo(/api\/inventory\/transfer$/).length, 0, "a quantity that is not a number SENT A WRITE");
-      await quantity.fill("1500");
+      await quantity.fill("1,500");
       await page.getByRole("button", { name: "Move stock", exact: true }).click();
       await stub.quiet();
       const sent = stub.writesTo(/api\/inventory\/transfer$/);

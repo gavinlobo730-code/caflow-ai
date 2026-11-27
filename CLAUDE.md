@@ -264,7 +264,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - AN ASSET'S PLACE AND KEEPER HAVE A DATED HISTORY, WRITTEN WITH THE ASSET IN ONE STEP, AND A TYPO IS AN EDIT, NOT A MOVEMENT
 - A PHYSICAL COUNT OF A CLIENT'S ASSETS IS A DATED WORKING PAPER WITH A FINDING PER ASSET HELD THAT DAY, AND A CLOSED COUNT NEVER CHANGES
 
-### `docs/design-record/frontend.md` (19 entries): Frontend rules: payload shapes, the browser's second data path, money input, loading and recurring screens
+### `docs/design-record/frontend.md` (20 entries): Frontend rules: payload shapes, the browser's second data path, money input, loading and recurring screens
 
 - A PAYLOAD IS NOT A LIST UNTIL SOMETHING HAS CHECKED, AND THE STATE TYPE HIDES IT
 - A THIRD path existed and it was not a database at all: `localStorage`
@@ -285,6 +285,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A ROW'S MENU IS THE SHARED GROUP OF BUTTONS, WITH NO LAYER OVER THE WINDOW BEHIND IT
 - A LOADING REGION DRAWS A SHAPE FOR A PLAIN READ AND KEEPS WORDS FOR A COMPUTATION
 - A DIALOG'S OPENER IS READ BEFORE ITS CONTENT MOUNTS
+- A PROPERLY GROUPED AMOUNT IS READ BY THE ONE READER AND EVERY CONVERSION AFTER IT, A COMMA ANYWHERE ELSE IS REFUSED
 
 ### `docs/design-record/identifiers.md` (5 entries): Identifiers: GSTIN, UAN, IFSC, party identifiers in imports, the firm's own GSTIN, FY and AY labels, ITR forms
 
@@ -2287,6 +2288,10 @@ stamps a draft, and it never has.
 `apps/web/lib/money/rupeeInput.ts` turns a typed rupee amount into integer paise
 by concatenating the digits, and RETURNS NULL for anything that is not an
 amount. Use it for every amount field; there is no longer a second way.
+**Since 27-11-2026 (POST-A-567, the owner's decision) it READS an amount grouped the way amounts are written (1,25,000 or 1,250,000) and refuses a
+comma anywhere else; a percentage never takes grouping. Any code that turns the SAME text into a number after the reader has accepted it must use
+`typedNumber` (or send the reader's plain digits), never `parseFloat`, `Number` or the text as typed, which read "1,25,000" as 1 or as nothing; and no
+sentence a person is shown may tell them to leave the commas out of an amount (a test holds that). The record is in `docs/design-record/frontend.md`.**
 
 The form it replaced — `Math.round(parseFloat(x) * 100)` — was not merely
 imprecise:
@@ -2297,37 +2302,9 @@ imprecise:
   amount, both were accepted.
 - a blank field gives `NaN`, and `JSON.stringify` sends that as `null`.
 
-**That claim has now been wrong twice, and how it was wrong the second time is
-the part worth keeping.** "All 61 call sites across 28 files are converted"
-stood here unguarded while **nine more** lived on until 2026-09-08 — the bank
-settlement modal (which posts to the GL), the bank match filter, the bank rules
-editor, the recurring journal, client billing, the budget grid and the GSTR-2A
-import. `components/banking/shared.ts::rsToP` was the reason: it took a `number`
-and did `Math.round(rs * 100)`, so every caller had to `parseFloat` first. It
-now takes the text as typed and returns null.
-
-Prose was then replaced by **three regexes** — `rsToP(parseFloat`,
-`Math.round(parseFloat` and `parseFloat(…) * 100` — and the same claim was
-re-made on top of them. Running those three over the tree the next day found
-**sixteen more files** none of them matched, because none of them is the rule.
-Each names one SPELLING, and the defect has as many spellings as there are ways
-to write a number:
-
-```
-parseInt(s.replace(/[^0-9]/g, ""), 10) * 100   // "1234.56" -> ₹1,23,456
-Math.round(Number(cleaned) * 100)              // "1e3"     -> ₹1,000
-Number(whole) * 100 + Number(frac)             // "1.2.3"   -> ₹1.02
-```
-
-So the guard is now the RULE rather than a spelling of it, in two directions:
-**nothing whose name ends in `_paise`/`Paise`/`_bps`/`Bps` may be built with a
-numeric coercion or a multiplication by 100**, and **a function whose own name
-says it makes paise out of text must delegate to `lib/money/rupeeInput.ts` by
-name**. A cast of a value ALREADY in the unit — `Number(row.tds_paise ?? 0)`,
-because PostgREST returns a bigint as a string — is allowed and is the only
-thing that is. The three original regexes are kept as a third test because each
-of them is a bug that shipped. Against the code of 2026-09-08 the new check
-fails on **26 sites across 17 files**; the three regexes passed on every one.
+**The guard for this is the RULE, not three spellings of it**: nothing whose name ends in `_paise`/`Paise`/`_bps`/`Bps` may be built with a numeric
+coercion or a multiplication by 100, and a function whose own name says it makes paise out of text must delegate to `lib/money/rupeeInput.ts` by name.
+The history of how the claim "every call site is converted" was wrong twice is in `docs/design-record/frontend.md`.
 
 The module also carries
 `bpsFromPercentInput` (a typed percentage → basis points) and `parseQuantity`

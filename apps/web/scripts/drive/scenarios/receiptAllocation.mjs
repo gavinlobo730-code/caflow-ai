@@ -88,13 +88,13 @@ export const scenarios = [
   },
   {
     id: "a-grouped-figure-or-an-overrun-holds-apply-and-sends-nothing",
-    title: "1,500 (not an amount), more than an invoice owes, and more than the receipt settles each hold Apply and say why",
+    title: "15,00 (a comma where nobody writes one, so not an amount), more than an invoice owes, and more than the receipt settles each hold Apply and say why",
     async run(env) {
       const { page, stub } = env;
       stub.route({ method: "PATCH", re: ALLOCATE, reply: () => ok({ receipt_id: "r1" }) });
       await atTheModal(env);
 
-      await box(page, 1).fill("1,500");
+      await box(page, 1).fill("15,00");
       await page.getByText("Not an amount.").waitFor();
       assert.ok(await applyButton(page).isDisabled(), "Apply stayed live over a figure that is not an amount");
 
