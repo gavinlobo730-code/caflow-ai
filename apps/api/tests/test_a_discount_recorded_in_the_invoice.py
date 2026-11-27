@@ -162,7 +162,7 @@ def test_gross_less_discount_is_always_the_taxable_value():
          {"gross_paise": 100_01},
          {"gross_paise": 7, "discount_paise": 3}],
         document_amount_paise=1_111)
-    for r, gross in zip(out, (333_33, 100_01, 7)):
+    for r, gross in zip(out, (333_33, 100_01, 7), strict=False):
         assert r["taxable_paise"] + r["discount_paise"] == gross
 
 

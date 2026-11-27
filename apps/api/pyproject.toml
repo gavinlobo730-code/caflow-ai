@@ -8,11 +8,18 @@ select = ["F", "B", "E722", "C901", "PLR0915"]
 [tool.ruff.lint.per-file-ignores]
 "routers/**" = ["B008"]
 "tests/**" = ["C901", "PLR0915"]
+# A test module that imports another module's pytest FIXTURE by name (`from tests.x import db`) and takes `db` as an argument is not redefining
+# anything: pytest binds the argument to the imported fixture. Ruff reads the argument as a redefinition of the unused import (F811), so these two
+# modules, and only these, say so here rather than on every one of their twenty-odd functions.
+"tests/test_the_gstr1_build_carries_the_amendments_it_owes.py" = ["C901", "PLR0915", "F811"]
+"tests/test_a_statement_line_you_have_not_passed_is_in_the_difference.py" = ["C901", "PLR0915", "F811"]
 
 [tool.ruff.lint.flake8-bugbear]
 extend-immutable-calls = [
     "fastapi.Depends", "fastapi.Query", "fastapi.Body", "fastapi.Header", "fastapi.Path",
     "fastapi.Form", "fastapi.File", "fastapi.Cookie", "fastapi.Security",
+    # Frozen dataclasses: a shared default instance of either cannot be changed by a caller (POST-A-026).
+    "domain.gst.credit_ledger.CreditBalance",
 ]
 
 [tool.ruff.lint.mccabe]

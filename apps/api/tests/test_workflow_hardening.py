@@ -98,7 +98,7 @@ class TestBranchExecution:
         })
 
         instance = _make_instance(repo, "firm-brf", template["id"])
-        result = engine._execute_steps(template, instance, {"score": 40}, "firm-brf")
+        engine._execute_steps(template, instance, {"score": 40}, "firm-brf")
 
         logs = repo.list_action_logs(instance["id"])
         branch_log = next((l for l in logs if l.get("step_name") == "Score Check"), None)
@@ -155,7 +155,7 @@ class TestCycleDetection:
 class TestFireTriggerIdempotency:
     def test_fire_trigger_matches_active_template(self, engine, repo):
         """fire_trigger returns results for a matching active template."""
-        template = _make_template(repo, "firm-ftm", "Fire Test")
+        _make_template(repo, "firm-ftm", "Fire Test")
         results = engine.fire_trigger("firm-ftm", "client_created", {"client_id": "c-001"})
         assert isinstance(results, list)
         assert len(results) >= 1
@@ -175,7 +175,7 @@ class TestFireTriggerIdempotency:
 
     def test_different_trigger_data_fires_independently(self, engine, repo):
         """Two distinct trigger payloads each create an instance."""
-        template = _make_template(repo, "firm-ftt", "Two Fire Test")
+        _make_template(repo, "firm-ftt", "Two Fire Test")
         engine.fire_trigger("firm-ftt", "client_created", {"client_id": "c-A"})
         engine.fire_trigger("firm-ftt", "client_created", {"client_id": "c-B"})
         instances = repo.list_instances("firm-ftt")

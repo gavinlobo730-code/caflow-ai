@@ -476,7 +476,7 @@ def test_table_4_rows_arithmetically_agree_with_the_circular():
     perm = _cells(table["rows"][1])[1:]
     recl = _cells(table["rows"][2])[1:]
     net = [c["paise"] for c in table["footer"][1:]]
-    assert [g - p - r for g, p, r in zip(gross, perm, recl)] == net
+    assert [g - p - r for g, p, r in zip(gross, perm, recl, strict=False)] == net
 
 
 def test_table_4_names_the_notification_the_circular_and_where_17_5_sits():

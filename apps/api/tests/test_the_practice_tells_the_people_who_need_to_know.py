@@ -920,7 +920,7 @@ def test_every_practice_mail_is_sent_from_a_callback_handed_to_the_one_door():
         tree = ast.parse((root / name).read_text(encoding="utf-8"))
         parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
 
-        def inside_callback(node) -> bool:
+        def inside_callback(node, parents=parents) -> bool:
             """A lambda, or a function nested inside another function: a callback, not the sender's own body."""
             functions = 0
             cur = parents.get(node)

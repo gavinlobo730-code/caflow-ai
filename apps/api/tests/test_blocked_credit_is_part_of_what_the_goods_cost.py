@@ -125,7 +125,7 @@ def test_blocked_tax_reaches_both_the_stock_ledger_and_the_inventory_account():
     item = str(uuid.uuid4())
     _seed_good(db, item)
 
-    bill_id = _receive(db, [_line(bill_id=None, item_id=item, taxable=100000,
+    _receive(db, [_line(bill_id=None, item_id=item, taxable=100000,
                                   cgst=9000, sgst=9000, eligible=False)])
 
     cost = 100000 + 18000

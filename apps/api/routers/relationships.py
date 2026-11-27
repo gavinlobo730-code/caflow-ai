@@ -913,7 +913,6 @@ def review_cross_client_match(
 ):
     db = _db()
     firm_id = current_user["firm_id"]
-    now = datetime.now(timezone.utc).isoformat()
 
     if not db:
         for i, m in enumerate(_MOCK_CROSS_MATCHES):

@@ -209,7 +209,7 @@ def detect(txns: Iterable[dict], *, window_days: int = DEFAULT_WINDOW_DAYS) -> l
 
     used: set = set()
     pairs: list[TransferPair] = []
-    for gap, oid, iid, o, i in candidates:
+    for _gap, oid, iid, o, i in candidates:
         if oid in used or iid in used:
             continue
         used.add(oid)

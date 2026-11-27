@@ -114,13 +114,13 @@ def test_backend_matches_parity_discount(d):
         [{"gross_paise": g,
           "discount_percent_bps": ln["discount_percent_bps"],
           "discount_paise": ln["discount_paise"]}
-         for g, ln in zip(gross, d["lines"])],
+         for g, ln in zip(gross, d["lines"], strict=False)],
         document_percent_bps=d["document_discount_percent_bps"],
         document_amount_paise=d["document_discount_paise"],
     )
 
     t = c = s_ = i = 0
-    for g, ln, r, want in zip(gross, d["lines"], resolved, d["expected"]["lines"]):
+    for g, ln, r, want in zip(gross, d["lines"], resolved, d["expected"]["lines"], strict=False):
         assert g == want["gross_paise"]
         assert int(r["discount_paise"]) == want["discount_paise"]
         assert int(r["taxable_paise"]) == want["taxable_paise"]

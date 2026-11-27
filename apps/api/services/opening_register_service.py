@@ -129,7 +129,7 @@ def import_register(db, firm_id: str, client_id: str, *, as_at: Optional[str],
             chunk = new[i:i + _INSERT_CHUNK]
             try:
                 got = _write(db, firm_id, client_id, [v.planned for v in chunk])
-                for v, row in zip(chunk, got):
+                for v, row in zip(chunk, got, strict=False):
                     written[v.row] = str(row.get("id") or "")
                 continue
             except Exception as chunk_error:                      # noqa: BLE001

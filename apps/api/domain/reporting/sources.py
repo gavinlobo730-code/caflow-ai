@@ -436,7 +436,7 @@ class SupabaseLedgerSource(LedgerSource):
         rows = None
         while rows is None:
             try:
-                rows = self._fetch_all(lambda: make_q(want_rev, want_ccy), stats=stats)
+                rows = self._fetch_all(lambda want_rev=want_rev, want_ccy=want_ccy: make_q(want_rev, want_ccy), stats=stats)
                 if want_rev:
                     self._has_reversal_of = True
                 if want_ccy:

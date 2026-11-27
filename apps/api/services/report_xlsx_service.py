@@ -170,7 +170,7 @@ def build_report_xlsx(doc: ReportDocument, *, holder: dict, firm: dict,
         widths = [len(_label(c)) for c in tbl.columns]
         for r, row in enumerate(tbl.rows, start=2):
             values = []
-            for i, (col, value) in enumerate(zip(tbl.columns, row.cells)):
+            for i, (col, value) in enumerate(zip(tbl.columns, row.cells, strict=False)):
                 if value is None:
                     values.append(None)
                 elif col.kind in (MONEY, BALANCE):

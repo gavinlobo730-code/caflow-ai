@@ -139,7 +139,6 @@ def get_engagement(
     engagement_id: str,
     current_user: dict = Depends(rbac("billing", "read")),
 ):
-    firm_id = current_user.get("firm_id")
     engagement = _assert_engagement_scope(
         current_user, engagement_repo.find_by_id(engagement_id))
     return api_response(True, {"engagement": engagement})
@@ -247,8 +246,7 @@ def delete_engagement(
     engagement_id: str,
     current_user: dict = Depends(rbac("billing", "write")),
 ):
-    firm_id = current_user.get("firm_id")
-    engagement = _assert_engagement_scope(
+    _assert_engagement_scope(
         current_user, engagement_repo.find_by_id(engagement_id))
 
     updated = engagement_repo.update(engagement_id, {"status": "Inactive"})

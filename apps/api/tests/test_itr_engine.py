@@ -167,7 +167,6 @@ class TestSurcharge:
             use_new_regime=True,
         ))
         # 112A: (1,00,00,000 - 1,25,000 exemption) * 12.5%
-        ltcg_tax = (1_00_00_000 * 100 - 125_000 * 100) * 1250 // 10000
         # The LTCG slice of total surcharge must reflect the capped 15% rate,
         # not the 25% ordinary-income bracket rate.
         assert r.surcharge_paise > 0

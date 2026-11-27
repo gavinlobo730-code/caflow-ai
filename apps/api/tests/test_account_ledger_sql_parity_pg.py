@@ -433,7 +433,7 @@ def test_the_pages_reassemble_into_the_unpaged_ledger(db):
 
     assert len(got) == len(whole["lines"]), \
         f"pages yielded {len(got)} lines, unpaged has {len(whole['lines'])}"
-    for i, (a, b) in enumerate(zip(got, whole["lines"])):
+    for i, (a, b) in enumerate(zip(got, whole["lines"], strict=False)):
         assert a["running_balance_paise"] == b["running_balance_paise"], (
             f"line {i}: paged balance {a['running_balance_paise']} != "
             f"unpaged {b['running_balance_paise']} — the window is being computed "

@@ -708,7 +708,7 @@ def bulk_create_services(
 
         # ── Step 5: ONE batch insert for every new row. ─────────────────────────
         if _USE_MOCK:
-            for idx, payload in to_insert:
+            for _idx, payload in to_insert:
                 payload["use_count"] = 0
                 payload["last_used_at"] = None
                 MOCK_SERVICES.append(payload)

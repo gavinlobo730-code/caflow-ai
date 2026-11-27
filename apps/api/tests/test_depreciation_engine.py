@@ -231,9 +231,7 @@ class TestWDV:
 
     def test_wdv_multiple_year_sequence(self):
         """3-year WDV sequence must produce declining amounts."""
-        cost = 100_000_00
         accum = 0
-        rate = 25.0
         prev_annual = None
         for year in range(1, 4):
             asset = _wdv_asset(accumulated_depreciation_paise=accum)

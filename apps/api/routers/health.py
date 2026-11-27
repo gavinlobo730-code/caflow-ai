@@ -1514,7 +1514,6 @@ def create_override(
     assert_client_access(current_user, client_id)
     db = _db()
     firm_id = current_user["firm_id"]
-    now = datetime.now(timezone.utc).isoformat()
 
     row = {
         "id":             str(uuid.uuid4()),

@@ -75,7 +75,7 @@ def _setup(monkeypatch, *, customer_active=True, vendor_active=True):
 
 
 def test_inactive_vendor_bill_rejected(monkeypatch):
-    db = _setup(monkeypatch, vendor_active=False)
+    _setup(monkeypatch, vendor_active=False)
     with pytest.raises(HTTPException) as ex:
         pb.create_purchase_bill(PurchaseBillIn(
             client_id="CLI", vendor_id="VEND1", bill_date="2025-06-01", bill_no="B1",
@@ -94,7 +94,7 @@ def test_inactive_customer_receipt_rejected(monkeypatch):
 
 
 def test_inactive_vendor_payment_rejected(monkeypatch):
-    db = _setup(monkeypatch, vendor_active=False)
+    _setup(monkeypatch, vendor_active=False)
     with pytest.raises(HTTPException) as ex:
         pp.create_purchase_payment(PurchasePaymentIn(
             client_id="CLI", vendor_id="VEND1", payment_date="2025-06-10", amount_paise=5000), CALLER)
@@ -102,7 +102,7 @@ def test_inactive_vendor_payment_rejected(monkeypatch):
 
 
 def test_active_masters_still_work(monkeypatch):
-    db = _setup(monkeypatch)                      # both active
+    _setup(monkeypatch)                      # both active
     res = pb.create_purchase_bill(PurchaseBillIn(
         client_id="CLI", vendor_id="VEND1", bill_date="2025-06-01", bill_no="B-OK",
         lines=[PurchaseBillLineIn(description="m", rate_paise=1000, quantity=1, gst_rate_percent=18.0, service_catalogue_id="SVC-1")],

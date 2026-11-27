@@ -194,7 +194,7 @@ class TestEscalationIntegration:
 
         # Create notification
         if applicable:
-            for rule in applicable:
+            for _rule in applicable:
                 notif_repo.create({
                     "firm_id": firm_id,
                     "user_id": "manager-1",

@@ -340,7 +340,7 @@ def test_live_listing_journals_without_a_client_id_narrows_to_assigned_clients(d
 
 
 def test_live_listing_journals_with_a_hidden_client_id_is_refused(deny, monkeypatch):
-    db = _e2e_setup(monkeypatch)
+    _e2e_setup(monkeypatch)
     with pytest.raises(HTTPException) as exc:
         acct.list_journals_queue(client_id=THEIRS, status="draft", current_user=EXEC_USER)
     assert exc.value.status_code == 404

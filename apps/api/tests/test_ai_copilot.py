@@ -45,8 +45,8 @@ class TestConversations:
 class TestMessages:
     def test_add_and_list_messages(self, repo):
         conv = repo.create_conversation("firm-msg", "user-001", {})
-        user_msg = repo.add_message("firm-msg", conv["id"], "user", "What is GSTR-1?")
-        ai_msg = repo.add_message("firm-msg", conv["id"], "assistant", "GSTR-1 is due on 11th...", tokens_used=150)
+        repo.add_message("firm-msg", conv["id"], "user", "What is GSTR-1?")
+        repo.add_message("firm-msg", conv["id"], "assistant", "GSTR-1 is due on 11th...", tokens_used=150)
         messages = repo.list_messages(conv["id"])
         assert len(messages) == 2
         assert messages[0]["role"] == "user"

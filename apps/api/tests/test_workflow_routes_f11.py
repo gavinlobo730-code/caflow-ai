@@ -67,7 +67,7 @@ def clear_workflow_state():
         s.clear()
     TASK_INDEX.clear()
     yield
-    for s, snap in zip(stores, snapshots):
+    for s, snap in zip(stores, snapshots, strict=False):
         s.clear()
         s.extend(snap)
     TASK_INDEX.clear()

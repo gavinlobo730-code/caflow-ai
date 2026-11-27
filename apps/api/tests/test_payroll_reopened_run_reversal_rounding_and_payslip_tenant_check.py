@@ -83,7 +83,7 @@ def test_a_paid_run_can_no_longer_be_reopened_and_double_finalized(payroll_app, 
     client = _client_for(app, PARTNER_F1)
     revert = client.patch(f"/api/payroll/runs/{run['id']}/status", json={"status": "review"})
     assert revert.status_code == 404
-    refinalize = client.post(f"/api/payroll/runs/{run['id']}/finalize")
+    client.post(f"/api/payroll/runs/{run['id']}/finalize")
     # finalize_run's own status=="finalized" guard doesn't fire since status
     # is still "paid" -- but the run was never reverted to review/draft, so
     # its accrual journal was never re-posted either.

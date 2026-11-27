@@ -560,14 +560,14 @@ def _attach_comparatives(doc: dict, prior: dict) -> None:
             raise ValueError(
                 f"comparative mismatch in {top}.{key}: "
                 f"{len(cur_sections)} sections this year, {len(prior_sections)} last")
-        for cs, ps in zip(cur_sections, prior_sections):
+        for cs, ps in zip(cur_sections, prior_sections, strict=False):
             if cs["heading"] != ps["heading"]:
                 raise ValueError(
                     f"comparative mismatch: {cs['heading']!r} against {ps['heading']!r}")
             cs["prior_total_paise"] = ps["total_paise"]
             if len(cs["lines"]) != len(ps["lines"]):
                 raise ValueError(f"comparative line-count mismatch in {cs['heading']!r}")
-            for cl, plr in zip(cs["lines"], ps["lines"]):
+            for cl, plr in zip(cs["lines"], ps["lines"], strict=False):
                 if cl["label"] != plr["label"]:
                     raise ValueError(
                         f"comparative mismatch: {cl['label']!r} against {plr['label']!r}")

@@ -496,7 +496,7 @@ def test_nothing_is_posted_to_the_ledger(monkeypatch):
 
 
 def test_register_integrity_reports_nothing_new_for_that_register(monkeypatch):
-    db = _setup(monkeypatch)
+    _setup(monkeypatch)
     _import(_file(100))
     res = fa.register_integrity("CLI", CALLER)["data"]
     assert res["checked"] == 100
@@ -726,7 +726,7 @@ def test_a_role_that_cannot_write_accounting_cannot_import():
 
 
 def test_the_door_audits_the_import_once_and_a_re_upload_audits_nothing(monkeypatch):
-    db = _setup(monkeypatch)
+    _setup(monkeypatch)
     events = []
     monkeypatch.setattr(fa, "log_event", lambda *a, **k: events.append((a, k)))
     http = _http()

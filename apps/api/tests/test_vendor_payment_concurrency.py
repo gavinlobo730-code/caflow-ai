@@ -80,9 +80,6 @@ class _Q:
     def order(self, *a, **k):
         return self
 
-    def limit(self, *a, **k):
-        return self
-
     def limit(self, _n):
         return self
 

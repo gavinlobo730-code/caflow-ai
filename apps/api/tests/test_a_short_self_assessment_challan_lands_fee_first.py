@@ -355,7 +355,7 @@ def test_the_challan_total_has_exactly_one_definition():
     of them agree until somebody decides a voided challan should not count."""
     from services import self_assessment_service as svc
     assert svc.total_paise_of is sa.total_paise_of
-    for module, fn in ((svc, svc.list_challans), (svc, svc.total_paid_paise)):
+    for _module, fn in ((svc, svc.list_challans), (svc, svc.total_paid_paise)):
         assert "sum(" not in inspect.getsource(fn), fn.__name__
     import routers.itr_workspace as w
     assert "total_paise_of" in inspect.getsource(w.filing_keying_sheet)

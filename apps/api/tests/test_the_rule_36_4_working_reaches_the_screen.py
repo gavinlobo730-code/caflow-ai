@@ -44,7 +44,7 @@ def _served_keys() -> list[str]:
     for node in ast.walk(tree):
         if not isinstance(node, ast.Dict):
             continue
-        for key, value in zip(node.keys, node.values):
+        for key, value in zip(node.keys, node.values, strict=False):
             if (isinstance(key, ast.Constant) and key.value == "rule_36_4"
                     and isinstance(value, ast.Dict)):
                 return [k.value for k in value.keys

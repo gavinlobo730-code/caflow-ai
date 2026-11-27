@@ -115,7 +115,7 @@ def test_cannot_cancel_bill_with_payment(monkeypatch):
 
 
 def test_cannot_cancel_draft_bill(monkeypatch):
-    db = _setup(monkeypatch)
+    _setup(monkeypatch)
     res = pb.create_purchase_bill(PurchaseBillIn(
         client_id="CLI", vendor_id="VEND1", bill_date="2025-06-01", bill_no="BILL-DRAFT",
         lines=[PurchaseBillLineIn(description="x", rate_paise=100000, quantity=1, gst_rate_percent=18.0, service_catalogue_id="SVC-1")],

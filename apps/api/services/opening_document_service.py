@@ -411,7 +411,7 @@ def bulk_create(db, firm_id: str, client_id: str, *, kind: str, rows: list,
             chunk = new[i:i + _INSERT_CHUNK]
             try:
                 got = _write(db, firm_id, client_id, kind, chunk, actor_id)
-                for v, row in zip(chunk, got):
+                for v, row in zip(chunk, got, strict=False):
                     written_ids[v.row] = str(row.get("id") or "")
                 continue
             except Exception as chunk_error:                    # noqa: BLE001

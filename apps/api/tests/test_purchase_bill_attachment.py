@@ -206,7 +206,7 @@ def test_create_bill_without_attachment_leaves_document_url_none(monkeypatch):
 
 
 def test_document_url_endpoint_mints_fresh_signed_url(monkeypatch):
-    db = _setup(monkeypatch)
+    _setup(monkeypatch)
     bill = pb.create_purchase_bill(_bill(document_url="FIRM-A/CLI/purchase_bill/xyz_invoice.pdf"), CALLER)["data"]
 
     resp = pb.get_purchase_bill_document_url(bill["id"], CALLER)

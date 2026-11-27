@@ -46,20 +46,20 @@ def _setup(monkeypatch):
 
 # ── Cross-tenant LIST reads must return nothing for the foreign firm ───────────
 def test_list_customers_cross_tenant_blocked(monkeypatch):
-    db = _setup(monkeypatch)
+    _setup(monkeypatch)
     assert ve is not None
     assert cu.list_customers(CLI_B, True, A)["data"] == []          # firm A sees nothing
     assert any(c["id"] == "CUST-B" for c in cu.list_customers(CLI_B, True, B)["data"])  # firm B sees it
 
 
 def test_list_vendors_cross_tenant_blocked(monkeypatch):
-    db = _setup(monkeypatch)
+    _setup(monkeypatch)
     assert ve.list_vendors(CLI_B, True, A)["data"] == []
     assert any(v["id"] == "VEND-B" for v in ve.list_vendors(CLI_B, True, B)["data"])
 
 
 def test_list_invoices_cross_tenant_blocked(monkeypatch):
-    db = _setup(monkeypatch)
+    _setup(monkeypatch)
     a = si.list_invoices(CLI_B, None, None, None, None, None, None, None, 50, 0, A)
     assert a["data"] == []
     b = si.list_invoices(CLI_B, None, None, None, None, None, None, None, 50, 0, B)
@@ -67,13 +67,13 @@ def test_list_invoices_cross_tenant_blocked(monkeypatch):
 
 
 def test_list_credit_notes_cross_tenant_blocked(monkeypatch):
-    db = _setup(monkeypatch)
+    _setup(monkeypatch)
     assert cn.list_credit_notes(CLI_B, None, A)["data"] == []
     assert any(c["id"] == "CN-B" for c in cn.list_credit_notes(CLI_B, None, B)["data"])
 
 
 def test_vendor_outstanding_cross_tenant_404(monkeypatch):
-    db = _setup(monkeypatch)
+    _setup(monkeypatch)
     # Firm A guessing firm B's vendor id → 404 (firm-scoped lookup), never its payables.
     with pytest.raises(HTTPException) as ex:
         ve.get_vendor_outstanding("VEND-B", A)
@@ -92,7 +92,6 @@ def test_create_vendor_does_not_leak_db_error(monkeypatch):
     def boom(name):
         q = real_table(name)
         if name == "vendors":
-            orig_insert = q.insert
             def _insert(*a, **k):
                 raise RuntimeError(SECRET)
             q.insert = _insert

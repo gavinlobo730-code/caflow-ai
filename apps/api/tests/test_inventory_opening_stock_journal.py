@@ -125,7 +125,7 @@ def test_batch_posts_one_combined_journal_per_client_not_per_item(monkeypatch):
     inv_id, obe_id = _seed_coa(db)
 
     rows = []
-    for i in range(5):
+    for _i in range(5):
         item_id = str(uuid.uuid4())
         _seed_item(db, item_id)
         rows.append({

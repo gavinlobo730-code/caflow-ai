@@ -434,7 +434,7 @@ def test_before_this_migration_the_activating_update_is_also_refused(before_this
     staff_insert = _psql(before_this_migration,
                          _insert_link_sql(LINK_MINE, INTERNAL_CUSTOMER_MINE, INVOICE_MINE))
     assert staff_insert.returncode == 0, staff_insert.stderr
-    r = _psql(before_this_migration, _as(AUTH_PORTAL) +
+    _psql(before_this_migration, _as(AUTH_PORTAL) +
               f"UPDATE customer_payment_links SET status='active' WHERE id='{LINK_MINE}';")
     # RLS on UPDATE denies by filtering the target row out (0 rows, no error)
     # UNLESS the permissive gate itself also fails, in which case Postgres

@@ -554,7 +554,7 @@ def _rows_to_txns(rows: list[list], header_idx: int,
         if not cells or len([c for c in cells if str(c).strip()]) < 3:
             continue
 
-        def col(key: str):
+        def col(key: str, cells=cells):
             i = a.get(key)
             if i is None or i >= len(cells):
                 return None
@@ -821,7 +821,7 @@ def balance_agreement(txns: list[NormalizedTxn]) -> dict:
 
     def _disagreements(seq: list[NormalizedTxn]) -> list[dict]:
         out = []
-        for prev, cur in zip(seq, seq[1:]):
+        for prev, cur in zip(seq, seq[1:], strict=False):
             expected = cur.credit_paise - cur.debit_paise
             actual = cur.balance_paise - prev.balance_paise
             if expected != actual:
@@ -1300,7 +1300,7 @@ def _merge_pages(ruled: list[list[list[str]]],
                        and ruled_width != geometric_width)
 
     out: list[list[str]] = []
-    for ruled_page, geometric_page in zip(ruled, geometric):
+    for ruled_page, geometric_page in zip(ruled, geometric, strict=False):
         if prefer_geometry and geometric_page:
             out.extend(geometric_page)
         else:

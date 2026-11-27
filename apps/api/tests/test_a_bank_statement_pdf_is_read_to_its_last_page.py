@@ -64,7 +64,7 @@ _LEADING = 16.0
 
 
 def _draw_row(c, cells, y):
-    for (_label, x, align), text in zip(_COLUMNS, cells):
+    for (_label, x, align), text in zip(_COLUMNS, cells, strict=False):
         if not text:
             continue
         if align == "right":

@@ -281,7 +281,7 @@ def test_every_step_of_the_six_starter_workflows_hands_its_estimate_to_its_task(
     assert len(starters.get_all_templates()) == 6
     tasks = starters.instantiate_workflow_tasks(template["id"], CLIENT, "u1", "2026-10-20")
     assert len(tasks) == len(template["steps"])
-    for step, task in zip(template["steps"], tasks):
+    for step, task in zip(template["steps"], tasks, strict=False):
         assert step.get("estimated_hours"), "every starter step records how long it takes"
         assert task["estimated_minutes"] == est.minutes_from_hours(step["estimated_hours"])
 

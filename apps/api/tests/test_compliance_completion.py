@@ -61,8 +61,6 @@ class TestGSTDueDates:
 
     def test_gstr1_due_date_december_rolls_to_january(self):
         """CGST Act Section 37: GSTR-1 for December is due on 11th January."""
-        tax_period_month = 12
-        tax_period_year = 2025
         following_month = 1
         following_year = 2026
         due_date = date(following_year, following_month, 11)
@@ -97,9 +95,6 @@ class TestGSTINValidation:
 
     def test_invalid_gstin_wrong_state_code(self):
         """GSTIN with invalid state code (e.g. 99) should fail."""
-        import re
-        GSTIN_RE = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$")
-        invalid_state = "99AABCU9603R1ZX"
         # State code 99 is not valid, but the regex only checks numeric format.
         # Use the validator for state code validation.
         from domain.gst.validator import VALID_STATE_CODES
@@ -399,7 +394,7 @@ class TestDeadlineGeneration:
             (date(fy_year, 12, 15), 75),
             (date(fy_year + 1, 3, 15), 100),
         ]
-        for d, pct in installments:
+        for d, _pct in installments:
             assert d.day == 15, f"Advance tax installment must be on the 15th, got {d}"
         percentages = [pct for _, pct in installments]
         assert percentages == [15, 45, 75, 100], "Cumulative advance tax percentages must be 15/45/75/100"

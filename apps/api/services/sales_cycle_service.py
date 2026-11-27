@@ -85,7 +85,7 @@ def compute_lines(lines: list, *, is_inter_state: bool,
             [{"gross_paise": g,
               "discount_percent_bps": ln.get("discount_percent_bps"),
               "discount_paise": ln.get("discount_paise")}
-             for g, ln in zip(gross, rows)],
+             for g, ln in zip(gross, rows, strict=False)],
             document_percent_bps=document_percent_bps,
             document_amount_paise=document_amount_paise,
         )
@@ -95,7 +95,7 @@ def compute_lines(lines: list, *, is_inter_state: bool,
     priced: list = []
     totals = {"taxable_paise": 0, "cgst_paise": 0, "sgst_paise": 0,
               "igst_paise": 0, "cess_paise": 0, "total_paise": 0}
-    for i, (ln, d) in enumerate(zip(rows, discounts)):
+    for i, (ln, d) in enumerate(zip(rows, discounts, strict=False)):
         taxable = int(d["taxable_paise"])
         bps = int(round(float(ln.get("gst_rate_percent") or 0) * 100))
         cgst, sgst, igst = compute_line_gst(taxable, bps, is_inter_state)

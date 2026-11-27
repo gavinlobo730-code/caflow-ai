@@ -90,7 +90,7 @@ def _written_types() -> dict[str, list[str]]:
                                and target.args[0].value == "notifications")
             if not (is_repo_create or is_table_insert):
                 continue
-            for k, v in zip(node.args[0].keys, node.args[0].values):
+            for k, v in zip(node.args[0].keys, node.args[0].values, strict=False):
                 if (isinstance(k, ast.Constant) and k.value == "type"
                         and isinstance(v, ast.Constant) and isinstance(v.value, str)):
                     found.setdefault(v.value, []).append(rel)
@@ -148,7 +148,7 @@ def test_the_latest_definition_is_a_superset_of_the_one_before_it():
                 sql, re.I | re.S):
             defs.append((path.name, set(re.findall(r"'([a-z_]+)'", m.group(1)))))
     defs.sort(key=lambda d: int(d[0].split("_", 1)[0]))
-    for (prev_name, prev), (name, cur) in zip(defs, defs[1:]):
+    for (prev_name, prev), (name, cur) in zip(defs, defs[1:], strict=False):
         assert prev <= cur, (
             f"{name} drops {sorted(prev - cur)} that {prev_name} accepted — a "
             f"replacement that re-derives from an older ancestor silently reverts")

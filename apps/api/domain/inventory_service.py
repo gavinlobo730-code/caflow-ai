@@ -1757,7 +1757,7 @@ def apply_purchase_to_inventory(db, *, firm_id: str, client_id: str, bill: dict,
             for (acct, _w), got in zip(
                     contributors,
                     landed.split_pro_rata(int(movement["value_delta_paise"]),
-                                          [w for _a, w in contributors])):
+                                          [w for _a, w in contributors]), strict=False):
                 if got:
                     receipt_items.append({
                         "value_paise": got, "expense_account_id": acct,
@@ -1774,7 +1774,7 @@ def apply_purchase_to_inventory(db, *, firm_id: str, client_id: str, bill: dict,
                 for (acct, _w), got in zip(
                         contributors,
                         landed.split_pro_rata(trueup_paise,
-                                              [w for _a, w in contributors])):
+                                              [w for _a, w in contributors]), strict=False):
                     if got:
                         trueup_items.append({
                             "value_paise": got, "expense_account_id": acct,

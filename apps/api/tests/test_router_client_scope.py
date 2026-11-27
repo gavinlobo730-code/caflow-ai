@@ -2035,7 +2035,7 @@ def test_a_row_addressed_endpoint_is_not_satisfied_by_a_bare_client_check():
                  # for the audience where staff assignment scope cannot apply.
                  "invoice_in_scope")
     checked = 0
-    for prefix, path, method, endpoint in ROUTES:
+    for _prefix, path, method, endpoint in ROUTES:
         # Keyed by a row id, and nothing else in the request names a client.
         if path in EXEMPT:
             continue

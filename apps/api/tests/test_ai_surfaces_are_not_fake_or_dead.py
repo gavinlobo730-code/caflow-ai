@@ -104,7 +104,7 @@ def writes_an_unearned_status(source: str) -> list[str]:
     found = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Dict):
-            for k, v in zip(node.keys, node.values):
+            for k, v in zip(node.keys, node.values, strict=False):
                 if (isinstance(k, ast.Constant) and k.value == "status"
                         and isinstance(v, ast.Constant)
                         and v.value in EARNED_ONLY_STATUSES):

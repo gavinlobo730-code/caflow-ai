@@ -187,7 +187,7 @@ def test_a_failing_function_degrades_to_the_per_line_fetch():
 @pytest.mark.parametrize("bad", [None, "oops", {"not": "a list"}])
 def test_anything_but_a_list_is_a_failure_not_an_answer(bad):
     db = _DB(alloc_data=bad, allow_journal_lines=True)
-    out = svc.allocation(db, FIRM, CLIENT, FY)
+    svc.allocation(db, FIRM, CLIENT, FY)
     assert db.journal_lines_reads == 1, "a malformed function result must fall back, not be rendered"
 
 

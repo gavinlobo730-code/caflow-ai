@@ -473,7 +473,6 @@ def test_a_second_undo_reuses_the_reversal_the_first_one_already_wrote():
 
     # Simulate the interrupted undo: the reversal is written, everything after
     # it never ran — the row is still posted and the invoice still shows paid.
-    first = svc._reverse_for_test if hasattr(svc, "_reverse_for_test") else None
     import services.phase2_journal_service as p2
     orphan = p2.phase2_journal_service.reverse_entry(
         db, FIRM, je, "2026-06-10", narration="interrupted undo", created_by="u1")

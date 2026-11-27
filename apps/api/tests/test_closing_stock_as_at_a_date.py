@@ -249,7 +249,7 @@ def test_the_derived_balance_leaves_the_stored_columns_alone():
     db = _seed_backdated_case()
     raw = get_stock_ledger(db, ITEM, firm_id=FIRM, client_id=CLIENT)
     rows = stock_position.ledger_with_balances(raw, Decimal("0"), 0)
-    for before, after in zip(raw, rows):
+    for before, after in zip(raw, rows, strict=False):
         assert after["running_qty_units"] == before["running_qty_units"]
         assert after["running_value_paise"] == before["running_value_paise"]
 

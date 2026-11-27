@@ -836,7 +836,6 @@ def issue_credit_note(
             return api_response(False, None, "Unable to issue credit note. Please try again.")
 
         # ── Mark the credit note issued and record how much was applied to invoices.
-        now_iso = datetime.now(timezone.utc).isoformat()
         applied = cn_total if (inv_id and cn_total > 0) else 0
         # No issued_at: credit_notes has never had that column, and PostgREST
         # rejects the WHOLE update over one unknown name — so this statement

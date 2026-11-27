@@ -83,7 +83,7 @@ _NO_PROBE = object()
 
 
 def _cases(header, widths, worst, size):
-    for text, width in zip(header, widths):
+    for text, width in zip(header, widths, strict=False):
         probe, why = worst.get(text, (_NO_PROBE, ""))
         yield text, width, probe, why, size
 

@@ -173,7 +173,7 @@ def restore_version(current_user: dict, article_id: str, version: int) -> dict:
     if _USE_MOCK:
         return {"id": article_id, "restored_from": version}
     db = _db()
-    art = _load_article_or_404(db, current_user, article_id, write=True)
+    _load_article_or_404(db, current_user, article_id, write=True)
     old = (db.table("knowledge_article_versions").select("content")
            .eq("article_id", article_id).eq("version", version).limit(1).execute().data)
     if not old:
@@ -185,7 +185,7 @@ def archive_article(current_user: dict, article_id: str) -> dict:
     if _USE_MOCK:
         return {"id": article_id, "is_archived": True}
     db = _db()
-    art = _load_article_or_404(db, current_user, article_id, write=True)
+    _load_article_or_404(db, current_user, article_id, write=True)
     upd = db.table("knowledge_articles").update({"is_archived": True, "updated_at": _now()}).eq("id", article_id).execute().data[0]
     _emit_article_event(current_user, upd, "kb_article_archived", "Knowledge article archived")
     return upd

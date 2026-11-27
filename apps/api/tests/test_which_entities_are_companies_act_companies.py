@@ -124,7 +124,7 @@ def test_every_entity_type_the_schema_allows_is_classified_on_both_sides():
     regime nothing decides. The Python list is derived from migration 001 by
     `test_compliance_itr_due_date`; this walks it through the browser too."""
     regimes = _browser(list(CLIENT_ENTITY_TYPES))
-    for entity, regime in zip(CLIENT_ENTITY_TYPES, regimes):
+    for entity, regime in zip(CLIENT_ENTITY_TYPES, regimes, strict=False):
         server = is_companies_act_company(entity)
         if server:
             assert regime == "companies-act", f"{entity}: server says company, browser says {regime}"

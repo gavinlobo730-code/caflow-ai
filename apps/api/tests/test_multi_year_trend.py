@@ -118,7 +118,7 @@ def test_the_ratios_are_the_clause_q_ratios(svc):
     note = R.build(R.components_from(
         svc.profit_loss(FIRM, CLIENT, start, end, basis="accrual"),
         svc.balance_sheet(FIRM, CLIENT, end, basis="accrual")))
-    for series, spec in zip(doc["ratios"], note["ratios"]):
+    for series, spec in zip(doc["ratios"], note["ratios"], strict=False):
         assert series["values_bps"][-1] == spec["value_bps"], series["key"]
 
 

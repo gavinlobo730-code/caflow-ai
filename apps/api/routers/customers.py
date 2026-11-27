@@ -530,7 +530,7 @@ def bulk_create_customers(
         else:
             resp = db.table("customers").insert([p for _, p in to_insert]).execute()
             data_rows = resp.data or [p for _, p in to_insert]
-            inserted_rows = list(zip((idx for idx, _ in to_insert), data_rows))
+            inserted_rows = list(zip((idx for idx, _ in to_insert), data_rows, strict=False))
 
         # ── Step 5: opening-balance GL sync per newly-created row — same
         # rollback-on-failure isolation as the single endpoint (post_opening_

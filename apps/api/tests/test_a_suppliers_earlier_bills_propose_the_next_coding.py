@@ -421,9 +421,9 @@ def test_only_the_newest_hundred_bills_are_considered():
     db = FakeDB()
     supplier = _seed_supplier(db)
     old, new = _seed_account(db, "Old"), _seed_account(db, "New", code="5200")
-    for i in range(5):
+    for _i in range(5):
         _seed_bill(db, supplier, date="2020-01-01", lines=[{"expense_account_id": old["id"]}])
-    for i in range(bh.HISTORY_BILLS):
+    for _i in range(bh.HISTORY_BILLS):
         _seed_bill(db, supplier, date="2026-02-01", lines=[{"expense_account_id": new["id"]}])
     out = _ask(db, supplier)
     assert out["bills_considered"] == bh.HISTORY_BILLS

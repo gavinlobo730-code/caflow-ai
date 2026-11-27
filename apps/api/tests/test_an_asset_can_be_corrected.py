@@ -149,7 +149,7 @@ def test_a_second_correction_gets_its_own_reference(monkeypatch):
 
 
 def test_correcting_the_cost_is_refused_once_depreciation_is_posted(monkeypatch):
-    db = _setup(monkeypatch)
+    _setup(monkeypatch)
     asset = _create(cost=15_00_000_00)
     assert fa.post_depreciation(asset["id"], DepreciationIn(period="2025-04"), CALLER)["success"]
 
@@ -199,7 +199,7 @@ def test_a_wrong_rate_is_corrected_prospectively_before_anything_is_posted(monke
 def test_a_revised_rate_is_refused_part_way_through_a_posted_year(monkeypatch):
     """Schedule II charges ONE annual figure ÷ 12. Changing the basis mid-year
     would give the remaining months a different charge from the posted ones."""
-    db = _setup(monkeypatch)
+    _setup(monkeypatch)
     asset = _create()
     assert fa.post_depreciation(asset["id"], DepreciationIn(period="2025-04"), CALLER)["success"]
 
@@ -300,7 +300,7 @@ def test_an_asset_created_by_mistake_is_soft_deleted_and_its_journal_reversed(mo
 
 
 def test_a_deleted_asset_is_gone_from_the_register(monkeypatch):
-    db = _setup(monkeypatch)
+    _setup(monkeypatch)
     asset = _create()
     fa.delete_asset(asset["id"], CALLER)
     listed = fa.list_assets("CLI", True, CALLER)["data"]
@@ -311,7 +311,7 @@ def test_a_deleted_asset_keeps_its_code_so_the_next_one_cannot_take_it(monkeypat
     """FA-ACQ-{code} is the acquisition journal's reference and the kernel
     dedupes on (client_id, reference_no, entry_date). Hand the code on and the
     next asset's acquisition lands on the deleted one's entry."""
-    db = _setup(monkeypatch)
+    _setup(monkeypatch)
     first = _create()
     assert first["asset_code"] == "FA-0001"
     fa.delete_asset(first["id"], CALLER)

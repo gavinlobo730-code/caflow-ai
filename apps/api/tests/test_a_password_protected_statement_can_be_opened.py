@@ -75,7 +75,7 @@ def _draw(c) -> None:
     y = 780.0
     rows = [tuple(label for label, _x, _a in _COLUMNS)] + _ROWS
     for row in rows:
-        for (_label, x, align), text in zip(_COLUMNS, row):
+        for (_label, x, align), text in zip(_COLUMNS, row, strict=False):
             if not text:
                 continue
             (c.drawRightString if align == "right" else c.drawString)(x, y, text)
@@ -453,7 +453,7 @@ def test_the_password_is_a_form_field_and_never_a_query_parameter():
         args = fn.args.args + fn.args.kwonlyargs
         defaults = ([None] * (len(fn.args.args) - len(fn.args.defaults)) + list(fn.args.defaults)
                     + list(fn.args.kw_defaults))
-        for a, d in zip(args, defaults):
+        for a, d in zip(args, defaults, strict=False):
             if a.arg == "pdf_password" and fn.name != "_read_statement_file":
                 seen += 1
                 assert _how_declared(a, d) == "Form", (

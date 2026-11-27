@@ -259,7 +259,7 @@ class TestImmutableJournals:
         })
         assert reversal["total_debit_paise"] == reversal["total_credit_paise"]
         # Net debit across original + reversal for each account should be zero
-        for orig_ln, rev_ln in zip(original["lines"], reversal["lines"]):
+        for orig_ln, rev_ln in zip(original["lines"], reversal["lines"], strict=False):
             assert orig_ln["account_id"] == rev_ln["account_id"]
             assert orig_ln["debit_paise"] + rev_ln["debit_paise"] == orig_ln["credit_paise"] + rev_ln["credit_paise"]
 

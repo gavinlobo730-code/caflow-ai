@@ -180,7 +180,7 @@ def test_reconciles_with_customer_balances(monkeypatch):
 # ── status (drives the UI "post to ledger" prompt) ───────────────────────────
 
 def test_status_no_openings_does_not_need_posting(monkeypatch):
-    db = _setup(monkeypatch)
+    _setup(monkeypatch)
     st = obs.opening_balance_status(FIRM, "CLI")
     assert st["needs_posting"] is False
 
