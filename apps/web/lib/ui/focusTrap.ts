@@ -146,3 +146,28 @@ export function whoOpenedTheDialog(
   if (outside(now)) return now;
   return readInTheRender;
 }
+
+/** The id both shells give their `<main>` (components/shell/SkipToContent.tsx, `MAIN_CONTENT_ID`; a test holds the two equal). */
+export const WHERE_FOCUS_LANDS_WHEN_THE_OPENER_IS_GONE = "main-content";
+
+/**
+ * Hand the keyboard back when a dialog closes (POST-A-555, third part).
+ *
+ * To whoever opened it. But the opener is often GONE by then, because of what the dialog was for: a bulk action's button lives in a bar that
+ * the table takes away the moment the action has run (the selection is consumed while the prompt is still open), a row's menu goes with the
+ * row it deleted, a table is redrawn. `opener.focus()` on a node that has left the page does nothing, and the focus fell to the document:
+ * a person on a keyboard was back at "Skip to content" with the whole shell to walk through, and a screen reader said nothing at all.
+ *
+ * So, when the opener cannot take it: the dialog that is still open underneath, if there is one (never the page behind a dialog), otherwise
+ * the page's main region, which both shells make focusable for the skip link. The page is not scrolled.
+ */
+export function giveFocusBack(opener: HTMLElement | null, doc: Document | null = typeof document === "undefined" ? null : document): void {
+  if (!doc) return;
+  if (opener && opener.isConnected) {
+    opener.focus?.();
+    if (doc.activeElement === opener) return;          // a disabled or hidden opener does not take it either
+  }
+  const stillOpen = doc.querySelectorAll<HTMLElement>('[role="dialog"][aria-modal="true"]');
+  const landing = stillOpen.length > 0 ? stillOpen[stillOpen.length - 1] : doc.getElementById(WHERE_FOCUS_LANDS_WHEN_THE_OPENER_IS_GONE);
+  landing?.focus?.({ preventScroll: true });
+}
