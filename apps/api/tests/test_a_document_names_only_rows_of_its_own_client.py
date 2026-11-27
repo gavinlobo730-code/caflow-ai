@@ -417,7 +417,7 @@ def test_an_executive_cannot_delete_a_rule_whose_posted_lines_cannot_be_counted(
     db, seen = rule_world
     with pytest.raises(HTTPException) as e:
         bank.delete_rule("RULE-1", EXEC)
-    assert e.value.status_code == 503 and "nothing was deleted" in e.value.detail and "Manager or Partner" in e.value.detail
+    assert e.value.status_code == 503 and "nothing was deleted" in e.value.detail and "someone with Banking approval" in e.value.detail
     assert [r["id"] for r in db.rows("bank_matching_rules")] == ["RULE-1"] and seen == []
 
 

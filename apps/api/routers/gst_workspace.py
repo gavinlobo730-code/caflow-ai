@@ -788,7 +788,7 @@ def update_gstr1_status(
         if body.status in ("ca_approved", "submitted"):
             if not can_user(current_user, "gst", "approve"):
                 return api_response(False, None,
-                    "Only Manager or above can approve or submit a GST return.")
+                    "Only someone who may approve GST returns can approve or submit a GST return.")
 
         # Read first. Moving a return to "submitted" is the write this router
         # exists to gate (CGST §37/§39) — a check that happens after it has
@@ -1038,7 +1038,7 @@ def update_gstr3b_status(
         if body.status in ("ca_approved", "submitted"):
             if not can_user(current_user, "gst", "approve"):
                 return api_response(False, None,
-                    "Only Manager or above can approve or submit a GST return.")
+                    "Only someone who may approve GST returns can approve or submit a GST return.")
 
         # Read first. Moving a return to "submitted" is the write this router
         # exists to gate (CGST §37/§39) — a check that happens after it has

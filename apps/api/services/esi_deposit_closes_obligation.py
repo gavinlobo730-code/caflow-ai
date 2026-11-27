@@ -247,5 +247,5 @@ def note_after_retraction(*, db, firm_id: str, client_id: str, remittance: dict)
     return (f"The compliance calendar still shows the {_what(wage_month)} as filed"
             + (f" on {filed_on}" if filed_on else "")
             + ". Retracting the entry does not reopen it, so the calendar keeps saying it was filed even though the entry is gone. "
-              "If the entry was wrong, a Manager or Partner can reopen the obligation, with a reason, from Deadlines or the "
+              "If the entry was wrong, someone who may approve Compliance can reopen the obligation, with a reason, from Deadlines or the "
               "client's Compliance tab; check the payment against the challan before relying on it.")

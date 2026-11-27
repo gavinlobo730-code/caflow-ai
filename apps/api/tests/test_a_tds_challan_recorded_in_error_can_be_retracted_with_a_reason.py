@@ -243,7 +243,7 @@ def test_a_month_of_the_quarter_that_still_reads_filed_is_named_with_who_can_reo
     note = _retract(client, row).json()["data"]["calendar_note"]
 
     assert note and "July 2025" in note and "August 2025" in note and "September" not in note
-    assert "does not reopen it" in note and "Manager or Partner can reopen" in note
+    assert "does not reopen it" in note and "someone who may approve Compliance can reopen" in note
     assert compliance_records_repo.find_by_id(still_open["id"])["status"] == "Ready To File"        # nothing was touched
 
 

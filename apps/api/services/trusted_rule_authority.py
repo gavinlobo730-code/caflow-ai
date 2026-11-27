@@ -61,7 +61,7 @@ class Gap(NamedTuple):
 
 #: What a screen or an HTTP answer says of a rule that is waiting, whatever the reason: it names no person and no status.
 WAITING_SENTENCE = ("Waiting: the person who trusted this rule can no longer let rules pass by themselves. "
-                    "A Manager or Partner can trust it again.")
+                    "Someone with Banking approval can trust it again.")
 
 FIRM_UNAVAILABLE = Gap("firm_unavailable", "The firm is suspended or no longer available, so none of its members can post.")
 NO_ONE = Gap("no_one_answers",

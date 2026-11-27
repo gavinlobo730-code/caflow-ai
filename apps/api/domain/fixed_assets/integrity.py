@@ -332,9 +332,9 @@ def amortisation_in_the_shared_ledger(asset: dict, facts: AccumulatedLedgerFacts
         "what_it_means": (
             "This asset is on the intangible line of the balance sheet, and what it has been amortised is credited to the shared "
             "Accumulated Depreciation ledger, which is presented on the tangible line. Each line is then out by the same amount. "
-            "A Partner can move it from the Depreciation tab of the fixed-asset register." if amount else
+            "Someone who may approve Accounting can move it from the Depreciation tab of the fixed-asset register." if amount else
             "This asset is on the intangible line of the balance sheet and has not been amortised yet, but its first month will be "
-            "credited to the shared Accumulated Depreciation ledger, which is presented on the tangible line, unless a Partner points it "
+            "credited to the shared Accumulated Depreciation ledger, which is presented on the tangible line, unless someone who may approve Accounting points it "
             "at the Accumulated Amortisation ledger first (the Depreciation tab of the fixed-asset register)."),
     }
 

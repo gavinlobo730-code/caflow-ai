@@ -75,12 +75,12 @@ REOPEN_AFTERMATH: dict[str, str] = {
     "TDS_SALARY_DEPOSIT": "The salary challans that closed it are remembered on the month, so while only those same challans name "
                           "it, recording another salary challan for the month does not close it again; a different one that pays "
                           "it on time does, or you can mark it filed from Compliance with the date it really went. If a challan "
-                          "was recorded in error, retract it on the Challans tab first (a Manager or Partner can): that reopens "
+                          "was recorded in error, retract it on the Challans tab first (someone who may write TDS records can): that reopens "
                           "the month it closed.",
     "TDS_NON_SALARY_DEPOSIT": "The challans that closed it are remembered on the month, so while only those same challans cover it, "
                               "recording another challan for the quarter does not close it again; a different challan covering it "
                               "does, or you can mark it filed from Compliance with the date it really went. If a challan was "
-                              "recorded in error, retract it on the Challans tab first (a Manager or Partner can): that reopens "
+                              "recorded in error, retract it on the Challans tab first (someone who may write TDS records can): that reopens "
                               "exactly the months it closed.",
     "ADVANCE_TAX": "The tax that closed it is still in the advance-tax register, and the next save of that register closes the "
                    "instalment again if the tax recorded there still covers it, so correct the register entry first.",
