@@ -25,6 +25,7 @@ from typing import Optional
 from fastapi import HTTPException
 
 from core.ist_clock import ist_today, ist_fy_label, fy_bounds
+from core.observability import capture_soft_failure
 from core.ist_clock import fy_quarters as _fy_quarter_windows
 from services import compliance_engine as ce
 from repositories.compliance_records_repository import compliance_records_repo
@@ -988,16 +989,16 @@ def _audit_timeline_generate(firm_id: str, rec: dict, actor: Optional[dict]) -> 
                   new_data={"obligation_type": rec.get("obligation_type"),
                             "due_date": rec.get("due_date"), "engagement_id": rec.get("engagement_id")},
                   metadata={"source": "compliance_generation"})
-    except Exception:  # pragma: no cover
-        pass
+    except Exception as exc:  # pragma: no cover
+        capture_soft_failure(exc, operation="compliance.generated.audit", firm_id=firm_id, record_id=rec.get("id"))
     try:
         from services.timeline_service import timeline_service
         timeline_service.log(rec.get("client_id", ""), "compliance", "Compliance Obligation Created",
                              f"{rec.get('obligation_type', '')} {rec.get('period_label', '')} "
                              f"due {str(rec.get('due_date'))[:10]}", "info",
                              firm_id=firm_id, entity_type="compliance_record", entity_id=rec.get("id"))
-    except Exception:  # pragma: no cover
-        pass
+    except Exception as exc:  # pragma: no cover
+        capture_soft_failure(exc, operation="compliance.generated.timeline", firm_id=firm_id, record_id=rec.get("id"))
 
 
 def _reconcile_stale_gst_obligations(firm_id: str, client_id: str, financial_year: str,
@@ -1414,15 +1415,15 @@ def assign(firm_id: str, record_id: str, preparer_id: Optional[str] = None,
                   old_data={"preparer_id": rec.get("preparer_id"), "reviewer_id": rec.get("reviewer_id"),
                             "approver_id": rec.get("approver_id")},
                   new_data={k: v for k, v in updates.items() if k.endswith("_id")})
-    except Exception:  # pragma: no cover
-        pass
+    except Exception as exc:  # pragma: no cover
+        capture_soft_failure(exc, operation="compliance.reassigned.audit", firm_id=firm_id, record_id=record_id)
     try:
         from services.timeline_service import timeline_service
         timeline_service.log(rec.get("client_id", ""), "compliance", "Compliance Reassigned",
                              f"{rec.get('obligation_type', '')} {rec.get('period_label', '')} assignment updated",
                              "info", firm_id=firm_id, entity_type="compliance_record", entity_id=record_id)
-    except Exception:  # pragma: no cover
-        pass
+    except Exception as exc:  # pragma: no cover
+        capture_soft_failure(exc, operation="compliance.reassigned.timeline", firm_id=firm_id, record_id=record_id)
     return updated
 
 
@@ -1494,8 +1495,8 @@ def _notify_internal(firm_id: str, rec: dict, tier: str, actor: Optional[dict],
                              f"{rec.get('period_label', '')} "
                              f"is {label} (due {_pretty_due_date(rec.get('due_date'))})", severity,
                              firm_id=firm_id, entity_type="compliance_record", entity_id=rec.get("id"))
-    except Exception:  # pragma: no cover
-        pass
+    except Exception as exc:  # pragma: no cover
+        capture_soft_failure(exc, operation="compliance.escalation.timeline", firm_id=firm_id, record_id=rec.get("id"))
     # The people named, and of them the ones who can open the client (POST-A-451). A person named who cannot is told nothing, and
     # the audit row says who that was, so a reminder that did not go out is on record rather than missing without a word.
     named: set = {r for r in (rec.get("preparer_id"), rec.get("reviewer_id"),
@@ -1507,7 +1508,6 @@ def _notify_internal(firm_id: str, rec: dict, tier: str, actor: Optional[dict],
     try:
         recipients: set = _people_who_can_open(firm_id, rec.get("client_id"), named, reach_cache)
     except Exception as exc:  # noqa: BLE001
-        from core.observability import capture_soft_failure
         capture_soft_failure(exc, operation="compliance.escalation_reach", firm_id=firm_id)
         recipients, reach_unreadable = set(), True
     try:
@@ -1519,8 +1519,8 @@ def _notify_internal(firm_id: str, rec: dict, tier: str, actor: Optional[dict],
                                            rec.get("approver_id")],
                             "not_told_cannot_open_the_client": sorted(str(u) for u in named - recipients) if not reach_unreadable else [],
                             "not_told_reach_unreadable": reach_unreadable})
-    except Exception:  # pragma: no cover
-        pass
+    except Exception as exc:  # pragma: no cover
+        capture_soft_failure(exc, operation="compliance.escalation.audit", firm_id=firm_id, record_id=rec.get("id"))
     # Best-effort in-app notifications (internal). Guarded — never fatal.
     try:
         from repositories.notifications_repository import notifications_repo
@@ -1535,8 +1535,8 @@ def _notify_internal(firm_id: str, rec: dict, tier: str, actor: Optional[dict],
                 "severity": "critical" if tier in ("overdue", "due_1") else "high",
                 "metadata": {"compliance_record_id": rec.get("id"), "tier": tier},
             })
-    except Exception:  # pragma: no cover - notifications are best-effort
-        pass
+    except Exception as exc:  # pragma: no cover - notifications are best-effort
+        capture_soft_failure(exc, operation="compliance.escalation.notifications", firm_id=firm_id, record_id=rec.get("id"))
     return recipients
 
 
@@ -1604,7 +1604,6 @@ def escalate(firm_id: str, today: Optional[date] = None, actor: Optional[dict] =
             from services import practice_mail_service
             practice_mail_service.send_deadline_mails(firm_id, mail_batch, today=today)
         except Exception as exc:  # pragma: no cover - mail is best-effort
-            from core.observability import capture_soft_failure
             capture_soft_failure(exc, operation="compliance.deadline_mails", firm_id=firm_id)
     return {"escalated": sum(counts.values()), **counts}
 

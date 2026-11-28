@@ -184,7 +184,13 @@ def test_every_health_swallow_names_the_operation_it_lost():
 # tests/test_a_narrow_swallow_is_triaged.py holds those files at zero. Left: the compliance builder's nine (taken when its item
 # closes) and seven that run inside an error path by design (core/exceptions 3, the AI gateway's error-body parses 2, the mail
 # transport 1, the request-token reset 1).
-MAX_SILENT_SWALLOWS_ELSEWHERE = 16
+#
+# 16 -> 7 (POST-A-021, sixth slice, 28-11-2026): the compliance builder's nine (services/compliance_obligation_service.py 7,
+# domain/compliance_record_service.py 2: the audit row and timeline line of a generated, reassigned, escalated or moved obligation, and
+# the escalation's in-app notifications) report through capture_soft_failure; tests/test_the_compliance_builders_swallows_are_reported.py
+# holds them. What is left is the seven that run inside an error path by design (core/exceptions 3, the AI gateway's error-body
+# parses 2, the mail transport 1, the request-token reset 1).
+MAX_SILENT_SWALLOWS_ELSEWHERE = 7
 
 _SCAN_DIRS = ("routers", "services", "domain", "repositories", "jobs", "core")
 
