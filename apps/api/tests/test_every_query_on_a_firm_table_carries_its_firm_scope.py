@@ -72,8 +72,9 @@ WHAT THIS DOES NOT SEE (and says so rather than implying it does)
       guard did NOT flag); a call handed `firm_id` or `current_user` vouches for its return
       value even when the callee queries nothing; a non-ownership `assert_*` that names
       `firm_id` counts as a gate; a gate whose result is ignored still counts. An allowlist
-      line is bound to (file, function, table, operation, count) and NOT to the chain's
-      content, so a predicate can change under a standing key. Smaller, and CLOSED on
+      line WAS bound to (file, function, table, operation, count) and not to the chain's
+      content, so a predicate could change under a standing key: CLOSED on 28-11-2026
+      (POST-A-019, (3)), every line carries `chain=` and the guard below holds it. Smaller, and CLOSED on
       22-11-2026 (POST-A-019, first slice): an `.or_()` that only mentions `firm_id`,
       `.filter("firm_id", "neq", x)` and `.eq("firm_id", None)` used to count as the filter and
       no longer do (the controls below hold each), and `.from_("t")` is read as the query it is. Still open: a helper passed by reference is not a call;
@@ -234,6 +235,11 @@ def current() -> dict[tuple, int]:
     return S.unscoped(scan()[0], set(firm_tables()))
 
 
+@functools.lru_cache(maxsize=1)
+def current_shapes() -> dict[tuple, str]:
+    return S.unscoped_shapes(scan()[0], set(firm_tables()))
+
+
 @dataclass
 class Entry:
     key: tuple
@@ -316,6 +322,56 @@ def test_every_query_on_a_firm_table_is_scoped_or_named_on_the_frozen_list():
             "or lower its count, in the same commit as the fix:\n"
             + "\n".join(f"  {n} x {' | '.join(k)}" for k, n in stale))
     assert not problems, "\n\n".join(problems)
+
+
+def test_every_line_is_bound_to_the_exact_chains_it_lets_through():
+    """A line used to be bound to (file, function, table, operation, count) and not to what the chain SAYS, so `.eq("sign_token", token)`
+    could become `.neq("sign_token", "")` and the guard stayed green on a query that now reads every firm's letters (POST-A-019, (3)).
+    Every line carries `chain=`, the fingerprint of the text of every operation of every chain under its key."""
+    allowed, shapes = allowlist(), current_shapes()
+    unbound = sorted(" | ".join(k) for k, e in allowed.items() if "chain" not in e.tokens)
+    assert not unbound, "these lines carry no `chain=` fingerprint:\n  " + "\n  ".join(unbound)
+    changed = []
+    for key, entry in sorted(allowed.items()):
+        now = shapes.get(key)
+        if now is not None and now != entry.tokens["chain"]:
+            detail = next((c.shape for c in scan()[0] if c.key == key and not c.scoped_by), "")
+            changed.append(f"  {' | '.join(key)}: listed chain={entry.tokens['chain']}, the code is now chain={now}\n      {detail[:220]}")
+    assert not changed, (
+        "THE CODE UNDER THESE LINES CHANGED. A line lets through the chain it was written for, not whatever is at that key now. Read the chain "
+        "again: if it is still fine for the line's reason, write the new fingerprint into the line; if it is not, it needs its firm scope.\n"
+        + "\n".join(changed))
+
+
+def test_a_predicate_loosened_under_a_standing_key_turns_the_guard_red():
+    """The negative control, on a real line: the signing link's lookup by its token. Loosening the token's equality keeps the file, the
+    function, the table, the operation and the count, which is all a line used to be bound to."""
+    rel = "routers/engagement_sign_public.py"
+    before = (API / rel).read_text(encoding="utf-8")
+    assert before.count('.eq("sign_token", token)') >= 1
+    after = before.replace('.eq("sign_token", token)', '.neq("sign_token", "")', 1)
+    tables = set(firm_tables())
+    fp_before = S.unscoped_shapes(S.scan_source(before, rel, tables)[0], tables)
+    fp_after = S.unscoped_shapes(S.scan_source(after, rel, tables)[0], tables)
+    moved = sorted(k for k in fp_before if fp_after.get(k) != fp_before[k])
+    assert moved, "loosening the token's equality left every fingerprint as it was"
+    key = moved[0]
+    assert S.unscoped(S.scan_source(after, rel, tables)[0], tables).get(key) == S.unscoped(S.scan_source(before, rel, tables)[0], tables).get(key), \
+        "the count moved, so this control would be caught without the fingerprint and proves nothing about it"
+    assert allowlist()[key].tokens["chain"] == fp_before[key], "the listed fingerprint is not the one the unchanged code makes"
+
+
+def test_the_fingerprint_reads_every_operation_and_not_the_first_two_hundred_characters():
+    """`detail` is cut at 200 characters for a failure message. A fingerprint over that would miss a change past the cut, which is where a
+    long chain keeps its filters."""
+    tables = {"customers"}
+    pad = ", ".join(f"c{i}" for i in range(60))
+    one = f'def f(db, k):\n    return db.table("customers").select("{pad}").eq("token", k).execute()\n'
+    two = one.replace('.eq("token", k)', '.neq("token", "")')
+    a = S.unscoped_shapes(S.scan_source(one, "services/x.py", tables)[0], tables)
+    b = S.unscoped_shapes(S.scan_source(two, "services/x.py", tables)[0], tables)
+    assert a and a != b
+    assert S.fingerprint(["x", "y"]) == S.fingerprint(["y", "x"]), "the order chains are found in must not move the fingerprint"
 
 
 def test_the_list_is_well_formed_and_every_category_is_one_the_guard_knows():

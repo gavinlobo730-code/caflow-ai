@@ -193,6 +193,9 @@ class Chain:
     # An INSERT whose payload is one of the enclosing function's own parameters:
     # which. The firm key is then the CALLER's to supply, and is judged there.
     payload_param: str = ""
+    # EVERY operation of the chain as written, the followers made on its name included, in order and never cut short (POST-A-019, (3)).
+    # An allowlist line is bound to a fingerprint of this, so a predicate that changes under a standing key turns the guard red.
+    shape: str = ""
 
     @property
     def key(self) -> tuple[str, str, str, str]:
@@ -421,6 +424,25 @@ def _root_name(expr: ast.AST) -> str | None:
             cur = cur.values[0]
         else:
             return None
+
+
+def shape_of(ops) -> str:
+    """The text of a chain's operations, `method(args)` joined by ` . `, from `[(method, Call)]`. Never truncated: a fingerprint over a
+    prefix would miss a change past the cut, and the cut is where a long chain keeps its filters."""
+    out = []
+    for method, call in ops:
+        try:
+            args = [ast.unparse(a) for a in call.args] + [f"{k.arg}={ast.unparse(k.value)}" for k in call.keywords]
+        except Exception:
+            args = ["?"]
+        out.append(f"{method}({', '.join(args)})")
+    return " . ".join(out)
+
+
+def fingerprint(shapes) -> str:
+    """Ten hex characters naming a set of chain shapes, whatever order they were found in."""
+    import hashlib
+    return hashlib.sha1("\n".join(sorted(shapes)).encode("utf-8")).hexdigest()[:10]
 
 
 def _hard(ch: "Chain") -> bool:
@@ -885,11 +907,12 @@ def _synthetic_chain(raw: _Raw, relpath: str, idx: _Index):
                 payload_param = own_param(data)
     try:
         detail = ast.unparse(call)[:200]
+        shape = ast.unparse(call)
     except Exception:
-        detail = ""
+        detail = shape = ""
     ch = Chain(file=relpath, function=raw.function, table=spec["table"], op=spec["op"],
                line=call.lineno, scoped_by=scoped_by, detail=detail,
-               helper=spec.get("helper", ""), payload_param=payload_param)
+               helper=spec.get("helper", ""), payload_param=payload_param, shape=shape)
     if outer is not None:
         ch.caller_name = outer.name
         ch.caller_params = tuple(_fn_params(outer))
@@ -1307,6 +1330,7 @@ def scan_source(source: str, relpath: str, firm_tables: set[str],
         ch = Chain(file=relpath, function=raw.function, table=table, op=op,
                    line=raw.table_call.lineno, scoped_by=scoped_by,
                    conditional=conditional, built_elsewhere=built_elsewhere, detail=detail,
+                   shape=f"{table}: " + shape_of(all_ops),
                    fn_params=tuple(_fn_params(raw.outer)) if in_fn else (),
                    is_route=in_fn and _is_route(raw.outer))
         chains.append(ch)
@@ -1939,6 +1963,18 @@ def census(chains: list[Chain], firm_tables: set[str]) -> dict:
         by[k] = by.get(k, 0) + 1
     out["by_evidence"] = dict(sorted(by.items()))
     return out
+
+
+def unscoped_shapes(chains: list[Chain], firm_tables: set[str]) -> dict[tuple, str]:
+    """key -> the fingerprint of the shapes of its unscoped chains: what an allowlist line is bound to (POST-A-019, (3))."""
+    shapes: dict[tuple, list[str]] = {}
+    for ch in chains:
+        if ch.scoped_by or ch.op == "none":
+            continue
+        if ch.table in firm_tables or ch.table == "<dynamic>" \
+                or ch.table.startswith(("repo:", "call:")):
+            shapes.setdefault(ch.key, []).append(ch.shape)
+    return {key: fingerprint(found) for key, found in shapes.items()}
 
 
 def unscoped(chains: list[Chain], firm_tables: set[str]) -> dict[tuple, int]:
