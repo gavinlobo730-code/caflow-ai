@@ -111,13 +111,21 @@ test("the panel reads the marks, writes one and takes one back through the API c
   assert.match(api, /\/api\/inventory\/stock-effects\/settled\/\$\{encodeURIComponent\(settlementId\)\}`, \{ method: "DELETE" \}/);
 });
 
-/** The Buttons that start a write (named by what they say) that are NOT inside a `mayWriteBooks && (...)`, found in the syntax tree and not by spelling. */
+/**
+ * The Buttons that start a write (named by what they say) that are NOT drawn under `mayWriteBooks`, found in the syntax tree and not by
+ * spelling. A button is under it when it is the last operand of an `&&` chain one of whose earlier operands is `mayWriteBooks` itself:
+ * `mayWriteBooks && (...)` and `mayWriteBooks && !row.somethingElse && (...)` alike (POST-A-092: a row the retry cannot finish is not
+ * offered Complete the stock, so that button carries a second condition). `!mayWriteBooks`, and one side of an `||`, are not the gate.
+ */
 function writeButtonsOutsideCanWrite(rel: string, labels: string[]): { drawn: string[]; unguarded: string[] } {
   const sf = ts.createSourceFile(rel, fs.readFileSync(path.join(WEB, rel), "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const drawn: string[] = [];
   const unguarded: string[] = [];
+  const conjuncts = (e: ts.Expression): ts.Expression[] =>
+    ts.isBinaryExpression(e) && e.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken ? [...conjuncts(e.left), ...conjuncts(e.right)] : [e];
   const visit = (node: ts.Node, guarded: boolean) => {
-    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken && node.left.getText(sf) === "mayWriteBooks") {
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken
+        && conjuncts(node.left).some((c) => c.getText(sf) === "mayWriteBooks")) {
       visit(node.right, true);
       return;
     }
@@ -145,13 +153,27 @@ test("both buttons that write are offered only to someone the routes admit, and 
   assert.deepEqual(found.unguarded, [], "a button that writes is offered to someone the route would refuse");
 });
 
-test("self-test: the rule finds a write button drawn outside the permission", () => {
-  const spoiled = fs.readFileSync(path.join(WEB, PANEL), "utf8").replace("{mayWriteBooks && (\n                      <>", "{(\n                      <>");
-  assert.notEqual(spoiled, fs.readFileSync(path.join(WEB, PANEL), "utf8"), "the self-test's anchor is gone");
+test("self-test: the rule finds a write button drawn outside the permission, in each of the shapes it could be", () => {
+  const real = fs.readFileSync(path.join(WEB, PANEL), "utf8");
   const tmp = path.join(WEB, "components", "inventory", "__spoiled_unrecorded_panel.tsx");
-  fs.writeFileSync(tmp, spoiled);
+  const found = (spoiled: string) => {
+    assert.notEqual(spoiled, real, "the self-test's anchor is gone");
+    fs.writeFileSync(tmp, spoiled);
+    try {
+      return writeButtonsOutsideCanWrite(path.join("components", "inventory", "__spoiled_unrecorded_panel.tsx"), ["Complete the stock", "Mark as settled"]).unguarded;
+    } finally {
+      fs.rmSync(tmp, { force: true });
+    }
+  };
+  // the permission taken off the chain: the other condition alone is not the gate
+  assert.deepEqual(found(real.replace("{mayWriteBooks && !d.hand_fix_says && (", "{!d.hand_fix_says && (")), ["Complete the stock"]);
+  // the permission negated, and the permission as one side of an OR
+  assert.deepEqual(found(real.replace("{mayWriteBooks && !d.hand_fix_says && (", "{!mayWriteBooks && !d.hand_fix_says && (")), ["Complete the stock"]);
+  assert.deepEqual(found(real.replace("{mayWriteBooks && !d.hand_fix_says && (", "{(mayWriteBooks || !d.hand_fix_says) && (")), ["Complete the stock"]);
+  // and the real file, whose Complete the stock sits under a chain of two conditions, is clean
+  fs.writeFileSync(tmp, real);
   try {
-    assert.ok(writeButtonsOutsideCanWrite(path.join("components", "inventory", "__spoiled_unrecorded_panel.tsx"), ["Complete the stock", "Mark as settled"]).unguarded.length > 0);
+    assert.deepEqual(writeButtonsOutsideCanWrite(path.join("components", "inventory", "__spoiled_unrecorded_panel.tsx"), ["Complete the stock", "Mark as settled"]).unguarded, []);
   } finally {
     fs.rmSync(tmp, { force: true });
   }

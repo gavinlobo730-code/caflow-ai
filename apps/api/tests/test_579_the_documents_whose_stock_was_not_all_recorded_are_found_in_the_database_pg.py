@@ -86,11 +86,16 @@ def _invoice(dsn, n, items, *, status="issued", extra="", client=CLIENT, quantit
 
 
 def _move(dsn, kind, doc, item, *, movement="sale", value=-1000, journal=False, client=CLIENT):
+    # One unit moves, and the running quantity AFTER a purchase is that one unit: the item stood at nothing before it. This helper wrote 0
+    # there for every movement while nothing read the column. Migration 780 reads it: a purchase row whose running quantity is less than
+    # what it brought in was written while the item was already oversold, and such a bill is listed when its true-up entry is missing. A
+    # purchase of one unit that leaves the item at nothing is that case, so an ORDINARY purchase has to say it left one.
+    running = 1 if movement == "purchase" else 0
     r = _psql(dsn, f"""
         INSERT INTO inventory_stock_ledger (firm_id, client_id, service_catalogue_id, movement_date, movement_type, quantity_delta,
             unit_cost_paise, value_delta_paise, running_qty_units, running_avg_cost_paise, running_value_paise, source_type, source_id,
             journal_entry_id)
-        VALUES ('{FIRM}', '{client}', '{item}', '2026-04-20', '{movement}', 1, 0, {value}, 0, 0, 0, '{kind}', '{doc}',
+        VALUES ('{FIRM}', '{client}', '{item}', '2026-04-20', '{movement}', 1, 0, {value}, {running}, 0, 0, '{kind}', '{doc}',
                 {f"'{JOURNAL}'" if journal else "NULL"});""")
     assert r.returncode == 0, r.stderr
 
@@ -160,6 +165,22 @@ def test_the_purchase_credit_and_debit_sides_are_found_by_their_own_movement_typ
     _move(dsn, "purchase_bill", bill, GOOD_A, movement="purchase", value=300000, journal=True)
     _move(dsn, "credit_note", cn, GOOD_A, movement="sale_return", value=500, journal=True)
     _move(dsn, "debit_note", dn, GOOD_A, movement="purchase_return", value=-500, journal=True)
+    assert _found(dsn) == {"total": 0, "documents": []}
+    # The same purchase written while the item was already short (the running quantity after it is less than what it brought in), with no
+    # true-up entry standing: migration 780 lists the bill and says a retry cannot finish it.
+    short = str(uuid.UUID("b5791000-0000-0000-0000-000000000008"))
+    assert _psql(dsn, f"""INSERT INTO purchase_bills (id, firm_id, client_id, vendor_id, bill_no, bill_date, status)
+                          VALUES ('{short}', '{FIRM}', '{CLIENT}', '{VENDOR}', 'B-SHORT', '2026-04-20', 'received');
+                          INSERT INTO purchase_bill_lines (bill_id, description, quantity, taxable_amount_paise, service_catalogue_id)
+                          VALUES ('{short}', 'x', 1, 100000, '{GOOD_A}');
+                          INSERT INTO inventory_stock_ledger (firm_id, client_id, service_catalogue_id, movement_date, movement_type, quantity_delta,
+                              unit_cost_paise, value_delta_paise, running_qty_units, running_avg_cost_paise, running_value_paise, source_type, source_id,
+                              journal_entry_id)
+                          VALUES ('{FIRM}', '{CLIENT}', '{GOOD_A}', '2026-04-20', 'purchase', 1, 0, 100000, 0, 0, 0, 'purchase_bill', '{short}', '{JOURNAL}');""").returncode == 0
+    listed = _found(dsn)
+    assert [(d["reference"], d.get("hand_fix")) for d in listed["documents"]] == [("B-SHORT", "oversold_trueup")], listed
+    assert _psql(dsn, f"DELETE FROM inventory_stock_ledger WHERE source_id = '{short}'; DELETE FROM purchase_bill_lines WHERE bill_id = '{short}'; "
+                      f"DELETE FROM purchase_bills WHERE id = '{short}';").returncode == 0
     assert _found(dsn) == {"total": 0, "documents": []}
     # A reversal row (a cancellation's) is not the document's own movement: it must not make a missing line look present.
     other = str(uuid.UUID("b5791000-0000-0000-0000-000000000009"))

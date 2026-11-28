@@ -332,29 +332,33 @@ export function UnrecordedStockPanel({ clientId }: { clientId: string }) {
                 <tr key={`${d.kind}-${d.document_id}`} className="border-b border-ps-border last:border-0 align-top">
                   <td className="px-5 py-2 text-ps-body">{STOCK_DOCUMENT_WORDS[d.kind] ?? d.kind} {d.reference || "—"}</td>
                   <td className="px-5 py-2 text-ps-body">{d.document_date ? formatDate(d.document_date) : "—"}</td>
-                  <td className="px-5 py-2 text-xs text-ps-body">{whatIsMissing(d)}</td>
+                  <td className="px-5 py-2 text-xs text-ps-body">
+                    {whatIsMissing(d)}
+                    {/* A bill the retry cannot finish says what to do by hand, in the server's own words, and is not offered Complete the stock. */}
+                    {d.hand_fix_says && <p className="mt-1 text-ps-ink" data-hand-fix={d.hand_fix ?? undefined}>{d.hand_fix_says}</p>}
+                  </td>
                   <td className="px-5 py-2 text-right whitespace-nowrap">
+                    {mayWriteBooks && !d.hand_fix_says && (
+                      <Button
+                        variant="plain" size="none" spinner={false} flight={flight} type="button"
+                        onClick={() => complete(d)}
+                        disabled={busy !== null}
+                        className="inline-flex items-center gap-1 rounded-lg border border-ps-border px-2 py-1 text-2xs hover:bg-ps-bg disabled:opacity-50"
+                      >
+                        {busy === d.document_id && <Loader2 size={12} className="animate-spin" />}
+                        Complete the stock
+                      </Button>
+                    )}
+                    {/* The other way a listed document is dealt with: the CA already put its stock right by hand. */}
                     {mayWriteBooks && (
-                      <>
-                        <Button
-                          variant="plain" size="none" spinner={false} flight={flight} type="button"
-                          onClick={() => complete(d)}
-                          disabled={busy !== null}
-                          className="inline-flex items-center gap-1 rounded-lg border border-ps-border px-2 py-1 text-2xs hover:bg-ps-bg disabled:opacity-50"
-                        >
-                          {busy === d.document_id && <Loader2 size={12} className="animate-spin" />}
-                          Complete the stock
-                        </Button>
-                        {/* The other way a listed document is dealt with: the CA already put its stock right by hand. */}
-                        <Button
-                          variant="plain" size="none" spinner={false} flight={flight} type="button"
-                          onClick={() => startMarking(d)}
-                          disabled={busy !== null}
-                          className="ml-2 inline-flex items-center gap-1 rounded-lg border border-ps-border px-2 py-1 text-2xs hover:bg-ps-bg disabled:opacity-50"
-                        >
-                          Mark as settled
-                        </Button>
-                      </>
+                      <Button
+                        variant="plain" size="none" spinner={false} flight={flight} type="button"
+                        onClick={() => startMarking(d)}
+                        disabled={busy !== null}
+                        className={`${d.hand_fix_says ? "" : "ml-2 "}inline-flex items-center gap-1 rounded-lg border border-ps-border px-2 py-1 text-2xs hover:bg-ps-bg disabled:opacity-50`}
+                      >
+                        Mark as settled
+                      </Button>
                     )}
                   </td>
                 </tr>
