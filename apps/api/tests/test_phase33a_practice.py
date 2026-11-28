@@ -8,6 +8,7 @@ import pytest
 from core.validators import derive_state_code, INDIAN_STATE_CODES
 from services.coa_seed_service import STANDARD_COA
 from models.client import PracticeIdentityUpdate
+from pydantic import ValidationError
 
 
 # ── Part C — state_code derivation priority ──────────────────────────────────
@@ -100,14 +101,14 @@ def test_coa_has_revenue_and_expense_and_equity():
 def test_identity_normalises_and_validates_pan():
     m = PracticeIdentityUpdate(pan="aabcu9603r")
     assert m.pan == "AABCU9603R"
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         PracticeIdentityUpdate(pan="NOTAPAN")
 
 
 def test_identity_validates_gstin():
     m = PracticeIdentityUpdate(gstin="27AABCU9603R1ZN")
     assert m.gstin == "27AABCU9603R1ZN"
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         PracticeIdentityUpdate(gstin="BAD-GSTIN")
 
 

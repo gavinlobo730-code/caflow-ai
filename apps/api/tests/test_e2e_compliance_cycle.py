@@ -13,6 +13,7 @@ from fastapi import HTTPException
 
 from core.exceptions import NotFoundError
 from tests.e2e_harness import FakeDB, wire_e2e
+from core.exceptions import ValidationError
 
 
 FIRM = "FIRM-A"
@@ -83,7 +84,7 @@ def test_compliance_cycle_invalid_transition_rejected(monkeypatch):
     eng_repo, cos, rec_repo, db = _setup(monkeypatch)
     eng = _engagement(eng_repo)
     rec_id = cos.generate_for_engagement(FIRM, eng, "2025-26", actor=ACTOR)["generated_ids"][0]
-    with pytest.raises(Exception):                    # Not Started → Filed is not allowed
+    with pytest.raises(ValidationError):                    # Not Started → Filed is not allowed
         cos.transition(FIRM, rec_id, "Filed", actor=ACTOR)
     assert rec_repo.find_by_id(rec_id)["status"] == "Not Started"
 

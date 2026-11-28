@@ -37,6 +37,7 @@ import pytest
 
 from domain.accounting import cost_centre as rule
 from services import cost_centre_service as svc
+from pydantic import ValidationError
 
 API = pathlib.Path(__file__).resolve().parents[1]
 _MIG = API / "migrations"
@@ -370,9 +371,9 @@ def test_a_centre_that_is_not_this_clients_is_refused_never_defaulted():
 def test_both_doors_validate_the_code():
     """A validator on the create door only is one PATCH from being none."""
     from routers.cost_centres import CostCentreIn, CostCentreUpdateIn
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         CostCentreIn(client_id="c", code="", name="x")
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         CostCentreUpdateIn(code="")
     assert CostCentreUpdateIn().code is None, "None means unchanged"
 

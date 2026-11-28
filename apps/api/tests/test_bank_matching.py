@@ -17,6 +17,7 @@ from domain.banking import (
 )
 import services.bank_matching_service as bms
 from services.bank_matching_service import bank_matching_service
+from fastapi import HTTPException
 
 
 # ── B.2.1 match ranking (pure) ────────────────────────────────────────────────
@@ -482,7 +483,7 @@ def test_categorize_sets_controlled_category():
 
 def test_categorize_rejects_freeform():
     db = FakeDB(); _seed_txn(db)
-    with pytest.raises(Exception):
+    with pytest.raises(HTTPException):
         bank_matching_service.categorize(db, FIRM, "t1", "made up category")
 
 
@@ -503,7 +504,7 @@ def test_manual_match_acceptance_links_entity():
 
 def test_match_invalid_entity_type_rejected():
     db = FakeDB(); _seed_txn(db)
-    with pytest.raises(Exception):
+    with pytest.raises(HTTPException):
         bank_matching_service.match(db, FIRM, "t1", "not_a_type", "x")
 
 
@@ -548,7 +549,7 @@ def test_match_rejects_entity_from_another_firm():
     belong to this transaction's firm, not merely well-formed."""
     db = FakeDB(); _seed_txn(db)
     _seed_entity(db, "client_sales_invoices", "inv-9", firm_id="firm-OTHER")
-    with pytest.raises(Exception):
+    with pytest.raises(HTTPException):
         bank_matching_service.match(db, FIRM, "t1", "sales_invoice", "inv-9")
     assert db.store["bank_transactions"][0]["match_status"] == "unmatched"
 
@@ -556,14 +557,14 @@ def test_match_rejects_entity_from_another_firm():
 def test_match_rejects_entity_from_another_client_same_firm():
     db = FakeDB(); _seed_txn(db)
     _seed_entity(db, "purchase_bills", "bill-3", client_id="client-OTHER")
-    with pytest.raises(Exception):
+    with pytest.raises(HTTPException):
         bank_matching_service.match(db, FIRM, "t1", "purchase_bill", "bill-3")
     assert db.store["bank_transactions"][0]["match_status"] == "unmatched"
 
 
 def test_match_rejects_nonexistent_entity():
     db = FakeDB(); _seed_txn(db)
-    with pytest.raises(Exception):
+    with pytest.raises(HTTPException):
         bank_matching_service.match(db, FIRM, "t1", "sales_invoice", "inv-does-not-exist")
 
 
@@ -579,7 +580,7 @@ def test_manual_match_type_has_no_ownership_check():
 
 def test_cannot_match_posted_transaction():
     db = FakeDB(); _seed_txn(db, match_status="posted")
-    with pytest.raises(Exception):
+    with pytest.raises(HTTPException):
         bank_matching_service.match(db, FIRM, "t1", "sales_invoice", "inv-9")
 
 
@@ -602,7 +603,7 @@ def test_unmatch_clears_linkage():
 def test_categorize_rejects_when_draft_journal_pending():
     db = FakeDB()
     _seed_txn(db, posted_journal_id="je-draft-1")
-    with pytest.raises(Exception):
+    with pytest.raises(HTTPException):
         bank_matching_service.categorize(db, FIRM, "t1", "Sales Receipt")
     assert db.store["bank_transactions"][0]["category"] is None
 
@@ -611,7 +612,7 @@ def test_match_rejects_when_draft_journal_pending():
     db = FakeDB()
     _seed_txn(db, posted_journal_id="je-draft-1")
     _seed_entity(db, "client_sales_invoices", "inv-9")
-    with pytest.raises(Exception):
+    with pytest.raises(HTTPException):
         bank_matching_service.match(db, FIRM, "t1", "sales_invoice", "inv-9")
     assert db.store["bank_transactions"][0]["matched_entity_id"] is None
 
@@ -620,7 +621,7 @@ def test_unmatch_rejects_when_draft_journal_pending():
     db = FakeDB()
     _seed_txn(db, match_status="matched", matched_entity_type="sales_invoice",
              matched_entity_id="inv-9", posted_journal_id="je-draft-1")
-    with pytest.raises(Exception):
+    with pytest.raises(HTTPException):
         bank_matching_service.unmatch(db, FIRM, "t1")
     # The pending draft's linkage must survive untouched.
     assert db.store["bank_transactions"][0]["matched_entity_id"] == "inv-9"

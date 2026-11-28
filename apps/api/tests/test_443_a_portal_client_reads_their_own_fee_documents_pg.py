@@ -69,6 +69,7 @@ import uuid
 from pathlib import Path
 
 import pytest
+from fastapi import HTTPException
 
 API_ROOT = Path(__file__).resolve().parents[1]
 RUNNER = API_ROOT / "scripts" / "db" / "apply_migrations.py"
@@ -785,11 +786,12 @@ def test_statement_negative_control_is_unavailable_before_the_fix(pre_fix_db, in
     from services import portal_data_service
 
     db = _RealDb(pre_fix_db, PORTAL_AUTH_1)
-    with pytest.raises(Exception):
+    with pytest.raises(HTTPException) as refused:
         # customer_statement_service._customer() 404s when the customer row
         # itself cannot be read at all — the precise shape of the bug: not a
         # wrong statement, an inability to even find whose statement it is.
         portal_data_service.statement(FIRM, EXT1, "2026-04-01", "2026-04-30", db=db)
+    assert refused.value.status_code == 404
 
 
 def test_statement_returns_the_real_ledger_after_the_fix(post_fix_db, internal_client_id_patch):

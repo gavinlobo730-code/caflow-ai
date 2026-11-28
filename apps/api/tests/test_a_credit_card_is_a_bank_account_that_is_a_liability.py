@@ -40,6 +40,7 @@ from domain.banking.account_category import category_for_account
 from domain.banking.posting_map import build_lines, build_transfer_lines
 from domain.reporting.schedule_iii import bs_bucket
 from models.banking import BankAccountIn, BankAccountUpdateIn
+from pydantic import ValidationError
 
 _MIG = Path(__file__).resolve().parent.parent / "migrations"
 _M386 = "386_a_credit_card_is_a_bank_account_that_is_a_liability.sql"
@@ -266,14 +267,14 @@ def test_an_unknown_account_type_is_refused_rather_than_500ing(value):
     as a 500-shaped database error rather than a refusal naming the field —
     and it also decides the LEDGER, so an unrecognised value would silently
     take the asset branch."""
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         BankAccountIn(client_id="C1", bank_name="HDFC", account_no="1",
                       account_type=value)
 
 
 def test_the_patch_door_validates_too():
     """A validator only at the create door is one PATCH from being none."""
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         BankAccountUpdateIn(account_type="Card")
     assert BankAccountUpdateIn(account_type=None).account_type is None
     assert BankAccountUpdateIn(account_type="Credit Card").account_type == "Credit Card"

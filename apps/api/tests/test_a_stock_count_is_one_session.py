@@ -30,6 +30,7 @@ import routers.inventory as inv
 import services.stock_count_service as svc
 from domain.inventory import count_session as cs
 from models.inventory import ADJUSTMENT_REASONS, StockCountEntryIn
+from pydantic import ValidationError
 
 _MIG = Path(__file__).resolve().parent.parent / "migrations"
 _M387 = "387_a_stock_count_is_one_session_not_a_hundred_adjustments.sql"
@@ -607,13 +608,13 @@ def test_a_blank_count_is_none_and_a_zero_is_zero():
 
 
 def test_a_negative_count_is_refused():
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         StockCountEntryIn(service_catalogue_id="i1", counted_qty_units=-1)
 
 
 def test_a_fourth_decimal_is_refused():
     """NUMERIC(10,3) is what the ledger keeps (INV-09)."""
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         StockCountEntryIn(service_catalogue_id="i1", counted_qty_units=1.0001)
 
 

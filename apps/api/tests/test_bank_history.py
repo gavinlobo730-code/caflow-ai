@@ -15,6 +15,7 @@ from domain.banking.history import (
     HistorySuggestion, CodingOption, learning_key, summarise, describe, same_payee,
     KEY_PAYEE_ID, KEY_COUNTERPARTY, MIN_KEY_LENGTH,
 )
+from dataclasses import FrozenInstanceError
 
 
 def _t(description=None, payee_id=None, payee_name=None, **kw):
@@ -165,7 +166,7 @@ def test_a_missing_date_does_not_crash_the_sort():
 def test_the_suggestion_is_immutable():
     s = summarise([_h("a", "Expense", "2026-01-01")], KEY)
     assert isinstance(s, HistorySuggestion)
-    with pytest.raises(Exception):
+    with pytest.raises(FrozenInstanceError):
         s.account_id = "b"  # type: ignore[misc]
 
 

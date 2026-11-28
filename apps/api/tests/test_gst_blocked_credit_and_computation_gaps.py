@@ -20,6 +20,7 @@ import pytest
 
 from models.invoices import PurchaseBillIn, PurchaseBillLineIn
 from tests.e2e_harness import FakeDB, wire_e2e, seed_standard_coa
+from pydantic import ValidationError
 
 FIRM = "FIRM-A"
 CALLER = {"firm_id": FIRM, "auth_user_id": "u1", "email": "ca@firma.test", "role": "Partner"}
@@ -30,7 +31,7 @@ CALLER = {"firm_id": FIRM, "auth_user_id": "u1", "email": "ca@firma.test", "role
 # =============================================================================
 
 def test_purchase_bill_line_requires_blocked_credit_reason_when_ineligible():
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         PurchaseBillLineIn(description="Club membership", rate_paise=100000, quantity=1,
                            service_catalogue_id="SVC-1", itc_eligible=False)
 

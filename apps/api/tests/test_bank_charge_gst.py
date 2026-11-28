@@ -17,6 +17,7 @@ import pytest
 from domain.banking.charge_gst import (
     ChargeSplit, split_inclusive_charge, build_charge_lines, ALLOWED_RATES_BPS,
 )
+from dataclasses import FrozenInstanceError
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -199,6 +200,6 @@ def test_missing_core_accounts_are_refused():
 
 def test_the_split_dataclass_is_immutable():
     s = split_inclusive_charge(59000, 1800)
-    with pytest.raises(Exception):
+    with pytest.raises(FrozenInstanceError):
         s.taxable_paise = 1  # type: ignore[misc]
     assert isinstance(s, ChargeSplit)

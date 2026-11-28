@@ -54,6 +54,7 @@ from services.bank_reconciliation_service import bank_reconciliation_service as 
 # tests exercise the same service and a divergent double would prove nothing
 # about the other file's results.
 from tests.test_bank_reconciliation import FakeDB
+from pydantic import ValidationError
 
 FIRM, CLIENT, BA = "firm-adj", "client-adj", "ba-adj"
 START, END = "2025-04-01", "2025-04-30"
@@ -119,7 +120,7 @@ def test_the_old_path_no_longer_writes_it(db, spies):
 
 def test_the_request_model_rejects_the_field_rather_than_ignoring_it():
     """Silently dropping it would show the CA a figure that never landed."""
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         ReconciliationUpdateIn(adjustments_paise=5000)
     ok = ReconciliationUpdateIn(closing_balance_paise=1)
     assert ok.closing_balance_paise == 1
@@ -306,9 +307,9 @@ def test_the_completion_refusal_no_longer_invites_the_plug(db, spies):
 # ══════════════════════════════════════════════════════════════════════════════
 
 def test_the_model_refuses_the_same_two_shapes():
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         ReconciliationAdjustmentIn(adjustments_paise=5000, reason="short")
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         ReconciliationAdjustmentIn(adjustments_paise=0, reason=REASON)
     assert ReconciliationAdjustmentIn(adjustments_paise=0).reason is None
     assert ReconciliationAdjustmentIn(adjustments_paise=-5000,

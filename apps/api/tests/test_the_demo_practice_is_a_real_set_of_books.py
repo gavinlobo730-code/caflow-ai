@@ -285,6 +285,6 @@ def test_the_two_validate_pan_functions_still_disagree():
     assert pan_problem(good) is None
     assert model_validator(good) == good
 
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError):
         model_validator("NOTAPAN")
     assert isinstance(pan_problem("NOTAPAN"), str)

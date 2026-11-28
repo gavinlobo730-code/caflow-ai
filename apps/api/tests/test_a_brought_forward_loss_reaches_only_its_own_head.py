@@ -25,6 +25,7 @@ from domain.income_tax.loss_set_off import (
     apply_brought_forward_losses, BroughtForwardLoss, KNOWN_LOSS_TYPES,
 )
 import routers.income_tax as it
+from pydantic import ValidationError
 
 L = 1_00_000_00        # one lakh, in paise
 CALLER = {"firm_id": "F1", "id": "u1", "auth_user_id": "a1",
@@ -195,7 +196,7 @@ def test_the_endpoint_carries_the_losses_and_shows_the_working():
 
 
 def test_the_endpoint_refuses_a_loss_type_with_no_rule():
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         it.ComputeITRRequest(fy="2025-26", brought_forward_losses=[
             {"loss_type": "capital", "amount_paise": 1 * L}])
 

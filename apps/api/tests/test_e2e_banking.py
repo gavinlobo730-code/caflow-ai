@@ -19,6 +19,7 @@ from fastapi import HTTPException
 from models.banking import BankAccountIn, StatementImportIn, StatementImportRow, TransactionAccountIn
 from services.phase2_journal_service import phase2_journal_service as js
 from tests.e2e_harness import FakeDB, wire_e2e
+from pydantic import ValidationError
 
 
 FIRM = "FIRM-A"
@@ -128,7 +129,7 @@ def test_banking_set_account_can_derive_the_category_from_the_ledger(monkeypatch
 def test_banking_empty_import_rejected(monkeypatch):
     bk, db = _setup(monkeypatch)
     # The model forbids empty rows (validated before the service).
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         StatementImportIn(client_id="CLI", bank_name="HDFC", rows=[])
 
 

@@ -44,6 +44,7 @@ from domain.banking.rules import (
     MATCH_FIELDS, MATCH_OPERATORS, by_precedence, match_rule, rule_matches,
 )
 from models.banking import MatchingRuleIn, MatchingRuleUpdateIn
+from pydantic import ValidationError
 
 
 def _rule(**over):
@@ -272,18 +273,18 @@ def test_every_allowed_field_is_accepted(field):
 
 def test_an_unknown_field_is_refused_at_create_and_at_edit():
     """A validator only at the create door is one PATCH from being none."""
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         MatchingRuleIn(client_id="c", rule_name="r", description_pattern="x",
                        match_field="account_number", suggested_category="Expense")
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         MatchingRuleUpdateIn(match_field="account_number")
 
 
 def test_an_unknown_operator_is_refused_at_create_and_at_edit():
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         MatchingRuleIn(client_id="c", rule_name="r", description_pattern="x",
                        match_operator="regex", suggested_category="Expense")
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         MatchingRuleUpdateIn(match_operator="regex")
 
 

@@ -24,6 +24,7 @@ import pytest
 
 from domain.gst import amendments, exception_report
 from domain.gst import place_of_supply as pos
+from pydantic import ValidationError
 
 WEB = Path("../web")
 
@@ -74,7 +75,7 @@ def test_two_disagreeing_places_of_supply_are_refused():
     from models.invoices import SalesInvoiceIn
     line = {"service_catalogue_id": "SVC-1", "description": "x", "quantity": 1,
             "rate_paise": 100, "gst_rate_bps": 1800}
-    with pytest.raises(Exception) as exc:
+    with pytest.raises(ValidationError) as exc:
         SalesInvoiceIn(client_id="c", customer_id="k", invoice_no="INV-1",
                        invoice_date="2025-06-01", lines=[line],
                        place_of_supply="27", supply_state_code="29")
@@ -99,7 +100,7 @@ def test_a_place_of_supply_that_is_not_a_state_is_refused(field):
     from models.invoices import SalesInvoiceIn
     line = {"service_catalogue_id": "SVC-1", "description": "x", "quantity": 1,
             "rate_paise": 100, "gst_rate_bps": 1800}
-    with pytest.raises(Exception) as exc:
+    with pytest.raises(ValidationError) as exc:
         SalesInvoiceIn(client_id="c", customer_id="k", invoice_no="INV-1",
                        invoice_date="2025-06-01", lines=[line], **{field: "99"})
     assert "not a GST state code" in str(exc.value)
@@ -108,7 +109,7 @@ def test_a_place_of_supply_that_is_not_a_state_is_refused(field):
 def test_the_correction_path_validates_it_too():
     """A validator only at the create door is one PATCH away from being none."""
     from models.invoices import SalesInvoiceUpdateIn
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         SalesInvoiceUpdateIn(supply_state_code="99")
     assert SalesInvoiceUpdateIn(supply_state_code="27").supply_state_code == "27"
 

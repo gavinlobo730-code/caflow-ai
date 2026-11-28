@@ -24,6 +24,7 @@ import pytest
 
 from services.bank_matching_service import bank_matching_service as svc
 from tests.test_bank_matching import FakeDB, FIRM, CLIENT, _seed_txn
+from fastapi import HTTPException
 
 
 @pytest.fixture(autouse=True)
@@ -175,7 +176,7 @@ def test_an_unknown_view_is_refused_by_both_entry_points():
     db = FakeDB()
     for call in (lambda: svc.queue(db, FIRM, CLIENT, "excluded"),
                  lambda: svc.queue_total(db, FIRM, CLIENT, "excluded")):
-        with pytest.raises(Exception):
+        with pytest.raises(HTTPException):
             call()
 
 

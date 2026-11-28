@@ -43,6 +43,7 @@ from domain.tds.section_rates import (                            # noqa: E402
     rates_are_verified, tds_rates_for,
 )
 from domain.tds.tds_computer import TDSComputer                    # noqa: E402
+from pydantic import ValidationError
 
 resolve_tds = TDSComputer().resolve_tds
 
@@ -226,7 +227,7 @@ def test_every_quantity_field_in_the_product_carries_the_rule():
                                      service_catalogue_id="S1"),
     ):
         build(1.234)                                   # accepted
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             build(1.2345)                              # refused
 
 

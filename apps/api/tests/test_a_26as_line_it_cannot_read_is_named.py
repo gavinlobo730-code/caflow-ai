@@ -17,6 +17,7 @@ deliberately no wrapper handing back only the records.
 import pytest
 
 from domain.income_tax.form26as_service import Reading26AS, read_26as_text
+from dataclasses import FrozenInstanceError
 
 HEADER = "PART A\nSr.\tName of Deductor\tTAN\tDate\tAmount Paid\tTDS\tStatus\n"
 GOOD = "1\tAcme Pvt Ltd\tMUMA12345B\t10/06/2025\t100000.00\t10000.00\tF\n"
@@ -118,5 +119,5 @@ def test_the_router_reports_the_skipped_lines_and_refuses_a_blank_read():
 def test_the_reading_is_a_frozen_value():
     r = read_26as_text(HEADER + GOOD)
     assert isinstance(r, Reading26AS)
-    with pytest.raises(Exception):
+    with pytest.raises(FrozenInstanceError):
         r.records = []          # type: ignore[misc]

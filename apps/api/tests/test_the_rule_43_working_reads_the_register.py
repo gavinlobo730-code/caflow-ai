@@ -26,6 +26,7 @@ from fastapi import HTTPException
 import routers.gst_workspace as gw
 import services.gst_rule_43_service as svc
 from domain.gst import rule_43
+from pydantic import ValidationError
 
 FIRM, CLIENT, PERIOD = "firm-1", "client-1", "062025"
 USER = {"id": "u1", "firm_id": FIRM, "auth_user_id": "a1",
@@ -327,7 +328,7 @@ def test_the_asset_model_validates_the_rule_43_use():
                 purchase_cost_paise=1_00_000)
     assert FixedAssetIn(**base).rule_43_use is None
     assert FixedAssetIn(**base, rule_43_use="common").rule_43_use == "common"
-    with pytest.raises(Exception) as e:
+    with pytest.raises(ValidationError) as e:
         FixedAssetIn(**base, rule_43_use="mixed")
     assert "rule_43_use must be" in str(e.value)
 
@@ -337,7 +338,7 @@ def test_the_edit_path_validates_it_too():
     from models.accounting import FixedAssetUpdateIn
     assert FixedAssetUpdateIn(rule_43_use="exclusively_exempt").rule_43_use \
         == "exclusively_exempt"
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         FixedAssetUpdateIn(rule_43_use="partly")
 
 
