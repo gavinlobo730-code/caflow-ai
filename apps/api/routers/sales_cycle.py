@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from core.authz import assert_client_access
 from core.permissions import rbac
+from services.audit_service import audited
 from models.common import api_response
 from models.fy import FYLabel
 from models.sales_cycle import (
@@ -109,6 +110,7 @@ def quotation_lines(
 
 
 @router.post("/quotations")
+@audited("sales_quotation", "create")
 def create_quotation(
     payload: QuotationIn,
     current_user: dict = Depends(rbac("invoice", "write")),
@@ -124,6 +126,7 @@ def create_quotation(
 
 
 @router.patch("/quotations/{quotation_id}")
+@audited("sales_quotation", "update")
 def update_quotation(
     quotation_id: str,
     payload: QuotationUpdateIn,
@@ -191,6 +194,7 @@ def order_invoice_seed(
 
 
 @router.post("/orders")
+@audited("sales_order", "create")
 def create_order(
     payload: SalesOrderIn,
     current_user: dict = Depends(rbac("invoice", "write")),
@@ -205,6 +209,7 @@ def create_order(
 
 
 @router.patch("/orders/{order_id}")
+@audited("sales_order", "update")
 def update_order(
     order_id: str,
     payload: SalesOrderUpdateIn,

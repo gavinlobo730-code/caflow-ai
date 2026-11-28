@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Annotated, Literal, Optional
 from uuid import UUID
 from models.common import api_response
+from services.audit_service import audited
 from core.authz import assert_client_access, can_access_client
 from core.permissions import can_user, rbac
 from core.ist_clock import ist_today
@@ -1301,6 +1302,7 @@ def get_capital_gain_exemption(
 
 
 @router.post("/capital-gains/{record_id}/reinvestments")
+@audited("capital_gain_reinvestment", "create")
 def add_capital_gain_reinvestment(
     record_id: str,
     req: ReinvestmentIn,
@@ -1341,6 +1343,7 @@ def add_capital_gain_reinvestment(
 
 
 @router.delete("/capital-gains/{record_id}/reinvestments/{claim_id}")
+@audited("capital_gain_reinvestment", "delete")
 def delete_capital_gain_reinvestment(
     record_id: str,
     claim_id: str,
@@ -2219,6 +2222,7 @@ def list_self_assessment_challans(
 
 
 @router.post("/self-assessment")
+@audited("self_assessment_challan", "create")
 def create_self_assessment_challan(
     req: SelfAssessmentChallanIn,
     current_user: dict = Depends(rbac("income_tax", "compute")),
@@ -2281,6 +2285,7 @@ def create_self_assessment_challan(
 
 
 @router.delete("/self-assessment/{challan_id}")
+@audited("self_assessment_challan", "delete")
 def delete_self_assessment_challan(
     challan_id: str,
     current_user: dict = Depends(rbac("income_tax", "compute")),
@@ -2367,6 +2372,7 @@ class Section32BlockRowIn(BaseModel):
 
 
 @router.put("/section-32/blocks/row")
+@audited("section_32_block", "update")
 def set_section_32_block_row(
     req: Section32BlockRowIn,
     current_user: dict = Depends(rbac("income_tax", "compute")),
@@ -2540,6 +2546,7 @@ def section_32_depreciation(
 
 
 @router.put("/section-32/blocks")
+@audited("section_32_block", "update")
 def upsert_section_32_block(
     req: Section32BlockIn,
     current_user: dict = Depends(rbac("income_tax", "compute")),

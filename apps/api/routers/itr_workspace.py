@@ -17,6 +17,7 @@ from core.ist_clock import assessment_year_for
 from core.permissions import can_user, rbac
 from core.authz import assert_client_access, can_access_client
 from models.common import api_response
+from services.audit_service import audited
 from services import named_row_ownership
 from services.timeline_service import timeline_service
 from models.fy import AYLabel, FYLabel, OptionalAYLabel
@@ -320,6 +321,7 @@ class TakeBackRequest(BaseModel):
 # ── Computation Snapshots ──────────────────────────────────────────────────────
 
 @router.post("/snapshots")
+@audited("tax_computation_snapshot", "create")
 def create_snapshot(
     req: SnapshotRequest,
     current_user: dict = Depends(rbac("income_tax", "compute")),
@@ -395,6 +397,7 @@ def filing_season(
 
 
 @router.post("/season/compute")
+@audited("tax_computation_snapshot", "create")
 def filing_season_compute(
     req: SeasonComputeRequest,
     current_user: dict = Depends(rbac("income_tax", "compute")),
@@ -430,6 +433,7 @@ def list_snapshots(
 
 
 @router.post("/snapshots/{snapshot_id}/review")
+@audited("tax_computation_snapshot", "review")
 def review_snapshot(
     snapshot_id: str,
     current_user: dict = Depends(rbac("income_tax", "approve")),
@@ -474,6 +478,7 @@ def _the_computation_is_this_clients_for_this_year(current_user: dict, client_id
 
 
 @router.post("/filings")
+@audited("itr_filing", "create")
 def create_filing(
     req: CreateFilingRequest,
     current_user: dict = Depends(rbac("income_tax", "compute")),
@@ -769,6 +774,7 @@ def filing_books_schedules(
 
 
 @router.post("/filings/{filing_id}/transition")
+@audited("itr_filing", "status_change")
 def transition_filing(
     filing_id: str,
     req: TransitionFilingRequest,
@@ -812,6 +818,7 @@ def transition_filing(
 
 
 @router.post("/filings/{filing_id}/versions")
+@audited("itr_filing_version", "create")
 def save_version(
     filing_id: str,
     req: SaveVersionRequest,
@@ -873,6 +880,7 @@ class PinComputationRequest(BaseModel):
 
 
 @router.post("/filings/{filing_id}/computation")
+@audited("itr_filing", "pin_computation")
 def pin_filing_computation(
     filing_id: str,
     req: PinComputationRequest,
@@ -985,6 +993,7 @@ def record_acknowledgement(
 # ── Disallowances ─────────────────────────────────────────────────────────────
 
 @router.post("/disallowances")
+@audited("tax_disallowance", "create")
 def create_disallowance(
     req: DisallowanceRequest,
     current_user: dict = Depends(rbac("income_tax", "compute")),
@@ -1031,6 +1040,7 @@ def list_disallowances(
 
 
 @router.patch("/disallowances/{disallowance_id}/status")
+@audited("tax_disallowance", "status_change")
 def update_disallowance_status(
     disallowance_id: str,
     req: DisallowanceStatusRequest,
@@ -1044,6 +1054,7 @@ def update_disallowance_status(
 
 
 @router.post("/disallowances/auto-detect-40a3")
+@audited("tax_disallowance", "auto_detect")
 def auto_detect_40a3(
     client_id: str,
     financial_year: FYLabel,
@@ -1062,6 +1073,7 @@ def auto_detect_40a3(
 # ── Deduction Claims ──────────────────────────────────────────────────────────
 
 @router.post("/deductions")
+@audited("tax_deduction_claim", "create")
 def create_deduction(
     req: DeductionClaimRequest,
     current_user: dict = Depends(rbac("income_tax", "compute")),
@@ -1103,6 +1115,7 @@ def list_deductions(
 # ── Brought Forward Losses ────────────────────────────────────────────────────
 
 @router.post("/bf-losses")
+@audited("brought_forward_loss", "create")
 def create_bf_loss(
     req: BFLossRequest,
     current_user: dict = Depends(rbac("income_tax", "compute")),

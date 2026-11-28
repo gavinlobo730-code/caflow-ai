@@ -17,6 +17,7 @@ import uuid
 from models.common import api_response
 from core.authz import assert_client_access, filter_by_client
 from core.permissions import rbac
+from services.audit_service import audited
 from core.validators import validate_pan, validate_gstin
 from services.timeline_service import timeline_service
 from services.audit_service import log_event
@@ -1729,6 +1730,7 @@ def _enrich_workflow(workflow: dict, steps: list[dict]) -> dict:
 
 
 @router.post("/onboarding/checklist")
+@audited("onboarding_checklist", "create")
 def start_onboarding_checklist(
     data: ChecklistStartIn,
     current_user: dict = Depends(rbac("client", "write")),
@@ -1839,6 +1841,7 @@ def get_onboarding_checklist(
 
 
 @router.put("/onboarding/checklist/{workflow_id}/step/{step_number}")
+@audited("onboarding_checklist_step", "update")
 def update_checklist_step(
     workflow_id: str,
     step_number: int,
@@ -1895,6 +1898,7 @@ def update_checklist_step(
 
 
 @router.post("/onboarding/checklist/{workflow_id}/complete")
+@audited("onboarding_checklist", "complete")
 def complete_onboarding_checklist(
     workflow_id: str,
     current_user: dict = Depends(rbac("client", "write")),

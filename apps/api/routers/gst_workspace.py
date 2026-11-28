@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from models.common import api_response
+from services.audit_service import audited
 from models.gst_period import PeriodMMYYYY, OptionalPeriodMMYYYY
 from core.authz import assert_client_access, can_access_client, effective_client_ids
 from core.permissions import can_user, rbac
@@ -1238,6 +1239,7 @@ def _2b_intake(current_user: dict, body: "GSTR2BUploadRequest"):
 
 
 @router.post("/gstr2b/upload")
+@audited("gstr2b_upload", "create")
 def upload_gstr2b(
     body: GSTR2BUploadRequest,
     current_user: dict = Depends(rbac("gst", "compute")),
@@ -1386,6 +1388,7 @@ def inspect_gstr2b(
 
 
 @router.post("/gstr2b/bulk")
+@audited("gstr2b_bulk_upload", "create")
 def bulk_gstr2b(
     body: GSTR2BBulkRequest,
     current_user: dict = Depends(rbac("gst", "compute")),
@@ -2136,6 +2139,7 @@ def itc_register_for_period(
 
 
 @router.post("/itc/register/reversal")
+@audited("itc_reversal", "create")
 def itc_register_reversal(
     body: ITCReversalIn,
     current_user: dict = Depends(rbac("gst", "compute")),
@@ -2167,6 +2171,7 @@ def itc_register_reversal(
 
 
 @router.post("/itc/register/reclaim")
+@audited("itc_reversal", "reclaim")
 def itc_register_reclaim(
     body: ITCReclaimIn,
     current_user: dict = Depends(rbac("gst", "compute")),

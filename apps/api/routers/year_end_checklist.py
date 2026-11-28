@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from models.common import api_response
 from core.permissions import rbac
+from services.audit_service import audited
 # M2 audit finding: list_checklist and update_checklist_item resolved their
 # engagement by firm_id alone (live mode, via _fetch_engagement_db, now
 # removed) or not at all (mock mode — _MOCK_CHECKLIST was keyed purely by
@@ -147,6 +148,7 @@ def list_checklist(
 
 
 @router.patch("/{engagement_id}/checklist/{item_id}")
+@audited("year_end_checklist_item", "update")
 def update_checklist_item(
     engagement_id: str,
     item_id: str,

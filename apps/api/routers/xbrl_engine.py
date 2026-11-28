@@ -25,6 +25,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, field_validator
 from core.permissions import rbac
+from services.audit_service import audited
 from core.authz import assert_client_access, can_access_client
 from models.common import api_response
 from services.timeline_service import timeline_service
@@ -62,6 +63,7 @@ class GenerateXMLRequest(BaseModel):
 
 
 @router.post("/packages")
+@audited("xbrl_package", "create")
 def create_package(
     req: CreatePackageRequest,
     current_user: dict = Depends(rbac("year_end", "write")),
@@ -122,6 +124,7 @@ def _assert_package_scope(current_user: dict, package_id: str) -> dict:
 
 
 @router.put("/packages/{package_id}/data")
+@audited("xbrl_package", "update")
 def update_package_data(
     package_id: str,
     req: UpdatePackageDataRequest,
@@ -144,6 +147,7 @@ def update_package_data(
 
 
 @router.post("/packages/{package_id}/validate")
+@audited("xbrl_package", "validate")
 def validate_package(
     package_id: str,
     current_user: dict = Depends(rbac("year_end", "write")),
@@ -181,6 +185,7 @@ def validate_package(
 
 
 @router.post("/packages/{package_id}/generate-xml")
+@audited("xbrl_package", "generate")
 def generate_xml(
     package_id: str,
     req: GenerateXMLRequest,
@@ -214,6 +219,7 @@ def generate_xml(
 
 
 @router.post("/packages/{package_id}/review")
+@audited("xbrl_package", "review")
 def review_package(
     package_id: str,
     current_user: dict = Depends(rbac("year_end", "approve")),

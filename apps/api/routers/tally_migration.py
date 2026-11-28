@@ -12,6 +12,7 @@ from typing import Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field
 from core.permissions import rbac
+from services.audit_service import audited
 from core.authz import assert_client_access, can_access_client, filter_by_client
 from models.common import api_response
 from services.timeline_service import timeline_service
@@ -69,6 +70,7 @@ class ExecuteImportRequest(BaseModel):
 
 
 @router.post("/jobs")
+@audited("tally_migration_job", "create")
 def create_job(
     req: CreateJobRequest,
     current_user: dict = Depends(rbac("accounting", "write")),
@@ -137,6 +139,7 @@ def get_job(
 
 
 @router.post("/jobs/{job_id}/parse")
+@audited("tally_migration_job", "parse")
 def parse_xml(
     job_id: str,
     req: ParseXMLRequest,
@@ -180,6 +183,7 @@ def preview_import(
 
 
 @router.post("/jobs/{job_id}/import")
+@audited("tally_migration_job", "execute", wrote=lambda d: isinstance(d, dict) and d.get("status") == "importing")
 def execute_import(
     job_id: str,
     req: ExecuteImportRequest,
@@ -292,6 +296,7 @@ _NOT_DISCARDABLE = ("completed", "importing")
 
 
 @router.delete("/jobs/{job_id}")
+@audited("tally_migration_job", "discard")
 def discard_job(
     job_id: str,
     current_user: dict = Depends(rbac("accounting", "write")),
@@ -329,6 +334,7 @@ def discard_job(
 
 
 @router.post("/jobs/{job_id}/rollback")
+@audited("tally_migration_job", "rollback")
 def rollback_import(
     job_id: str,
     current_user: dict = Depends(rbac("accounting", "approve")),

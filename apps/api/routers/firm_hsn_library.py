@@ -30,6 +30,7 @@ from core import db_provider
 from core.db_provider import privileged_for
 from core.list_window import split
 from core.permissions import rbac
+from services.audit_service import audited
 from domain.gst.goods_or_services import kind_word
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -143,6 +144,7 @@ def _library_window(rows: list[dict], limit: int):
 
 
 @router.post("/")
+@audited("hsn_library_code", "create")
 def add_code(
     data: FirmHsnLibraryIn,
     current_user: dict = Depends(rbac("accounting", "write")),
@@ -209,6 +211,7 @@ class FirmHsnLibraryBulkIn(BaseModel):
 
 
 @router.post("/bulk")
+@audited("hsn_library_code", "bulk_create")
 def bulk_add_codes(
     data: FirmHsnLibraryBulkIn,
     current_user: dict = Depends(rbac("accounting", "write")),
@@ -318,6 +321,7 @@ def bulk_add_codes(
 
 
 @router.patch("/{library_id}")
+@audited("hsn_library_code", "update")
 def update_code(
     library_id: str,
     data: FirmHsnLibraryUpdateIn,
@@ -357,6 +361,7 @@ def update_code(
 
 
 @router.delete("/{library_id}")
+@audited("hsn_library_code", "retire")
 def retire_code(
     library_id: str,
     current_user: dict = Depends(rbac("accounting", "write")),
@@ -501,6 +506,7 @@ def _blocked_message(used_in: list[str]) -> str:
 
 
 @router.delete("/{library_id}/purge")
+@audited("hsn_library_code", "delete")
 def purge_code(
     library_id: str,
     current_user: dict = Depends(rbac("accounting", "write")),
@@ -545,6 +551,7 @@ class FirmHsnLibraryBulkDeleteIn(BaseModel):
 
 
 @router.post("/bulk-delete")
+@audited("hsn_library_code", "bulk_delete")
 def bulk_purge_codes(
     data: FirmHsnLibraryBulkDeleteIn,
     current_user: dict = Depends(rbac("accounting", "write")),

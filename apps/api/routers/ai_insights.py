@@ -9,6 +9,7 @@ from domain.ai_insight_service import (
     acknowledge_insight,
     dismiss_insight,
 )
+from services.audit_service import audited
 
 router = APIRouter(prefix="/api/ai-insights", tags=["ai-insights"])
 
@@ -74,6 +75,7 @@ def generate_insights(client_id: str, current_user: dict = Depends(rbac("report"
 
 
 @router.patch("/{insight_id}/acknowledge")
+@audited("ai_insight", "acknowledge")
 def ack_insight(insight_id: str, current_user: dict = Depends(rbac("report", "write"))):
     firm_id = current_user.get("firm_id")
     if _assert_insight_scope(current_user, insight_id) is None:
@@ -85,6 +87,7 @@ def ack_insight(insight_id: str, current_user: dict = Depends(rbac("report", "wr
 
 
 @router.patch("/{insight_id}/dismiss")
+@audited("ai_insight", "dismiss")
 def dis_insight(insight_id: str, current_user: dict = Depends(rbac("report", "write"))):
     firm_id = current_user.get("firm_id")
     if _assert_insight_scope(current_user, insight_id) is None:

@@ -20,6 +20,7 @@ from models.inventory import (StockAdjustmentIn, NrvWritedownIn, NrvWritedownPre
                               StockCountOpenIn, StockCountSaveIn,
                               CostingPolicyIn, StockEffectRetryIn, StockEffectSettleIn)
 from core.permissions import rbac
+from services.audit_service import audited
 from core.authz import assert_client_access
 from core.db_paging import fetch_all_ordered
 from services.audit_service import log_event
@@ -846,6 +847,7 @@ def get_count_session(
 
 
 @router.patch("/count-sessions/{session_id}")
+@audited("stock_count_session", "update")
 def save_count_session(
     session_id: str,
     data: StockCountSaveIn,

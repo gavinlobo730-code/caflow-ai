@@ -22,6 +22,7 @@ from core.query_day import query_day
 from models.common import api_response
 from core.authz import assert_client_access, effective_client_ids, filter_by_client
 from core.permissions import rbac
+from services.audit_service import audited
 from services import recurring_purchase_bill_service as recurring
 from domain.recurrence import preview_occurrences
 
@@ -173,6 +174,7 @@ def list_recurring_bills(client_id: Optional[str] = Query(None),
 
 
 @router.post("")
+@audited("recurring_purchase_bill", "create")
 def create_recurring_bill(body: RecurringBillTemplateIn,
                           current_user: dict = Depends(rbac("accounting", "write"))):
     """Create a recurring bill template (drafts only; never auto-receives)."""
@@ -194,6 +196,7 @@ def get_recurring_bill(template_id: str = Path(...),
 
 
 @router.put("/{template_id}")
+@audited("recurring_purchase_bill", "update")
 def update_recurring_bill(template_id: str, body: RecurringBillTemplateUpdateIn,
                           current_user: dict = Depends(rbac("accounting", "write"))):
     _assert_template_scope(current_user, template_id)
@@ -205,6 +208,7 @@ def update_recurring_bill(template_id: str, body: RecurringBillTemplateUpdateIn,
 
 
 @router.post("/{template_id}/pause")
+@audited("recurring_purchase_bill", "pause")
 def pause_recurring_bill(template_id: str,
                          current_user: dict = Depends(rbac("accounting", "write"))):
     _assert_template_scope(current_user, template_id)
@@ -213,6 +217,7 @@ def pause_recurring_bill(template_id: str,
 
 
 @router.post("/{template_id}/resume")
+@audited("recurring_purchase_bill", "resume")
 def resume_recurring_bill(template_id: str,
                           current_user: dict = Depends(rbac("accounting", "write"))):
     _assert_template_scope(current_user, template_id)
@@ -221,6 +226,7 @@ def resume_recurring_bill(template_id: str,
 
 
 @router.post("/{template_id}/archive")
+@audited("recurring_purchase_bill", "archive")
 def archive_recurring_bill(template_id: str,
                            current_user: dict = Depends(rbac("accounting", "write"))):
     _assert_template_scope(current_user, template_id)

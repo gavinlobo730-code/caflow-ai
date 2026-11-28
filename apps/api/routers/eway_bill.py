@@ -23,6 +23,7 @@ from core.ist_clock import ist_date_of, ist_day_iso, ist_today, portal_day
 from core.query_day import query_day
 from models.common import api_response
 from services.timeline_service import timeline_service
+from services.audit_service import audited
 
 router = APIRouter(prefix="/api/eway-bill", tags=["eway_bill"])
 _logger = logging.getLogger("caflow.eway_bill.router")
@@ -125,6 +126,7 @@ class CancelEWBRequest(BaseModel):
 
 
 @router.post("/records")
+@audited("eway_bill_record", "create")
 def create_eway_bill(
     req: CreateEWayBillRequest,
     current_user: dict = Depends(rbac("gst", "compute")),
@@ -286,6 +288,7 @@ def expiring_eway_bills(
 
 
 @router.post("/records/{record_id}/generated")
+@audited("eway_bill_record", "generated")
 def record_ewb_generated(
     record_id: str,
     req: RecordEWBGeneratedRequest,
@@ -336,6 +339,7 @@ def record_ewb_generated(
 
 
 @router.post("/records/{record_id}/extend")
+@audited("eway_bill_record", "extend")
 def extend_ewb(
     record_id: str,
     req: ExtendEWBRequest,
@@ -372,6 +376,7 @@ def extend_ewb(
 
 
 @router.post("/records/{record_id}/cancel")
+@audited("eway_bill_record", "cancel")
 def cancel_ewb(
     record_id: str,
     req: CancelEWBRequest,

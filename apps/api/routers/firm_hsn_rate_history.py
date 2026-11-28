@@ -25,6 +25,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from models.common import api_response
 from models.firm_hsn_rate_history import FirmHsnRateHistoryIn
 from core.permissions import rbac
+from services.audit_service import audited
 from core.db_provider import privileged_for
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -109,6 +110,7 @@ def resolve(
 
 
 @router.post("/")
+@audited("hsn_rate_version", "create")
 def add_rate_version(
     data: FirmHsnRateHistoryIn,
     current_user: dict = Depends(rbac("accounting", "write")),
@@ -153,6 +155,7 @@ def add_rate_version(
 
 
 @router.delete("/{rate_history_id}")
+@audited("hsn_rate_version", "delete")
 def delete_rate_version(
     rate_history_id: str,
     current_user: dict = Depends(rbac("accounting", "write")),

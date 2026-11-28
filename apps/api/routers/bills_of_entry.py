@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from core.authz import assert_client_access
 from core.permissions import rbac
+from services.audit_service import audited
 from core.query_day import query_day
 from models.common import api_response
 from domain.gst import bill_of_entry as boe
@@ -214,6 +215,7 @@ def create_bill_of_entry(
 
 
 @router.patch("/{be_id}")
+@audited("bill_of_entry", "update")
 def update_bill_of_entry(
     be_id: str,
     data: BillOfEntryUpdateIn,
