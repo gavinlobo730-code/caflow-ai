@@ -68,6 +68,13 @@ applied) AND no failure is still remembered from an earlier run (see run()'s
 which still exits non-zero but runs the whole set first so you get the full failure
 list). A remembered failure that BASELINE_FAILURES names is the one exception: those
 ten are tolerated, explicitly, and the set may only shrink.
+
+A FILE THAT CHANGED AFTER IT APPLIED IS NOT RUN AGAIN (POST-A-584)
+    A file recorded in schema_migrations at ANOTHER checksum was edited after it applied. It used to be run again, the same
+    way a fixed failure is retried, and a second run of old SQL over a database every later migration has changed puts back
+    what the file defined and undoes each later change to the same object (run()'s docstring has what that did to production
+    on 27-11-2026). It is now left alone, named in `changed_after_apply`, and the run is red until the file is put back or a
+    person passes `--reapply-changed <file>` for that one file. A file that FAILED is unchanged: a new checksum runs again.
 """
 from __future__ import annotations
 
@@ -327,6 +334,9 @@ class RunReport:
     # Files that failed on an EARLIER run at this same checksum and were not
     # attempted again. See run()'s "WHY A FAILURE IS REMEMBERED".
     skipped_failed_before: list[str] = field(default_factory=list)
+    # Files recorded as APPLIED at another checksum: edited after they applied. Not run again (see run()'s
+    # "A FILE THAT CHANGED AFTER IT APPLIED IS NOT RUN AGAIN"), and the run is red while one is here.
+    changed_after_apply: list[str] = field(default_factory=list)
     failed: list[dict] = field(default_factory=list)
     duplicate_numbers: dict[int, list[str]] = field(default_factory=dict)
     # Migrations this run APPLIED without a wrapping transaction, and the reason.
@@ -352,7 +362,9 @@ class RunReport:
         # retried blindly" is right, and it used to mean "not reported" as well:
         # after one red run the next push skipped the broken file, applied what
         # it could and exited 0, with the change still unapplied in production.
-        return not self.failed and not self.unresolved_failures
+        # And so is a file somebody edited after it applied: it was not run (rightly), and what is on disk is
+        # no longer what the database holds, which a green pipeline would be claiming it is.
+        return not self.failed and not self.unresolved_failures and not self.changed_after_apply
 
 
 def discover_migrations(migrations_dir: Path = MIGRATIONS_DIR) -> list[Migration]:
@@ -480,6 +492,7 @@ def run(
     dry_run: bool = False,
     retry_failed: bool = False,
     migrations_dir: Path = MIGRATIONS_DIR,
+    reapply_changed: frozenset[str] = frozenset(),
 ) -> RunReport:
     """
     WHY A FAILURE IS REMEMBERED
@@ -536,6 +549,28 @@ def run(
     docstring's ATOMICITY), which is what makes "remembered, not retried" safe on
     the live database: the broken file left nothing behind to be re-applied. The
     legacy behaviour survives for BASELINE_FAILURES alone, by design.
+
+    A FILE THAT CHANGED AFTER IT APPLIED IS NOT RUN AGAIN (POST-A-584)
+
+    "A new checksum runs again" is right for a file that FAILED and was wrong for a
+    file that APPLIED, and the runner did not tell them apart: anything whose
+    checksum was not the recorded one was fed to psql. On 27-11-2026 a rename sweep
+    rewrote test names in the COMMENTS of eight migrations production had applied
+    weeks or months before. The next push ran six of them a second time. Migration
+    274 re-created post_journal_atomic with its September body, so the wrapper four
+    later migrations had built (who is calling, the closure check, the audit actor)
+    was gone and 274's own GRANT handed EXECUTE back to the signed-in role; 440 put
+    back a function and four policies two later migrations had rewritten. Nothing
+    failed, so nothing was reported; migration 786 is the repair.
+
+    So a file recorded in schema_migrations at another checksum is NOT run. It is
+    named in `changed_after_apply`, on stderr and (under Actions) in an error
+    annotation, and `ok` is false while one is there: the remedy is almost always to
+    put the file back, and a green run would say the disk and the database agree.
+    The run CONTINUES past it, as it does past a remembered failure. To run one
+    again on purpose, name it: `reapply_changed` (`--reapply-changed <file>`), one
+    file at a time, never a blanket switch. tests/test_an_applied_migration_is_
+    never_edited.py is the first lock (the edit does not merge); this is the second.
     """
     migrations = discover_migrations(migrations_dir)
     report = RunReport(duplicate_numbers=duplicate_numbers(migrations))
@@ -555,6 +590,15 @@ def run(
         checksum = mig.checksum()
         if done.get(mig.name) == checksum:
             report.skipped_already.append(mig.name)
+            continue
+        if mig.name in done and mig.name not in reapply_changed:
+            # Applied once, at other bytes. Asked BEFORE the remembered-failure test: a file that applied, was edited
+            # and then failed its second run (442 and 443 on 27-11-2026) is this case, not a failure to retry.
+            report.changed_after_apply.append(mig.name)
+            print(f"NOT running {mig.name} again — it is recorded as applied at another checksum, so it was "
+                  "edited after it applied. An applied migration is never edited: put the file back. If a second "
+                  f"run is really what you mean, pass --reapply-changed {mig.name}. Until then this run FAILS",
+                  file=sys.stderr)
             continue
         if previously_failed.get(mig.name) == checksum:
             report.skipped_failed_before.append(mig.name)
@@ -667,6 +711,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--retry-failed", action="store_true",
                     help="Attempt migrations that failed on an earlier run at the same "
                          "checksum. Without this they are skipped — see run()'s docstring.")
+    ap.add_argument("--reapply-changed", action="append", default=[], metavar="FILE",
+                    help="Run this ONE migration again although it is recorded as applied at another "
+                         "checksum. Without it an applied file that changed is not run and the run fails "
+                         "— see run()'s docstring. Repeat the flag for more than one file.")
     args = ap.parse_args(argv)
 
     report = run(
@@ -677,6 +725,7 @@ def main(argv: list[str] | None = None) -> int:
         dry_run=args.dry_run,
         retry_failed=args.retry_failed,
         migrations_dir=Path(args.migrations_dir) if args.migrations_dir else MIGRATIONS_DIR,
+        reapply_changed=frozenset(args.reapply_changed),
     )
 
     if args.json:
@@ -686,6 +735,7 @@ def main(argv: list[str] | None = None) -> int:
             "skipped_seed": report.skipped_seed,
             "skipped_failed_before": report.skipped_failed_before,
             "unresolved_failures": report.unresolved_failures,
+            "changed_after_apply": report.changed_after_apply,
             "failed": report.failed,
             "duplicate_numbers": report.duplicate_numbers,
             "not_atomic": report.not_atomic,
@@ -703,6 +753,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  FAIL {f['file']}: {f['error']}")
         for name in report.unresolved_failures:
             print(f"  FAILED EARLIER, STILL UNAPPLIED {name}")
+        for name in report.changed_after_apply:
+            print(f"  EDITED AFTER IT APPLIED, NOT RUN AGAIN {name}")
         for name, said in report.messages.items():
             for line in said:
                 print(f"  NOTE {name}: {line}")
@@ -712,7 +764,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def annotate(report: RunReport, stream=None) -> None:
-    """One GitHub error annotation per failure and per remembered failure, and one notice per message a
+    """One GitHub error annotation per failure, per remembered failure and per file edited after it applied, and one notice per message a
     migration said about itself (`RAISE WARNING 'migration NNN: ...'`).
 
     The job log of a run that exits 1 says so in a red line at the bottom; an
@@ -737,6 +789,12 @@ def annotate(report: RunReport, stream=None) -> None:
                   f"{name} failed on an earlier run at this checksum and has not been retried. "
                   "Fix it (a new checksum runs again) or re-run with --retry-failed; "
                   "see docs/deploy-migrations.md"), file=stream)
+    for name in report.changed_after_apply:
+        print("::error title=An applied migration was edited and was NOT run again::"
+              + _annotation_text(
+                  f"{name} is recorded as applied at another checksum. Put the file back; "
+                  f"only if a second run is meant, run with --reapply-changed {name}. "
+                  "See docs/deploy-migrations.md"), file=stream)
 
 
 def _annotation_text(text: str) -> str:
