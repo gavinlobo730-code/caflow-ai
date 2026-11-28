@@ -115,8 +115,8 @@ def test_reconcile_foreign_firm_cannot_touch_session(monkeypatch):
                              opening_balance_paise=0, closing_balance_paise=300_000)["id"]
     # Session fetch is firm-scoped (.eq("firm_id", ...).single()) ⇒ foreign firm
     # matches no row and cannot reconcile or complete.
-    with pytest.raises(Exception):
+    with pytest.raises(HTTPException):
         brs.reconcile(db, "FIRM-B", rid, ["T1"])
-    with pytest.raises(Exception):
+    with pytest.raises(HTTPException):
         brs.complete(db, "FIRM-B", rid)
     assert not any(t.get("reconciled") for t in db.rows("bank_transactions"))   # untouched

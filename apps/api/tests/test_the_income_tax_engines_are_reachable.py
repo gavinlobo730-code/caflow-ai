@@ -25,6 +25,7 @@ endpoints did not exist.
 import pytest
 
 import routers.income_tax as it
+from pydantic import ValidationError
 
 CALLER = {"firm_id": "F1", "id": "u1", "auth_user_id": "a1",
           "email": "ca@f.test", "role": "Partner"}
@@ -121,7 +122,7 @@ def test_assessed_tax_is_its_own_field_and_defaults_to_the_tax_on_total_income()
 
 
 def test_a_date_that_is_not_a_date_is_refused():
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         it.ComputeSection234ABRequest(fy="2025-26", tax_on_total_income_paise=0,
                                       return_furnished_on="15-11-2026")
 
@@ -231,7 +232,7 @@ def test_the_endpoint_returns_placements_and_never_a_file():
 
 
 def test_an_invented_form_is_refused():
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         it.ITRFieldPlacementsRequest(form="ITR-9")
 
 

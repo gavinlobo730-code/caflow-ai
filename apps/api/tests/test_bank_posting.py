@@ -460,7 +460,7 @@ def test_partial_bill_settlement():
 def test_duplicate_post_rejected():
     db = _db_with_accounts(); _seed_txn(db, credit=100000, category="Customer Payment")
     bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank", actor_id="u1")
-    with pytest.raises(Exception):
+    with pytest.raises(HTTPException):
         bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank", actor_id="u1")
 
 
@@ -486,19 +486,19 @@ def test_fy_locked_blocks_post(monkeypatch):
 
 def test_missing_account_mapping_rejected():
     db = _db_with_accounts(); _seed_txn(db, debit=50000, category="Expense")  # needs account_id
-    with pytest.raises(Exception):
+    with pytest.raises(HTTPException):
         bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank", actor_id="u1")
 
 
 def test_invalid_category_rejected():
     db = _db_with_accounts(); _seed_txn(db, credit=100000, category="Nonsense")
-    with pytest.raises(Exception):
+    with pytest.raises(HTTPException):
         bank_posting_service.post(db, FIRM, "t1", bank_account_id="acc-bank", actor_id="u1")
 
 
 def test_deleted_transaction_404():
     db = _db_with_accounts()
-    with pytest.raises(Exception):
+    with pytest.raises(HTTPException):
         bank_posting_service.post(db, FIRM, "missing", bank_account_id="acc-bank", actor_id="u1")
 
 

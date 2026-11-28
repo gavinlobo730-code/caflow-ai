@@ -1,0 +1,76 @@
+# The upward imports the layers contract (tests/test_the_layers_import_downward_only.py) lets stand, and how many import statements each is.
+# Read that test before touching this file. One line per (contract, importer, imported module); the figure is an EXACT equality in both
+# directions, so a line comes off in the commit that moves the function down, and a new upward import fails until it is written here.
+#
+#   contract | importer | imported module | statements
+#
+# Sorted.
+a router must not import another router | routers.clients | routers.engagement_letters | 1
+a router must not import another router | routers.credit_notes | routers.sales_invoices | 1
+a router must not import another router | routers.einvoice | routers.sales_invoices | 2
+a router must not import another router | routers.engagement_letters | routers.lifecycle | 2
+a router must not import another router | routers.engagement_sign_public | routers.engagement_letters | 1
+a router must not import another router | routers.eway_bill | routers.sales_invoices | 1
+a router must not import another router | routers.firm_hsn_library | routers.credit_notes | 1
+a router must not import another router | routers.firm_hsn_library | routers.debit_notes | 1
+a router must not import another router | routers.firm_hsn_library | routers.purchase_bills | 1
+a router must not import another router | routers.firm_hsn_library | routers.purchase_credit_notes | 1
+a router must not import another router | routers.firm_hsn_library | routers.sales_debit_notes | 1
+a router must not import another router | routers.firm_hsn_library | routers.sales_invoices | 1
+a router must not import another router | routers.firm_hsn_library | routers.service_catalogue | 1
+a router must not import another router | routers.firm_hsn_rate_history | routers.firm_hsn_library | 1
+a router must not import another router | routers.lifecycle | routers.engagement_letters | 2
+a router must not import another router | routers.portal_employee | routers.payroll | 3
+a router must not import another router | routers.purchase_bills | routers.vendors | 3
+a router must not import another router | routers.report_exports | routers.accounting | 1
+a router must not import another router | routers.scheduler_status | routers.scheduler_trigger | 1
+a router must not import another router | routers.search | routers.engagement_letters | 1
+a router must not import another router | routers.search | routers.lifecycle | 1
+a router must not import another router | routers.service_catalogue | routers.credit_notes | 1
+a router must not import another router | routers.service_catalogue | routers.debit_notes | 1
+a router must not import another router | routers.service_catalogue | routers.firm_hsn_library | 2
+a router must not import another router | routers.service_catalogue | routers.purchase_bills | 1
+a router must not import another router | routers.service_catalogue | routers.purchase_credit_notes | 1
+a router must not import another router | routers.service_catalogue | routers.sales_debit_notes | 1
+a router must not import another router | routers.service_catalogue | routers.sales_invoices | 1
+a router must not import another router | routers.tds_workspace | routers.vendors | 1
+a router must not import another router | routers.year_end_adjustments | routers.year_end | 1
+a router must not import another router | routers.year_end_checklist | routers.year_end | 1
+a router must not import another router | routers.year_end_exports | routers.year_end | 1
+a router must not import another router | routers.year_end_exports | routers.year_end_adjustments | 1
+a router must not import another router | routers.year_end_exports | routers.year_end_notes | 2
+a router must not import another router | routers.year_end_notes | routers.year_end | 1
+a router must not import another router | routers.year_end_reviews | routers.year_end | 3
+a router must not import another router | routers.year_end_statements | routers.year_end | 1
+domain must not import services | domain.ai_copilot_service | services.collections_service | 1
+domain must not import services | domain.compliance_record_service | services.audit_service | 3
+domain must not import services | domain.compliance_record_service | services.compliance_obligation_service | 2
+domain must not import services | domain.compliance_record_service | services.gst_filing_record_service | 2
+domain must not import services | domain.compliance_record_service | services.timeline_service | 3
+domain must not import services | domain.currency.document_currency | services.phase2_journal_service | 1
+domain must not import services | domain.currency.fx_revaluation_service | services.period_validation_service | 1
+domain must not import services | domain.currency.fx_revaluation_service | services.phase2_journal_service | 1
+domain must not import services | domain.dpdp.retention | services.compliance_engine | 1
+domain must not import services | domain.gst.correction_window | services.compliance_engine | 1
+domain must not import services | domain.gst.credit_note_window | services.compliance_engine | 1
+domain must not import services | domain.gst.gstr3b_computer | services.compliance_engine | 1
+domain must not import services | domain.income_tax.assessee | services.compliance_obligation_service | 1
+domain must not import services | domain.income_tax.form26as_service | services.timeline_service | 1
+domain must not import services | domain.income_tax.regime_election | services.compliance_engine | 1
+domain must not import services | domain.inventory_service | services.itc_register_service | 1
+domain must not import services | domain.inventory_service | services.phase2_journal_service | 13
+domain must not import services | domain.reporting.fixed_asset_movement | services.phase2_journal_service | 1
+domain must not import services | domain.reporting.service | services.ledger_span_service | 1
+domain must not import services | domain.task_service | services.task_service | 1
+services must not import routers | services.billing_service | routers.sales_invoices | 2
+services must not import routers | services.book_to_tax_service | routers.accounting | 1
+services must not import routers | services.collections_service | routers.customers | 1
+services must not import routers | services.collections_service | routers.receipts | 1
+services must not import routers | services.collections_service | routers.sales_invoices | 2
+services must not import routers | services.compliance_obligation_service | routers.vendors | 1
+services must not import routers | services.filing_season_service | routers.income_tax | 1
+services must not import routers | services.form_3cd_service | routers.accounting | 1
+services must not import routers | services.late_interest_service | routers.sales_invoices | 1
+services must not import routers | services.recurring_invoice_service | routers.sales_invoices | 3
+services must not import routers | services.recurring_purchase_bill_service | routers.purchase_bills | 3
+services must not import routers | services.time_billing_service | routers.sales_invoices | 1

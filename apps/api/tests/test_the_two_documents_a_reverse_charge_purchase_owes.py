@@ -14,6 +14,7 @@ import re
 import pytest
 
 from domain.gst import rcm_documents as rd
+from pydantic import ValidationError
 
 API = pathlib.Path(__file__).resolve().parent.parent
 MIGRATION = API / "migrations" / "388_the_two_documents_a_reverse_charge_purchase_owes.sql"
@@ -521,7 +522,7 @@ def test_the_third_state_cannot_be_STORED_as_a_value(model):
     has to test twice — and the column's CHECK refuses it anyway."""
     cls = _vendor_model(model)
     kw = {"client_id": "c1", "name": "Ramesh Transport"} if model == "VendorIn" else {}
-    with pytest.raises(Exception) as e:
+    with pytest.raises(ValidationError) as e:
         cls(**kw, gst_registration_status=rd.UNRECORDED)
     assert "leave it unset" in str(e.value)
 
@@ -530,7 +531,7 @@ def test_the_third_state_cannot_be_STORED_as_a_value(model):
 def test_a_value_outside_the_engines_vocabulary_is_refused(model):
     cls = _vendor_model(model)
     kw = {"client_id": "c1", "name": "Ramesh Transport"} if model == "VendorIn" else {}
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         cls(**kw, gst_registration_status="yes")
 
 

@@ -49,6 +49,7 @@ import routers.recurring_purchase_bills as rpb
 import routers.vendors as ve
 from services import recurring_purchase_bill_service as svc
 from tests.e2e_harness import FakeDB, wire_e2e, seed_standard_coa
+from pydantic import ValidationError
 
 FIRM = "FIRM-PUR26"
 CALLER = {"firm_id": FIRM, "id": "u1", "auth_user_id": "u1",
@@ -111,7 +112,7 @@ def test_a_template_starts_due_on_its_own_start_date(monkeypatch):
 
 def test_a_template_needs_at_least_one_line(monkeypatch):
     db, vend = _setup(monkeypatch)
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         rpb.create_recurring_bill(rpb.RecurringBillTemplateIn(
             client_id="CLI", vendor_id=vend, title="x", frequency="monthly",
             start_date="2026-04-01", lines=[]), CALLER)

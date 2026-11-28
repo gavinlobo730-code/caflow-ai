@@ -26,6 +26,7 @@ import sys
 from unittest.mock import patch
 
 import pytest
+from pydantic import ValidationError
 
 _API_ROOT = os.path.join(os.path.dirname(__file__), "..")
 if _API_ROOT not in sys.path:
@@ -272,7 +273,7 @@ def test_a_negative_cess_rate_is_refused_at_the_model(model, field):
     """Both models and both limbs. Parametrised because the two classes carry
     their own copy of the validator — a negative control mutating only
     PurchaseBillLineIn's passed while the sales-only test watched."""
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         model(service_catalogue_id="S", description="x", rate_paise=100,
               **{field: -1})
 

@@ -190,7 +190,7 @@ def test_a_section_that_is_not_a_deduction_cannot_be_put_on_a_vendor(fy):
             "It is not a deduction — it is collected by a seller from a buyer "
             "and reported on 27EQ.")
         assert "27EQ" in message, "the CA must be told where TCS actually goes"
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             VendorIn(client_id="c", name="V", tds_applicable=True,
                      tds_section=section)
 

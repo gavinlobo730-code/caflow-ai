@@ -14,6 +14,7 @@ from domain.banking import (
 )
 import services.banking_service as bsvc
 from services.banking_service import banking_service
+from fastapi import HTTPException
 
 
 # ── In-memory fake Supabase (only what the import core / reads use) ───────────
@@ -506,7 +507,7 @@ def test_duplicate_file_second_upload_adds_nothing():
 
 def test_empty_rows_rejected():
     db = FakeDB()
-    with pytest.raises(Exception):
+    with pytest.raises(HTTPException):
         banking_service.import_normalized(db, FIRM, CLIENT, "HDFC", "123", [])
 
 
@@ -521,7 +522,7 @@ def test_import_rejects_bank_account_from_another_client():
     db.store.setdefault("bank_accounts", []).append(
         {"id": "ba-1", "firm_id": FIRM, "client_id": "client-OTHER"})
     csv = "Date,Description,Debit,Credit,Balance\n01/04/2026,A,500.00,,500.00\n"
-    with pytest.raises(Exception):
+    with pytest.raises(HTTPException):
         banking_service.import_normalized(
             db, FIRM, CLIENT, "HDFC", "123", _txns_from_csv(csv), bank_account_id="ba-1")
     assert db.store.get("bank_statements", []) == []
@@ -533,7 +534,7 @@ def test_import_rejects_bank_account_from_another_firm():
     db.store.setdefault("bank_accounts", []).append(
         {"id": "ba-1", "firm_id": "firm-OTHER", "client_id": CLIENT})
     csv = "Date,Description,Debit,Credit,Balance\n01/04/2026,A,500.00,,500.00\n"
-    with pytest.raises(Exception):
+    with pytest.raises(HTTPException):
         banking_service.import_normalized(
             db, FIRM, CLIENT, "HDFC", "123", _txns_from_csv(csv), bank_account_id="ba-1")
     assert db.store.get("bank_statements", []) == []
@@ -542,7 +543,7 @@ def test_import_rejects_bank_account_from_another_firm():
 def test_import_rejects_nonexistent_bank_account():
     db = FakeDB()
     csv = "Date,Description,Debit,Credit,Balance\n01/04/2026,A,500.00,,500.00\n"
-    with pytest.raises(Exception):
+    with pytest.raises(HTTPException):
         banking_service.import_normalized(
             db, FIRM, CLIENT, "HDFC", "123", _txns_from_csv(csv), bank_account_id="does-not-exist")
 
@@ -572,7 +573,7 @@ def test_ignore_rejects_when_draft_journal_pending():
         "id": "t1", "firm_id": FIRM, "client_id": CLIENT, "match_status": "matched",
         "posted_journal_id": "je-draft-1",
     })
-    with pytest.raises(Exception):
+    with pytest.raises(HTTPException):
         banking_service.ignore(db, FIRM, "t1")
     assert db.store["bank_transactions"][0]["match_status"] == "matched"
 

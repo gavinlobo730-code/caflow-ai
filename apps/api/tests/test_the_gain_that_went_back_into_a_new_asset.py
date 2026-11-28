@@ -34,6 +34,7 @@ import pytest
 import routers.income_tax as it
 import services.capital_gain_exemption_service as cgx
 from domain.income_tax import reinvestment_exemption as rex
+from pydantic import ValidationError
 
 _API = Path(__file__).resolve().parent.parent
 _MIG = _API / "migrations"
@@ -673,13 +674,13 @@ def test_the_sections_endpoint_serves_the_engines_own_vocabulary():
 
 @pytest.mark.parametrize("bad", ["54EE", "80C", "", "54f"])
 def test_an_unknown_section_is_refused_at_the_model(bad):
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         it.ReinvestmentIn(section=bad, new_asset_description="x")
 
 
 @pytest.mark.parametrize("bad", ["gift", "inheritance"])
 def test_an_unknown_acquisition_kind_is_refused_at_the_model(bad):
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         it.ReinvestmentIn(section="54", new_asset_description="x", acquisition_kind=bad)
 
 
@@ -690,7 +691,7 @@ def test_a_blank_acquisition_kind_is_not_recorded_as_one():
 
 @pytest.mark.parametrize("bad", ["house", "shares", "RESIDENTIAL_HOUSE"])
 def test_an_unknown_asset_nature_is_refused_at_the_register_model(bad):
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         it.CreateCapitalGainsRequest(
             client_id="C1", asset_description="x", asset_type="property",
             purchase_date=date(2020, 1, 1), sale_date=TRANSFER,

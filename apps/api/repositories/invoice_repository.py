@@ -104,9 +104,6 @@ class InvoiceRepository(BaseRepository[dict]):
                .eq("firm_id", firm_id).eq("client_id", client_id).eq("is_deleted", False).execute())
         return res.count if res.count is not None else len(res.data or [])
 
-    def list_for_engagement(self, engagement_id: str) -> list[dict]:
-        return self.find_all(engagement_id=engagement_id)
-
     def find_by_id_or_raise(self, id: str) -> dict:
         invoice = self.find_by_id(id)
         if not invoice:

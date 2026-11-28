@@ -62,6 +62,7 @@ from domain.income_tax.capital_gains_engine import (
     long_term_threshold_months,
     section_55_2_ac_cost,
 )
+from pydantic import ValidationError
 
 _API = Path(__file__).resolve().parents[1]
 _MIGRATIONS = _API / "migrations"
@@ -466,7 +467,7 @@ def test_the_create_path_persists_both_facts_and_neither_is_defaulted():
 
 
 def test_a_negative_fair_market_value_is_refused_at_the_model():
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         it.ComputeCapitalGainsRequest(
             asset_type="equity_shares", purchase_date=date(2012, 6, 1),
             sale_date=date(2025, 6, 1), purchase_cost_paise=1 * L,

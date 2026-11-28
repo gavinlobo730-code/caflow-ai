@@ -17,6 +17,7 @@ from domain.banking.register import (
     RegisterLine, build_register, first_divergence, summarise, sort_key,
     derive_cleared, CLEARED_NONE, CLEARED_PENDING, CLEARED_RECONCILED,
 )
+from dataclasses import FrozenInstanceError
 
 
 def _t(id_, d, *, debit=0, credit=0, balance=None, created="2026-01-01T00:00:00Z", **kw):
@@ -288,7 +289,7 @@ def test_a_pre_opening_row_never_raises_a_divergence():
 def test_a_register_line_is_immutable():
     line = build_register([_t("a", "2026-04-01", credit=100)])[0]
     assert isinstance(line, RegisterLine)
-    with pytest.raises(Exception):
+    with pytest.raises(FrozenInstanceError):
         line.balance_paise = 0  # type: ignore[misc]
 
 

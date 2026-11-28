@@ -260,7 +260,7 @@ def test_create_entity_to_entity_relationship_rejects_unowned_entities(monkeypat
     db.seed("entities", {"id": "e-foreign", "firm_id": "F2"})
     body = EntityToEntityRelIn(from_entity_id="e-owned", to_entity_id="e-foreign",
                                relationship_type="subsidiary")
-    with pytest.raises(Exception):
+    with pytest.raises(HTTPException):
         relationships_router.create_entity_to_entity_relationship(body, PARTNER_F1)
     assert db.rows("entity_to_entity_relationships") == []
 
