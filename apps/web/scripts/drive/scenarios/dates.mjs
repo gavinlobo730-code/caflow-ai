@@ -71,7 +71,7 @@ async function openJournal(env) {
   await pick(page, page.locator("#je-account-l1"), "Sales");
 }
 
-async function openInvoice(env) {
+export async function openInvoice(env) {
   const { page, stub } = env;
   stub.route({ method: "GET", re: /next-number/, reply: () => ok({ suggested_number: "INV-0001", series_head: "INV-" }) });
   stub.route({ method: "POST", re: /sales-invoices\/$/, reply: () => ok({ id: "inv-1", invoice_no: "INV-0001" }) });
@@ -342,7 +342,7 @@ async function openDisposal(env) {
 }
 
 /** The Monthly Retainer Tracker with the "Set retainer" form open, the fee and the service chosen, so only the date is left. */
-async function openRetainer(env) {
+export async function openRetainer(env) {
   const { page, stub } = env;
   stub.route({ method: "GET", re: /billing\/schedules/, reply: () => ok([]) });
   stub.route({ method: "GET", re: /billing\/service-options$/, reply: () => ok({
@@ -357,7 +357,7 @@ async function openRetainer(env) {
 }
 
 /** The client's payroll Release tab with a finalised run and the "Record payment" prompt open on a linked bank account. */
-async function openDisbursement(env) {
+export async function openDisbursement(env) {
   const { page, stub } = env;
   stub.route({ method: "GET", re: /payroll\/runs\?/, reply: () => ok([{ ...PAYROLL_RUN, client_id: CLIENT_ID }]) });
   stub.route({ method: "GET", re: /banking\/accounts/, reply: () => ok([
@@ -1179,7 +1179,7 @@ async function openRecordLowerDeductionCertificate(env) {
 }
 
 /** Accounting > Recurring journals with "New template" open on a client, a name, two different accounts and an amount typed, so only the dates are left. */
-async function openRecurringJournalTemplate(env) {
+export async function openRecurringJournalTemplate(env) {
   const { page, stub } = env;
   stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { accounting: ["read", "write", "approve"] } }) });
   stub.route({ method: "GET", re: /api\/recurring-journals(\?|$)/, reply: () => ok([]) });
@@ -1361,7 +1361,7 @@ function openClientGstFiling(tab, { second = false } = {}) {
 }
 
 /** The client's GSTR-3B tab with "Compute from Books" open on a period: the optional "Date filed" box (it adds the section 50 interest). */
-async function openClientGstr3bCompute(env) {
+export async function openClientGstr3bCompute(env) {
   const { page, stub } = env;
   stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { gst: ["read", "approve", "compute"] } }) });
   stub.route({ method: "GET", re: /api\/gst-workspace\/returns\?/, reply: () => ok({ gstr1: [], gstr3b: [] }) });
@@ -1460,7 +1460,7 @@ const RECURRING_JOURNAL = {
 };
 
 /** Accounting > Recurring journals with one template that stops on 31/10/2027, "Edit" open on it: the stop date is the box to clear. */
-async function openEditRecurringJournal(env) {
+export async function openEditRecurringJournal(env) {
   const { page, stub } = env;
   stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { accounting: ["read", "write", "approve"] } }) });
   stub.route({ method: "GET", re: /api\/recurring-journals(\?|$)/, reply: () => ok([RECURRING_JOURNAL]) });
@@ -1474,7 +1474,7 @@ async function openEditRecurringJournal(env) {
   await page.locator("#rj-end").waitFor();
 }
 
-const RECURRING_BILL = {
+export const RECURRING_BILL = {
   id: "rb-1", client_id: CLIENT_ID, vendor_id: "ven-1", title: "Office rent", description: null, frequency: "monthly",
   start_date: "2026-11-01", end_date: "2027-10-31", next_run_date: "2026-11-01", notes: null, is_inter_state: false, is_reverse_charge: false, status: "active",
   lines: [{ id: "rbl-1", service_catalogue_id: ITEM.id, description: "Consulting", hsn_sac: null, unit: null, quantity: 1, rate_paise: 5000000,
@@ -1482,7 +1482,7 @@ const RECURRING_BILL = {
 };
 
 /** Purchases > Recurring bills with one template that stops on 31/10/2027, "Edit" open on it. */
-async function openEditRecurringBill(env) {
+export async function openEditRecurringBill(env) {
   const { page, stub } = env;
   stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { accounting: ["read", "write", "approve"] } }) });
   stub.route({ method: "GET", re: /api\/recurring-purchase-bills\?/, reply: () => ok([RECURRING_BILL]) });
@@ -1494,7 +1494,7 @@ async function openEditRecurringBill(env) {
 }
 
 /** Purchases > Recurring bills with "New Template" open on a vendor, a name and one product line, so only the dates are left. */
-async function openRecurringBillTemplate(env) {
+export async function openRecurringBillTemplate(env) {
   const { page, stub } = env;
   stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { accounting: ["read", "write", "approve"] } }) });
   stub.route({ method: "GET", re: /api\/recurring-purchase-bills\?/, reply: () => ok([]) });
@@ -1508,7 +1508,7 @@ async function openRecurringBillTemplate(env) {
   await page.getByLabel("Rate (₹)", { exact: true }).fill("50000");
 }
 
-const RECURRING_INVOICE = {
+export const RECURRING_INVOICE = {
   id: "ri-1", client_id: CLIENT_ID, customer_id: CUSTOMER.id, title: "Monthly bookkeeping", description: null, frequency: "monthly",
   start_date: "2026-11-01", end_date: "2027-10-31", next_run_date: "2026-11-01", notes: null, is_inter_state: false, status: "active",
   supply_type: "taxable", invoice_type: "Regular", is_reverse_charge: false,
@@ -1516,7 +1516,7 @@ const RECURRING_INVOICE = {
 };
 
 /** Sales > Recurring with "New Template" open on a customer, a title and one product line, so only the dates are left. */
-async function openRecurringInvoiceTemplate(env) {
+export async function openRecurringInvoiceTemplate(env) {
   const { page, stub } = env;
   stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { accounting: ["read", "write", "approve"], sales: ["read", "write"] } }) });
   stub.route({ method: "GET", re: /api\/recurring-invoices\?/, reply: () => ok([]) });
@@ -1531,7 +1531,7 @@ async function openRecurringInvoiceTemplate(env) {
 }
 
 /** Sales > Recurring with one template that stops on 31/10/2027, "Edit" open on it: the stop date is the box to clear. */
-async function openEditRecurringInvoice(env) {
+export async function openEditRecurringInvoice(env) {
   const { page, stub } = env;
   stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { accounting: ["read", "write", "approve"], sales: ["read", "write"] } }) });
   stub.route({ method: "GET", re: /api\/recurring-invoices\?/, reply: () => ok([RECURRING_INVOICE]) });
@@ -1559,7 +1559,7 @@ async function openTrialBalanceImport(env) {
 }
 
 /** Purchases > Payments with "Record Payment" open on a vendor and an amount, so only the date is left. */
-async function openVendorPayment(env) {
+export async function openVendorPayment(env) {
   const { page, stub } = env;
   stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { accounting: ["read", "write", "approve"] } }) });
   stub.route({ method: "POST", re: /api\/purchase-payments\/?$/, reply: () => ok({ id: "pp-1" }) });
@@ -1636,7 +1636,7 @@ async function openCostFormula(env) {
 }
 
 /** Payroll > Inputs with one salary structure and one employee, "Apply to employees" open with the employee ticked and a gross typed; only the date is left. */
-async function openApplyStructure(env) {
+export async function openApplyStructure(env) {
   const { page, stub } = env;
   stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { payroll: ["read", "write", "approve", "finalize"] } }) });
   stub.route({ method: "GET", re: /api\/payroll\/employees\?/, reply: () => ok([{
@@ -1872,7 +1872,7 @@ async function openNewTask(env) {
   await pick(page, page.locator('form button[aria-label="Client"]').first(), CLIENT_ROW.client_name);
   await pick(page, page.locator('form button[aria-label="Task type"]').first(), "Collect Documents");
 }
-async function openTaskFromTemplate(env) {
+export async function openTaskFromTemplate(env) {
   const { page, stub } = env;
   stub.route({ method: "GET", re: /api\/task-templates$/, reply: () => ok({ templates: [{ id: "tt-1", name: "Monthly GST return", description: "GSTR-1 and GSTR-3B", default_priority: "medium", checklist: [] }], total: 1 }) });
   stub.route({ method: "POST", re: /api\/task-templates\/tt-1\/instantiate$/, reply: () => ok({ task: TASK_ROW }) });

@@ -171,3 +171,33 @@ export function giveFocusBack(opener: HTMLElement | null, doc: Document | null =
   const landing = stillOpen.length > 0 ? stillOpen[stillOpen.length - 1] : doc.getElementById(WHERE_FOCUS_LANDS_WHEN_THE_OPENER_IS_GONE);
   landing?.focus?.({ preventScroll: true });
 }
+
+/**
+ * Has the keyboard fallen out of an open dialog? (POST-A-555, the last part.)
+ *
+ * A dialog that CHANGES WHAT IT SHOWS takes its own controls away: the bank import's "Map columns" button is gone the moment the dialog
+ * becomes the column mapper, a row's Delete button goes with the row, a step's Next goes with the step. The browser's answer to "the focused
+ * control has left the page" is to put the focus on the document itself and say nothing. The dialog still says it is modal, the page behind
+ * it is still locked, and the person on a keyboard is nowhere: a screen reader announces nothing and the next Tab starts from the top.
+ * Found by driving the column mapper in a browser, the first dialog driven that swaps its whole content.
+ *
+ * The rule is one question, kept apart so it can be tested without a browser: the focus is on nothing (`null`) or on the document's body.
+ * A click on plain text inside the dialog lands on the panel (it is focusable), a picker's list holds the focus itself, and neither is "nothing".
+ */
+export function theKeyboardIsNowhere(active: Element | null, body: Element | null): boolean {
+  return active === null || active === body;
+}
+
+/**
+ * Watch an open dialog and put the keyboard back on its panel when the control that held it is taken away. Returns the function that stops
+ * watching. Only the dialog on top acts (`isTop`), so a drawer under a dialog does not pull the focus down to itself.
+ */
+export function keepTheKeyboardInside(panel: HTMLElement | null, isTop: () => boolean): () => void {
+  if (!panel || typeof MutationObserver === "undefined") return () => {};
+  const watcher = new MutationObserver(() => {
+    const doc = panel.ownerDocument;
+    if (isTop() && panel.isConnected && theKeyboardIsNowhere(doc.activeElement, doc.body)) panel.focus({ preventScroll: true });
+  });
+  watcher.observe(panel, { childList: true, subtree: true });
+  return () => watcher.disconnect();
+}

@@ -19,7 +19,7 @@
  */
 import { useEffect, useRef, useId, type ReactNode } from "react";
 import { X } from "lucide-react";
-import { firstFormField, giveFocusBack, trapTabKey, whoOpenedTheDialog } from "@/lib/ui/focusTrap";
+import { firstFormField, giveFocusBack, keepTheKeyboardInside, trapTabKey, whoOpenedTheDialog } from "@/lib/ui/focusTrap";
 import { lockBodyScroll } from "@/lib/ui/scrollLock";
 import { closeAfterTheFocusedDateCommits } from "@/lib/dates/closeAfterDateCommit";
 import { escapeBelongsToAnOpenPicker, openOverlay } from "@/lib/ui/overlayStack";
@@ -73,6 +73,9 @@ export function Modal({
     (firstFormField(panelRef.current) ?? panelRef.current)?.focus();
     const unlockScroll = lockBodyScroll();
     const overlay = openOverlay();
+    // A dialog that changes what it shows takes the focused control away with the old content, and the browser then leaves the focus on the
+    // document: the panel takes it back (POST-A-555).
+    const stopKeeping = keepTheKeyboardInside(panelRef.current, overlay.isTop);
 
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
@@ -95,6 +98,7 @@ export function Modal({
     document.addEventListener("keydown", onKey, true);
     return () => {
       document.removeEventListener("keydown", onKey, true);
+      stopKeeping();
       overlay.close();
       unlockScroll();
       giveFocusBack(restoreRef.current);

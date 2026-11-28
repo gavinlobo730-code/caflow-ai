@@ -18,7 +18,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { inBody } from "@/lib/ui/inBody";
-import { giveFocusBack, trapTabKey, whoOpenedTheDialog } from "@/lib/ui/focusTrap";
+import { giveFocusBack, keepTheKeyboardInside, trapTabKey, whoOpenedTheDialog } from "@/lib/ui/focusTrap";
 import { lockBodyScroll } from "@/lib/ui/scrollLock";
 import { closeAfterTheFocusedDateCommits } from "@/lib/dates/closeAfterDateCommit";
 import { escapeBelongsToAnOpenPicker, openOverlay } from "@/lib/ui/overlayStack";
@@ -68,6 +68,8 @@ export function Drawer({
     panelRef.current?.focus();
     const unlockScroll = lockBodyScroll();
     const overlay = openOverlay();
+    // See Modal: a panel that changes what it shows takes the focused control away, and the panel takes the keyboard back (POST-A-555).
+    const stopKeeping = keepTheKeyboardInside(panelRef.current, overlay.isTop);
 
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
@@ -86,6 +88,7 @@ export function Drawer({
     document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("keydown", onKey);
+      stopKeeping();
       overlay.close();
       unlockScroll();
       // Restore focus to whatever opened the drawer (row action / link).
