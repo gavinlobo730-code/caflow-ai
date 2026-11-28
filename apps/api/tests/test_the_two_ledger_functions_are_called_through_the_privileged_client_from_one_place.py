@@ -454,11 +454,14 @@ def test_each_of_the_two_call_sites_is_a_ledger_rpc_call_naming_its_firm_and_its
         for node in ast.walk(tree):
             if isinstance(node, ast.Call) and getattr(node.func, "id", getattr(node.func, "attr", None)) == "ledger_rpc":
                 sites.append((rel, node))
+    # POST-A-095: the receipt service calls the receipt function from two places, the rupee receipt and (since migration 781) the
+    # foreign-currency one; both are the same function through the same door.
     assert sorted(r for r, _n in sites) == ["services/phase2_journal_service.py", "services/phase2_journal_service.py",
-                                            "services/receipt_service.py"], [(r, n.lineno) for r, n in sites]
+                                            "services/receipt_service.py", "services/receipt_service.py"], [(r, n.lineno) for r, n in sites]
     names = sorted((r, n.args[1].value) for r, n in sites if len(n.args) > 1 and isinstance(n.args[1], ast.Constant))
     assert names == [("services/phase2_journal_service.py", "issue_sales_invoice_atomic"),
                      ("services/phase2_journal_service.py", "post_journal_atomic"),
+                     ("services/receipt_service.py", "settle_receipt_atomic"),
                      ("services/receipt_service.py", "settle_receipt_atomic")], names
     for rel, node in sites:
         assert {k.arg for k in node.keywords} >= {"firm_id", "client_id"}, f"{rel}:{node.lineno} does not name its firm and its client"

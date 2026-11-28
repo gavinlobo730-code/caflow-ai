@@ -25,6 +25,10 @@ WHAT IS HELD (no database)
       receipt, a single-bill foreign vendor payment, a multi-bill foreign vendor payment and a revaluation still succeed, every FX
       row lands on the privileged client, and each carries the firm and the client, because the privileged client does not carry
       row security;
+    * (POST-A-095) a foreign RECEIPT's exchange difference is no longer a table write of the API at all: the database function that
+      records the receipt (`settle_receipt_atomic`, migration 781) inserts it in the receipt's own transaction, so the receipt
+      service is off the list of writers, and the driven test holds that the row exists, names the firm and the client, and that
+      neither client was asked to write the table;
     * nothing in the browser reads or writes the three tables.
 """
 from __future__ import annotations
@@ -51,12 +55,14 @@ RECEIPT_SERVICE = "services/receipt_service.py"
 PORTAL = "core/portal_auth.py"
 # table -> {file: the set of functions that write it}
 EXPECTED_WRITERS = {
+    # POST-A-095: the receipt service is not here. A foreign receipt's exchange difference is inserted by the database function
+    # that records the receipt (migration 781), in the same transaction as the entry and the receipt.
     "fx_adjustments": {REVAL: {"revalue"}, PAYMENT_ROUTER: {"_create_foreign_payment"},
-                       PAYMENT_SERVICE: {"create_foreign_payment_core"}, RECEIPT_SERVICE: {"create_foreign_receipt"}},
+                       PAYMENT_SERVICE: {"create_foreign_payment_core"}},
     "fx_revaluations": {REVAL: {"revalue"}},
     "client_portal_sessions": {PORTAL: {"_touch_portal_session"}},
 }
-FX_FILES = (REVAL, PAYMENT_ROUTER, PAYMENT_SERVICE, RECEIPT_SERVICE)
+FX_FILES = (REVAL, PAYMENT_ROUTER, PAYMENT_SERVICE)
 PRIVILEGED_NAMES = {"service_db", "service_db_or_none", "service_db_or_503", "get_service_supabase", "_service_client"}
 
 
@@ -182,7 +188,7 @@ def test_the_privileged_receiver_is_used_only_to_write_the_two_fx_tables():
                 verbs.append(parents[up].attr)
                 up = parents[parents[up]]
             assert set(verbs) & WRITE_VERBS, f"{rel}:{call.lineno} the privileged client READS {name} (chain: {verbs})"
-    assert seen == 5, seen            # four fx_adjustments writers and one fx_revaluations writer; a vacuous pass finds none
+    assert seen == 4, seen            # three fx_adjustments writers and one fx_revaluations writer; a vacuous pass finds none
 
 
 def test_nothing_in_the_browser_reads_or_writes_the_tables_directly():
@@ -307,7 +313,16 @@ def _every_fx_row_names_the_firm_and_client(log):
         assert entry["payload"]["firm_id"] == FIRM and entry["payload"]["client_id"] == "CLI", entry
 
 
-def test_a_foreign_receipt_records_its_exchange_difference_on_the_privileged_client(monkeypatch):
+def test_the_receipt_service_writes_no_fx_table_itself():
+    """POST-A-095. The service hands the exchange difference to the database function and makes no table write of its own: a write that
+    comes back here would be a second statement outside the receipt's transaction."""
+    text = (API_ROOT / RECEIPT_SERVICE).read_text(encoding="utf-8")
+    for table in FX_TABLES:
+        assert [u for u in _uses(text, table) if u[0] != "read"] == [], table
+    assert "fx_writer" not in text
+
+
+def test_a_foreign_receipt_records_its_exchange_difference_inside_the_function_that_records_the_receipt(monkeypatch):
     from models.invoices import (InvoiceLineIn, ReceiptAllocationIn, ReceiptIn, SalesInvoiceIn)
     from models.parties import CustomerIn
     inner, request, privileged, (cu, _ve, si, _pb, rc, _pp, _pps) = _world(monkeypatch)
@@ -323,9 +338,12 @@ def test_a_foreign_receipt_records_its_exchange_difference_on_the_privileged_cli
         exchange_rate="83.0",
         allocations=[ReceiptAllocationIn(sales_invoice_id=inv["id"], allocated_paise=100000)]), CALLER)
     assert request.refused == []                                              # nothing was attempted on the request's client
-    _every_fx_row_names_the_firm_and_client(privileged.log)
-    assert [r["document_type"] for r in inner.rows("fx_adjustments")] == ["receipt"]
-    assert inner.rows("fx_adjustments")[0]["base_delta_paise"] == 300000        # 1,000.00 USD * (83 - 80)
+    assert privileged.log == []                                               # and no table statement wrote it either: the function did
+    (row,) = inner.rows("fx_adjustments")
+    assert (row["document_type"], row["firm_id"], row["client_id"]) == ("receipt", FIRM, "CLI")
+    assert row["base_delta_paise"] == 300000                                  # 1,000.00 USD * (83 - 80)
+    receipt = next(r for r in inner.rows("receipts") if r["id"] == row["document_id"])
+    assert row["journal_entry_id"] == receipt["journal_entry_id"]
 
 
 def test_a_single_bill_foreign_payment_records_its_exchange_difference_on_the_privileged_client(monkeypatch):

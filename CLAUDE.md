@@ -178,7 +178,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A BROAD HANDLER ON A MONEY OR LEDGER PATH REPORTS WHAT IT SWALLOWS, AND A ROLLBACK THAT DID NOT RUN IS A POSTING FAILURE
 - THE HEALTH ANSWER NAMES THE BUILD THE API RUNS, SO A DEPLOY THAT LAGS THE WEBSITE IS VISIBLE FROM OUTSIDE
 
-### `docs/design-record/documents-sales-purchase.md` (24 entries): Sales and purchase documents and cycles, templates, supplier master, ledger drill-through
+### `docs/design-record/documents-sales-purchase.md` (25 entries): Sales and purchase documents and cycles, templates, supplier master, ledger drill-through
 - A RECEIPT RECORDED THROUGH THE DATABASE FUNCTION KEEPS THE ID ITS LEDGER ENTRY NAMES, THE BANK ACCOUNT IT WAS
 - A CREDIT OR DEBIT NOTE LINE RECORDED THROUGH THE NUMBERING FUNCTION KEEPS ITS UNIT AND ITS CATALOGUE ITEM,
 
@@ -204,6 +204,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - AN AGEING BUCKET ON THE PRACTICE'S RECEIVABLES LISTS ITS INVOICES
 - A DEMO COMPANY IS SIZED BY ITS TURNOVER AND ITS COST SHARE, ITS OWNERS PAY FOR WHAT IT BOUGHT BEFORE THE BOOKS, AND A TEST WORKS ITS YEAR OUT
 - A CREDIT OR DEBIT NOTE IS RAISED AGAINST A DOCUMENT OF ITS OWN CUSTOMER OR SUPPLIER, AND A DRAFT WHOSE PARTY CHANGES DROPS THE OLD PARTY'S
+- A FOREIGN-CURRENCY RECEIPT IS ONE DATABASE TRANSACTION, PLANNED FROM A READ THE FUNCTION CHECKS UNDER ITS LOCK
 
 ### `docs/design-record/engineering-and-ci.md` (17 entries): Tests, lint and coverage ratchets, CI, dependency lock, migrations and the schema-drift check
 
@@ -713,8 +714,8 @@ _Longer design records for this area were moved to `docs/design-record/ai.md`; s
   inserting. Sales, purchases, receipts, payments, credit/debit notes, banking, payroll,
   fixed assets, opening balances, manual journals and reversals all route through it. Do
   not add a second write path. ⚠️ **"All route through it" is exact for the Python kernel and
-  not for the database**: an ordinary rupee receipt posts its journal inside the receipt's own
-  transaction through the `settle_receipt_atomic` database function (migrations 160 and 235, its body renamed `settle_receipt_atomic__unguarded` by 486 and restated by 574)
+  not for the database**: a customer receipt (rupee, and foreign since migration 781) posts its journal inside the receipt's own
+  transaction through the `settle_receipt_atomic` database function (migrations 160 and 235, its body renamed `settle_receipt_atomic__unguarded` by 486 and restated by 574 and 781)
   and not through `post_journal_atomic`, and a manual journal's lines are rewritten by
   `edit_posted_journal`, so three database functions write the ledger. The public site
   therefore says "one ledger" and never "one posting path";
@@ -742,7 +743,7 @@ _Longer design records for this area were moved to `docs/design-record/ai.md`; s
   reaches the GL inside a year somebody closed. The two database functions the ledger is
   written through, `post_journal_atomic` and `settle_receipt_atomic`, ask `period_closure_reason`
   themselves since migration 533 (POST-A-316), so a direct call with a signed-in token and the
-  API's plain rupee receipt, which posts through the second and never reaches the kernel, are
+  API's customer receipt, which posts through the second and never reaches the kernel, are
   refused a finalised client year in the closure's own words (the API's receipt also asks the
   firm's locked year first, of the validator, in the validator's). The filed-return branch is asked where
   a document that FEEDS a return is written — sales invoices, purchase bills, credit

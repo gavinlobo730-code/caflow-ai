@@ -81,6 +81,8 @@ MOVED = {
     ("services/purchase_payment_service.py", "create_payment_core"),
     ("services/purchase_payment_service.py", "create_foreign_payment_core"),
     ("services/receipt_service.py", "create_receipt_core"),
+    # POST-A-095: a foreign receipt is one database transaction (`settle_receipt_atomic`, migration 781), so `create_foreign_receipt`
+    # writes no header at all; it stays on the list with a count of none so a header write that comes back is a red test.
     ("services/receipt_service.py", "create_foreign_receipt"),
     ("services/reversal_service.py", "_rollback_invoice_paid"),
     ("services/reversal_service.py", "_rollback_bill_paid"),
@@ -211,7 +213,7 @@ def test_a_moved_function_goes_through_the_door_and_calls_it_for_every_move_it_m
         "issue_invoice": 0, "_post_and_mark_issued": 1, "cancel_invoice": 1, "repost_journal": 1, "receive_purchase_bill": 3, "cancel_purchase_bill": 1,
         "_claim_bill_outstanding": 1, "_rollback_bill_claim": 1, "_update_bill_payment_status": 1, "_create_foreign_payment": 1,
         "_adjust_invoice_paid": 1, "_adjust_bill_paid": 1, "create_payment_core": 1, "create_foreign_payment_core": 1,
-        "create_receipt_core": 1, "create_foreign_receipt": 1, "_rollback_invoice_paid": 1, "_rollback_bill_paid": 1,
+        "create_receipt_core": 1, "create_foreign_receipt": 0, "_rollback_invoice_paid": 1, "_rollback_bill_paid": 1,
         "_settle_doc": 1, "_unsettle": 1, "apply_credit": 1,
     }
     for rel, fn in sorted(MOVED):
@@ -253,7 +255,7 @@ def test_every_call_to_the_door_names_a_literal_header_table_the_firm_the_client
             assert {"firm_id", "client_id", "actor"} <= kws, f"{rel}:{node.lineno} names {sorted(kws)}"
             actor = next(k.value for k in node.keywords if k.arg == "actor")
             assert isinstance(actor, ast.Name), f"{rel}:{node.lineno} actor is not the person the caller was handed: {ast.unparse(actor)}"
-    assert seen >= 38, seen                                           # 16 in the four note routes, 7 in the invoice and bill lifecycle, 12 in the money paths and 3 in the bank and credit paths: a vacuous pass would find none
+    assert seen >= 37, seen                                           # 16 in the four note routes, 7 in the invoice and bill lifecycle, 11 in the money paths (12 until the foreign receipt became one database transaction, POST-A-095) and 3 in the bank and credit paths: a vacuous pass would find none
 
 
 def test_every_caller_of_an_actor_threaded_function_passes_the_actor_by_name():
@@ -870,24 +872,32 @@ def _assert_audited_like(audit_calls, entity, doc_id, writes, pre):
                 state[column] = write["payload"][column]
 
 
-def test_a_foreign_receipt_settles_its_invoice_as_the_api_names_the_firm_and_the_client_and_audits_it(foreign, two_clients):
+def test_a_foreign_receipt_settles_its_invoice_inside_the_database_function_and_not_through_the_header_door(foreign, two_clients):
+    """POST-A-095. A receipt in a foreign currency is recorded by `settle_receipt_atomic` (migration 781): the entry, the receipt, the
+    allocation, the invoice's two paid amounts and the exchange-difference record are one transaction, so the API issues no header
+    statement at all (the door would be a second, separate write: the gap the migration closes) and the caller's own sign-in is asked
+    to write nothing. The row-level record of the invoice's change is the database trigger's, which sees the person the ledger door
+    carried (migration 545); the route's own `create` audit of the receipt stays."""
     import routers.receipts as rc
     from models.invoices import ReceiptAllocationIn, ReceiptIn
     db = foreign[0]
-    statements, attempts, audit_calls, install = two_clients
+    statements, attempts, _audit_calls, install = two_clients
     party, inv = _issued_invoice("USD", "80.0", 100_000, "USD-INV-3")
-    pre = _row(db, "client_sales_invoices", inv["id"])
     install()
     made = rc.create_receipt(ReceiptIn(
         client_id="CLI", customer_id=party["id"], receipt_date="2026-06-10", amount_paise=100_000, currency="USD",
         exchange_rate="83.0", allocations=[ReceiptAllocationIn(sales_invoice_id=inv["id"], allocated_paise=100_000)]), CALLER)
     assert made["success"] is True, made
     assert attempts == []
-    (write,) = _header_writes(statements, "client_sales_invoices")
-    _assert_settlement_write(write, inv["id"])
-    assert set(write["payload"]) == {"paid_paise", "paid_txn", "status"} and write["payload"]["status"] == "paid"
-    assert _row(db, "client_sales_invoices", inv["id"])["status"] == "paid"
-    _assert_audited_like(audit_calls, "sales_invoice", inv["id"], [write], pre)
+    assert _header_writes(statements, "client_sales_invoices") == [], "the foreign receipt wrote the invoice header in a second statement"
+    row = _row(db, "client_sales_invoices", inv["id"])
+    assert (row["status"], int(row["paid_txn"]), int(row["paid_paise"])) == ("paid", 100_000, 8_000_000)
+    receipt = next(r for r in db._tables["receipts"] if r["id"] == made["data"]["id"])
+    assert receipt["journal_entry_id"] and (receipt["txn_currency"], int(receipt["txn_amount"])) == ("USD", 100_000)
+    (allocation,) = [a for a in db._tables["receipt_allocations"] if a["receipt_id"] == receipt["id"]]
+    assert (int(allocation["allocated_txn"]), int(allocation["allocated_paise"])) == (100_000, 8_000_000)
+    (fx,) = [f for f in db._tables["fx_adjustments"] if f["document_id"] == receipt["id"]]
+    assert int(fx["base_delta_paise"]) == 300_000 and fx["journal_entry_id"] == receipt["journal_entry_id"]
 
 
 def test_a_foreign_vendor_payment_on_one_bill_settles_it_as_the_api_and_audits_it(foreign, two_clients):

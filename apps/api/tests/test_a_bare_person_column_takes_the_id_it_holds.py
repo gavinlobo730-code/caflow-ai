@@ -204,6 +204,7 @@ BUILT_ELSEWHERE: dict[tuple[str, str], list[tuple[str, ...]]] = {
     ("health_overrides", "override_by"): [("routers/health.py", "create_override")],
     ("payroll_employees", "portal_invited_by"): [("services/employee_portal_service.py", "invite_employee")],
     ("purchase_bills", "rate_selected_by"): [("routers/purchase_bills.py", "_create_purchase_bill_core")],
+    ("receipts", "rate_selected_by"): [("services/receipt_service.py", "create_foreign_receipt")],                  # migration 781: the row is the function's
     ("related_party_loans", "created_by"): [("routers/relationships.py", "create_loan")],
     ("user_capacity", "updated_by"): [("routers/workload.py", "set_capacity")],
     ("year_end_exports", "created_by"): [("routers/year_end_exports.py", "_create_export_record")],

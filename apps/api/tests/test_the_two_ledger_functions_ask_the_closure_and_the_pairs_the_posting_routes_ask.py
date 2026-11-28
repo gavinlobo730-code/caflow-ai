@@ -317,11 +317,16 @@ def test_the_check_comes_before_the_number_is_taken_and_before_the_atomic_call()
     """Structure, so a later edit that moves it below the sequence (a number consumed for a refused receipt) or removes it
     from either path fails here."""
     src = (API_ROOT / "services" / "receipt_service.py").read_text()
-    for fn, nxt in (("create_receipt_core", "_next_receipt_seq(db"), ("create_foreign_receipt", "currency_service.get_currency(")):
+    # For the foreign receipt: before the currency gates (the first thing it reads after the period checks), before its number is
+    # taken (per attempt, since POST-A-095) and before the one call that records it.
+    for fn, later in (("create_receipt_core", ("_next_receipt_seq(db",)),
+                      ("create_foreign_receipt", ("_foreign_receipt_minor_unit(db", "_next_receipt_seq(db", "ledger_rpc(db"))):
         start = src.index(f"def {fn}(")
         body = src[start:src.index("\ndef ", start + 10)] if "\ndef " in src[start + 10:] else src[start:]
         assert "_assert_open_where_a_receipt_feeds_a_return(db," in body, fn
-        assert body.index("_assert_open_where_a_receipt_feeds_a_return(db,") < body.index(nxt), fn
+        for nxt in later:
+            assert nxt in body, f"{fn} no longer contains {nxt!r}: point this guard at what took its place"
+            assert body.index("_assert_open_where_a_receipt_feeds_a_return(db,") < body.index(nxt), (fn, nxt)
 
 
 def test_a_mock_mode_receipt_is_untouched(no_firm_lock):

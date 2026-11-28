@@ -20,7 +20,6 @@ from fastapi import HTTPException
 
 from domain.accounting.payment_account import resolve_payment_account
 from core.db_provider import privileged_for
-from domain.currency.fx_writer import fx_writer
 from services.audit_service import log_event
 from services.document_header_writer import update_header
 from services.ledger_door import ledger_rpc
@@ -179,16 +178,14 @@ def create_foreign_receipt(firm_id: str, data: dict, actor: dict, db) -> dict:
 
     Each allocated invoice is relieved at ITS frozen booking rate (R0); the cash is
     taken at the receipt's rate (R1); the difference posts to Realized FX Gain/Loss
-    in ONE balanced journal through the kernel. Foreign settled amounts are tracked
+    in ONE balanced journal, written with the receipt, its allocations and the
+    invoices' settlement by the database function a rupee receipt uses
+    (`settle_receipt_atomic`, migration 781). Foreign settled amounts are tracked
     on the invoice (paid_txn) so partial settlements never drift and the final
     settlement clears the base exactly. Original documents/rates are never modified.
     Supports partial / multiple / over-payment (the unallocated excess is a customer
     advance carried at R1)."""
-    from decimal import Decimal, InvalidOperation
-    from datetime import date as _date
-    from domain.currency.policy import resolve_currency_policy, CurrencyPolicy
     from domain.currency.conversion import to_base_minor
-    from domain.currency import currency_service, RateNotFound
     from services.phase2_journal_service import phase2_journal_service as K
 
     client_id = data["client_id"]
@@ -198,6 +195,167 @@ def create_foreign_receipt(firm_id: str, data: dict, actor: dict, db) -> dict:
     period_validation_service.validate_posting_date(firm_id or "", data["receipt_date"])
     _assert_open_where_a_receipt_feeds_a_return(db, firm_id, client_id, data["receipt_date"])
 
+    minor = _foreign_receipt_minor_unit(db, firm_id, client_id, ccy)
+    R1, r1_source, overridden = _foreign_receipt_rate(K, db, data, ccy)
+
+    total_foreign = int(data["amount_paise"])   # foreign cash received (minor units)
+    allocations = _one_allocation_per_invoice(data.get("allocations", []))
+
+    total_foreign_settled = sum(int(a["allocated_paise"]) for a in allocations)
+    cash_base = to_base_minor(total_foreign, R1, minor)
+    settled_cash_base = to_base_minor(total_foreign_settled, R1, minor)
+    unalloc_base = cash_base - settled_cash_base
+
+    # The FOREIGN-currency receipt has the same defect as the rupee one, and the
+    # finding did not name it: a firm-wide Bank ledger regardless of which
+    # account received the money or whether it was cash.
+    paid_into = resolve_payment_account(
+        db, firm_id=firm_id, client_id=client_id,
+        bank_account_id=data.get("bank_account_id"),
+        payment_mode=data.get("payment_mode"),
+        find_account=K._find_account)
+    bank_id = paid_into.account_id
+    ar_id = K._find_account(db, firm_id, client_id, "%Trade Receivable%", system_key="ar")
+    # The FY of the NUMBER comes from the DOCUMENT'S OWN DATE, not from today
+    # (SALES-24) — see core.ist_clock.fy_code. The number itself is taken per attempt, below.
+    fy = fy_code(data["receipt_date"])
+    # task #102: pre-generated (matching create_receipt_core's atomic-path
+    # convention) so the journal can carry source_type/source_id back to this
+    # receipt, for reverse_receipt / any future source_id-keyed lookup.
+    receipt_id = str(uuid.uuid4())
+    # ONE TRANSACTION (POST-A-095, migration 781). This path used to post the entry through the kernel, then insert the receipt, then
+    # update each invoice with a compare-and-set it retried, then write the allocations and the realised-difference record, and on a
+    # failure compensate (reverse the entry, delete the receipt). Under a real race an earlier invoice's paid amount stayed when a later
+    # one failed. The entry, the receipt, every invoice it settles and the realised difference now go to the database function a rupee
+    # receipt uses, which writes all of them or none. The rupee figures are worked out below, per attempt, from a read of each invoice
+    # taken before that transaction, so each allocation says what the read saw and the function refuses the whole receipt if the
+    # invoice, once locked, no longer says the same.
+    actor_id = (actor or {}).get("id")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    rate_date = str(data["receipt_date"])[:10]
+    entry_payload = {
+        "firm_id": firm_id, "client_id": client_id, "entry_date": data["receipt_date"],
+        "entry_type": "Receipt", "is_posted": True, "status": "posted",
+        "posted_at": now_iso, "posted_by": actor_id, "created_by": actor_id,
+        "source_type": "receipt", "source_id": receipt_id,
+    }
+    # Rate-selection provenance, as the kernel stamps it: only when a rate was actually chosen.
+    if overridden:
+        entry_payload["rate_overridden"] = True
+    if actor_id is not None:
+        entry_payload["rate_selected_by"] = actor_id
+        entry_payload["rate_selected_at"] = now_iso
+    _adv_rate, _adv_pos, _adv_interstate = _advance_treatment(
+        db, firm_id, client_id, data)
+    receipt_payload = {
+        "id": receipt_id,
+        "firm_id": firm_id, "client_id": client_id, "customer_id": data["customer_id"],
+        "receipt_date": data["receipt_date"],
+        "amount_paise": cash_base, "tds_paise": 0, "unallocated_paise": unalloc_base,
+        "payment_mode": data.get("payment_mode", ""), "reference_no": data.get("reference_no", ""),
+        "notes": data.get("notes", ""),
+        # The account the money was paid into: the journal above resolved its cash leg from it, so the receipt row has to say so too, or
+        # the Receipts tab tells a CA the receipt went to the general Bank ledger when the journal debited the bank they chose.
+        "bank_account_id": data.get("bank_account_id"),
+        # GSTR-1 Table 11A — see the note on the other receipt payload. A
+        # foreign-currency advance can bear tax under s.13(2) exactly as a
+        # rupee one can, so this path carries them too.
+        "gst_rate_bps": _adv_rate,
+        "place_of_supply": _adv_pos,
+        "is_interstate": _adv_interstate,
+        "created_at": now_iso,
+        "txn_currency": ccy, "exchange_rate": str(R1), "txn_amount": total_foreign,
+        "rate_source": r1_source, "rate_type": "booking", "rate_date": rate_date,
+        "rate_selected_by": actor_id, "rate_overridden": overridden,
+    }
+
+    # WHAT DEPENDS ON A READ IS WORKED OUT PER ATTEMPT: the receipt's number and the plan. The rupees each invoice is relieved of come
+    # from its own booking rate and from what was already paid when it was read, so the receivable's credit, the realised difference and
+    # each allocation's expectation are built from one read and handed to the function with it. If the function finds an invoice moved
+    # since that read it refuses the whole receipt and writes nothing, and the receipt is prepared again: a fresh number, a fresh read,
+    # a new plan, the same id. The NUMBER is taken per attempt for the commonest race of all, two receipts of one client recorded at the
+    # same moment: both read the same last number, the second is refused for the duplicate before any invoice is looked at, and taking
+    # the next number is all it needs. A receipt that keeps losing either way is refused in words after FOREIGN_RECEIPT_ATTEMPTS.
+    attempt = 0
+    refused_number = None
+    while True:
+        attempt += 1
+        seq = _next_receipt_seq(db, firm_id, client_id, fy)
+        receipt_no = f"RCPT-{fy}-{seq:04d}"
+        settle_plan, total_ar_relieved = _plan_foreign_settlement(db, firm_id, client_id, ccy, minor, allocations)
+        if total_foreign_settled > total_foreign:
+            raise HTTPException(status_code=422, detail="Allocated foreign exceeds the receipt amount.")
+        fx_diff = settled_cash_base - total_ar_relieved   # + gain / − loss (receivable)
+        lines = [
+            {"account_id": bank_id, "debit_paise": cash_base, "credit_paise": 0,
+             "narration": ("Cash received (foreign)" if paid_into.source == "cash"
+                           else "Bank receipt (foreign)"), "txn_debit": total_foreign, "txn_credit": 0},
+            {"account_id": ar_id, "debit_paise": 0, "credit_paise": total_ar_relieved + unalloc_base,
+             "narration": "Trade receivable settled at booked rate", "txn_debit": 0, "txn_credit": total_foreign},
+        ]
+        this_receipt = {**receipt_payload, "receipt_no": receipt_no}
+        this_entry = {**entry_payload, "reference_no": receipt_no, "narration": f"Receipt {receipt_no} (foreign) from customer"}
+        if fx_diff != 0:
+            fx_id = K._find_account(db, firm_id, client_id, "%Foreign Exchange%", system_key="fx_realized")
+            lines.append({"account_id": fx_id, "debit_paise": max(-fx_diff, 0), "credit_paise": max(fx_diff, 0),
+                          "narration": "Realized FX gain" if fx_diff > 0 else "Realized FX loss", "txn_debit": 0, "txn_credit": 0})
+            # The record of the realised difference, written by the function with everything else.
+            this_receipt["fx_adjustment"] = {
+                "settlement_rate": str(R1), "base_delta_paise": fx_diff, "rate_source": r1_source, "created_by": actor_id,
+            }
+        try:
+            result = ledger_rpc(db, "settle_receipt_atomic", {
+                "p_receipt": this_receipt,
+                "p_journal_entry": this_entry,
+                # Dual storage, as the kernel writes it: the rupee amount stays authoritative, the foreign amount and the rate sit beside it.
+                "p_journal_lines": [{**l, "txn_currency": ccy, "base_currency": "INR", "exchange_rate": str(R1),
+                                     "rate_source": r1_source, "rate_type": "booking", "rate_date": rate_date} for l in lines],
+                "p_allocations": [
+                    {"sales_invoice_id": inv["id"], "allocated_paise": ar_relieved, "allocated_txn": f,
+                     # what the read saw of the invoice: the function compares it with the locked row
+                     "expect_paid_paise": int(inv.get("paid_paise") or 0), "expect_paid_txn": int(inv.get("paid_txn") or 0),
+                     "expect_credited_paise": int(inv.get("credited_paise") or 0)}
+                    for (inv, f, ar_relieved) in settle_plan
+                ],
+            }, firm_id=firm_id, client_id=client_id).execute()
+            break
+        except Exception as e:
+            # Both refusals are the function's own and leave nothing written (it is one transaction), so preparing the receipt again
+            # builds on nothing of the attempt that lost.
+            if _is_unique_violation(e):
+                if receipt_no == refused_number:
+                    # The series still offers the number that was just refused, so no RECEIPT took it: something else in this
+                    # client's books carries it (a journal typed with that reference on that date, say). Taking it again cannot
+                    # work, and "please retry" would be untrue.
+                    raise HTTPException(status_code=409, detail=receipt_number_carried_elsewhere(receipt_no)) from e
+                refused_number = receipt_no
+            if (_invoice_changed_under_the_receipt(e) or _is_unique_violation(e)) and attempt < FOREIGN_RECEIPT_ATTEMPTS:
+                continue
+            refusal = _foreign_receipt_refusal(e)
+            if refusal is e:
+                raise
+            raise refusal from e
+
+    out = result.data or {}
+    receipt_id = out.get("receipt_id") or receipt_id
+    entry_id = out.get("journal_entry_id")
+    alloc_rows = [
+        {"receipt_id": receipt_id, "sales_invoice_id": r.get("sales_invoice_id"),
+         "allocated_paise": r.get("allocated_paise"), "allocated_txn": r.get("allocated_txn")}
+        for r in (out.get("allocations") or [])
+    ]
+    receipt = {**receipt_payload, "receipt_no": receipt_no, **(out.get("receipt") or {}), "id": receipt_id, "journal_entry_id": entry_id}
+
+    log_event(firm_id, "receipt", receipt_id, "create", actor_id=(actor or {}).get("auth_user_id"),
+              actor_email=(actor or {}).get("email"), new_data={"amount_paise": cash_base, "currency": ccy})
+    return {**_with_allocated_total(receipt, alloc_rows), "allocations": alloc_rows, "journal_entry_id": entry_id, "realized_fx_paise": fx_diff}
+
+
+def _foreign_receipt_minor_unit(db, firm_id: str, client_id: str, ccy: str) -> int:
+    """The currency's minor unit, once the three gates are passed: multi-currency is on for this firm and client, and the currency is
+    one the product holds and has not retired. Each refusal is in words."""
+    from domain.currency import currency_service
+    from domain.currency.policy import resolve_currency_policy
     firm = (db.table("firms").select("multi_currency_entitled").eq("id", firm_id).limit(1).execute().data or [None])[0]
     client = (db.table("clients").select("functional_currency, multi_currency_enabled").eq("id", client_id).eq("firm_id", firm_id).limit(1).execute().data or [None])[0]
     if not resolve_currency_policy(firm, client).active:
@@ -207,35 +365,62 @@ def create_foreign_receipt(firm_id: str, data: dict, actor: dict, db) -> dict:
         raise HTTPException(status_code=422, detail=f"Unsupported currency: {ccy}.")
     if not cur.get("is_active", True):
         raise HTTPException(status_code=422, detail=f"Currency {ccy} is inactive.")
-    minor = int(cur.get("minor_unit", 2))
+    return int(cur.get("minor_unit", 2))
 
-    # Cash rate R1: manual override or resolved at the receipt date.
+
+def _one_allocation_per_invoice(rows: list) -> list:
+    """One allocation per INVOICE. Two rows for one invoice were each planned from the same read of it, so the second could not be the
+    one that clears the invoice and its rupees were not snapped to what was left: the invoice ended 'paid' with a rounding residue."""
+    per_invoice: dict = {}
+    for a in rows:
+        if int(a.get("allocated_paise", 0) or 0) > 0:
+            per_invoice[a.get("sales_invoice_id")] = per_invoice.get(a.get("sales_invoice_id"), 0) + int(a["allocated_paise"])
+    return [{"sales_invoice_id": k, "allocated_paise": v} for k, v in per_invoice.items()]
+
+
+def _foreign_receipt_rate(K, db, data: dict, ccy: str):
+    """The rate the cash is taken at: (rate, where it came from, whether a person typed it). A typed rate wins; otherwise the booking
+    rate on the receipt's own date. A rate that cannot be read, is not held or is not positive is refused in words."""
+    from datetime import date as _date
+    from decimal import Decimal, InvalidOperation
+    from domain.currency import RateNotFound
     overridden = data.get("exchange_rate") is not None
     if overridden:
         try:
-            R1 = Decimal(str(data["exchange_rate"]))
+            rate = Decimal(str(data["exchange_rate"]))
         except (InvalidOperation, ValueError, TypeError) as _cause:
             raise HTTPException(status_code=422, detail="Invalid exchange rate.") from _cause
-        r1_source = "manual-override"
+        source = "manual-override"
     else:
         try:
             q = K.exchange_rate_service(db).get_quote(ccy, "INR", _date.fromisoformat(str(data["receipt_date"])[:10]), "booking")
         except RateNotFound as _cause:
             raise HTTPException(status_code=422, detail=f"No exchange rate available for {ccy}->INR on {data['receipt_date']}.") from _cause
-        R1, r1_source = q.rate, q.source
-    if R1 <= 0:
+        rate, source = q.rate, q.source
+    if rate <= 0:
         raise HTTPException(status_code=422, detail="Exchange rate must be positive.")
+    return rate, source, overridden
 
-    total_foreign = int(data["amount_paise"])   # foreign cash received (minor units)
-    allocations = [a for a in data.get("allocations", []) if int(a.get("allocated_paise", 0) or 0) > 0]
 
-    total_ar_relieved = 0
-    total_foreign_settled = 0
-    settle_plan = []
+#: How many times a foreign receipt is planned from a fresh read of its invoices before it is refused. Each attempt is one whole
+#: transaction that writes everything or nothing, so a later attempt never builds on a part of an earlier one.
+FOREIGN_RECEIPT_ATTEMPTS = 3
+
+
+def _plan_foreign_settlement(db, firm_id: str, client_id: str, ccy: str, minor: int, allocations: list) -> tuple[list, int]:
+    """What a foreign receipt settles of each invoice, from a read of the invoice as it stands now.
+
+    Returns ([(invoice row, foreign amount, rupees relieved)], total rupees relieved). Each invoice is relieved at ITS OWN booking rate,
+    and the rupees are snapped to what is left of it when the foreign amount clears it, so a part-settled invoice never ends paid with a
+    rounding residue. The rows are a READ: the function that records the receipt compares each with the invoice once it holds the lock
+    (migration 781) and refuses the receipt if it moved."""
+    from decimal import Decimal
+    from domain.currency.conversion import to_base_minor
+    plan, total_ar_relieved = [], 0
     for a in allocations:
         inv_id = a.get("sales_invoice_id")
         inv = (db.table("client_sales_invoices")
-               .select("id, status, txn_currency, exchange_rate, total_paise, paid_paise, paid_txn, credited_paise, txn_total")
+               .select("id, status, txn_currency, exchange_rate, total_paise, paid_paise, paid_txn, credited_paise, debit_note_paise, txn_total")
                .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute().data or [None])[0]
         if not inv:
             raise HTTPException(status_code=422, detail=f"Invoice {inv_id} is not part of this client's books.")
@@ -254,175 +439,64 @@ def create_foreign_receipt(firm_id: str, data: dict, actor: dict, db) -> dict:
                 f"Allocation {minor_units_text(f, minor)} exceeds invoice {inv_id} outstanding {minor_units_text(foreign_out, minor)} {ccy}."))
         # Snap the base to clear exactly on full settlement — no rounding drift.
         ar_relieved = base_out if f == foreign_out else to_base_minor(f, R0, minor)
-        new_paid = int(inv.get("paid_paise") or 0) + ar_relieved
-        new_paid_txn = int(inv.get("paid_txn") or 0) + f
-        status = "paid" if new_paid_txn >= int(inv.get("txn_total") or 0) else "partially_paid"
-        settle_plan.append((inv, f, ar_relieved, new_paid, new_paid_txn, status))
+        # The RUPEES this would relieve must still be owed. They can run out before the foreign amount does: a credit note on a foreign
+        # invoice lowers what is owed in rupees and not the foreign outstanding. The function asks the same of the locked row and would
+        # refuse in a log's words; this says it to the person. (A sales debit note raises what is collectible, as the function counts it.)
+        rupees_owed = base_out + int(inv.get("debit_note_paise") or 0)
+        if ar_relieved > rupees_owed:
+            why = "A credit note has reduced what is owed. " if int(inv.get("credited_paise") or 0) > 0 else ""
+            raise HTTPException(status_code=422, detail=(
+                f"Invoice {inv_id} has {rupee_text(max(rupees_owed, 0))} left to settle in rupees, less than this allocation of "
+                f"{minor_units_text(f, minor)} {ccy} would settle at the invoice's own rate ({rupee_text(ar_relieved)}). "
+                f"{why}Allocate a smaller amount to this invoice."))
+        plan.append((inv, f, ar_relieved))
         total_ar_relieved += ar_relieved
-        total_foreign_settled += f
-    if total_foreign_settled > total_foreign:
-        raise HTTPException(status_code=422, detail="Allocated foreign exceeds the receipt amount.")
+    return plan, total_ar_relieved
 
-    cash_base = to_base_minor(total_foreign, R1, minor)
-    settled_cash_base = to_base_minor(total_foreign_settled, R1, minor)
-    unalloc_base = cash_base - settled_cash_base
-    fx_diff = settled_cash_base - total_ar_relieved   # + gain / − loss (receivable)
 
-    # The FOREIGN-currency receipt has the same defect as the rupee one, and the
-    # finding did not name it: a firm-wide Bank ledger regardless of which
-    # account received the money or whether it was cash.
-    paid_into = resolve_payment_account(
-        db, firm_id=firm_id, client_id=client_id,
-        bank_account_id=data.get("bank_account_id"),
-        payment_mode=data.get("payment_mode"),
-        find_account=K._find_account)
-    bank_id = paid_into.account_id
-    ar_id = K._find_account(db, firm_id, client_id, "%Trade Receivable%", system_key="ar")
-    lines = [
-        {"account_id": bank_id, "debit_paise": cash_base, "credit_paise": 0,
-         "narration": ("Cash received (foreign)" if paid_into.source == "cash"
-                       else "Bank receipt (foreign)"), "txn_debit": total_foreign, "txn_credit": 0},
-        {"account_id": ar_id, "debit_paise": 0, "credit_paise": total_ar_relieved + unalloc_base,
-         "narration": "Trade receivable settled at booked rate", "txn_debit": 0, "txn_credit": total_foreign},
-    ]
-    if fx_diff != 0:
-        fx_id = K._find_account(db, firm_id, client_id, "%Foreign Exchange%", system_key="fx_realized")
-        if fx_diff > 0:
-            lines.append({"account_id": fx_id, "debit_paise": 0, "credit_paise": fx_diff,
-                          "narration": "Realized FX gain", "txn_debit": 0, "txn_credit": 0})
-        else:
-            lines.append({"account_id": fx_id, "debit_paise": -fx_diff, "credit_paise": 0,
-                          "narration": "Realized FX loss", "txn_debit": 0, "txn_credit": 0})
-
-    # The FY of the NUMBER comes from the DOCUMENT'S OWN DATE, not from today
-    # (SALES-24) — see core.ist_clock.fy_code.
-    fy = fy_code(data["receipt_date"])
-    seq = _next_receipt_seq(db, firm_id, client_id, fy)
-    receipt_no = f"RCPT-{fy}-{seq:04d}"
-    # task #102: pre-generated (matching create_receipt_core's atomic-path
-    # convention) so the journal can carry source_type/source_id back to this
-    # receipt, for reverse_receipt / any future source_id-keyed lookup.
-    receipt_id = str(uuid.uuid4())
-    entry_id = K._create_journal(
-        db=db, firm_id=firm_id, client_id=client_id, entry_date=data["receipt_date"],
-        reference_no=receipt_no, narration=f"Receipt {receipt_no} (foreign) from customer",
-        entry_type="Receipt", lines=lines, created_by=(actor or {}).get("id"),
-        source_type="receipt", source_id=receipt_id,
-        txn_currency=ccy, exchange_rate=R1, rate_source=r1_source, rate_type="booking",
-        rate_date=str(data["receipt_date"])[:10], rate_selected_by=(actor or {}).get("id"),
-        rate_overridden=overridden, currency_policy=CurrencyPolicy(active=True, functional_currency="INR"),
-    )
-
-    _adv_rate, _adv_pos, _adv_interstate = _advance_treatment(
-        db, firm_id, client_id, data)
-    receipt_payload = {
-        "id": receipt_id,
-        "firm_id": firm_id, "client_id": client_id, "customer_id": data["customer_id"],
-        "receipt_no": receipt_no, "receipt_date": data["receipt_date"],
-        "amount_paise": cash_base, "tds_paise": 0, "unallocated_paise": unalloc_base,
-        "payment_mode": data.get("payment_mode", ""), "reference_no": data.get("reference_no", ""),
-        "notes": data.get("notes", ""), "journal_entry_id": entry_id,
-        # The account the money was paid into: the journal above resolved its cash leg from it, so the receipt row has to say so too, or
-        # the Receipts tab tells a CA the receipt went to the general Bank ledger when the journal debited the bank they chose.
-        "bank_account_id": data.get("bank_account_id"),
-        # GSTR-1 Table 11A — see the note on the other receipt payload. A
-        # foreign-currency advance can bear tax under s.13(2) exactly as a
-        # rupee one can, so this path carries them too.
-        "gst_rate_bps": _adv_rate,
-        "place_of_supply": _adv_pos,
-        "is_interstate": _adv_interstate,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "txn_currency": ccy, "exchange_rate": str(R1), "txn_amount": total_foreign,
-        "rate_source": r1_source, "rate_type": "booking", "rate_date": str(data["receipt_date"])[:10],
-        "rate_selected_by": (actor or {}).get("id"), "rate_overridden": overridden,
-    }
-
-    # F7/R2.9 hardening: the journal above is already committed (this path always
-    # posts the journal first), so from HERE ON (starting with the receipt insert
-    # itself) a failure must be compensated (journal reversed, receipt deleted)
-    # rather than left as a phantom GL entry. This now also covers a receipt_no
-    # unique-constraint collision (migration 159, R2.9) — previously impossible
-    # to hit since no constraint existed, so the insert itself was never in this
-    # try block. Settlement amounts were already validated against each invoice's
-    # live outstanding when settle_plan was built (before the journal posted), so
-    # the loop's 409 is now only reachable via a genuine concurrent race.
-    alloc_rows = []
-    try:
-        receipt = (privileged_for(db).table("receipts").insert(receipt_payload).execute().data or [receipt_payload])[0]
-        receipt_id = receipt.get("id", receipt_id)
-
-        for (inv, f, ar_relieved, _new_paid, _new_paid_txn, _status) in settle_plan:
-            # R2.12 adversarial-review fix: settle_plan's new_paid/new_paid_txn/
-            # status were computed from a read taken BEFORE the journal posted
-            # (a wide staleness window), and the original CAS below had NO
-            # retry at all — a single collision failed immediately, a weaker
-            # guarantee than the plain-INR path's 6-attempt retry loop this
-            # milestone's atomic rewrite replaced (finding: leaving this path
-            # unfixed was a HIGHER concurrency risk than the framing implied,
-            # not a lower one). Re-read fresh on every attempt instead of
-            # trusting settle_plan's stale snapshot.
-            inv_id = inv["id"]
-            for _attempt in range(6):
-                cur = (db.table("client_sales_invoices")
-                       .select("paid_paise,paid_txn,txn_total,status")
-                       .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id)
-                       .limit(1).execute().data or [None])[0]
-                if not cur:
-                    break
-                old_paid = int(cur.get("paid_paise") or 0)
-                old_paid_txn = int(cur.get("paid_txn") or 0)
-                fresh_new_paid = old_paid + ar_relieved
-                fresh_new_paid_txn = old_paid_txn + f
-                txn_total = int(cur.get("txn_total") or 0)
-                if fresh_new_paid_txn > txn_total:
-                    raise HTTPException(status_code=422, detail=f"Invoice {inv_id}: allocation would exceed invoice outstanding")
-                fresh_status = "paid" if fresh_new_paid_txn >= txn_total else "partially_paid"
-                upd = update_header(
-                    db, "client_sales_invoices", inv_id,
-                    {"paid_paise": fresh_new_paid, "paid_txn": fresh_new_paid_txn, "status": fresh_status},
-                    firm_id=firm_id, client_id=client_id, actor=actor, expect={"paid_paise": old_paid},
-                    before={"paid_paise": old_paid, "paid_txn": old_paid_txn, "status": cur.get("status")})
-                if upd.data:
-                    break                        # CAS won
-            else:
-                raise HTTPException(status_code=409, detail=f"Invoice {inv_id} is being updated concurrently — please retry.")
-            # task #227: record the foreign amount too (allocated_paise alone is
-            # base-currency) so a later reversal can roll back the invoice's
-            # paid_txn by the exact amount this allocation added to it.
-            alloc_rows.append({"receipt_id": receipt_id, "sales_invoice_id": inv_id,
-                               "allocated_paise": ar_relieved, "allocated_txn": f})
-        if alloc_rows:
-            privileged_for(db).table("receipt_allocations").insert(alloc_rows).execute()
-
-        if fx_diff != 0:
-            fx_writer(db).table("fx_adjustments").insert({
-                "firm_id": firm_id, "client_id": client_id, "kind": "realized",
-                "document_type": "receipt", "document_id": receipt_id, "currency": ccy,
-                "settlement_rate": str(R1), "base_delta_paise": fx_diff,
-                "journal_entry_id": entry_id, "rate_source": r1_source,
-                "created_by": (actor or {}).get("id"),
-            }).execute()
-    except HTTPException:
-        _compensate_failed_settlement(
-            db, firm_id, client_id, receipt_id, entry_id, actor,
-            [inv["id"] for (inv, *_ ) in settle_plan],
+def _foreign_receipt_refusal(e: Exception) -> Exception:
+    """What to raise for a failure of the function that records a foreign receipt: the error in a person's words where it is a known
+    refusal, and the error itself (so the caller re-raises it untouched) where it is not."""
+    if _is_missing_rpc_function(e):
+        return RuntimeError(
+            "settle_receipt_atomic RPC not found — migrations 160/162 and 781 "
+            "(apps/api/migrations/781_a_foreign_currency_receipt_is_recorded_in_one_transaction_by_the_function_that_records_a_rupee_one.sql) "
+            "must be applied to this database before the API is deployed."
         )
-        raise
-    except Exception as e:
-        _compensate_failed_settlement(
-            db, firm_id, client_id, receipt_id, entry_id, actor,
-            [inv["id"] for (inv, *_ ) in settle_plan],
-        )
-        if _is_unique_violation(e):
-            raise HTTPException(
-                status_code=409,
-                detail="A receipt numbering collision was detected; please retry.",
-            ) from e
-        raise
+    if _is_unique_violation(e):
+        return HTTPException(status_code=409, detail="A receipt numbering collision was detected; please retry.")
+    if _invoice_changed_under_the_receipt(e):
+        # Another receipt or a credit note reached one of these invoices between each read and the function's lock, every time. Nothing
+        # was written (the function is one transaction); the person is asked to look at what is still owed and record it again.
+        return HTTPException(status_code=409, detail=FOREIGN_RECEIPT_RACE_SENTENCE)
+    refusal = period_lock_service.closure_sentence_in(e)
+    if refusal:
+        return HTTPException(status_code=422, detail=refusal)
+    return e
 
-    log_event(firm_id, "receipt", receipt_id, "create", actor_id=(actor or {}).get("auth_user_id"),
-              actor_email=(actor or {}).get("email"), new_data={"amount_paise": cash_base, "currency": ccy})
-    return {**_with_allocated_total(receipt, alloc_rows), "allocations": alloc_rows, "journal_entry_id": entry_id, "realized_fx_paise": fx_diff}
+
+def receipt_number_carried_elsewhere(receipt_no: str) -> str:
+    """What a person reads when the number a receipt would take is refused as a duplicate and no receipt carries it."""
+    return (f"The number this receipt would take, {receipt_no}, is already carried by another entry in this client's books "
+            "(a journal typed with that reference on the same date, for example), so the receipt cannot be recorded under it. "
+            "Nothing was recorded. Change that entry's reference, or record the receipt under another date.")
+
+
+#: The state migration 781's function raises when an invoice no longer reads as the plan read it.
+INVOICE_MOVED_STATE = "RC001"
+
+#: What a person reads when two receipts (or a receipt and a credit note) reached the same invoice at the same moment.
+FOREIGN_RECEIPT_RACE_SENTENCE = (
+    "One of these invoices was settled or credited by somebody else while this receipt was being recorded. "
+    "Nothing was recorded. Open the receipt again, so it shows what is still owed, and record it again.")
+
+
+def _invoice_changed_under_the_receipt(err: Exception) -> bool:
+    """The receipt function's refusal of a foreign receipt whose invoice moved after it was read (migration 781): its own state
+    RC001, or its own words where the client lost the code. Deliberately not serialization_failure (40001), which PostgREST re-runs
+    by itself; the migration says why."""
+    from core.exceptions import _sqlstate
+    return _sqlstate(err) == INVOICE_MOVED_STATE or "changed while this receipt was being prepared" in str(err)
 
 
 def _compensate_failed_settlement(

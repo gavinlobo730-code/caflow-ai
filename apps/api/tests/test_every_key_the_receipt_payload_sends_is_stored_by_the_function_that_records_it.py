@@ -32,15 +32,35 @@ SERVICE = API / "services" / "receipt_service.py"
 NOT_STORED: dict[str, str] = {}
 
 
-def _payload_keys() -> set[str]:
+def _payload_keys(function: str = "create_receipt_core") -> set[str]:
     tree = ast.parse(SERVICE.read_text(encoding="utf-8"))
     for fn in ast.walk(tree):
-        if isinstance(fn, ast.FunctionDef) and fn.name == "create_receipt_core":
+        if isinstance(fn, ast.FunctionDef) and fn.name == function:
             for node in ast.walk(fn):
                 if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "receipt_payload" for t in node.targets) \
                         and isinstance(node.value, ast.Dict):
                     return {k.value for k in node.value.keys if isinstance(k, ast.Constant) and isinstance(k.value, str)}
-    raise AssertionError("create_receipt_core no longer builds a `receipt_payload` dict literal: this guard must be pointed at the new shape")
+    raise AssertionError(f"{function} no longer builds a `receipt_payload` dict literal: this guard must be pointed at the new shape")
+
+
+#: What a FOREIGN receipt hands the function beside the receipt's own columns (POST-A-095, migration 781): the record of the realised
+#: exchange difference, which the function writes to `fx_adjustments` in the same transaction and deliberately does not store on the receipt.
+FOREIGN_RECORD_KEY = "fx_adjustment"
+
+
+def test_every_key_a_foreign_receipt_sends_is_a_column_the_function_stores():
+    """The same rule for the other builder. A foreign receipt goes through the same function since migration 781, so a currency column the
+    service sends and the function does not list would be dropped without an error exactly as the five above were."""
+    keys, (name, cols) = _payload_keys("create_foreign_receipt"), src.current_columns()
+    assert {"txn_currency", "exchange_rate", "txn_amount", "rate_source", "rate_type", "rate_date", "rate_selected_by", "rate_overridden",
+            "id", "bank_account_id", "unallocated_paise"} <= keys, "the foreign payload lost a key this guard exists for, or the service was restructured"
+    dropped = sorted(k for k in keys if k not in cols)
+    assert not dropped, f"create_foreign_receipt sends {dropped} in the receipt payload and the receipt function ({name}) does not store them"
+    assert FOREIGN_RECORD_KEY not in keys and FOREIGN_RECORD_KEY not in cols, "the realised-difference record is added per attempt and is not a receipt column"
+    source = SERVICE.read_text(encoding="utf-8")
+    assert f'this_receipt["{FOREIGN_RECORD_KEY}"]' in source, "the foreign receipt no longer hands the function the record of its realised difference"
+    _file, body = src.body_definitions(src.migration_files())[-1]
+    assert f"'{FOREIGN_RECORD_KEY}'" in body and "fx_adjustments" in body, "the function's last definition no longer writes the realised-difference record"
 
 
 def test_the_payload_has_keys_and_the_function_has_columns():
