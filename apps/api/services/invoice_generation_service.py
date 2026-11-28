@@ -6,9 +6,8 @@ SAC 998211 — Professional, technical, consultancy and like services
 
 All monetary calculations in paise (integer), never floating point.
 """
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 from typing import Optional
-from dateutil.relativedelta import relativedelta
 
 from core.ist_clock import ist_today
 from core import db_provider
@@ -128,67 +127,3 @@ def generate_invoice_from_engagement(
 
     invoice = invoice_repo.create(invoice_data)
     return invoice["id"]
-
-
-def generate_recurring_invoice(
-    engagement_id: str,
-    invoice_month: Optional[str] = None,
-) -> Optional[str]:
-    """
-    Generate invoice for a recurring billing engagement.
-
-    Check if last invoice is older than the billing cycle period.
-    Only generate if due.
-
-    Args:
-        engagement_id: ID of the fee_engagements record
-        invoice_month: ISO date string for invoice date. Defaults to today.
-
-    Returns:
-        invoice_id (UUID string) or None if not yet due
-
-    Raises:
-        NotFoundError: If engagement not found
-    """
-    from repositories.engagement_repository import engagement_repo
-    from repositories.invoice_repository import invoice_repo
-
-    engagement = engagement_repo.get_or_raise(engagement_id)
-
-    if invoice_month is None:
-        invoice_month = ist_today().isoformat()
-
-    invoice_date = datetime.fromisoformat(invoice_month).replace(tzinfo=timezone.utc)
-
-    # Get billing cycle
-    billing_cycle = engagement.get("billing_cycle", "Monthly")
-
-    # Get last invoice for this engagement
-    invoices = invoice_repo.list_for_engagement(engagement_id)
-    if not invoices:
-        # No invoices yet, generate one
-        return generate_invoice_from_engagement(engagement_id, invoice_month)
-
-    # Find most recent invoice
-    invoices_sorted = sorted(invoices, key=lambda x: x.get("invoice_date", ""), reverse=True)
-    last_invoice = invoices_sorted[0]
-    last_invoice_date = datetime.fromisoformat(last_invoice["invoice_date"].replace('Z', '+00:00'))
-
-    # Calculate when next invoice is due
-    if billing_cycle == "Monthly":
-        next_due_date = last_invoice_date + relativedelta(months=1)
-    elif billing_cycle == "Quarterly":
-        next_due_date = last_invoice_date + relativedelta(months=3)
-    elif billing_cycle == "Annually" or billing_cycle == "Annual":
-        next_due_date = last_invoice_date + relativedelta(years=1)
-    else:
-        # Default to monthly
-        next_due_date = last_invoice_date + relativedelta(months=1)
-
-    # Check if due
-    if invoice_date < next_due_date:
-        # Not yet due
-        return None
-
-    # Generate new invoice
-    return generate_invoice_from_engagement(engagement_id, invoice_month)

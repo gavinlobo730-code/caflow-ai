@@ -945,7 +945,7 @@ def test_a_doctored_note_fails_its_category_check():
     assert check_looked_up_first(wrong, ctx), "a helper that does not look the row up must fail"
 
     unreachable = next(e for e in ctx.entries.values() if e.category == "unreachable-code"
-                       and e.tokens["symbol"] == "generate_recurring_invoice")
+                       and e.tokens["symbol"] == "insert_with_number")
     assert check_unreachable(unreachable, ctx) == []
     reached = Entry(unreachable.key, unreachable.count, unreachable.category, "symbol=get_invoice_pdf",
                     unreachable.line, {"symbol": "get_invoice_pdf"})

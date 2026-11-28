@@ -61,8 +61,7 @@ domain must not import services | domain.inventory_service | services.itc_regist
 domain must not import services | domain.inventory_service | services.phase2_journal_service | 13
 domain must not import services | domain.reporting.fixed_asset_movement | services.phase2_journal_service | 1
 domain must not import services | domain.reporting.service | services.ledger_span_service | 1
-domain must not import services | domain.task_service | services.activity_service | 1
-domain must not import services | domain.task_service | services.task_service | 2
+domain must not import services | domain.task_service | services.task_service | 1
 services must not import routers | services.billing_service | routers.sales_invoices | 2
 services must not import routers | services.book_to_tax_service | routers.accounting | 1
 services must not import routers | services.collections_service | routers.customers | 1
