@@ -15,6 +15,7 @@ import os
 import uuid
 import logging
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 from fastapi import HTTPException
 
@@ -22,7 +23,7 @@ from domain.accounting.payment_account import resolve_payment_account
 from core.db_provider import privileged_for
 from services.audit_service import log_event
 from services.document_header_writer import update_header
-from services.ledger_door import ledger_rpc
+from services.ledger_door import ledger_rpc, stored_answer
 from services.period_validation_service import period_validation_service
 from services import named_row_ownership
 from services import period_lock_service
@@ -333,7 +334,13 @@ def create_foreign_receipt(firm_id: str, data: dict, actor: dict, db) -> dict:
                 continue
             refusal = _foreign_receipt_refusal(e)
             if refusal is e:
-                raise
+                # None of the function's own refusals, which leave nothing behind. If the receipt IS stored, the answer was lost on
+                # the way back (POST-A-582): answer with what is there, and not with a failure the person would record again.
+                stored = stored_answer(db, kind="receipt", row_id=this_receipt["id"], firm_id=firm_id, client_id=client_id)
+                if stored is None:
+                    raise
+                result = SimpleNamespace(data=stored)
+                break
             raise refusal from e
 
     out = result.data or {}
@@ -665,7 +672,12 @@ def _settle_receipt_via_atomic_rpc(
         refusal = period_lock_service.closure_sentence_in(e)
         if refusal:
             raise HTTPException(status_code=422, detail=refusal) from e
-        raise
+        # None of the function's own refusals. If the receipt IS stored, the answer was lost on the way back (POST-A-582): answer with
+        # what is there, and not with a failure the person would record again (a pure advance is stored twice, which nothing stops).
+        stored = stored_answer(db, kind="receipt", row_id=receipt_payload["id"], firm_id=firm_id, client_id=client_id)
+        if stored is None:
+            raise
+        result = SimpleNamespace(data=stored)
 
     out = result.data or {}
     receipt_id = out.get("receipt_id") or receipt_payload["id"]

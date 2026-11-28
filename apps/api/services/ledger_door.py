@@ -47,12 +47,23 @@ answers True for no client (a firm-level resource has none to check), which is t
 
 Where there is no database configured (mock mode, local development, the in-memory test doubles) the client the caller already
 holds is returned and the payload is left exactly as it was: it IS the double.
+
+AN ANSWER LOST ON THE WAY BACK (POST-A-582). The database functions commit before they answer. If the connection drops, or the call
+times out, after the commit and before the answer arrives, the API sees an error for a document that was stored, and the person is told
+it failed and records it again: a pure advance, which no outstanding amount stops, is stored twice. The receipt's or payment's id is
+chosen BEFORE the call, so the question has an answer: `stored_answer` reads the one row by that id (under the firm and the client the
+route proved) and, where it is there, the caller answers with what is stored as though the function had answered. It is asked only for an
+error that is none of the function's own refusals (those are known by their state and leave nothing). Where the row is not there the
+original error stands. What it cannot see: a call still running on the server when the read is made, which commits afterwards.
 """
 from __future__ import annotations
 
+import logging
 import os
 
 from core import db_provider
+
+log = logging.getLogger("caflow.ledger_door")
 
 #: the payload each function reads the posting person from, and where the reserved key goes
 _ENTRY_KEY = {"post_journal_atomic": "p_entry", "settle_receipt_atomic": "p_journal_entry", "issue_sales_invoice_atomic": "p_entry",
@@ -103,3 +114,44 @@ def ledger_rpc(db, fn: str, params: dict, *, firm_id: str, client_id: str):
     if fn == "settle_payment_atomic":
         return client.rpc("settle_payment_atomic", params)
     return client.rpc("settle_receipt_atomic", params)
+
+
+def stored_answer(db, *, kind: str, row_id: str, firm_id: str, client_id: str):
+    """The function's own answer, rebuilt from the rows it stored, or None when the document is not there (POST-A-582).
+
+    `kind` is "receipt" (`settle_receipt_atomic`) or "payment" (`settle_payment_atomic`); `row_id` is the id the caller chose before the
+    call. The answer has the shape the function gives: the document's id, its ledger entry's id, the stored row and its allocation rows.
+    A read that itself fails answers None, so the caller's error is the one that is raised: this never turns a failure into a success
+    unless the document is there to be read. The tables are spelt out in each branch, not passed as a name, so the firm-scope scan can
+    read that every query on a firm table names its firm."""
+    if not row_id:
+        return None
+    if kind not in ("receipt", "payment"):
+        raise ValueError(f"{kind!r} is not a document a ledger function stores")
+    try:
+        client = ledger_client(db, firm_id=firm_id, client_id=client_id)
+        if kind == "receipt":
+            rows = (client.table("receipts").select("*").eq("id", row_id).eq("firm_id", firm_id).eq("client_id", client_id)
+                    .limit(1).execute().data) or []
+            entries = (client.table("journal_entries").select("id").eq("firm_id", firm_id).eq("client_id", client_id)
+                       .eq("source_type", "receipt").eq("source_id", row_id).limit(1).execute().data) or [] if rows else []
+            allocations = client.table("receipt_allocations").select("*").eq("receipt_id", row_id).execute().data or [] if rows else []
+        else:
+            rows = (client.table("purchase_payments").select("*").eq("id", row_id).eq("firm_id", firm_id).eq("client_id", client_id)
+                    .limit(1).execute().data) or []
+            entries = (client.table("journal_entries").select("id").eq("firm_id", firm_id).eq("client_id", client_id)
+                       .eq("source_type", "purchase_payment").eq("source_id", row_id).limit(1).execute().data) or [] if rows else []
+            allocations = (client.table("purchase_payment_allocations").select("*").eq("purchase_payment_id", row_id).execute().data
+                           or []) if rows else []
+    except Exception:                                                       # noqa: BLE001 - the read failed too: the first error stands
+        log.warning("caflow.ledger_door: could not read %s %s after a lost answer", kind, row_id, exc_info=True)
+        return None
+    if not rows:
+        return None
+    row = rows[0]
+    log.warning("caflow.ledger_door: the answer for %s %s was lost on the way back; it is stored, so the caller answers with it",
+                kind, row_id)
+    entry_id = (entries[0].get("id") if entries else None) or row.get("journal_entry_id")
+    if kind == "receipt":
+        return {"receipt_id": row_id, "journal_entry_id": entry_id, "receipt": row, "allocations": allocations}
+    return {"payment_id": row_id, "journal_entry_id": entry_id, "payment": row, "allocations": allocations}
