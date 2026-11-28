@@ -286,7 +286,7 @@ async function apiDeleteLead(id: string): Promise<void> {
 // so "1234.56" became the digits "123456" and then ₹1,23,456 — a HUNDREDFOLD
 // overstatement, and it lands in the pipeline value the firm forecasts on.
 function rupeesToPaise(rupees: string): number | null {
-  return paiseFromRupeeInput(rupees.replace(/[,\s₹]/g, ""));
+  return paiseFromRupeeInput(rupees.replace(/[\s₹]/g, ""));
 }
 
 

@@ -421,7 +421,7 @@ function AdjustmentForm({
     // Through the one parser. parseFloat(amountStr) read "1,25,000" as ₹1 and
     // this posts a year-end adjustment to the general ledger, where a wrong
     // figure lands in the audited accounts.
-    const amount_paise = paiseFromRupeeInput(amountStr.replace(/[,\s₹]/g, ""));
+    const amount_paise = paiseFromRupeeInput(amountStr.replace(/[\s₹]/g, ""));
     if (amount_paise === null) { setError("Amount isn't a rupee figure — enter it like 125000 or 125000.50"); return; }
     if (amount_paise <= 0) { setError("Amount must be greater than zero"); return; }
     if (dates.first) { dates.refuseWith(setError); return; }

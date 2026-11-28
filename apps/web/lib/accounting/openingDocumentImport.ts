@@ -60,10 +60,11 @@ export function openingDocumentColumns(kind: OpeningKind): OpeningColumn[] {
 const text = (v: string | undefined): string => (v ?? "").trim();
 
 /** A rupee cell with the marks a person puts in one taken off — the currency
- *  symbol, Indian thousands commas, stray spaces — then through the one parser.
+ *  symbol, stray spaces — then through the one parser, which reads properly grouped
+ *  commas and refuses a comma anywhere else (POST-A-570).
  *  Null for blank and for anything that is not an amount. */
 function amountCell(v: string | undefined): number | null {
-  const cleaned = text(v).replace(/[,\s₹]/g, "");
+  const cleaned = text(v).replace(/[\s₹]/g, "");
   return cleaned === "" ? null : paiseFromRupeeInput(cleaned);
 }
 

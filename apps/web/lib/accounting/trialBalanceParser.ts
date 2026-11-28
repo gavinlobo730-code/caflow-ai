@@ -60,8 +60,8 @@ export function detectType(name: string): string {
  * column, balances it at the WRONG opening position.
  */
 export function parseAmount(s: string): number | null {
-  // Strip the currency and thousands marks, and the accounting parentheses.
-  const clean = s.replace(/[,\s₹]/g, "").replace(/^Rs\.?/i, "").replace(/^\((.+)\)$/, "$1");
+  // Strip the currency mark and the accounting parentheses. Commas are the reader's: proper grouping is read, a comma anywhere else refused (POST-A-570).
+  const clean = s.replace(/[\s₹]/g, "").replace(/^Rs\.?/i, "").replace(/^\((.+)\)$/, "$1");
   const paise = paiseFromRupeeInput(clean);
   return paise === null ? null : Math.abs(paise); // paise, always positive
 }

@@ -126,7 +126,7 @@ function fmtP(paise: number): string {
  *  CA sees the section they filled in and the tax computed as though they had
  *  not. */
 function rsToPaise(rs: string): number | null {
-  const p = paiseFromRupeeInput(rs.replace(/[,\s₹]/g, ""));
+  const p = paiseFromRupeeInput(rs.replace(/[\s₹]/g, ""));
   return p === null || p < 0 ? null : p;
 }
 

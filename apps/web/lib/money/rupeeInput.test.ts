@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  bpsFromPercentInput, paiseFromRupeeInput, parseQuantity, plainDecimalText, rupeeInputFromPaise, typedNumber,
+  bpsFromPercentInput, paiseFromRupeeInput, parseQuantity, plainDecimalText, rupeeInputFromPaise, typedNumber, unreadableBoxes, unreadableBoxesSentence,
   sumRupeeInputs,
 } from "./rupeeInput.ts";
 
@@ -184,3 +184,26 @@ test("a quantity grouped properly is read, and a misplaced comma is refused", ()
   assert.equal(parseQuantity("1,00"), null);
   assert.equal(parseQuantity("1,0000"), null);
 });
+
+// POST-A-571 — a form asks which typed boxes cannot be read BEFORE it builds what it sends, so a refusal is never read as nothing.
+test("a blank box is not unreadable, a typed box that cannot be read is named, each by what it takes", () => {
+  assert.deepEqual(unreadableBoxes([["Basic", ""], ["LTA", "   "]]), []);
+  assert.deepEqual(unreadableBoxes([["Basic", "45,00"], ["HRA %", "40.5", "percent"], ["Units", "1,000", "quantity"]]), ["Basic"]);
+  assert.deepEqual(unreadableBoxes([["Basic", "45,000"], ["HRA %", "1,0", "percent"], ["Units", "5 kg", "quantity"]]), ["HRA %", "Units"]);
+  assert.deepEqual(unreadableBoxes([["Notice pay", "12abc"], ["Loans", "1e3"], ["Other", "0"]]), ["Notice pay", "Loans"]);
+});
+
+test("the refusal names the boxes, says what each kind may look like, and that nothing was sent", () => {
+  assert.equal(unreadableBoxesSentence([["Basic", "45000"], ["HRA %", "40", "percent"]]), null);
+  const amount = unreadableBoxesSentence([["Basic", "45,00"]]) ?? "";
+  assert.match(amount, /^Basic cannot be read\. /);
+  assert.match(amount, /1,25,000/);
+  assert.match(amount, / Nothing was sent\.$/);
+  assert.doesNotMatch(amount, /percentage|quantity/i, "a box of one kind is not told about the others");
+  const mixed = unreadableBoxesSentence([["Rate", "1,8", "percent"], ["Line 1 quantity", "5 kg", "quantity"]]) ?? "";
+  assert.match(mixed, /^Rate, Line 1 quantity cannot be read\. /);
+  assert.match(mixed, /A percentage is a plain number such as 40 or 40\.5, with no comma\./);
+  assert.match(mixed, /A quantity is a number with up to three decimals/);
+  assert.doesNotMatch(mixed, /1,25,000/, "no amount box is wrong, so the amount sentence is not said");
+});
+

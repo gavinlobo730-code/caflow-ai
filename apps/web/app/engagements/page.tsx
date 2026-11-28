@@ -141,7 +141,7 @@ function stripHtmlPreview(html: string): string {
 // the decimal instead of deleting it, and returns null for text that is not an
 // amount rather than a number nobody typed.
 function rupeesToPaise(rupeesStr: string): number | null {
-  return paiseFromRupeeInput(rupeesStr.replace(/[,\s₹]/g, ""));
+  return paiseFromRupeeInput(rupeesStr.replace(/[\s₹]/g, ""));
 }
 
 // ---------------------------------------------------------------------------

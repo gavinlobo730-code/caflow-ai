@@ -781,7 +781,7 @@ function FilterControl<T>({
   const v = (value as { min?: number; max?: number }) ?? {};
   const toPaise = (s: string) => {
     if (s.trim() === "") return undefined;
-    const p = paiseFromRupeeInput(s.replace(/[,\s₹]/g, ""));
+    const p = paiseFromRupeeInput(s.replace(/[\s₹]/g, ""));
     return p === null ? undefined : p;
   };
   const toRupees = (p?: number) => (p == null ? "" : rupeeInputFromPaise(p));

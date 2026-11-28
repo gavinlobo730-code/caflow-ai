@@ -447,7 +447,7 @@ function openPurchaseCycleForm(tab) {
 }
 
 /** The Quotes, Orders & Challans tab with "New" open on a customer, a number and one line. `tab` is the tab's own label. */
-function openSalesCycleForm(tab, number) {
+export function openSalesCycleForm(tab, number) {
   return async (env) => {
     const { page, stub } = env;
     stub.route({ method: "GET", re: /api\/customers/, reply: () => ok([{ id: "cu1", name: "Beta Stores" }]) });

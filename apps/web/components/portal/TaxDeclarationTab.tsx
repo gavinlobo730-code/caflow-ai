@@ -79,7 +79,7 @@ function paiseToRupees(paise: number): string {
  *  held as TEXT until save — the same shape the Chapter VI-A items already
  *  used — so a decimal survives being typed. */
 function rupeesToPaise(text: string): number | null {
-  return paiseFromRupeeInput((text ?? "").replace(/[,\s₹]/g, ""));
+  return paiseFromRupeeInput((text ?? "").replace(/[\s₹]/g, ""));
 }
 
 /** The four §192 declaration amounts that live on the declaration row itself.

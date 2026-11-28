@@ -41,7 +41,7 @@ type Line = { service_catalogue_id: string; nrv_per_unit_paise: number };
 function readBox(text: string | undefined): { kind: "blank" } | { kind: "amount"; paise: number } | { kind: "bad" } {
   const t = (text ?? "").trim();
   if (t === "") return { kind: "blank" };
-  const paise = paiseFromRupeeInput(t.replace(/[,\s₹]/g, ""));
+  const paise = paiseFromRupeeInput(t.replace(/[\s₹]/g, ""));
   return paise === null || paise < 0 ? { kind: "bad" } : { kind: "amount", paise };
 }
 

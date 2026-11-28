@@ -108,7 +108,7 @@ export interface BuildResult {
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** A spreadsheet cell with the marks a person puts in taken off. */
-function cell(v: string | undefined): string { return (v ?? "").trim().replace(/[,\s₹%]/g, ""); }
+function cell(v: string | undefined): string { return (v ?? "").trim().replace(/[\s₹%]/g, ""); }
 
 /**
  * Rupees cell → integer paise, or NaN when the cell is not an amount.

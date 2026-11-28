@@ -34,7 +34,7 @@ import type {
   ArrearsReliefResult, EmployeeLoanRow, PerquisiteResult,
   SalaryRevisionRow, SettlementInput, SettlementResult,
 } from "@/lib/api";
-import { paiseFromRupeeInput, bpsFromPercentInput, AMOUNT_MAY_LOOK_LIKE } from "@/lib/money/rupeeInput";
+import { paiseFromRupeeInput, bpsFromPercentInput, parseQuantity, AMOUNT_MAY_LOOK_LIKE, unreadableBoxesSentence } from "@/lib/money/rupeeInput";
 import { financialYearOfMonth } from "@/lib/dates/periods";
 import { Callout, GapList } from "@/components/ui/callout";
 import { YearPicker } from "@/components/ui/year-picker";
@@ -753,6 +753,13 @@ function RevisionsSection({ employee, clientId, onSaved, onDirtyChange }: {
 
   async function save() {
     if (dates.first) { dates.refuseWith(setErr); return; }
+    // A box that is typed in and cannot be read is asked about before anything is built: read as nothing, a revised basic of 45,00 would be a
+    // basic of nil from that day (POST-A-571).
+    const unreadable = unreadableBoxesSentence([
+      ["Basic", basic], ["HRA %", hraPercent, "percent"], ["DA %", daPercent, "percent"], ["LTA", lta], ["Medical", medical],
+      ["Special allowance", special], ["Other allowances", other],
+    ]);
+    if (unreadable) { setErr(unreadable); return; }
     setBusy(true); setErr(null);
     try {
       const res = await api.payroll.addSalaryRevision(employee.id, {
@@ -886,6 +893,10 @@ function LoansSection({ employee, clientId, onDirtyChange }: {
 
   async function save() {
     if (dates.first) { dates.refuseWith(setErr); return; }
+    const unreadable = unreadableBoxesSentence([
+      ["Principal", principal], ["Monthly instalment", instalment], ["Interest rate", ratePercent, "percent"],
+    ]);
+    if (unreadable) { setErr(unreadable); return; }
     setBusy(true); setErr(null); setNotes([]);
     try {
       const res = await api.payroll.addEmployeeLoan(employee.id, {
@@ -1013,6 +1024,13 @@ function PerquisitesSection({ employee, clientId, onDirtyChange }: {
   useReportDirty(onDirtyChange, dirty);
 
   async function value() {
+    // What is valued here is what Record then stores, so a box that cannot be read stops the valuation and is named (POST-A-571).
+    const unreadable = unreadableBoxesSentence([
+      ["Salary for Rule 3", salaryForRule3], ["Actual lease rent", leaseRent], ["Rent recovered from the employee", rentRecovered],
+      ["Maximum loan outstanding", loanOutstanding], ["SBI rate", sbiRatePercent, "percent"], ["Interest charged on the loan", loanInterestCharged],
+      ["Gifts", gifts], ["Engine capacity (litres)", engineLitres, "quantity"],
+    ]);
+    if (unreadable) { setResult(null); setDone(null); setErr(unreadable); return; }
     setBusy("value"); setErr(null); setDone(null);
     try {
       const res = await api.payroll.valuePerquisites(employee.id, {
@@ -1024,7 +1042,7 @@ function PerquisitesSection({ employee, clientId, onDirtyChange }: {
         actual_lease_rent_paise: paiseFromRupeeInput(leaseRent) ?? 0,
         rent_recovered_from_employee_paise: paiseFromRupeeInput(rentRecovered) ?? 0,
         motor_car: motorCar,
-        engine_litres: Number(engineLitres || 0),
+        engine_litres: parseQuantity(engineLitres) ?? 0,   // blank is nil; text that cannot be read was refused above
         with_driver: withDriver,
         employer_bears_running_costs: employerBearsRunning,
         loan,
@@ -1248,6 +1266,13 @@ function ReliefSection({ employee, clientId, onDirtyChange }: {
   useReportDirty(onDirtyChange, dirty);
 
   async function compute() {
+    const unreadable = unreadableBoxesSentence([
+      ["Total income of the year of receipt", totalIncome],
+      ...slices.flatMap((s, i): Array<[string, string]> => [
+        [`Arrears, year ${i + 1}`, s.amount], [`Total income, year ${i + 1}`, s.income],
+      ]),
+    ]);
+    if (unreadable) { setResult(null); setErr(unreadable); return; }
     setBusy(true); setErr(null);
     try {
       const res = await api.payroll.arrearsRelief(employee.id, {

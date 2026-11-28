@@ -255,7 +255,7 @@ export default function ClientLifecyclePage() {
     // Through the one parser. parseInt(x, 10) * 100 read "1,25,000" as ₹1 and
     // "15000.50" as ₹15,000 — and the field is named value_paise while holding
     // the rupees the CA typed, which is what made the truncation invisible.
-    const valuePaise = paiseFromRupeeInput(renewalForm.value_paise.replace(/[,\s₹]/g, ""));
+    const valuePaise = paiseFromRupeeInput(renewalForm.value_paise.replace(/[\s₹]/g, ""));
     if (valuePaise === null) {
       setError("Value isn't an amount — enter rupees, like 15000 or 15000.50.");
       return;

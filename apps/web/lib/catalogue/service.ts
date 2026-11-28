@@ -171,12 +171,12 @@ export interface ServiceFormValidation {
 /** A typed rupee field on this form → integer paise, or null. Blank is 0,
  *  which every caller here treats as "not given". */
 function fieldPaise(raw: string): number | null {
-  return paiseFromRupeeInput(raw.replace(/[,\s₹]/g, ""));
+  return paiseFromRupeeInput(raw.replace(/[\s₹]/g, ""));
 }
 
 /** A typed quantity field → the number, or null. Blank is null. */
 function fieldQty(raw: string): number | null {
-  return parseQuantity(raw.replace(/[,\s]/g, ""));
+  return parseQuantity(raw.replace(/\s/g, ""));
 }
 
 export function validateServiceForm(input: ServiceFormInput): ServiceFormValidation {

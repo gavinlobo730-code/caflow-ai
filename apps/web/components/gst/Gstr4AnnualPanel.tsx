@@ -25,7 +25,7 @@ import {
 } from "@/lib/api";
 import { Callout, GapList, type GapLike } from "@/components/ui/callout";
 import { formatPaise } from "@/lib/money/format";
-import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput";
+import { paiseFromRupeeInput, bpsFromPercentInput, unreadableBoxesSentence } from "@/lib/money/rupeeInput";
 import { objectOrNull, arrayOrEmpty } from "@/lib/api/shape";
 import { failureSentence } from "@/lib/api/failureSentence";
 import { INDIAN_STATES } from "@/lib/constants/indianStates";
@@ -160,6 +160,9 @@ export function Gstr4AnnualPanel({ clientId, gstin }: { clientId: string; gstin:
     const supplierGstin = form.supplier_gstin.trim().toUpperCase();
     if (!supplierGstin) { setFormError("The supplier's GSTIN is required."); return null; }
     if (!form.place_of_supply) { setFormError("Place of supply is required."); return null; }
+    // A rate that is typed and cannot be read ("1,8") was saved as 0 per cent beside amounts that were refused properly (POST-A-571).
+    const rateUnreadable = unreadableBoxesSentence([["Rate", form.rate, "percent"]]);
+    if (rateUnreadable) { setFormError(rateUnreadable); return null; }
     const body: Record<string, unknown> = {
       client_id: clientId, gstin, financial_year: financialYear,
       supplier_gstin: supplierGstin, place_of_supply: form.place_of_supply,
@@ -259,8 +262,11 @@ export function Gstr4AnnualPanel({ clientId, gstin }: { clientId: string; gstin:
     const taxable = paiseFromRupeeInput(impsForm.taxable_value);
     const igst = paiseFromRupeeInput(impsForm.igst || "0");
     const cess = paiseFromRupeeInput(impsForm.cess || "0");
-    if ([taxable, igst, cess].some((v) => v === null)) {
-      setFormError("Enter valid amounts.");
+    const impsUnreadable = unreadableBoxesSentence([
+      ["Taxable value", impsForm.taxable_value], ["IGST", impsForm.igst], ["Cess", impsForm.cess], ["Rate", impsForm.rate, "percent"],
+    ]);
+    if (impsUnreadable || [taxable, igst, cess].some((v) => v === null)) {
+      setFormError(impsUnreadable ?? "Enter valid amounts.");
       return;
     }
     setSaving(true);
