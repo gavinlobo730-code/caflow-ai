@@ -140,10 +140,7 @@ def engagements(monkeypatch):
     lambda: eng.update_engagement("E-THEIRS", eng.EngagementUpdate(notes="x"),
                                   current_user=USER),
     lambda: eng.delete_engagement("E-THEIRS", current_user=USER),
-    lambda: eng.transition_engagement("E-THEIRS",
-                                      eng.EngagementTransition(status="In Progress"),
-                                      current_user=USER),
-], ids=["get", "update", "delete", "transition"])
+], ids=["get", "update", "delete"])
 def test_every_row_endpoint_refuses_another_clients_engagement(call, deny,
                                                                engagements):
     with pytest.raises(HTTPException) as e:
@@ -177,13 +174,12 @@ def test_another_firms_engagement_never_reaches_the_client_guard(deny, engagemen
     assert deny == [], "the client guard was reached for another firm's row"
 
 
-def test_your_own_engagement_still_reads_and_transitions(deny, engagements,
-                                                         monkeypatch):
+def test_your_own_engagement_still_reads_and_updates(deny, engagements,
+                                                     monkeypatch):
     out = eng.get_engagement("E-MINE", current_user=USER)
     assert out["data"]["engagement"]["id"] == "E-MINE"
-    out = eng.transition_engagement("E-MINE",
-                                    eng.EngagementTransition(status="In Progress"),
-                                    current_user=USER)
+    out = eng.update_engagement("E-MINE", eng.EngagementUpdate(notes="x"),
+                                current_user=USER)
     assert out["success"] is True
     assert engagements == ["E-MINE"]
 

@@ -21,7 +21,7 @@ from typing import Optional
 from models.common import api_response
 from core.exceptions import unhandled_failure
 from core.permissions import rbac
-from core.authz import assert_client_access, can_access_client, effective_client_ids, filter_by_client
+from core.authz import assert_client_access, can_access_client, filter_by_client
 from core.query_day import query_day
 from repositories.invoice_repository import invoice_repo
 from services.audit_service import log_event
@@ -231,41 +231,6 @@ def download_invoice_pdf(
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# POST /api/invoices/run-overdue-check — Transition Issued past due to Overdue
-# ─────────────────────────────────────────────────────────────────────────────
-
-@router.post("/run-overdue-check")
-def run_overdue_check_endpoint(
-    current_user: dict = Depends(rbac("billing", "write")),
-):
-    """
-    Run the invoice lifecycle check for this firm: any Issued invoice past
-    its due date (invoice_date + 30 days if no explicit due_date) is marked
-    Overdue. Also runs automatically via the daily scheduler.
-
-    M2 audit finding: this is a WRITE across every invoice in the firm, not
-    a list — narrowing the output would be the wrong shape, since the status
-    transitions would already have happened. Instead the run itself is
-    confined to the caller's book, the same "confine-the-run" pattern
-    recurring_invoices.py's /run uses: a Partner is firm-wide and runs once
-    across the whole firm as before; an Executive or Reviewer runs once per
-    client they are actually assigned to.
-    """
-    from services.invoice_lifecycle_service import run_overdue_check
-
-    firm_id = current_user.get("firm_id")
-    eff = effective_client_ids(current_user)
-    targets = [None] if eff is None else sorted(eff)
-
-    merged = {"transitioned": 0, "invoice_ids": []}
-    for target in targets:
-        res = run_overdue_check(firm_id=firm_id, client_id=target)
-        merged["transitioned"] += res.get("transitioned", 0)
-        merged["invoice_ids"].extend(res.get("invoice_ids", []))
-    return api_response(True, merged)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

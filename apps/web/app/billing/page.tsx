@@ -6,37 +6,28 @@
  * All monetary values stored and calculated in integer paise (1 INR = 100 paise)
  */
 
-import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useCallback } from "react";
-import { Plus, RefreshCw, MessageCircle, IndianRupee, Download, Clock } from "lucide-react";
-import { ClientLookup } from "@/components/lookups/ClientLookup";
+import { RefreshCw, MessageCircle, Download } from "lucide-react";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { SectionPlaceholder } from "@/components/ui/page-frame";
-import { api, ENGAGEMENT_TRANSITIONS } from "@/lib/api";
-import type { ApiResp, FeeEngagementStatus } from "@/lib/api";
-import { usePermissions } from "@/lib/auth/AuthContext";
+import { api } from "@/lib/api";
+import type { FeeEngagementStatus } from "@/lib/api";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { daysBetweenLocalISO } from "@/lib/dateMath";
 import { formatDate, todayIstISO } from "@/lib/dates/format";
-import type { Client } from "@/lib/types";
 import Link from "next/link";
 import { Callout } from "@/components/ui/callout";
 // A payload field is not a list until something has checked.
-import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
+import { arrayOrEmpty } from "@/lib/api/shape";
 // Indian grouping (D6) from the one authority; this screen's own formatter
 // grouped the Western way (₹1,234,567).
 import { formatPaise as fmtPaise } from "@/lib/money/format";
 import { isOwedFeeInvoice, type FeeInvoiceStatus } from "@/lib/constants/feeInvoiceStatus";
-import { Button } from "@/components/ui/button";
-import { Modal } from "@/components/ui/modal";
 import { PageHeader } from "@/components/ui/page-header";
-import { DateInput } from "@/components/ui/date-input";
-import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { EmptyState } from "@/components/ui/states";
-import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -103,9 +94,6 @@ interface OutstandingRow {
 
 type Tab = "dashboard" | "engagements" | "invoices" | "outstanding" | "receipts";
 
-const SERVICE_TYPES: ServiceType[] = ["GST Filing", "ITR Filing", "Accounting", "Payroll", "MCA", "Audit", "Advisory"];
-const BILLING_CYCLES: BillingCycle[] = ["Monthly", "Quarterly", "Annual"];
-const PAYMENT_MODES: PaymentMode[] = ["NEFT", "RTGS", "Cheque", "Cash", "UPI"];
 
 const STATUS_COLORS: Record<InvoiceStatus, string> = {
   Draft: "bg-ps-muted text-ps-label",
@@ -115,223 +103,6 @@ const STATUS_COLORS: Record<InvoiceStatus, string> = {
   Overdue: "bg-state-problem-surface text-state-problem",
   Cancelled: "bg-state-done-surface text-state-done",
 };
-
-// ─── Modals ───────────────────────────────────────────────────────────────────
-
-function AddEngagementModal({ clients, onClose, onSaved }: {
-  clients: Client[];
-  onClose: () => void;
-  onSaved: (e: Engagement) => void;
-}) {
-  const [clientId, setClientId] = useState(clients[0]?.id ?? "");
-  const [serviceType, setServiceType] = useState<ServiceType>("GST Filing");
-  const [feeRs, setFeeRs] = useState("");
-  const [billingCycle, setBillingCycle] = useState<BillingCycle>("Monthly");
-  const [startDate, setStartDate] = useState(todayIstISO());
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  // Text that is not a date reads as blank to the form (frontend_ux-19).
-  const dates = useDateProblems();
-
-  async function handleSave() {
-    if (dates.first) { dates.refuseWith(setError); return; }
-    // Integer paise through the one parser — never Math.round(parseFloat(x)*100),
-    // which reads a fee typed "1,25,000" as ₹1 and a blank field as NaN.
-    const feePaise = paiseFromRupeeInput(feeRs);
-    if (feePaise === null) { setError("Fee isn't a number. Type it in rupees, like 25000 or 25000.50."); return; }
-    if (!clientId || feePaise <= 0) { setError("Select a client and enter a valid fee"); return; }
-    setSaving(true);
-    try {
-      // Through the API, not PostgREST: `rbac("billing","write")` runs, the
-      // firm is taken from the caller rather than sent by the browser, and the
-      // client-assignment scope (`assert_client_access`) is checked.
-      const res = await api.engagements.create({
-        client_id: clientId,
-        service_type: serviceType,
-        fee_paise: feePaise,
-        billing_cycle: billingCycle,
-        start_date: startDate,
-        status: "Active",
-      });
-      // The GST workspace router answers a refusal as HTTP 200 with
-      // `success: false`, so an unchecked call would show "saved" for a request
-      // the server declined. Check the envelope, not the transport.
-      if (!res.success || !res.data?.engagement) {
-        throw new Error(res.error || "Failed to save");
-      }
-      const client = clients.find(c => c.id === clientId);
-      onSaved({ ...(res.data.engagement as unknown as Engagement),
-                client_name: client?.client_name });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Modal title="Add Fee Engagement" maxWidthClass="max-w-md" onClose={() => { if (!saving) onClose(); }}>
-        {error && <Callout tone="problem">{error}</Callout>}
-        <div className="space-y-3">
-          <div>
-            <label className="text-xs font-medium text-ps-body block mb-1">Client</label>
-            <div className="w-full">
-              <ClientLookup
-                clients={clients}
-                value={clientId}
-                onChange={setClientId}
-                ariaLabel="Client"
-                placeholder="Select client…"
-              />
-            </div>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-ps-body block mb-1">Service Type</label>
-            <select aria-label="Service Type" value={serviceType} onChange={e => setServiceType(e.target.value as ServiceType)}
-              className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand">
-              {SERVICE_TYPES.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-ps-body block mb-1">Fee (₹)</label>
-              <input aria-label="Fee (₹)" type="number" min="0" step="0.01" value={feeRs} onChange={e => setFeeRs(e.target.value)}
-                placeholder="5000"
-                className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand" />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-ps-body block mb-1">Billing Cycle</label>
-              <select aria-label="Billing Cycle" value={billingCycle} onChange={e => setBillingCycle(e.target.value as BillingCycle)}
-                className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand">
-                {BILLING_CYCLES.map(b => <option key={b} value={b}>{b}</option>)}
-              </select>
-            </div>
-          </div>
-          <div>
-            <label htmlFor="engagement-start" className="text-xs font-medium text-ps-body block mb-1">Start Date</label>
-            <DateInput id="engagement-start" value={startDate} onChange={setStartDate} onStateChange={dates.watch("startDate", "Start date")}
-              className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand" />
-          </div>
-        </div>
-        <div className="flex gap-2 pt-1">
-          <button disabled={saving} onClick={onClose}
-            className="flex-1 border border-ps-border text-ps-body rounded-lg py-2 text-sm hover:bg-ps-bg">
-            Cancel
-          </button>
-          <Button variant="plain" size="none" onClick={handleSave} disabled={saving}
-            className="flex-1 bg-brand text-white rounded-lg py-2 text-sm hover:bg-brand-dark disabled:opacity-60">
-            {saving ? "Saving…" : "Save Engagement"}
-          </Button>
-        </div>
-    </Modal>
-  );
-}
-
-function AddReceiptModal({ invoices, onClose, onSaved }: {
-  invoices: Invoice[];
-  onClose: () => void;
-  /** The receipt the server recorded, or null if it answered success with a
-   *  body that is not one (the page reloads either way). */
-  onSaved: (receipt: Receipt | null) => void;
-}) {
-  // Money is received against what is OWED — never a Draft nobody was sent, a
-  // Cancelled invoice, or one already Paid. Same set as Aged Debtors and the
-  // Outstanding tile, from the one module that decides it.
-  const unpaid = invoices.filter(i => isOwedFeeInvoice(i.status));
-  const [invoiceId, setInvoiceId] = useState(unpaid[0]?.id ?? "");
-  const [receiptDate, setReceiptDate] = useState(todayIstISO());
-  const [amountRs, setAmountRs] = useState("");
-  const [paymentMode, setPaymentMode] = useState<PaymentMode>("NEFT");
-  const [referenceNo, setReferenceNo] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  // Text that is not a date reads as blank to the form (frontend_ux-19).
-  const dates = useDateProblems();
-
-  async function handleSave() {
-    if (dates.first) { dates.refuseWith(setError); return; }
-    const amtPaise = paiseFromRupeeInput(amountRs || "0");
-    if (amtPaise === null) { setError("Enter the amount in rupees, e.g. 125000 or 125000.50 (commas only where an amount is usually grouped, as in 1,25,000)."); return; }
-    if (!invoiceId || amtPaise <= 0) { setError("Select invoice and enter valid amount"); return; }
-    setSaving(true);
-    try {
-      // Records through the backend (updates paid_paise and only marks the
-      // invoice Paid once cumulative receipts cover its total — a partial
-      // receipt no longer force-marks the whole invoice as paid).
-      const res = (await api.billing.recordFeeReceipt(invoiceId, {
-        receipt_date: receiptDate,
-        amount_paise: amtPaise,
-        payment_mode: paymentMode,
-        reference_no: referenceNo || undefined,
-      })) as ApiResp<unknown> | null;
-      // Check the envelope, not the transport: a refusal can arrive as 200
-      // with `success: false`, and closing the modal on one tells the CA a
-      // receipt exists that does not.
-      if (!res?.success) throw new Error(res?.error || "The server did not record this receipt.");
-      onSaved(objectOrNull<Receipt>(res.data));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Modal title="Record Receipt" maxWidthClass="max-w-md" onClose={() => { if (!saving) onClose(); }}>
-        {error && <Callout tone="problem">{error}</Callout>}
-        <div className="space-y-3">
-          <div>
-            <label className="text-xs font-medium text-ps-body block mb-1">Invoice</label>
-            <select aria-label="Invoice" value={invoiceId} onChange={e => setInvoiceId(e.target.value)}
-              className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand">
-              {unpaid.map(i => (
-                <option key={i.id} value={i.id}>
-                  {i.invoice_no} — {i.client_name} — {fmtPaise(i.total_paise)}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label htmlFor="fee-receipt-date" className="text-xs font-medium text-ps-body block mb-1">Receipt Date</label>
-              <DateInput id="fee-receipt-date" value={receiptDate} onChange={setReceiptDate} onStateChange={dates.watch("receiptDate", "Receipt date")}
-                className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand" />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-ps-body block mb-1">Amount (₹)</label>
-              <input aria-label="Amount (₹)" type="number" min="0" step="0.01" value={amountRs} onChange={e => setAmountRs(e.target.value)}
-                className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand" />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-ps-body block mb-1">Payment Mode</label>
-              <select aria-label="Payment Mode" value={paymentMode} onChange={e => setPaymentMode(e.target.value as PaymentMode)}
-                className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand">
-                {PAYMENT_MODES.map(m => <option key={m} value={m}>{m}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs font-medium text-ps-body block mb-1">Reference No.</label>
-              <input aria-label="Reference No." type="text" value={referenceNo} onChange={e => setReferenceNo(e.target.value)}
-                placeholder="UTR / Cheque no."
-                className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand" />
-            </div>
-          </div>
-        </div>
-        <div className="flex gap-2 pt-1">
-          <button disabled={saving} onClick={onClose}
-            className="flex-1 border border-ps-border text-ps-body rounded-lg py-2 text-sm hover:bg-ps-bg">
-            Cancel
-          </button>
-          <Button variant="plain" size="none" onClick={handleSave} disabled={saving}
-            className="flex-1 bg-green-600 text-white rounded-lg py-2 text-sm hover:bg-green-700 disabled:opacity-60">
-            {saving ? "Saving…" : "Record Receipt"}
-          </Button>
-        </div>
-    </Modal>
-  );
-}
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
@@ -350,38 +121,18 @@ const ENGAGEMENT_STATUS_BADGE: Record<FeeEngagementStatus, string> = {
 };
 
 export default function BillingPage() {
-  // `billing:*` is Partner by ROLE and per-person on the Team grid (migration
-  // 403), which `rbac()` resolves — so this asks what the server will do
-  // rather than testing the role, and a Manager granted billing sees the
-  // controls their grant gives them.
-  const { can } = usePermissions();
   // THIS SCREEN IS A RECORD SINCE 21-11-2026 (POST-B-193, decided by the owner on 20-11-2026). The firm's own fee billing lives
   // in My practice, on the sales engine in the practice's own books (billing schedules, the practice's sales invoices, real GST,
-  // a posted journal). The bills raised here before that are kept exactly as they were and nothing is added to them or changed:
-  // every control that writes is drawn only where `canWrite` is true, and it is false for everybody. The handlers and the two
-  // dialogs below are kept so that the screen can be read against what it used to do; they are unreachable.
-  const FEE_BILLING_IS_A_RECORD = true;
-  const canWrite = !FEE_BILLING_IS_A_RECORD && can("billing", "write");
-  const [transitioning, setTransitioning] = useState<string | null>(null);
+  // a posted journal). The bills raised here before that are kept exactly as they were and nothing is added to them or changed,
+  // so the screen has no control that writes (the dialogs, the status buttons, Raise Invoice and the overdue check are deleted:
+  // POST-A-572).
   const [tab, setTab] = useState<Tab>("dashboard");
-  const [clients, setClients] = useState<Client[]>([]);
   const [engagements, setEngagements] = useState<Engagement[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [outstanding, setOutstanding] = useState<OutstandingRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showEngModal, setShowEngModal] = useState(false);
-  const [showReceiptModal, setShowReceiptModal] = useState(false);
-  const [raisingInvoice, setRaisingInvoice] = useState(false);
-  // What the last Raise Invoice run did, when it did something. Refusals go
-  // to `error`, beside anything the reload itself reports.
-  const [notice, setNotice] = useState<string | null>(null);
-  const [runningOverdueCheck, setRunningOverdueCheck] = useState(false);
-  // One action at a time: every button that starts work waits for whichever
-  // is already running. Guarding each on its own flag alone let two fire at
-  // once, and the second could act on what the first was still changing.
-  const actionInFlight = raisingInvoice || runningOverdueCheck;
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   // `recorded` is a receipt the server has just confirmed. It stays on the list
@@ -393,7 +144,6 @@ export default function BillingPage() {
     setError(null);
     try {
       const [clientList, firmId] = await Promise.all([getClients(), getFirmId()]);
-      setClients(clientList);
       const clientMap = new Map(clientList.map(c => [c.id, c]));
       const sb = getSupabaseClient();
 
@@ -487,109 +237,6 @@ export default function BillingPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  // One engagement, one step. The server validates against
-  // ENGAGEMENT_TRANSITIONS and writes `audit_log` and the client timeline; a
-  // refused step comes back 422 naming what IS allowed, which is shown rather
-  // than swallowed.
-  async function handleTransition(e: Engagement, next: FeeEngagementStatus) {
-    setTransitioning(`${e.id}:${next}`);
-    setError(null);
-    try {
-      const res = await api.engagements.transition(e.id, { status: next });
-      if (!res.success || !res.data?.engagement) {
-        throw new Error(res.error || "Could not change the engagement's status");
-      }
-      const updated = res.data.engagement as unknown as Engagement;
-      setEngagements(prev => prev.map(x =>
-        x.id === e.id ? { ...x, status: updated.status } : x));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not change the engagement's status");
-    } finally {
-      setTransitioning(null);
-    }
-  }
-
-  // THROUGH THE API, ONE ENGAGEMENT AT A TIME. This used to build the rows in
-  // the browser and INSERT them into fee_invoices over PostgREST: numbered from
-  // `count(*) + 1` (a collision with UNIQUE(firm_id, invoice_no) after any
-  // deletion, and two tabs racing each other), dated the 1st of the browser's
-  // month, with no engagement_id — so nothing afterwards could tell which
-  // engagement an invoice billed, let alone refuse a second one for the same
-  // period — and rbac() never ran. POST /api/invoices/from-engagement/{id}
-  // does all of it server-side, numbering off the firm's atomic sequence
-  // (migration 124). Sequential rather than Promise.all so the requests do not
-  // contend for that sequence, and so a refusal is attributable to its row.
-  //
-  // WHICH engagements are due this period (the billing cycle) and whether one
-  // was already invoiced are the SERVER's answer to give — a refusal comes
-  // back as a sentence and is shown as sent. This screen decides neither.
-  async function handleRaiseInvoice() {
-    setRaisingInvoice(true);
-    setError(null);
-    setNotice(null);
-    try {
-      const activeEngs = engagements.filter(e => e.status === "Active");
-      if (activeEngs.length === 0) {
-        setNotice("No Active engagement to invoice.");
-        return;
-      }
-      let raised = 0;
-      const refused: string[] = [];
-      for (const eng of activeEngs) {
-        const who = `${eng.client_name ?? "Unknown client"} — ${eng.service_type}`;
-        try {
-          const res = await api.invoices.fromEngagement(eng.id);
-          // A refusal can arrive as HTTP 200 with `success: false`; check the
-          // envelope, not the transport.
-          if (!res.success) throw new Error(res.error || "The server did not raise this invoice.");
-          raised++;
-        } catch (e) {
-          refused.push(`${who}: ${e instanceof Error ? e.message : "not raised"}`);
-        }
-      }
-      // Reload BEFORE reporting: load() clears `error` as it starts, which
-      // would wipe the refusals if they were set first.
-      if (raised > 0) await load();
-      if (raised > 0) setNotice(`${raised} draft invoice${raised === 1 ? "" : "s"} raised.`);
-      if (refused.length > 0) {
-        const refusal = `${refused.length} not raised — ${refused.join(" · ")}`;
-        setError(prev => (prev ? `${prev} ${refusal}` : refusal));
-      }
-    } finally {
-      setRaisingInvoice(false);
-    }
-  }
-
-  async function handleRunOverdueCheck() {
-    setRunningOverdueCheck(true);
-    try {
-      await api.invoices.runOverdueCheck();
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to run overdue check");
-    } finally {
-      setRunningOverdueCheck(false);
-    }
-  }
-
-  // The receipt goes on the list at once, from the server's own answer, and the
-  // page then reloads so the invoice's status comes back as the server decided
-  // it — Paid only once cumulative receipts cover the total, which is the
-  // server's rule and not this screen's.
-  async function handleReceiptRecorded(receipt: Receipt | null) {
-    setShowReceiptModal(false);
-    setNotice(null);
-    const inv = receipt ? invoices.find(i => i.id === receipt.invoice_id) : undefined;
-    if (receipt) {
-      const row: Receipt = { ...receipt, invoice_no: inv?.invoice_no, client_name: inv?.client_name };
-      setReceipts(prev => (prev.some(r => r.id === row.id) ? prev : [row, ...prev]));
-    }
-    await load(receipt);
-    setNotice(receipt
-      ? `Receipt of ${fmtPaise(receipt.amount_paise)} recorded${inv ? ` against ${inv.invoice_no}` : ""}.`
-      : "Receipt recorded.");
-  }
-
   async function handleDownloadPdf(invoiceId: string) {
     setDownloadingId(invoiceId);
     try {
@@ -661,9 +308,6 @@ export default function BillingPage() {
 
       {error && (
         <div className="rounded-lg bg-state-attention-surface border border-state-attention-border px-4 py-3 text-sm text-amber-800">{error}</div>
-      )}
-      {notice && (
-        <div className="rounded-lg bg-state-ready-surface border border-ps-border px-4 py-3 text-sm text-state-ready">{notice}</div>
       )}
 
       <div className="flex gap-1 border-b border-ps-border overflow-x-auto">
@@ -750,14 +394,6 @@ export default function BillingPage() {
       {/* Engagements */}
       {tab === "engagements" && (
         <div className="space-y-4">
-          {canWrite && (
-            <div className="flex justify-end">
-              <button onClick={() => setShowEngModal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-brand text-white text-sm rounded-lg hover:bg-brand-dark">
-                <Plus size={15} /> Add Engagement
-              </button>
-            </div>
-          )}
           {loading ? (
             <TableSkeleton cols={6} rows={3} />
           ) : (
@@ -780,12 +416,6 @@ export default function BillingPage() {
                         className="py-10"
                         title="No engagements were recorded here"
                         description="An engagement was the work done for a client and the fee agreed for it. New ones are set up as billing schedules in My practice."
-                        action={canWrite ? (
-                          <EmptyStateActions>
-                            <EmptyStateAction requires={["billing", "write"]} icon={<Plus size={14} />} label="Add Engagement"
-                              onClick={() => setShowEngModal(true)} />
-                          </EmptyStateActions>
-                        ) : undefined}
                       />
                     </td></tr>
                   )}
@@ -801,31 +431,6 @@ export default function BillingPage() {
                           {e.status}
                         </span>
                       </td>
-                      <td className="px-4 py-3">
-                        {/* The state machine's own answer, not a dropdown of
-                            seven. `POST /{id}/transition` 422s anything the
-                            current status does not allow, so offering the
-                            refused ones would be inviting a failure. */}
-                        {canWrite ? (
-                          <div className="flex flex-wrap gap-1.5">
-                            {(ENGAGEMENT_TRANSITIONS[e.status] ?? []).map(next => (
-                              <Button variant="plain" size="none"
-                                key={next}
-                                onClick={() => handleTransition(e, next)}
-                                disabled={transitioning !== null}
-                                className="text-2xs px-2 py-1 rounded-md border border-ps-border text-ps-body hover:bg-ps-hover disabled:opacity-50"
-                              >
-                                {transitioning === `${e.id}:${next}` ? "…" : next}
-                              </Button>
-                            ))}
-                            {(ENGAGEMENT_TRANSITIONS[e.status] ?? []).length === 0 && (
-                              <span className="text-2xs text-ps-hint">No further step</span>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-2xs text-ps-hint">—</span>
-                        )}
-                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -840,16 +445,6 @@ export default function BillingPage() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <p className="text-xs text-ps-label">GST @ 18% applied on CA services — SAC 998211</p>
-            {canWrite && <div className="flex items-center gap-2">
-              <Button variant="plain" size="none" onClick={handleRunOverdueCheck} disabled={actionInFlight}
-                className="flex items-center gap-2 px-4 py-2 border border-ps-border text-ps-body text-sm rounded-lg hover:bg-ps-bg disabled:opacity-60">
-                <Clock size={15} /> {runningOverdueCheck ? "Checking…" : "Run Overdue Check"}
-              </Button>
-              <Button variant="plain" size="none" onClick={handleRaiseInvoice} disabled={actionInFlight}
-                className="flex items-center gap-2 px-4 py-2 bg-brand text-white text-sm rounded-lg hover:bg-brand-dark disabled:opacity-60">
-                <IndianRupee size={15} /> {raisingInvoice ? "Raising…" : "Raise Invoice"}
-              </Button>
-            </div>}
           </div>
           {loading ? (
             <TableSkeleton cols={8} rows={3} />
@@ -875,14 +470,6 @@ export default function BillingPage() {
                         className="py-10"
                         title="No fee invoices were raised here"
                         description="Fee invoices are now prepared from billing schedules in My practice and issued from your own firm's books."
-                        action={canWrite ? (
-                          <EmptyStateActions>
-                            <EmptyStateAction requires={["billing", "write"]} icon={<IndianRupee size={14} />} label="Raise Invoice"
-                              disabled={actionInFlight} onClick={() => handleRaiseInvoice()} />
-                            <EmptyStateAction requires={["billing", "write"]} variant="secondary" icon={<Plus size={14} />} label="Add Engagement"
-                              onClick={() => setShowEngModal(true)} />
-                          </EmptyStateActions>
-                        ) : undefined}
                       />
                     </td></tr>
                   )}
@@ -968,14 +555,6 @@ export default function BillingPage() {
       {/* Receipts */}
       {tab === "receipts" && (
         <div className="space-y-4">
-          {canWrite && (
-            <div className="flex justify-end">
-              <button onClick={() => setShowReceiptModal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700">
-                <Plus size={15} /> Record Receipt
-              </button>
-            </div>
-          )}
           <div className="overflow-x-auto rounded-xl border border-ps-border bg-white">
             <table className="w-full text-sm min-w-[700px]">
               <thead className="bg-ps-bg border-b border-ps-border">
@@ -995,12 +574,6 @@ export default function BillingPage() {
                       className="py-10"
                       title="No receipts were recorded here"
                       description="Money received against a fee bill is now recorded against the practice's own sales invoice, in My practice."
-                      action={canWrite ? (
-                        <EmptyStateActions>
-                          <EmptyStateAction requires={["billing", "write"]} icon={<Plus size={14} />} label="Record Receipt"
-                            onClick={() => setShowReceiptModal(true)} />
-                        </EmptyStateActions>
-                      ) : undefined}
                     />
                   </td></tr>
                 )}
@@ -1020,20 +593,6 @@ export default function BillingPage() {
         </div>
       )}
 
-      {showEngModal && (
-        <AddEngagementModal
-          clients={clients}
-          onClose={() => setShowEngModal(false)}
-          onSaved={e => { setEngagements(prev => [e, ...prev]); setShowEngModal(false); }}
-        />
-      )}
-      {showReceiptModal && (
-        <AddReceiptModal
-          invoices={invoices}
-          onClose={() => setShowReceiptModal(false)}
-          onSaved={handleReceiptRecorded}
-        />
-      )}
     </div>
   );
 }

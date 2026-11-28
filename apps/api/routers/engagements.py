@@ -10,7 +10,6 @@ from models.fy import OptionalFYLabel
 from core import db_provider
 from services import named_row_ownership
 from models.iso_date import IsoDate, OptionalIsoDate, PatchIsoDate
-from core.observability import capture_soft_failure
 
 router = APIRouter(prefix="/api/engagements", tags=["engagements"])
 
@@ -97,25 +96,6 @@ class EngagementUpdate(BaseModel):
     reviewer_id: Optional[str] = None
     partner_id: Optional[str] = None
     due_date: PatchIsoDate = None
-
-
-class EngagementTransition(BaseModel):
-    status: str
-    notes: Optional[str] = None
-
-
-# Phase 4.4 Module A — engagement lifecycle (Draft → Active → In Progress →
-# Review → Completed → Closed). 'Inactive' retained for backward-compatibility
-# (the legacy soft-delete). No hard deletes; audited + timelined.
-ENGAGEMENT_TRANSITIONS: dict[str, list[str]] = {
-    "Draft": ["Active", "Closed"],
-    "Active": ["In Progress", "Closed", "Inactive"],
-    "In Progress": ["Review", "Active", "Closed"],
-    "Review": ["Completed", "In Progress"],
-    "Completed": ["Closed"],
-    "Closed": [],
-    "Inactive": ["Active"],
-}
 
 
 @router.get("")
@@ -250,45 +230,6 @@ def delete_engagement(
         current_user, engagement_repo.find_by_id(engagement_id))
 
     updated = engagement_repo.update(engagement_id, {"status": "Inactive"})
-    return api_response(True, {"engagement": updated})
-
-
-@router.post("/{engagement_id}/transition")
-def transition_engagement(
-    engagement_id: str,
-    body: EngagementTransition,
-    current_user: dict = Depends(rbac("billing", "write")),
-):
-    """Advance an engagement through its lifecycle (validated). Audited + timelined; no hard delete."""
-    firm_id = current_user.get("firm_id")
-    engagement = _assert_engagement_scope(
-        current_user, engagement_repo.find_by_id(engagement_id))
-
-    old_status = engagement.get("status", "Draft")
-    allowed = ENGAGEMENT_TRANSITIONS.get(old_status, [])
-    if body.status not in allowed:
-        raise HTTPException(status_code=422,
-                            detail=f"Cannot transition engagement from '{old_status}' to '{body.status}'. Allowed: {allowed}")
-    updates = {"status": body.status}
-    if body.notes is not None:
-        updates["notes"] = body.notes
-    updated = engagement_repo.update(engagement_id, updates)
-
-    # Module H — audit + timeline (best-effort; never blocks the transition).
-    try:
-        from services.audit_service import log_event
-        log_event(firm_id, "engagement", engagement_id, "status_change",
-                  actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
-                  old_data={"status": old_status}, new_data={"status": body.status})
-    except Exception as swallowed:
-        capture_soft_failure(swallowed, operation="engagements.transition_audit", firm_id=firm_id, engagement_id=engagement_id)
-    try:
-        from services.timeline_service import timeline_service
-        timeline_service.log(engagement.get("client_id", ""), "compliance", "Engagement Updated",
-                             f"{engagement.get('service_type', 'Engagement')}: {old_status} → {body.status}",
-                             "info", firm_id=firm_id, entity_type="engagement", entity_id=engagement_id)
-    except Exception as swallowed:
-        capture_soft_failure(swallowed, operation="engagements.transition_timeline", firm_id=firm_id, engagement_id=engagement_id)
     return api_response(True, {"engagement": updated})
 
 
