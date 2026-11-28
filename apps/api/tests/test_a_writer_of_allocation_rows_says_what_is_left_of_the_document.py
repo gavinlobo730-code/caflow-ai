@@ -117,17 +117,26 @@ def test_every_writer_of_allocation_rows_says_what_is_left_of_the_document_or_on
 
 
 def test_the_scan_sees_the_writers_it_was_written_for():
-    """Not vacuous: the six functions that create or rewrite allocation rows, and the two reversals, are all found."""
+    """Not vacuous: the five functions that create or rewrite allocation rows, and the two reversals, are all found.
+
+    A foreign-currency receipt was the sixth until POST-A-095: its allocation rows are written by the database function now (migration
+    781), in the receipt's own transaction, so the scan no longer sees a writer there. The figure still travels with the rows: the
+    receipt the function is handed states `unallocated_paise`, which the last assertion holds."""
     found = census()
     expected = {
         ("routers/receipts.py", "update_allocations"), ("services/receipt_service.py", "create_receipt_core"),
-        ("services/receipt_service.py", "create_foreign_receipt"), ("services/purchase_payment_service.py", "create_payment_core"),
+        ("services/purchase_payment_service.py", "create_payment_core"),
         ("services/purchase_payment_service.py", "create_foreign_payment_core"),
         ("services/purchase_payment_service.py", "update_allocations_core"), *VOIDS_ONLY,
     }
     assert expected <= set(found), sorted(expected - set(found))
     assert all(found[k]["says_what_is_left"] for k in expected - set(VOIDS_ONLY))
     assert all(found[k]["voids_only"] for k in VOIDS_ONLY)
+    foreign = next(n for n in ast.walk(ast.parse((API / "services/receipt_service.py").read_text(encoding="utf-8")))
+                   if isinstance(n, ast.FunctionDef) and n.name == "create_foreign_receipt")
+    assert ("services/receipt_service.py", "create_foreign_receipt") not in found, "it writes allocation rows directly again: list it above"
+    assert any(isinstance(n, ast.Dict) and any(isinstance(k, ast.Constant) and k.value == "unallocated_paise" for k in n.keys)
+               for n in ast.walk(foreign)), "the foreign receipt no longer states what is left of it in the payload it hands the function"
 
 
 _STATES_IT = """

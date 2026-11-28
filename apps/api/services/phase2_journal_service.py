@@ -309,8 +309,10 @@ class Phase2JournalService:
 
         Adversarial-review correction: create_foreign_receipt (the multi-currency
         receipt path) does NOT call this — it builds its own FX-aware lines
-        inline (services/receipt_service.py) and posts via _create_journal
-        directly. journal_for_receipt (and this helper, transitively) is only
+        inline (services/receipt_service.py) and, since migration 781
+        (POST-A-095), hands them to the same settle_receipt_atomic function a
+        rupee receipt uses; it no longer posts through _create_journal.
+        journal_for_receipt (and this helper, transitively) is only
         reached via create_receipt_core's mock branch and its no-.rpc
         test-double fallback — never in production, where .rpc is always
         available and the atomic path above is always taken.

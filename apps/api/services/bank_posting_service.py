@@ -1103,12 +1103,14 @@ class BankPostingService:
         approve -> settle_on_post, which settles the ALREADY-linked document
         separately from posting), this creates the REAL receipt / purchase_payment
         record with its own allocations — reusing receipt_service.create_receipt_core
-        / purchase_payment_service.create_payment_core VERBATIM, so the same
-        CAS-guarded settlement, live-outstanding pre-validation, and
-        compensation-on-failure machinery already hardened for the manual
-        Receipts/Payments pages applies here too, for both INR and foreign
-        currency (create_receipt_core/create_payment_core auto-dispatch to their
-        FX path when `currency` isn't INR).
+        / purchase_payment_service.create_payment_core VERBATIM, so what the
+        manual Receipts/Payments pages do applies here too, for both INR and
+        foreign currency (create_receipt_core/create_payment_core auto-dispatch
+        to their FX path when `currency` isn't INR): a RECEIPT, rupee or
+        foreign, is one database transaction (settle_receipt_atomic; the
+        foreign one since migration 781), and a vendor PAYMENT is still the
+        compare-and-set settlement with live-outstanding pre-validation and
+        compensation on failure (POST-A-575).
 
         Exactly ONE journal is posted — the receipt/payment's own — so the bank
         transaction is linked to IT (matched_entity_type='receipt' /
