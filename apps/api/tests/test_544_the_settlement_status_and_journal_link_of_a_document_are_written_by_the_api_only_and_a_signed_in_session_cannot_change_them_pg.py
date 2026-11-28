@@ -783,6 +783,8 @@ def test_the_functions_that_can_write_a_header_table_are_exactly_the_ones_named_
     assert {f["n"] for f in functions if f["t"] and named.search(f["s"] or "")} == set(), "a trigger function writes a header table"
     assert {f["n"] for f in functions if named.search(f["s"] or "")} == {
         "settle_receipt_atomic__unguarded",               # the receipt settlement: paid_paise and status on an invoice, reached through its guarded wrapper
+        "settle_payment_atomic__unguarded",               # migration 784 (POST-A-575): the same for a supplier payment, paid_paise and status on a bill, reached
+                                                          # through its guarded wrapper; nothing calls it yet
         "issue_sales_invoice_atomic",                     # migration 577 (POST-A-092): marks the invoice issued and links its entry, in the entry's own
                                                           # transaction; SECURITY DEFINER, so `current_user` is the owner, which this trigger does not judge;
                                                           # executable by the privileged client alone, and asks who is calling first
@@ -795,6 +797,9 @@ def test_the_functions_that_can_write_a_header_table_are_exactly_the_ones_named_
         "guard_member_firm",                              # migration 566's installer: the same, for the member check
         "numbered_document_atomic__unguarded",            # INSERT of the four note tables: judged by the role setting, so not a bypass
         "post_journal_atomic__unguarded",                 # the journal tables only
+        "settle_payment_atomic__unguarded",               # migration 784 (POST-A-575): its dynamic INSERT is the payment row (`purchase_payments`, from the
+                                                          # payload's own keys, the posting function's way); the bills it settles are updated by name and are
+                                                          # in the first set above
         "refuse_a_signed_in_edit_of_lines_of_a_non_draft_document",   # migration 539's trigger: the line tables only
         "replace_draft_document_lines",                   # migration 560 (POST-A-332): the line tables only, SECURITY INVOKER, the header locked first
         "create_delivery_challan_atomic",                 # migration 585 (POST-A-419): each writes the delivery-challan tables only (the dynamic INSERT or UPDATE

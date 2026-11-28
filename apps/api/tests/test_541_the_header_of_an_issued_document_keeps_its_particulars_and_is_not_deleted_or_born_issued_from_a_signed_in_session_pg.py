@@ -753,7 +753,9 @@ def test_no_trigger_function_writes_the_six_tables_and_the_functions_that_do_are
     # ...and migration 577's `issue_sales_invoice_atomic` (POST-A-092), which marks an invoice issued in the same transaction as the
     # entry it posts: a function called as a statement, so judged like any statement unless it runs as its owner, which it does on purpose
     # (SECURITY DEFINER, executable by the privileged client alone, and it asks who is calling before it writes anything)
-    assert writers == {"settle_receipt_atomic__unguarded", "issue_sales_invoice_atomic"}, sorted(writers)
+    # ...and migration 784's `settle_payment_atomic__unguarded` (POST-A-575), the supplier-payment twin of the receipt settlement: paid_paise
+    # and status on a bill, reached only through its guarded wrapper
+    assert writers == {"settle_receipt_atomic__unguarded", "settle_payment_atomic__unguarded", "issue_sales_invoice_atomic"}, sorted(writers)
     assert {"numbered_document_atomic__unguarded", "platform_purge_firm"} <= {f["n"] for f in functions}
     triggers = _rows(world.dsn, "SELECT tgrelid::regclass::text, tgname FROM pg_trigger WHERE NOT tgisinternal AND tgrelid::regclass::text = ANY(ARRAY["
                                 + ", ".join(f"'{t}'" for t in TABLES) + "]) ORDER BY 1, 2")
