@@ -65,7 +65,7 @@ failure is remembered and not retried, they stayed.
 |---|---|
 | it carries its own `BEGIN`/`COMMIT` (109 existing files do) | a second `BEGIN` is a warning, and the file's `COMMIT` would end the runner's transaction early |
 | it uses `CREATE INDEX CONCURRENTLY`, `VACUUM`, `ALTER TYPE ... ADD VALUE`, … | PostgreSQL refuses it inside a transaction block (or, for `ADD VALUE`, forbids using the new value before the block ends) |
-| it contains a line `-- migration: no-transaction` followed by the reason | for what the scanner cannot see, such as a `DO` block that `COMMIT`s. **Only in a NEW file** — editing an applied migration changes its checksum and re-runs it in production |
+| it contains a line `-- migration: no-transaction` followed by the reason | for what the scanner cannot see, such as a `DO` block that `COMMIT`s. **Only in a NEW file** — an applied migration is never edited (see below) |
 | it is one of the ten files in `BASELINE_FAILURES` | they fail on a fresh database and commit what precedes the failure; the rest of the schema build was written against that, so they keep the legacy behaviour until each is fixed |
 
 The scanner reads the file the way the server does — comments, string literals and
@@ -82,15 +82,22 @@ those (Postgres's own warnings are not), and shows them as `messages` in `--json
 `NOTE` line in the text report, and as a notice annotation on the run's summary page under
 Actions.
 
-**An applied migration is never edited, not even a comment, and a test holds it.** The runner compares each file's checksum
-with the one the database recorded and runs a file again when they differ. For a file that failed, that is the retry. For a file
-that applied, it is a second run of old SQL over a database every later migration has changed: it puts back what the file defined
+**An applied migration is never edited, not even a comment, and two locks hold it.** The runner compares each file's checksum
+with the one the database recorded. For a file that FAILED, a new checksum is the retry. For a file that APPLIED, the runner used to
+do the same thing, and a second run of old SQL over a database every later migration has changed puts back what the file defined
 and undoes each later change to the same object. On 27 November 2026 a rename sweep rewrote test names in the comments of eight
 applied migrations, six ran again in production, and the ledger posting function went back to its September body until migration
-786 restored it (the record is in `docs/design-record/engineering-and-ci.md`). `tests/test_an_applied_migration_is_never_edited.py`
-now holds every migration to the checksum listed in `tests/fixtures/migration_checksums.txt`. **A new migration adds its line with
-`python3 scripts/db/freeze_migration_checksums.py`** (from `apps/api`); the script never rewrites an existing line by itself. If
-the test names a file you did not mean to change, put the file back.
+786 restored it (the record is in `docs/design-record/engineering-and-ci.md`).
+
+1. **The edit does not merge.** `tests/test_an_applied_migration_is_never_edited.py` holds every migration to the checksum listed
+   in `tests/fixtures/migration_checksums.txt`. **A new migration adds its line with
+   `python3 scripts/db/freeze_migration_checksums.py`** (from `apps/api`); the script never rewrites an existing line by itself. If
+   the test names a file you did not mean to change, put the file back.
+2. **The runner does not run it.** A file recorded in `schema_migrations` at another checksum is left alone, named
+   (`changed_after_apply` in `--json`, an error annotation under Actions), and the run **exits non-zero** until the file is put
+   back. It still applies whatever else is pending. To run one such file again on purpose, name it:
+   `--reapply-changed NNN_name.sql`, one file at a time; a success records the new checksum. There is deliberately no switch that
+   lets every changed file through.
 
 **A failure is remembered, and a remembered failure keeps the run red.** A file that fails
 is recorded in `schema_migration_failures` at its checksum and is not attempted again. The

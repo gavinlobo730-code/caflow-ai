@@ -2,12 +2,13 @@
 """Record the checksum of a NEW migration, and refuse to re-record an old one (POST-A-583).
 
 WHY THIS EXISTS
-    `apply_migrations.py` runs a migration again when the file's checksum is not the one the database recorded. That is how a
-    fix to a file that FAILED is retried. It also means that editing a migration production has ALREADY APPLIED, even one word
-    of a comment, runs the whole file again over a database every later migration has since changed, and a second run puts
-    back what the file defined and silently undoes each later change to the same object. On 27-11-2026 a rename sweep did
-    exactly that to eight applied migrations: production's ledger posting function went back to its September body for a day
-    (migration 786 is the repair). The rule was written in three places and held by nothing.
+    Until 28-11-2026 `apply_migrations.py` ran a migration again whenever the file's checksum was not the one the database
+    recorded. That is how a fix to a file that FAILED is retried. It also meant that editing a migration production had ALREADY
+    APPLIED, even one word of a comment, ran the whole file again over a database every later migration had since changed, and
+    a second run puts back what the file defined and silently undoes each later change to the same object. On 27-11-2026 a
+    rename sweep did exactly that to eight applied migrations: production's ledger posting function went back to its September
+    body for a day (migration 786 is the repair). The rule was written in three places and held by nothing. The runner now
+    refuses to run such a file and fails the deploy (POST-A-584); this list is the first lock, so the edit never merges.
 
     `tests/fixtures/migration_checksums.txt` is the list of every migration's checksum, and
     `tests/test_an_applied_migration_is_never_edited.py` fails when a file no longer matches its line. This script is the one
@@ -42,8 +43,8 @@ HEADER = """\
 """
 
 EDITED = ("{name} no longer matches its recorded checksum. A migration production has applied is never edited, not even a "
-          "comment: the runner runs a changed file again, and a second run undoes every later change to what the file defines. "
-          "Put the file back (git checkout origin/main -- apps/api/migrations/{name}). Only if this is your own NEW, unmerged "
+          "comment: its checksum is what production matches on, a second run would undo every later change to what the file "
+          "defines, and the runner refuses to run it and fails the deploy. Put the file back (git checkout origin/main -- apps/api/migrations/{name}). Only if this is your own NEW, unmerged "
           "migration: scripts/db/freeze_migration_checksums.py --replace {name}")
 UNLISTED = ("{name} is not in tests/fixtures/migration_checksums.txt. A new migration records its checksum with: "
             "python3 scripts/db/freeze_migration_checksums.py")

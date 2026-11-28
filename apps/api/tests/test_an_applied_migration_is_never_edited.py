@@ -19,7 +19,8 @@ THE RULE
 
 WHAT THIS DOES NOT SEE
     Whether a line was re-recorded on purpose (`--replace`): that is a diff a reviewer reads, and the reason the script makes it
-    a separate, named act. The runner itself still runs a changed file again; refusing that at the door is ledger POST-A-584.
+    a separate, named act. For the edit that merges anyway there is a second lock: the runner does not run a file recorded as
+    applied at another checksum, and fails (POST-A-584, tests/test_the_runner_does_not_run_an_applied_migration_again.py).
 """
 from __future__ import annotations
 
@@ -119,7 +120,7 @@ def test_one_changed_character_of_a_comment_is_found(copy):
     assert "--" in text, "the control needs a comment to edit"
     target.write_text(text.replace("--", "-- ", 1), encoding="utf-8")       # a comment: nothing the database would see
     (found,) = _problems(d, manifest)
-    assert names[0] in found and "never edited, not even a comment" in found and "runs a changed file again" in found
+    assert names[0] in found and "never edited, not even a comment" in found and "refuses to run it and fails the deploy" in found
 
 
 def test_freezing_again_does_not_quietly_accept_the_edit(copy):
