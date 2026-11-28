@@ -124,13 +124,18 @@ def import_register(db, firm_id: str, client_id: str, *, as_at: Optional[str],
     written: dict[int, str] = {}
     failed: dict[int, str] = {}
     if new and not dry_run:
-        from core.exceptions import document_failure_detail
+        from core.exceptions import ROW_NOT_CONFIRMED, confirmed_pairs, document_failure_detail
         for i in range(0, len(new), _INSERT_CHUNK):
             chunk = new[i:i + _INSERT_CHUNK]
             try:
                 got = _write(db, firm_id, client_id, [v.planned for v in chunk])
-                for v, row in zip(chunk, got, strict=False):
+                # POST-A-573: an answer shorter than the chunk says nothing about the rest; they are reported as not confirmed and
+                # not sent again one at a time (which could record them twice).
+                pairs, unanswered = confirmed_pairs(chunk, got)
+                for v, row in pairs:
                     written[v.row] = str(row.get("id") or "")
+                for v in unanswered:
+                    failed[v.row] = ROW_NOT_CONFIRMED
                 continue
             except Exception as chunk_error:                      # noqa: BLE001
                 _logger.warning("opening-register chunk of %d refused (%s); "

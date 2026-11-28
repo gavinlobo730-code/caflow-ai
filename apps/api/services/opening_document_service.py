@@ -406,13 +406,18 @@ def bulk_create(db, firm_id: str, client_id: str, *, kind: str, rows: list,
     written_ids: dict[int, str] = {}
     failed: dict[int, str] = {}
     if new and not dry_run:
-        from core.exceptions import document_failure_detail
+        from core.exceptions import ROW_NOT_CONFIRMED, confirmed_pairs, document_failure_detail
         for i in range(0, len(new), _INSERT_CHUNK):
             chunk = new[i:i + _INSERT_CHUNK]
             try:
                 got = _write(db, firm_id, client_id, kind, chunk, actor_id)
-                for v, row in zip(chunk, got, strict=False):
+                # POST-A-573: an answer shorter than the chunk says nothing about the rest. They are neither recorded-with-no-id
+                # nor sent again one at a time (which could record them twice): each is reported as not confirmed.
+                pairs, unanswered = confirmed_pairs(chunk, got)
+                for v, row in pairs:
                     written_ids[v.row] = str(row.get("id") or "")
+                for v in unanswered:
+                    failed[v.row] = ROW_NOT_CONFIRMED
                 continue
             except Exception as chunk_error:                    # noqa: BLE001
                 _logger.warning("opening-document chunk of %d refused (%s); "
