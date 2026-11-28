@@ -113,8 +113,8 @@ services/purchase_payment_service.py :: C901 :: create_payment_core :: 31
 services/purchase_payment_service.py :: C901 :: update_allocations_core :: 16
 services/purchase_payment_service.py :: PLR0915 :: create_foreign_payment_core :: 126
 services/purchase_payment_service.py :: PLR0915 :: create_payment_core :: 107
-services/receipt_service.py :: C901 :: create_receipt_core :: 26
-services/receipt_service.py :: PLR0915 :: create_receipt_core :: 96
+services/receipt_service.py :: C901 :: create_receipt_core :: 22
+services/receipt_service.py :: PLR0915 :: create_receipt_core :: 90
 services/recurring_invoice_service.py :: C901 :: update_template :: 16
 services/recurring_purchase_bill_service.py :: C901 :: update_template :: 16
 services/recurring_task_service.py :: C901 :: generate_due_recurring_tasks :: 20

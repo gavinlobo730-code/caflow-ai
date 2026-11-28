@@ -427,6 +427,9 @@ def test_the_function_keeps_its_attributes_and_who_may_execute_it(db):
 
 
 def test_the_rollback_restores_migration_574s_body_and_both_files_run_twice(db):
+    # Migration 782 defines the body again (a rupee receipt is refused a foreign invoice), so a migrated database starts on 782's text.
+    # This test is about 781's own two files: put 781's body in place first, then roll it back and forward.
+    assert _file(db, F781).returncode == 0
     after_781 = _body_md5(db)
     assert _file(db, F781).returncode == 0 and _body_md5(db) == after_781, "running 781 again changed the function"
     assert _file(db, R781).returncode == 0

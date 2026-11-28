@@ -360,6 +360,9 @@ def test_the_closing_check_fails_when_what_it_checks_is_spoiled(dsn, label, spoi
 
 
 def test_the_rollback_drops_it_and_a_reapply_brings_it_back_and_applying_twice_changes_nothing(dsn):
+    # Migration 783 defines the function again (its give-up carries a state of its own), so a migrated database starts on 783's text.
+    # This test is about 548's own two files: put 548's body in place first, then roll it back and forward.
+    assert _psql_file(dsn, MIGRATION).returncode == 0
     before = _text(dsn, f"SELECT prosrc FROM pg_proc WHERE oid = '{FN}'::regprocedure")
     assert _psql_file(dsn, ROLLBACK).returncode == 0
     assert _one(dsn, "SELECT count(*) FROM pg_proc WHERE proname = 'file_it_declaration'") == "0"

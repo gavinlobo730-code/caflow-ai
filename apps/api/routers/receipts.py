@@ -31,6 +31,28 @@ _logger = logging.getLogger("caflow.receipts")
 
 router = APIRouter(prefix="/api/receipts", tags=["receipts"])
 
+#: What a person reads when they try to re-allocate a receipt in a foreign currency (POST-A-576): re-allocation moves rupees only.
+FOREIGN_RECEIPT_IS_NOT_REALLOCATED = (
+    "This receipt is in {currency}. A receipt in a foreign currency cannot be re-allocated yet, because re-allocation moves the rupee "
+    "amounts only. Reverse the receipt and record it again with the allocations you want. Nothing was changed.")
+
+
+def _currency_of(row: dict) -> str:
+    return (str(row.get("txn_currency") or "").strip() or "INR").upper()
+
+
+def _refuse_a_foreign_receipt(receipt: dict) -> None:
+    """Re-allocation moves rupees only, so a receipt in a foreign currency is refused in words (POST-A-576)."""
+    if _currency_of(receipt) != "INR":
+        raise HTTPException(status_code=422, detail=FOREIGN_RECEIPT_IS_NOT_REALLOCATED.format(currency=_currency_of(receipt)))
+
+
+def _refuse_a_foreign_invoice(invoice: dict, invoice_id: str) -> None:
+    """A rupee receipt is not re-allocated onto an invoice billed in a foreign currency (POST-A-576)."""
+    if _currency_of(invoice) != "INR":
+        raise HTTPException(status_code=422, detail=receipt_service.rupee_receipt_against_a_foreign_invoice(
+            invoice.get("invoice_no") or invoice_id, _currency_of(invoice)))
+
 
 def _adjust_invoice_paid(db, firm_id: str, client_id: str, inv_id: str, delta_paise: int,
                          max_retries: int = 5, *, actor: dict | None = None) -> None:
@@ -249,6 +271,11 @@ def update_allocations(
 
         firm_id = current_user.get("firm_id")
         receipt_client_id = rcpt.get("client_id")
+        # POST-A-576. Everything below moves RUPEES only (an invoice's paid_paise, never its paid_txn), which is right for a rupee
+        # receipt on rupee invoices and wrong for anything in a foreign currency: a foreign receipt's allocations would be reversed
+        # and re-applied in rupees with the foreign amounts left where they were. Until re-allocation carries both amounts it
+        # refuses a foreign receipt here, and a foreign invoice below, in words.
+        _refuse_a_foreign_receipt(rcpt)
         amount_paise    = int(rcpt["amount_paise"])
         tds_paise       = int(rcpt.get("tds_paise") or 0)
         total_allocated = sum(int(a.get("allocated_paise", 0)) for a in allocations)
@@ -287,7 +314,7 @@ def update_allocations(
         # invoice total.
         for inv_id, req_amt in requested_by_invoice.items():
             chk = (db.table("client_sales_invoices")
-                   .select("id, status, total_paise, paid_paise, credited_paise, debit_note_paise")
+                   .select("id, status, total_paise, paid_paise, credited_paise, debit_note_paise, txn_currency, invoice_no")
                    .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", receipt_client_id)
                    .limit(1).execute())
             if not chk.data:
@@ -296,6 +323,7 @@ def update_allocations(
             if inv.get("status") in ("draft", "cancelled"):
                 raise HTTPException(status_code=422,
                     detail=f"Invoice {inv_id} is {inv.get('status')} and cannot receive a payment.")
+            _refuse_a_foreign_invoice(inv, inv_id)
             # (total + debit notes) is the true ceiling (CGST Act §34(3)).
             outstanding = (int(inv.get("total_paise") or 0) + int(inv.get("debit_note_paise") or 0)
                            - int(inv.get("paid_paise") or 0)

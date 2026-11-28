@@ -930,7 +930,7 @@ class _Rpc:
         return header
 
     def _fn_settle_receipt_atomic(self):
-        """Mirror migrations/160+162+235+574+781 settle_receipt_atomic: insert the journal
+        """Mirror migrations/160+162+235+574+781+782 settle_receipt_atomic: insert the journal
         header+lines, the receipt row, and every allocation's invoice update.
         The real function is one transaction, so a refusal part-way leaves
         nothing: this double takes back what it appended before it raises a
@@ -1050,6 +1050,10 @@ class _Rpc:
                 if (paid != int(expect_paid) or paid_txn != int(expect_paid_txn)
                         or (expect_credited is not None and credited != int(expect_credited))):
                     refuse(f"settle_receipt_atomic: invoice {inv_id} changed while this receipt was being prepared", code="RC001")
+            if not foreign and (str(inv.get("txn_currency") or "").strip() or "INR").upper() != "INR":
+                # migration 782: a rupee receipt does not settle an invoice billed in a foreign currency
+                refuse(f"settle_receipt_atomic: the receipt is in INR and invoice {inv_id} is billed in "
+                       f"{(str(inv.get('txn_currency') or '').strip() or 'INR').upper()}")
             if new_paid + credited > total:
                 refuse(f"settle_receipt_atomic: allocation to invoice {inv_id} exceeds its outstanding")
             if foreign:

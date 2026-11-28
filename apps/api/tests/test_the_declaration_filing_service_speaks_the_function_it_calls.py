@@ -5,7 +5,7 @@ WHAT IS HELD
       reads (`p_declaration->>'key'`, `x->>'key'`), and every key the SQL reads is one the service sends. A column added to one
       side and not the other is a filing that silently drops a figure, which is the defect this function exists to end.
     * THE FUNCTION'S THREE REFUSALS ARE THE SERVICE'S THREE EXCEPTIONS, mapped by the message ("declaration_verified:") or the
-      SQLSTATE (40001 the row could not be taken, 42501 the employee is not that client's) exactly as the database sends them, and
+      SQLSTATE (DC001, or the older 40001, the row could not be taken; 42501 the employee is not that client's) exactly as the database sends them, and
       any other failure passes through unchanged so a door cannot mistake it for a refusal.
     * THE ANSWER IS THE DECLARATION'S ID, a string. Anything else means the function is not the one this module was written
       against, and the module says so instead of handing a door a value it will write into an audit row.
@@ -148,9 +148,13 @@ def test_a_verified_declaration_is_declaration_verified():
         _file(_Client(raises=_api_error("declaration_verified: the declaration for 2026-27 is verified and is not the employee's to change", "P0001")))
 
 
-def test_a_row_that_could_not_be_taken_is_declaration_busy():
+@pytest.mark.parametrize("state", ["DC001", "40001"])
+def test_a_row_that_could_not_be_taken_is_declaration_busy(state):
+    """DC001 is the function's own state since migration 783 (POST-A-577); 40001 is what migration 548 raised, which a database not yet
+    on 783 still raises, if the gateway hands it on at all (it re-runs a request on that state by itself)."""
+    assert set(svc.BUSY_STATES) == {"DC001", "40001"}
     with pytest.raises(svc.DeclarationBusy):
-        _file(_Client(raises=_api_error("file_it_declaration: could not take the declaration for employee x and year y", "40001")))
+        _file(_Client(raises=_api_error("file_it_declaration: could not take the declaration for employee x and year y", state)))
 
 
 def test_an_employee_that_is_not_that_clients_is_out_of_scope():

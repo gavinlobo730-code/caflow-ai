@@ -50,6 +50,45 @@ def _the_year_lock_pin_attempt_windows_are_fresh_for_every_test():
     year_lock_service.reset_pin_attempts()
 
 
+# ── a module first imported while a test had the database URL set does not stay out of mock mode (POST-A-578) ──────────
+#
+# About ninety modules decide mock mode ONCE, at import: `_USE_MOCK = not os.environ.get("SUPABASE_URL")`. A test that sets
+# SUPABASE_URL for its own purposes (header auth, the schema guard) and is the FIRST in its worker to import one of them
+# leaves that module out of mock mode for every later test of the worker, which then reaches for a database that is not
+# there ("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set"). Which test imports a module first depends on which
+# files share a worker, so the whole suite passed in its usual order while a run of a subset failed: on 27-11-2026 two
+# subset runs left `test_form_3cd_clause_register` and `test_tax_workspace_writes_check_the_client_belongs_to_the_firm`
+# failing after some other file, eight tests in all, each passing alone.
+#
+# So before every test, a module that appeared since the last look and holds a `_USE_MOCK` that disagrees with what the
+# SESSION started with is put back to it. Only newly seen modules are looked at (a test that patches the flag on a module
+# already seen is undone by its own monkeypatch), so the cost is nothing once the worker has imported what it needs.
+import os as _os
+import sys as _sys
+
+_MOCK_MODE_AT_SESSION_START = not _os.environ.get("SUPABASE_URL")
+_modules_already_looked_at: set = set()
+
+
+def _put_newly_imported_modules_back_in_the_sessions_mock_mode() -> list:
+    """The names of the modules it corrected (for the test of this mechanism)."""
+    corrected = []
+    for name in [n for n in list(_sys.modules) if n not in _modules_already_looked_at]:
+        _modules_already_looked_at.add(name)
+        module = _sys.modules.get(name)
+        flag = getattr(module, "__dict__", {}).get("_USE_MOCK")
+        if isinstance(flag, bool) and flag != _MOCK_MODE_AT_SESSION_START:
+            module._USE_MOCK = _MOCK_MODE_AT_SESSION_START
+            corrected.append(name)
+    return corrected
+
+
+@pytest.fixture(autouse=True)
+def _a_module_imported_under_another_tests_database_url_is_back_in_mock_mode():
+    _put_newly_imported_modules_back_in_the_sessions_mock_mode()
+    yield
+
+
 @pytest.fixture(autouse=True)
 def _no_schema_drift_watch_outlives_its_test():
     """The schema-drift re-check (core/schema_guard.start_drift_watch, ops-19) is a
