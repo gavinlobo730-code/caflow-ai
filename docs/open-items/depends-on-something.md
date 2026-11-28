@@ -2,7 +2,7 @@
 
 **What this is.** A Claude-alone item (lettered A in the ledger) can still be unbuildable today because it waits on something that is not Claude's: time passing, another item, a choice of the owner, or a registration. Those are listed here, so that the answer to "what can Claude build now, with no help?" is the Claude-alone items **minus** these (and minus the items marked `waits on owner`, `live session`, `held` and `UNSURE` in the ledger itself).
 
-**How to keep it true.** One row per item, with what it waits on and what lifts it. Delete the row in the same commit that closes the item or lifts the dependency; `apps/api/tests/test_the_open_items_ledger_is_well_formed.py` fails a row whose id is no longer in the ledger. This list does not count anything and the ledger's counts do not read it. First written on 27 November 2026 (IST), from a read of the 44 Claude-alone items the ledger counted as needing no help.
+**How to keep it true.** One row per item, with what it waits on and what lifts it. Delete the row in the same commit that closes the item or lifts the dependency; `apps/api/tests/test_the_open_items_ledger_is_well_formed.py` fails a row whose id is no longer in the ledger. The ledger's counts read the ids of its rows (and nothing else of it): the counts block in README.md says how many of the items that "need no help" are listed here, and so how many can really be started today. First written on 27 November 2026 (IST), from a read of the 44 Claude-alone items the ledger counted as needing no help.
 
 | Item | Size | What it is | What it depends on | What lifts it |
 |---|---|---|---|---|

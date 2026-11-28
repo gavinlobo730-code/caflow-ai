@@ -82,7 +82,25 @@ def kind_of_a_line(head: str) -> str:
     return "alone"
 
 
+#: The file that lists the Claude-alone items that cannot be started yet (they wait on time, another item or an owner's choice).
+DEPENDS = "depends-on-something.md"
+_ID = re.compile(r"^- \*\*((?:PRE|POST)-[A-Z]-\d+)\*\*")
+
+
+def depends_on_something(ledger: Path = LEDGER) -> set[str]:
+    """The ids listed as rows in depends-on-something.md. An item lettered A and carrying no marker is counted as one that "needs no help
+    and can be built now" by `kind_of_a_line`, which reads only the line; this file is the other half of the answer (POST-A-586: the count said
+    51 and 14 of them could not be started)."""
+    path = ledger / DEPENDS
+    if not path.exists():
+        return set()
+    return set(re.findall(r"^\|\s*((?:PRE|POST)-[A-Z]-\d+)\s*\|", path.read_text(encoding="utf-8"), re.M))
+
+
 def render_block(ledger: Path = LEDGER) -> str:
+    waiting = depends_on_something(ledger)
+    alone_ids: set[str] = set()
+    new_alone_ids: set[str] = set()
     rows, total, pre, high, unsure = [], 0, 0, 0, 0
     before_kinds = {"alone": 0, "documents": 0, "hands": 0, "held": 0, "B": 0, "C": 0}
     before_new = 0
@@ -100,6 +118,8 @@ def render_block(ledger: Path = LEDGER) -> str:
                 unsure += 1
             if letter == "A":
                 a_kinds[kind_of_a_line(head)] += 1
+                if kind_of_a_line(head) == "alone" and _ID.match(head):
+                    alone_ids.add(_ID.match(head)[1])
             if is_before_demo(name, head):
                 pre += 1
                 before_kinds[kind_of_a_line(head) if letter == "A" else letter] += 1
@@ -124,6 +144,9 @@ def render_block(ledger: Path = LEDGER) -> str:
             new_unsure += 1
         if letter == "A":
             new_a_kinds[kind_of_a_line(head)] += 1
+            if kind_of_a_line(head) == "alone" and _ID.match(head):
+                new_alone_ids.add(_ID.match(head)[1])
+    blocked, new_blocked = len(alone_ids & waiting), len(new_alone_ids & waiting)
     rows.append(f"| [{NEW_FINDINGS[0]}]({NEW_FINDINGS[0]}) | {new_total} | {NEW_FINDINGS[1]} |")
     parked = sum(1 for _ in read_items(ledger / PARKED[0]))
     parked_text = PARKED[1] if parked else "retired on 18 November 2026: every item that was parked is now an ordinary item in its own letter file"
@@ -138,12 +161,15 @@ def render_block(ledger: Path = LEDGER) -> str:
              f"{a_kinds['documents']} wait on the owner for a document, a statutory reading or a decision of theirs (written in [owner-list.md](owner-list.md)), "
              f"{a_kinds['hands']} need the owner's hands (a real browser or phone, a step on the live database, a working session with the owner, or something this container is refused) "
              f"and {a_kinds['held']} are held by the owner's own rule. "
+             f"**Of the {a_kinds['alone']} that need no help, {blocked} are listed in [depends-on-something.md](depends-on-something.md) because they wait on time, another item or an owner's choice, "
+             f"so {a_kinds['alone'] - blocked} can be started today.** "
              f"{by_letter['B']} need the owner to decide first and {by_letter['C']} only the owner "
              f"or someone outside this container can do. In all **{by_letter['B'] + by_letter['C'] + a_kinds['documents'] + a_kinds['hands'] + a_kinds['held']} of the {total} need the owner.**",
              "",
              f"**NEW FINDINGS: {new_total} open** ({new_pre} before the demo, {new_total - new_pre} after; {new_high} `high` priority; {new_unsure} UNSURE), counted apart from the backlog. "
              f"{new_by_letter['A']} are Claude's by their letter (**{new_a_kinds['alone']} need no help and can be built now**, {new_a_kinds['documents']} wait on a document or reading, "
-             f"{new_a_kinds['hands']} need the owner's hands, {new_a_kinds['held']} are held), "
+             f"{new_a_kinds['hands']} need the owner's hands, {new_a_kinds['held']} are held; **of the {new_a_kinds['alone']} that need no help, {new_blocked} wait on something "
+             f"in [depends-on-something.md](depends-on-something.md), so {new_a_kinds['alone'] - new_blocked} can be started today**), "
              f"{new_by_letter['B']} need the owner to decide first and {new_by_letter['C']} only the owner or someone outside this container can do. "
              f"The day by day numbers are in [progress.md](progress.md).",
              "",
