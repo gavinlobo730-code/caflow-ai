@@ -28,7 +28,7 @@ from core.db_provider import privileged_for
 from domain.accounting.payment_account import resolve_payment_account
 from services.audit_service import log_event
 from services.document_header_writer import update_header
-from services.ledger_door import ledger_rpc
+from services.ledger_door import ledger_rpc, stored_answer
 from services import period_lock_service
 from services.period_validation_service import period_validation_service
 from services.timeline_service import timeline_service
@@ -198,7 +198,12 @@ def _record_payment(db, firm_id: str, client_id: str, *, fy: str, prepare) -> tu
                 continue
             refusal = _payment_refusal(e)
             if refusal is e:
-                raise
+                # None of the function's own refusals, which leave nothing behind. If the payment IS stored, the answer was lost on
+                # the way back (POST-A-582): answer with what is there, and not with a failure the person would record again.
+                stored = stored_answer(db, kind="payment", row_id=prepared["payment"]["id"], firm_id=firm_id, client_id=client_id)
+                if stored is None:
+                    raise
+                return stored, prepared
             raise refusal from e
 
 

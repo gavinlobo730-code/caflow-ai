@@ -40,6 +40,7 @@ from models.common import api_response
 from models.invoices import InvoiceLineIn
 from domain.gst import compensation_cess
 from domain.accounting import opening_documents as _opening
+from services.note_target_guard import assert_a_note_can_reach
 from core.authz import assert_client_access, can_access_client
 from core.db_provider import privileged_for
 from services import named_row_ownership
@@ -470,13 +471,13 @@ def issue_sales_debit_note(sdn_id: str, current_user: dict = Depends(rbac("accou
             # against the same invoice, silently losing whichever wrote second.
             for _attempt in range(6):
                 inv_resp = (db.table("client_sales_invoices")
-                            .select("total_paise,paid_paise,credited_paise,debit_note_paise,status,is_opening")
+                            .select("total_paise,paid_paise,credited_paise,debit_note_paise,status,is_opening,invoice_no,txn_currency")
                             .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute())
                 if not inv_resp.data:
                     raise HTTPException(status_code=422, detail="Linked invoice is not part of this client's books.")
                 inv = inv_resp.data[0]
-                if (inv.get("status") or "") in ("draft", "cancelled"):
-                    raise HTTPException(status_code=422, detail=f"Cannot debit-note a {inv.get('status')} invoice.")
+                # POST-A-579: see credit_notes.py. A debit note moves the rupee amount only.
+                assert_a_note_can_reach(inv, is_bill=False, note="debit note", number=inv.get("invoice_no") or inv_id, cannot="debit-note")
                 if _opening.carried_over(inv):
                     raise HTTPException(status_code=422,
                                         detail=_opening.note_refusal(_opening.RECEIVABLE))

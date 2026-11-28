@@ -30,6 +30,7 @@ from domain.accounting import draft_integrity
 from services import draft_integrity_service
 from services.line_item_ownership import ItemOwner, check as check_items_are_the_clients
 from domain.accounting import opening_documents as _opening
+from services.note_target_guard import assert_a_note_can_reach
 from services.period_validation_service import period_validation_service
 from services import period_lock_service
 from services.timeline_service import timeline_service
@@ -749,13 +750,14 @@ def issue_credit_note(
                             # already made: §34(2)'s window runs from the
                             # ORIGINAL SUPPLY's financial year, and issuing is
                             # when the reduction actually reaches the books.
-                            .select("total_paise,paid_paise,credited_paise,debit_note_paise,status,invoice_date")
+                            .select("total_paise,paid_paise,credited_paise,debit_note_paise,status,invoice_date,invoice_no,txn_currency")
                             .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute())
                 if not inv_resp.data:
                     raise HTTPException(status_code=422, detail="Linked invoice is not part of this client's books.")
                 inv = inv_resp.data[0]
-                if (inv.get("status") or "") in ("draft", "cancelled"):
-                    raise HTTPException(status_code=422, detail=f"Cannot credit a {inv.get('status')} invoice.")
+                # A draft or cancelled invoice cannot be credited, and (POST-A-579) neither can one billed in a foreign currency: a
+                # credit note moves the rupee amount and carries no foreign one. Refused before anything is written.
+                assert_a_note_can_reach(inv, is_bill=False, note="credit note", number=inv.get("invoice_no") or inv_id, cannot="credit")
                 total       = int(inv.get("total_paise") or 0)
                 paid        = int(inv.get("paid_paise") or 0)
                 raw_credited = inv.get("credited_paise")   # CAS guard must match this exact stored value
