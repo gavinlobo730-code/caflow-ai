@@ -15,7 +15,9 @@ WHAT IT DECIDES AND WHAT IT LEAVES
     * `refuse_verified` is the employee door's: a declaration the CA has finished verifying is no longer the employee's to change,
       and the function refuses it inside the same transaction that would have changed it (`DeclarationVerified`). The staff door
       passes False and replaces a verified declaration as it always has, with every verified column reset.
-    * `DeclarationBusy` is the function giving up after three tries to take the row (SQLSTATE 40001): the filing was NOT made.
+    * `DeclarationBusy` is the function giving up after three tries to take the row: the filing was NOT made. Its state is the
+      function's own, DC001, since migration 783; 40001 (what migration 548 raised, and what the gateway may re-run by itself and
+      never hand on) is still matched, so the service is right against either body.
 
 THE PAYLOAD
     `HEADER_KEYS` names the header columns the function reads out of `p_declaration`, written out in full so that the column check
@@ -48,6 +50,10 @@ _NOT_THE_EMPLOYEES = re.compile(r"^(?:ERROR:\s+)?file_it_declaration: employee")
 
 class DeclarationVerified(Exception):
     """The CA has finished verifying this declaration and the caller may not change it. Nothing was written."""
+
+
+#: The states the function gives up with: its own since migration 783, and migration 548's, which a database not yet on 783 raises.
+BUSY_STATES = ("DC001", "40001")
 
 
 class DeclarationBusy(Exception):
@@ -103,7 +109,7 @@ def file_declaration(
         # test double does) puts "ERROR:  " in front of them.
         if _VERIFIED.match(message):
             raise DeclarationVerified(message) from exc
-        if code == "40001":
+        if code in BUSY_STATES:
             raise DeclarationBusy(message) from exc
         # 42501 is also what the database answers when the function is not granted to the client that called it ("permission denied
         # for function"), which is a deployment fault and must reach the caller as one, not as "employee not found".

@@ -482,6 +482,13 @@ def receipt_number_carried_elsewhere(receipt_no: str) -> str:
             "Nothing was recorded. Change that entry's reference, or record the receipt under another date.")
 
 
+def rupee_receipt_against_a_foreign_invoice(invoice: str, currency: str) -> str:
+    """What a person reads when a receipt in rupees names an invoice billed in another currency (POST-A-576)."""
+    return (f"Invoice {invoice} is billed in {currency}, and this receipt is in rupees. Record the receipt in {currency}, with the "
+            "rate the money was received at, so the invoice's own amount is settled and the exchange difference is recorded. "
+            "Nothing was recorded.")
+
+
 #: The state migration 781's function raises when an invoice no longer reads as the plan read it.
 INVOICE_MOVED_STATE = "RC001"
 
@@ -710,6 +717,34 @@ def _assert_the_customer_and_the_account_are_the_clients(db, firm_id, client_id:
     named_row_ownership.bank_account_is_the_clients(db, firm_id or "", client_id, data.get("bank_account_id"))
 
 
+def _assert_invoices_can_take_a_rupee_receipt(db, firm_id: str, client_id: str, allocations: list) -> None:
+    """Every invoice a rupee receipt names is this client's, is issued and live, and is billed in rupees. Asked before anything is
+    written."""
+    # F1 fix: allocations must reference THIS client's invoices (firm+client scope),
+    # validated BEFORE the receipt is created so a foreign invoice id can never be
+    # recorded or have its paid_paise mutated. A draft invoice was never issued
+    # (no AR journal exists) and a cancelled one is terminal — neither can be
+    # settled (task #227 audit finding).
+    for _a in allocations:
+        _inv = _a.get("sales_invoice_id")
+        if _inv and int(_a.get("allocated_paise", 0) or 0) > 0:
+            chk = (db.table("client_sales_invoices").select("id, status, txn_currency, invoice_no")
+                   .eq("id", _inv).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute())
+            if not chk.data:
+                raise HTTPException(status_code=422, detail=f"Invoice {_inv} is not part of this client's books.")
+            if chk.data[0].get("status") in ("draft", "cancelled"):
+                raise HTTPException(status_code=422,
+                    detail=f"Invoice {_inv} is {chk.data[0].get('status')} and cannot receive a payment.")
+            # POST-A-576. A rupee receipt does not settle an invoice billed in a foreign currency: it would move the rupees paid and
+            # leave the foreign amount paid at nothing, and the invoice would read "paid" by its rupee total with its whole foreign
+            # amount still outstanding and no realised exchange difference recorded. The receipt function refuses the same
+            # (migration 782); this says it to the person.
+            _billed_in = (str(chk.data[0].get("txn_currency") or "").strip() or "INR").upper()
+            if _billed_in != "INR":
+                raise HTTPException(status_code=422, detail=rupee_receipt_against_a_foreign_invoice(
+                    chk.data[0].get("invoice_no") or _inv, _billed_in))
+
+
 def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
     """Create a customer receipt with optional invoice allocations — the single
     source of truth for receipt creation.
@@ -812,21 +847,7 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
         phase2_journal_service.journal_for_receipt(receipt, firm_id or "", client_id, created_by=(actor or {}).get("id"))
         return {**receipt, "allocations": allocations}
 
-    # F1 fix: allocations must reference THIS client's invoices (firm+client scope),
-    # validated BEFORE the receipt is created so a foreign invoice id can never be
-    # recorded or have its paid_paise mutated. A draft invoice was never issued
-    # (no AR journal exists) and a cancelled one is terminal — neither can be
-    # settled (task #227 audit finding).
-    for _a in allocations:
-        _inv = _a.get("sales_invoice_id")
-        if _inv and int(_a.get("allocated_paise", 0) or 0) > 0:
-            chk = (db.table("client_sales_invoices").select("id, status")
-                   .eq("id", _inv).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute())
-            if not chk.data:
-                raise HTTPException(status_code=422, detail=f"Invoice {_inv} is not part of this client's books.")
-            if chk.data[0].get("status") in ("draft", "cancelled"):
-                raise HTTPException(status_code=422,
-                    detail=f"Invoice {_inv} is {chk.data[0].get('status')} and cannot receive a payment.")
+    _assert_invoices_can_take_a_rupee_receipt(db, firm_id, client_id, allocations)
 
     # F7 hardening: validate EVERY allocation against LIVE invoice outstanding
     # BEFORE posting anything (journal or receipt). Previously this check only ran
