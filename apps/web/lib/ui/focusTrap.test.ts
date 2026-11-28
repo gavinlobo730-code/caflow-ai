@@ -243,3 +243,105 @@ test("the landing place is the id both shells give their main region, and both s
     assert.doesNotMatch(src, /restore(Focus)?Ref\.current\?\.focus/, `${overlay} still calls focus() on an opener that may be gone`);
   }
 });
+
+// ── a dialog whose focused control is taken away keeps the keyboard (POST-A-555, the last part) ─────────────────────────────────────────────
+
+test("the keyboard is nowhere when the focus is on nothing or on the document's body, and somewhere on anything else", async () => {
+  const { theKeyboardIsNowhere } = await import("./focusTrap.ts");
+  const body = { tagName: "BODY" } as unknown as Element;
+  const panel = { tagName: "DIV" } as unknown as Element;
+  assert.equal(theKeyboardIsNowhere(null, body), true);
+  assert.equal(theKeyboardIsNowhere(body, body), true);
+  assert.equal(theKeyboardIsNowhere(panel, body), false, "focus on the dialog's own panel is a place");
+});
+
+/** A stand-in for MutationObserver that hands back its callback, so the rule can be run without a browser. */
+function withAFakeObserver<T>(run: (fire: () => void, watched: { node: unknown; options: unknown; disconnected: boolean }) => T): T {
+  const watched = { node: null as unknown, options: null as unknown, disconnected: false };
+  let callback: () => void = () => {};
+  const real = (globalThis as { MutationObserver?: unknown }).MutationObserver;
+  (globalThis as { MutationObserver?: unknown }).MutationObserver = class {
+    constructor(cb: () => void) { callback = cb; }
+    observe(node: unknown, options: unknown) { watched.node = node; watched.options = options; }
+    disconnect() { watched.disconnected = true; }
+  };
+  try { return run(() => callback(), watched); } finally { (globalThis as { MutationObserver?: unknown }).MutationObserver = real; }
+}
+
+function aPanel(active: { current: unknown }) {
+  const body = { tagName: "BODY" };
+  const panel = {
+    isConnected: true, focused: 0, lastOptions: undefined as unknown,
+    ownerDocument: { body, get activeElement() { return active.current; } },
+    focus(options?: unknown) { this.focused += 1; this.lastOptions = options; active.current = this; },
+  };
+  return { panel, body };
+}
+
+test("when the dialog's content changes and the focus has fallen to the document, the panel takes it back without scrolling", async () => {
+  const { keepTheKeyboardInside } = await import("./focusTrap.ts");
+  withAFakeObserver((fire, watched) => {
+    const active = { current: null as unknown };
+    const { panel, body } = aPanel(active);
+    const stop = keepTheKeyboardInside(panel as unknown as HTMLElement, () => true);
+    assert.equal(watched.node, panel);
+    assert.deepEqual(watched.options, { childList: true, subtree: true }, "it must hear a control removed anywhere inside the panel");
+    active.current = body;          // the focused button was removed with the old content
+    fire();
+    assert.equal(panel.focused, 1, "the panel did not take the keyboard back");
+    assert.deepEqual(panel.lastOptions, { preventScroll: true });
+    stop();
+    assert.equal(watched.disconnected, true, "closing the dialog must stop the watching");
+  });
+});
+
+test("a change of content while the focus is still on a control of the dialog moves nothing", async () => {
+  const { keepTheKeyboardInside } = await import("./focusTrap.ts");
+  withAFakeObserver((fire) => {
+    const field = { tagName: "INPUT" };
+    const active = { current: field as unknown };
+    const { panel } = aPanel(active);
+    keepTheKeyboardInside(panel as unknown as HTMLElement, () => true);
+    fire();
+    assert.equal(panel.focused, 0, "the cursor was pulled out of the field a person was typing in");
+    assert.equal(active.current, field);
+  });
+});
+
+test("a dialog that is not the one on top does not pull the keyboard down to itself, and a panel that has left the page takes nothing", async () => {
+  const { keepTheKeyboardInside } = await import("./focusTrap.ts");
+  withAFakeObserver((fire) => {
+    const active = { current: null as unknown };
+    const { panel } = aPanel(active);
+    keepTheKeyboardInside(panel as unknown as HTMLElement, () => false);
+    fire();
+    assert.equal(panel.focused, 0, "a drawer under a dialog took the focus from the dialog");
+  });
+  withAFakeObserver((fire) => {
+    const active = { current: null as unknown };
+    const { panel } = aPanel(active);
+    panel.isConnected = false;
+    keepTheKeyboardInside(panel as unknown as HTMLElement, () => true);
+    fire();
+    assert.equal(panel.focused, 0);
+  });
+});
+
+test("with no panel, or where the page cannot be watched, there is nothing to do and nothing throws", async () => {
+  const { keepTheKeyboardInside } = await import("./focusTrap.ts");
+  keepTheKeyboardInside(null, () => true)();
+  const real = (globalThis as { MutationObserver?: unknown }).MutationObserver;
+  (globalThis as { MutationObserver?: unknown }).MutationObserver = undefined;
+  try { keepTheKeyboardInside({} as unknown as HTMLElement, () => true)(); } finally { (globalThis as { MutationObserver?: unknown }).MutationObserver = real; }
+});
+
+test("both shared overlays keep the keyboard inside through the one function, and stop when they close", async () => {
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  const web = path.join(import.meta.dirname, "..", "..");
+  for (const overlay of ["modal.tsx", "drawer.tsx"]) {
+    const src = fs.readFileSync(path.join(web, "components", "ui", overlay), "utf8");
+    assert.match(src, /const stopKeeping = keepTheKeyboardInside\(panelRef\.current, overlay\.isTop\);/, `${overlay} does not watch for its focused control being taken away`);
+    assert.match(src, /stopKeeping\(\);\s*\n\s*overlay\.close\(\);/, `${overlay} does not stop watching when it closes`);
+  }
+});

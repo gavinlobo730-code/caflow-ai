@@ -269,7 +269,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - AN ASSET'S PLACE AND KEEPER HAVE A DATED HISTORY, WRITTEN WITH THE ASSET IN ONE STEP, AND A TYPO IS AN EDIT, NOT A MOVEMENT
 - A PHYSICAL COUNT OF A CLIENT'S ASSETS IS A DATED WORKING PAPER WITH A FINDING PER ASSET HELD THAT DAY, AND A CLOSED COUNT NEVER CHANGES
 
-### `docs/design-record/frontend.md` (22 entries): Frontend rules: payload shapes, the browser's second data path, money input, loading and recurring screens
+### `docs/design-record/frontend.md` (23 entries): Frontend rules: payload shapes, the browser's second data path, money input, loading and recurring screens
 
 - A PAYLOAD IS NOT A LIST UNTIL SOMETHING HAS CHECKED, AND THE STATE TYPE HIDES IT
 - A THIRD path existed and it was not a database at all: `localStorage`
@@ -293,6 +293,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A PROPERLY GROUPED AMOUNT IS READ BY THE ONE READER AND EVERY CONVERSION AFTER IT, A COMMA ANYWHERE ELSE IS REFUSED
 - A FORM ASKS WHICH TYPED BOXES CANNOT BE READ BEFORE IT BUILDS WHAT IT SENDS
 - A DIALOG WHOSE OPENER HAS LEFT THE PAGE HANDS THE KEYBOARD TO THE MAIN REGION, NEVER TO THE TOP OF THE DOCUMENT
+- A DIALOG THAT CHANGES WHAT IT SHOWS KEEPS THE KEYBOARD
 
 ### `docs/design-record/identifiers.md` (5 entries): Identifiers: GSTIN, UAN, IFSC, party identifiers in imports, the firm's own GSTIN, FY and AY labels, ITR forms
 
