@@ -221,6 +221,9 @@ HELPERS = {
     # the guard so the guard's negative controls, and the reader's own tests, can run it over a
     # synthetic source and over a real file with one line removed.
     "_firm_scope_scan.py",
+    # Which part of the product a test file is about, derived from its name and imports (POST-A-191): read by `conftest.py` for `--subsystem`,
+    # by `scripts/tests_by_subsystem.py` and by the test that holds the grouping.
+    "_subsystems.py",
     # POST-A-070. A small set of books as the year-end statements serve them, every figure hand-chosen and balanced, so the tests of the
     # Part A schedules write their expected values out instead of deriving them from the function under test. Imported by
     # `test_the_books_schedules_place_every_line_once.py`, `test_the_depreciation_schedules_come_from_the_blocks.py` and

@@ -16,6 +16,38 @@ therefore overrides it.
 import pytest
 
 
+# ── `--subsystem payroll`: run the tests of one part of the product (POST-A-191; tests/_subsystems.py says why no file was moved) ──────────
+
+def pytest_addoption(parser):
+    parser.addoption("--subsystem", action="store", default=None,
+                     help="run only the test files of these subsystems, comma-separated (see tests/_subsystems.py for the names)")
+
+
+def pytest_configure(config):
+    """A name that is not a subsystem is refused before anything is collected: a typo that selected nothing would read as a clean run."""
+    option = config.getoption("--subsystem", default=None)
+    config._subsystems_asked = None
+    if option is not None:
+        from tests._subsystems import wanted
+        try:
+            config._subsystems_asked = wanted(option)
+        except ValueError as e:
+            raise pytest.UsageError(str(e)) from e
+
+
+def pytest_ignore_collect(collection_path, config):
+    """With `--subsystem`, a test file of another subsystem is not even imported (collecting the whole suite to drop most of it took
+    nearly three minutes). Without the option this answers None for every path, so nothing is ever left out: the required checks never
+    pass it and run every file."""
+    asked = getattr(config, "_subsystems_asked", None)
+    if not asked:
+        return None
+    if collection_path.is_file() and collection_path.suffix == ".py" and collection_path.name.startswith("test_"):
+        from tests._subsystems import subsystem_of
+        return True if subsystem_of(str(collection_path)) not in asked else None
+    return None
+
+
 @pytest.fixture(autouse=True)
 def _passbook_off_by_default(monkeypatch):
     monkeypatch.setenv("REPORTING_PASSBOOK_MODE", "off")
