@@ -153,7 +153,7 @@
 -- RESTRICTIVE policy blocks is silent, exactly like `portal_messages` before
 -- 440/294). After, it returns exactly its own row, a different portal
 -- client's SELECT still returns zero, and an unassigned staff member still
--- sees nothing — see tests/test_442_a_portal_client_reads_their_own_fee_scope_pg.py.
+-- sees nothing — see tests/test_r442_portal_client_reads_own_fee_scope_pg.py.
 --
 -- BELT AND SUSPENDERS
 -- Grants re-asserted idempotently, unchanged from migration 073's own
