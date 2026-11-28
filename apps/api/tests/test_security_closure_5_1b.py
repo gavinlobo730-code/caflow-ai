@@ -123,7 +123,7 @@ def test_f1_create_receipt_blocks_foreign_firm_invoice(receipt_engine_quiet):
 def test_f1_create_receipt_same_client_ok(receipt_engine_quiet):
     from services.receipt_service import create_receipt_core
     db = FakeDB()
-    db.seed("client_sales_invoices", {"id": "INV-A", "firm_id": "F", "client_id": "A",
+    db.seed("client_sales_invoices", {"id": "INV-A", "firm_id": "F", "client_id": "A", "customer_id": "C",
                                       "total_paise": 100000, "paid_paise": 0, "status": "issued"})
     # task #227: create_receipt_core now rejects a customer_id that isn't
     # found in THIS firm+client's books (previously failed open on no match).

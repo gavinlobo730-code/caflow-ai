@@ -282,7 +282,7 @@ def create_foreign_receipt(firm_id: str, data: dict, actor: dict, db) -> dict:
         attempt += 1
         seq = _next_receipt_seq(db, firm_id, client_id, fy)
         receipt_no = f"RCPT-{fy}-{seq:04d}"
-        settle_plan, total_ar_relieved = _plan_foreign_settlement(db, firm_id, client_id, ccy, minor, allocations)
+        settle_plan, total_ar_relieved = _plan_foreign_settlement(db, firm_id, client_id, ccy, minor, allocations, data.get("customer_id"))
         if total_foreign_settled > total_foreign:
             raise HTTPException(status_code=422, detail="Allocated foreign exceeds the receipt amount.")
         fx_diff = settled_cash_base - total_ar_relieved   # + gain / − loss (receivable)
@@ -407,7 +407,7 @@ def _foreign_receipt_rate(K, db, data: dict, ccy: str):
 FOREIGN_RECEIPT_ATTEMPTS = 3
 
 
-def _plan_foreign_settlement(db, firm_id: str, client_id: str, ccy: str, minor: int, allocations: list) -> tuple[list, int]:
+def _plan_foreign_settlement(db, firm_id: str, client_id: str, ccy: str, minor: int, allocations: list, customer_id=None) -> tuple[list, int]:
     """What a foreign receipt settles of each invoice, from a read of the invoice as it stands now.
 
     Returns ([(invoice row, foreign amount, rupees relieved)], total rupees relieved). Each invoice is relieved at ITS OWN booking rate,
@@ -420,10 +420,13 @@ def _plan_foreign_settlement(db, firm_id: str, client_id: str, ccy: str, minor: 
     for a in allocations:
         inv_id = a.get("sales_invoice_id")
         inv = (db.table("client_sales_invoices")
-               .select("id, status, txn_currency, exchange_rate, total_paise, paid_paise, paid_txn, credited_paise, debit_note_paise, txn_total")
+               .select("id, invoice_no, customer_id, status, txn_currency, exchange_rate, total_paise, paid_paise, paid_txn, credited_paise, "
+                       "debit_note_paise, txn_total")
                .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute().data or [None])[0]
         if not inv:
             raise HTTPException(status_code=422, detail=f"Invoice {inv_id} is not part of this client's books.")
+        if customer_id and inv.get("customer_id") != customer_id:           # POST-A-580, as for a rupee receipt
+            raise HTTPException(status_code=422, detail=invoice_of_another_customer(inv.get("invoice_no") or inv_id))
         if inv.get("status") in ("draft", "cancelled"):
             raise HTTPException(status_code=422,
                 detail=f"Invoice {inv_id} is {inv.get('status')} and cannot receive a payment.")
@@ -480,6 +483,13 @@ def receipt_number_carried_elsewhere(receipt_no: str) -> str:
     return (f"The number this receipt would take, {receipt_no}, is already carried by another entry in this client's books "
             "(a journal typed with that reference on the same date, for example), so the receipt cannot be recorded under it. "
             "Nothing was recorded. Change that entry's reference, or record the receipt under another date.")
+
+
+def invoice_of_another_customer(invoice: str, nothing_was: str = "recorded") -> str:
+    """What a person reads when a receipt from one customer names an invoice issued to another customer of the same client
+    (POST-A-580). `nothing_was` is "recorded" where a receipt is being made and "changed" where one is being re-allocated."""
+    return (f"Invoice {invoice} was issued to another customer. A receipt settles invoices of the customer it is received from. "
+            f"Nothing was {nothing_was}.")
 
 
 def rupee_receipt_against_a_foreign_invoice(invoice: str, currency: str) -> str:
@@ -717,9 +727,9 @@ def _assert_the_customer_and_the_account_are_the_clients(db, firm_id, client_id:
     named_row_ownership.bank_account_is_the_clients(db, firm_id or "", client_id, data.get("bank_account_id"))
 
 
-def _assert_invoices_can_take_a_rupee_receipt(db, firm_id: str, client_id: str, allocations: list) -> None:
-    """Every invoice a rupee receipt names is this client's, is issued and live, and is billed in rupees. Asked before anything is
-    written."""
+def _assert_invoices_can_take_a_rupee_receipt(db, firm_id: str, client_id: str, allocations: list, customer_id=None) -> None:
+    """Every invoice a rupee receipt names is this client's, was issued to the customer the receipt is from, is issued and live, and is
+    billed in rupees. Asked before anything is written."""
     # F1 fix: allocations must reference THIS client's invoices (firm+client scope),
     # validated BEFORE the receipt is created so a foreign invoice id can never be
     # recorded or have its paid_paise mutated. A draft invoice was never issued
@@ -728,10 +738,14 @@ def _assert_invoices_can_take_a_rupee_receipt(db, firm_id: str, client_id: str, 
     for _a in allocations:
         _inv = _a.get("sales_invoice_id")
         if _inv and int(_a.get("allocated_paise", 0) or 0) > 0:
-            chk = (db.table("client_sales_invoices").select("id, status, txn_currency, invoice_no")
+            chk = (db.table("client_sales_invoices").select("id, status, txn_currency, invoice_no, customer_id")
                    .eq("id", _inv).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute())
             if not chk.data:
                 raise HTTPException(status_code=422, detail=f"Invoice {_inv} is not part of this client's books.")
+            # POST-A-580. One customer's receipt does not settle another customer's invoice: both statements would be wrong. The
+            # receipt function refuses the same (migration 785); this says it to the person.
+            if customer_id and chk.data[0].get("customer_id") != customer_id:
+                raise HTTPException(status_code=422, detail=invoice_of_another_customer(chk.data[0].get("invoice_no") or _inv))
             if chk.data[0].get("status") in ("draft", "cancelled"):
                 raise HTTPException(status_code=422,
                     detail=f"Invoice {_inv} is {chk.data[0].get('status')} and cannot receive a payment.")
@@ -847,7 +861,7 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
         phase2_journal_service.journal_for_receipt(receipt, firm_id or "", client_id, created_by=(actor or {}).get("id"))
         return {**receipt, "allocations": allocations}
 
-    _assert_invoices_can_take_a_rupee_receipt(db, firm_id, client_id, allocations)
+    _assert_invoices_can_take_a_rupee_receipt(db, firm_id, client_id, allocations, data.get("customer_id"))
 
     # F7 hardening: validate EVERY allocation against LIVE invoice outstanding
     # BEFORE posting anything (journal or receipt). Previously this check only ran
