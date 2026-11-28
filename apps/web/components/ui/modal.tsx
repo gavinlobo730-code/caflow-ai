@@ -19,7 +19,7 @@
  */
 import { useEffect, useRef, useId, type ReactNode } from "react";
 import { X } from "lucide-react";
-import { firstFormField, trapTabKey, whoOpenedTheDialog } from "@/lib/ui/focusTrap";
+import { firstFormField, giveFocusBack, trapTabKey, whoOpenedTheDialog } from "@/lib/ui/focusTrap";
 import { lockBodyScroll } from "@/lib/ui/scrollLock";
 import { closeAfterTheFocusedDateCommits } from "@/lib/dates/closeAfterDateCommit";
 import { escapeBelongsToAnOpenPicker, openOverlay } from "@/lib/ui/overlayStack";
@@ -97,7 +97,7 @@ export function Modal({
       document.removeEventListener("keydown", onKey, true);
       overlay.close();
       unlockScroll();
-      restoreRef.current?.focus?.();
+      giveFocusBack(restoreRef.current);
     };
   }, []);
 

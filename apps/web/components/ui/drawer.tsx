@@ -18,7 +18,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { inBody } from "@/lib/ui/inBody";
-import { trapTabKey, whoOpenedTheDialog } from "@/lib/ui/focusTrap";
+import { giveFocusBack, trapTabKey, whoOpenedTheDialog } from "@/lib/ui/focusTrap";
 import { lockBodyScroll } from "@/lib/ui/scrollLock";
 import { closeAfterTheFocusedDateCommits } from "@/lib/dates/closeAfterDateCommit";
 import { escapeBelongsToAnOpenPicker, openOverlay } from "@/lib/ui/overlayStack";
@@ -89,7 +89,7 @@ export function Drawer({
       overlay.close();
       unlockScroll();
       // Restore focus to whatever opened the drawer (row action / link).
-      restoreFocusRef.current?.focus?.();
+      giveFocusBack(restoreFocusRef.current);
     };
   }, [open]);
 

@@ -164,3 +164,82 @@ test("a press is remembered for a short time only, so an old press cannot claim 
   handlers.get("keydown")!({ target, key: "a" } as unknown as KeyboardEvent);
 });
 
+
+// ── POST-A-555, third part: where the keyboard goes when the opener has left the page ───────────────────────────────────────────────
+
+/** A stand-in document: `active` is whatever last took the focus; a node may refuse it (a disabled button). */
+function fakePage({ dialogs = [] as string[], main = true } = {}) {
+  const state: { active: unknown } = { active: null };
+  const node = (name: string, { connected = true, takesFocus = true } = {}) => {
+    const n = { name, isConnected: connected, focus: (opts?: { preventScroll?: boolean }) => { if (takesFocus) { state.active = n; n.lastOptions = opts; } }, lastOptions: undefined as unknown };
+    return n;
+  };
+  const mainNode = node("main");
+  const dialogNodes = dialogs.map((d) => node(d));
+  const doc = {
+    get activeElement() { return state.active; },
+    querySelectorAll: (sel: string) => (sel.includes('role="dialog"') ? dialogNodes : []),
+    getElementById: (id: string) => (id === "main-content" && main ? mainNode : null),
+  } as unknown as Document;
+  return { doc, node, mainNode, dialogNodes, state };
+}
+
+test("an opener that is still on the page gets the focus back, and nothing else is touched", async () => {
+  const { giveFocusBack } = await import("./focusTrap.ts");
+  const { doc, node, mainNode, state } = fakePage();
+  const opener = node("Mark Filed");
+  giveFocusBack(opener as unknown as HTMLElement, doc);
+  assert.equal(state.active, opener);
+  assert.equal(mainNode.lastOptions, undefined, "the main region was focused although the opener took the focus");
+});
+
+test("an opener that has left the page hands the keyboard to the page's main region, without scrolling it", async () => {
+  const { giveFocusBack } = await import("./focusTrap.ts");
+  const { doc, node, mainNode, state } = fakePage();
+  giveFocusBack(node("a bulk bar's button", { connected: false }) as unknown as HTMLElement, doc);
+  assert.equal(state.active, mainNode, "the keyboard fell to the document");
+  assert.deepEqual(mainNode.lastOptions, { preventScroll: true });
+  const none = fakePage();
+  giveFocusBack(null, none.doc);
+  assert.equal(none.state.active, none.mainNode, "a dialog nobody is known to have opened still lands on the main region");
+});
+
+test("an opener that is on the page and cannot take the focus (disabled) is treated as gone", async () => {
+  const { giveFocusBack } = await import("./focusTrap.ts");
+  const { doc, node, mainNode, state } = fakePage();
+  giveFocusBack(node("a disabled button", { takesFocus: false }) as unknown as HTMLElement, doc);
+  assert.equal(state.active, mainNode);
+});
+
+test("with another dialog still open underneath, the keyboard goes to THAT dialog and never to the page behind it", async () => {
+  const { giveFocusBack } = await import("./focusTrap.ts");
+  const { doc, node, mainNode, dialogNodes, state } = fakePage({ dialogs: ["the sheet underneath", "the dialog on top of it"] });
+  giveFocusBack(node("a row that was deleted", { connected: false }) as unknown as HTMLElement, doc);
+  assert.equal(state.active, dialogNodes[1], "the topmost dialog still open did not get the focus");
+  assert.equal(mainNode.lastOptions, undefined, "focus went to the page behind an open dialog");
+});
+
+test("with no main region and no document there is nothing to do, and it does not throw", async () => {
+  const { giveFocusBack } = await import("./focusTrap.ts");
+  const { doc, node, state } = fakePage({ main: false });
+  giveFocusBack(node("gone", { connected: false }) as unknown as HTMLElement, doc);
+  assert.equal(state.active, null);
+  giveFocusBack(null, null);
+});
+
+test("the landing place is the id both shells give their main region, and both shared overlays use the one function", async () => {
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  const { WHERE_FOCUS_LANDS_WHEN_THE_OPENER_IS_GONE } = await import("./focusTrap.ts");
+  const web = path.join(import.meta.dirname, "..", "..");
+  const skip = fs.readFileSync(path.join(web, "components", "shell", "SkipToContent.tsx"), "utf8");
+  assert.match(skip, new RegExp(`export const MAIN_CONTENT_ID = "${WHERE_FOCUS_LANDS_WHEN_THE_OPENER_IS_GONE}";`));
+  for (const shell of ["ClientShell.tsx", "WorkspaceShell.tsx"]) {
+    assert.match(fs.readFileSync(path.join(web, "components", "shell", shell), "utf8"), /<main id=\{MAIN_CONTENT_ID\} tabIndex=\{-1\}/, `${shell}: the main region is not focusable under the shared id`);
+  }
+  for (const overlay of ["modal.tsx", "drawer.tsx"]) {
+    const src = fs.readFileSync(path.join(web, "components", "ui", overlay), "utf8");
+    assert.match(src, /giveFocusBack\(restore(Focus)?Ref\.current\);/, `${overlay} does not hand the focus back through the shared function`);
+    assert.doesNotMatch(src, /restore(Focus)?Ref\.current\?\.focus/, `${overlay} still calls focus() on an opener that may be gone`);
+  }
+});
