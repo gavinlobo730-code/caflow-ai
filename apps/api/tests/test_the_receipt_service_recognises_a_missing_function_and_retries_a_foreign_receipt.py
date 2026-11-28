@@ -236,7 +236,7 @@ def test_a_foreign_receipt_that_lost_the_race_is_planned_again_from_a_fresh_read
     and with expectations that are the SECOND read's."""
     import services.receipt_service as mod
 
-    invoice = {"id": "inv-1", "status": "issued", "txn_currency": "USD", "exchange_rate": "80", "total_paise": 800000,
+    invoice = {"id": "inv-1", "customer_id": "cust-1", "status": "issued", "txn_currency": "USD", "exchange_rate": "80", "total_paise": 800000,
                "paid_paise": 0, "paid_txn": 0, "credited_paise": 0, "txn_total": 10000}
 
     def on_call(params):
@@ -267,7 +267,7 @@ def test_two_receipts_that_took_the_same_number_the_second_takes_the_next_one_an
     is sent again whole. Before this it was a 409 asking the person to retry, and the re-plan below never ran for that race."""
     import services.receipt_service as mod
 
-    invoice = {"id": "inv-1", "status": "issued", "txn_currency": "USD", "exchange_rate": "80", "total_paise": 800000,
+    invoice = {"id": "inv-1", "customer_id": "cust-1", "status": "issued", "txn_currency": "USD", "exchange_rate": "80", "total_paise": 800000,
                "paid_paise": 0, "paid_txn": 0, "credited_paise": 0, "txn_total": 10000}
 
     def on_call(params):
@@ -294,7 +294,7 @@ def test_a_foreign_receipt_whose_number_keeps_being_taken_by_other_receipts_is_r
     from fastapi import HTTPException
     import services.receipt_service as mod
 
-    invoice = {"id": "inv-1", "status": "issued", "txn_currency": "USD", "exchange_rate": "80", "total_paise": 800000,
+    invoice = {"id": "inv-1", "customer_id": "cust-1", "status": "issued", "txn_currency": "USD", "exchange_rate": "80", "total_paise": 800000,
                "paid_paise": 0, "paid_txn": 0, "credited_paise": 0, "txn_total": 10000}
 
     def on_call(params):
@@ -315,7 +315,7 @@ def test_a_number_refused_twice_running_is_carried_by_something_that_is_not_a_re
     from fastapi import HTTPException
     import services.receipt_service as mod
 
-    invoice = {"id": "inv-1", "status": "issued", "txn_currency": "USD", "exchange_rate": "80", "total_paise": 800000,
+    invoice = {"id": "inv-1", "customer_id": "cust-1", "status": "issued", "txn_currency": "USD", "exchange_rate": "80", "total_paise": 800000,
                "paid_paise": 0, "paid_txn": 0, "credited_paise": 0, "txn_total": 10000}
 
     def on_call(_params):
@@ -339,7 +339,7 @@ def test_the_rupees_a_part_settlement_would_relieve_must_still_be_owed_and_the_r
     import services.receipt_service as mod
 
     # 100.00 USD at 80 = 8,000.00; a credit note of 5,000.00 leaves 3,000.00 owed in rupees and still 100.00 USD outstanding
-    invoice = {"id": "inv-1", "status": "issued", "txn_currency": "USD", "exchange_rate": "80", "total_paise": 800000,
+    invoice = {"id": "inv-1", "customer_id": "cust-1", "status": "issued", "txn_currency": "USD", "exchange_rate": "80", "total_paise": 800000,
                "paid_paise": 0, "paid_txn": 0, "credited_paise": 500000, "debit_note_paise": 0, "txn_total": 10000}
     db, writes, calls = _foreign_world(monkeypatch, invoice, lambda _p: None)
     with pytest.raises(HTTPException) as exc_info:
@@ -374,7 +374,7 @@ def test_a_foreign_receipt_that_keeps_losing_is_refused_in_words_having_written_
     from fastapi import HTTPException
     import services.receipt_service as mod
 
-    invoice = {"id": "inv-1", "status": "issued", "txn_currency": "USD", "exchange_rate": "80", "total_paise": 800000,
+    invoice = {"id": "inv-1", "customer_id": "cust-1", "status": "issued", "txn_currency": "USD", "exchange_rate": "80", "total_paise": 800000,
                "paid_paise": 0, "paid_txn": 0, "credited_paise": 0, "txn_total": 10000}
 
     def on_call(_params):
@@ -397,7 +397,7 @@ def test_a_foreign_receipt_whose_fresh_read_no_longer_fits_is_refused_for_that_a
     from fastapi import HTTPException
     import services.receipt_service as mod
 
-    invoice = {"id": "inv-1", "status": "issued", "txn_currency": "USD", "exchange_rate": "80", "total_paise": 800000,
+    invoice = {"id": "inv-1", "customer_id": "cust-1", "status": "issued", "txn_currency": "USD", "exchange_rate": "80", "total_paise": 800000,
                "paid_paise": 0, "paid_txn": 0, "credited_paise": 0, "txn_total": 10000}
 
     def on_call(_params):
@@ -421,7 +421,7 @@ def test_a_foreign_receipt_names_a_missing_function_and_a_number_collision(monke
     from fastapi import HTTPException
     import services.receipt_service as mod
 
-    invoice = {"id": "inv-1", "status": "issued", "txn_currency": "USD", "exchange_rate": "80", "total_paise": 800000,
+    invoice = {"id": "inv-1", "customer_id": "cust-1", "status": "issued", "txn_currency": "USD", "exchange_rate": "80", "total_paise": 800000,
                "paid_paise": 0, "paid_txn": 0, "credited_paise": 0, "txn_total": 10000}
 
     def on_call(_params):

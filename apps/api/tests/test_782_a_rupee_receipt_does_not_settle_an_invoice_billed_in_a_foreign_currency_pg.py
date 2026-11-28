@@ -135,6 +135,9 @@ def test_a_rupee_receipt_on_a_rupee_invoice_is_recorded_as_before(db):
 
 
 def test_the_body_is_migration_781s_with_the_one_refusal_added(db):
+    # Migration 785 defines the body again (another customer's invoice is refused), so a migrated database starts on 785's text.
+    # This test is about 782's own two files: put 782's body in place first.
+    assert _file(db, F782).returncode == 0
     with_782 = _body(db)
     assert _file(db, R782).returncode == 0
     with_781 = _body(db)

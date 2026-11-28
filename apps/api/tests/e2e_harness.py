@@ -930,7 +930,7 @@ class _Rpc:
         return header
 
     def _fn_settle_receipt_atomic(self):
-        """Mirror migrations/160+162+235+574+781+782 settle_receipt_atomic: insert the journal
+        """Mirror migrations/160+162+235+574+781+782+785 settle_receipt_atomic: insert the journal
         header+lines, the receipt row, and every allocation's invoice update.
         The real function is one transaction, so a refusal part-way leaves
         nothing: this double takes back what it appended before it raises a
@@ -1022,6 +1022,9 @@ class _Rpc:
             )
             if inv is None:
                 refuse(f"settle_receipt_atomic: invoice {inv_id} is not part of this client's books")
+            if inv.get("customer_id") != receipt.get("customer_id"):
+                # migration 785: one customer's receipt does not settle another customer's invoice
+                refuse(f"settle_receipt_atomic: invoice {inv_id} was issued to another customer")
             # task #227 / migration 235: a draft invoice was never issued (no AR
             # journal exists to settle) and a cancelled one is terminal.
             if inv.get("status") in ("draft", "cancelled"):

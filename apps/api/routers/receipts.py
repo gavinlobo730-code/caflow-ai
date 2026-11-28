@@ -54,6 +54,13 @@ def _refuse_a_foreign_invoice(invoice: dict, invoice_id: str) -> None:
             invoice.get("invoice_no") or invoice_id, _currency_of(invoice)))
 
 
+def _refuse_another_customers_invoice(invoice: dict, invoice_id: str, receipt: dict) -> None:
+    """A receipt is not re-allocated onto an invoice issued to another customer of the same client (POST-A-580)."""
+    if receipt.get("customer_id") and invoice.get("customer_id") != receipt.get("customer_id"):
+        raise HTTPException(status_code=422, detail=receipt_service.invoice_of_another_customer(
+            invoice.get("invoice_no") or invoice_id, "changed"))
+
+
 def _adjust_invoice_paid(db, firm_id: str, client_id: str, inv_id: str, delta_paise: int,
                          max_retries: int = 5, *, actor: dict | None = None) -> None:
     """Apply a signed delta to an invoice's paid_paise and recompute status.
@@ -314,12 +321,13 @@ def update_allocations(
         # invoice total.
         for inv_id, req_amt in requested_by_invoice.items():
             chk = (db.table("client_sales_invoices")
-                   .select("id, status, total_paise, paid_paise, credited_paise, debit_note_paise, txn_currency, invoice_no")
+                   .select("id, status, total_paise, paid_paise, credited_paise, debit_note_paise, txn_currency, invoice_no, customer_id")
                    .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", receipt_client_id)
                    .limit(1).execute())
             if not chk.data:
                 raise HTTPException(status_code=422, detail=f"Invoice {inv_id} is not part of this client's books.")
             inv = chk.data[0]
+            _refuse_another_customers_invoice(inv, inv_id, rcpt)
             if inv.get("status") in ("draft", "cancelled"):
                 raise HTTPException(status_code=422,
                     detail=f"Invoice {inv_id} is {inv.get('status')} and cannot receive a payment.")
