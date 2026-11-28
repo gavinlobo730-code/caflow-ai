@@ -571,11 +571,22 @@ def test_an_issued_cheque_converts_into_one_vendor_payment_settled_like_a_normal
     assert row["converted_payment_id"] == doc["id"] and row["converted_receipt_id"] is None
 
 
-def test_the_settled_amount_of_the_bill_an_issued_cheque_pays_is_written_by_the_privileged_client_and_audited(monkeypatch):
-    """The one write of the conversion that is NOT made on the engine's client (POST-A-331): the paid amount and status of the bill
-    go through the header door, on the privileged client, with an audit row from the code, because the database's own capture
-    trigger records nothing for a write that has no sign-in. Everything else the engine writes stays on `engine_db`."""
+def test_the_bill_an_issued_cheque_pays_is_settled_by_the_database_function_with_the_payment_and_not_by_a_table_write(monkeypatch):
+    """The paid amount and status of the bill are written by `settle_payment_atomic` (migration 784, POST-A-575), in the transaction
+    that also writes the payment, its entry and its allocation, called on the privileged client through the ledger door. Until then
+    they were a separate table write through the header door (POST-A-331), after the entry and the payment had been committed. The
+    row-level record of the bill's change is the database trigger's (proved against Postgres in test_784_..._pg.py)."""
     import core.supabase_client as sc
+
+    class _SpyWithCalls(_Spy):
+        def __init__(self, inner):
+            super().__init__(inner)
+            self.calls = []
+
+        def rpc(self, fn, params=None):
+            self.calls.append(fn)
+            return self._inner.rpc(fn, params)
+
     db = _book(monkeypatch)
     bill = _received_bill(1)
     amount = bill["net_payable_paise"]
@@ -584,18 +595,20 @@ def test_the_settled_amount_of_the_bill_an_issued_cheque_pays_is_written_by_the_
         cheque_date="2026-11-15", amount_paise=amount, drawee_bank=None, bank_account_id=None,
         allocations=[{"purchase_bill_id": bill["id"], "allocated_paise": amount}],
         notes=None, actor=CALLER, today=TODAY)
-    door, engine = _Spy(db), _Spy(db)
+    door, engine = _SpyWithCalls(db), _SpyWithCalls(db)
     monkeypatch.setattr(sc, "get_service_supabase", lambda: door)
 
     svc.convert(db, FIRM, CLI, cheque["id"], actor=CALLER, today=TODAY, engine_db=engine)
 
-    assert "purchase_bills" in door.tables, "the bill's settled amount was written by the privileged client"
+    assert "settle_payment_atomic" in door.calls, "the payment was not recorded through the ledger door's privileged client"
+    assert "settle_payment_atomic" not in engine.calls
+    assert "purchase_bills" not in door.tables, "the bill's settled amount was a separate table write again"
     row = next(r for r in db.rows("purchase_bills") if r["id"] == bill["id"])
     assert (row["paid_paise"], row["status"]) == (amount, "paid")
-    audit = [r for r in db.rows("audit_log") if r.get("entity_type") == "purchase_bill" and r.get("entity_id") == bill["id"]
-             and r.get("action") == "update" and "paid_paise" in (r.get("new_data") or {})]
-    assert len(audit) == 1 and audit[0]["new_data"]["paid_paise"] == amount and audit[0]["old_data"]["paid_paise"] == 0
-    assert audit[0]["actor_id"] == CALLER["auth_user_id"]
+    (payment,) = db.rows("purchase_payments")
+    (allocation,) = [a for a in db.rows("purchase_payment_allocations") if a["purchase_payment_id"] == payment["id"]]
+    assert (allocation["purchase_bill_id"], allocation["allocated_paise"]) == (bill["id"], amount)
+    assert payment["journal_entry_id"] and payment["unallocated_paise"] == 0
 
 
 # ── what may be recorded ─────────────────────────────────────────────────────

@@ -1061,6 +1061,58 @@ class Phase2JournalService:
             _logger.error("journal_for_purchase_bill error: %s", e, exc_info=True)
             raise
 
+    def purchase_payment_journal_lines(self, db, payment: dict, firm_id: str, client_id: str) -> list[dict]:
+        """Build (but do not post) the double-entry lines of a rupee payment to a supplier:
+        Dr Trade Payables = amount_paise
+        Cr Bank Account   = amount_paise - tds_paise
+        Cr TDS Payable    = tds_paise (if >0)
+
+        Taken out of `journal_for_purchase_payment` (POST-A-575) so that services/purchase_payment_service.py can hand the same lines,
+        from the same accounts, to `settle_payment_atomic` (migration 784), which posts the entry in the transaction that also writes
+        the payment and settles its bills. The reading of `amount_paise` and of the withholding is that method's, below."""
+        payables_id = self._find_account(
+            db, firm_id, client_id, "%Trade Payable%", system_key="ap"
+        )
+        # As for receipts — the account the money left, not a firm-wide
+        # generic Bank ledger. See domain/accounting/payment_account.py.
+        paid_from = resolve_payment_account(
+            db, firm_id=firm_id, client_id=client_id,
+            bank_account_id=payment.get("bank_account_id"),
+            payment_mode=payment.get("payment_mode"),
+            find_account=self._find_account)
+        bank_id = paid_from.account_id
+
+        tds_paise = int(payment.get("tds_paise") or 0)
+        lines = [
+            {
+                "account_id": payables_id,
+                "debit_paise": payment["amount_paise"],
+                "credit_paise": 0,
+                "narration": "Trade payable cleared",
+            },
+            {
+                "account_id": bank_id,
+                "debit_paise": 0,
+                "credit_paise": payment["amount_paise"] - tds_paise,
+                "narration": "Bank payment to vendor",
+            },
+        ]
+        if tds_paise > 0:
+            # Same control account the bill's own withholding credits, so a
+            # deduction made at the payment and one made at the credit land
+            # in one place for the challan (Rule 30) and one 26Q/27Q.
+            tds_pay_id = self._find_account(
+                db, firm_id, client_id, "%TDS Payable%", system_key="tds_payable"
+            )
+            section = payment.get("tds_section") or "194C"
+            lines.append({
+                "account_id": tds_pay_id,
+                "debit_paise": 0,
+                "credit_paise": tds_paise,
+                "narration": f"TDS payable on advance — IT Act §{section}",
+            })
+        return lines
+
     def journal_for_purchase_payment(
         self, payment: dict, firm_id: str, client_id: str,
         *, created_by: Optional[str] = None,
@@ -1087,48 +1139,7 @@ class Phase2JournalService:
             from core.supabase_client import get_supabase
             db = get_supabase()
 
-            payables_id = self._find_account(
-                db, firm_id, client_id, "%Trade Payable%", system_key="ap"
-            )
-            # As for receipts — the account the money left, not a firm-wide
-            # generic Bank ledger. See domain/accounting/payment_account.py.
-            paid_from = resolve_payment_account(
-                db, firm_id=firm_id, client_id=client_id,
-                bank_account_id=payment.get("bank_account_id"),
-                payment_mode=payment.get("payment_mode"),
-                find_account=self._find_account)
-            bank_id = paid_from.account_id
-
-            tds_paise = int(payment.get("tds_paise") or 0)
-            lines = [
-                {
-                    "account_id": payables_id,
-                    "debit_paise": payment["amount_paise"],
-                    "credit_paise": 0,
-                    "narration": "Trade payable cleared",
-                },
-                {
-                    "account_id": bank_id,
-                    "debit_paise": 0,
-                    "credit_paise": payment["amount_paise"] - tds_paise,
-                    "narration": "Bank payment to vendor",
-                },
-            ]
-            if tds_paise > 0:
-                # Same control account the bill's own withholding credits, so a
-                # deduction made at the payment and one made at the credit land
-                # in one place for the challan (Rule 30) and one 26Q/27Q.
-                tds_pay_id = self._find_account(
-                    db, firm_id, client_id, "%TDS Payable%", system_key="tds_payable"
-                )
-                section = payment.get("tds_section") or "194C"
-                lines.append({
-                    "account_id": tds_pay_id,
-                    "debit_paise": 0,
-                    "credit_paise": tds_paise,
-                    "narration": f"TDS payable on advance — IT Act §{section}",
-                })
-
+            lines = self.purchase_payment_journal_lines(db, payment, firm_id, client_id)
             _ccy = self._currency_kwargs(db, payment, firm_id, client_id, lines)
             return self._create_journal(
                 created_by=created_by,

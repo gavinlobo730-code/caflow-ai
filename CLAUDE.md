@@ -178,7 +178,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A BROAD HANDLER ON A MONEY OR LEDGER PATH REPORTS WHAT IT SWALLOWS, AND A ROLLBACK THAT DID NOT RUN IS A POSTING FAILURE
 - THE HEALTH ANSWER NAMES THE BUILD THE API RUNS, SO A DEPLOY THAT LAGS THE WEBSITE IS VISIBLE FROM OUTSIDE
 
-### `docs/design-record/documents-sales-purchase.md` (26 entries): Sales and purchase documents and cycles, templates, supplier master, ledger drill-through
+### `docs/design-record/documents-sales-purchase.md` (27 entries): Sales and purchase documents and cycles, templates, supplier master, ledger drill-through
 - A RECEIPT RECORDED THROUGH THE DATABASE FUNCTION KEEPS THE ID ITS LEDGER ENTRY NAMES, THE BANK ACCOUNT IT WAS
 - A CREDIT OR DEBIT NOTE LINE RECORDED THROUGH THE NUMBERING FUNCTION KEEPS ITS UNIT AND ITS CATALOGUE ITEM,
 
@@ -205,6 +205,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A DEMO COMPANY IS SIZED BY ITS TURNOVER AND ITS COST SHARE, ITS OWNERS PAY FOR WHAT IT BOUGHT BEFORE THE BOOKS, AND A TEST WORKS ITS YEAR OUT
 - A CREDIT OR DEBIT NOTE IS RAISED AGAINST A DOCUMENT OF ITS OWN CUSTOMER OR SUPPLIER, AND A DRAFT WHOSE PARTY CHANGES DROPS THE OLD PARTY'S
 - A FOREIGN-CURRENCY RECEIPT IS ONE DATABASE TRANSACTION, PLANNED FROM A READ THE FUNCTION CHECKS UNDER ITS LOCK
+- A SUPPLIER PAYMENT IS ONE DATABASE TRANSACTION IN EACH OF ITS FOUR SHAPES
 - A RUPEE RECEIPT DOES NOT SETTLE AN INVOICE BILLED IN A FOREIGN CURRENCY, AND RE-ALLOCATION REFUSES ANYTHING FOREIGN
 
 ### `docs/design-record/engineering-and-ci.md` (18 entries): Tests, lint and coverage ratchets, CI, dependency lock, migrations and the schema-drift check
@@ -718,8 +719,8 @@ _Longer design records for this area were moved to `docs/design-record/ai.md`; s
   not add a second write path. ⚠️ **"All route through it" is exact for the Python kernel and
   not for the database**: a customer receipt (rupee, and foreign since migration 781) posts its journal inside the receipt's own
   transaction through the `settle_receipt_atomic` database function (migrations 160 and 235, its body renamed `settle_receipt_atomic__unguarded` by 486 and restated by 574 and 781)
-  and not through `post_journal_atomic`, and a manual journal's lines are rewritten by
-  `edit_posted_journal`, so three database functions write the ledger (a fourth, `settle_payment_atomic`, migration 784, is called by nothing yet: POST-A-575). The public site
+  and not through `post_journal_atomic`, a supplier payment through `settle_payment_atomic` (784), and a manual journal's lines are rewritten by
+  `edit_posted_journal`, so four database functions write the ledger. The public site
   therefore says "one ledger" and never "one posting path";
   `tests/test_the_hero_figures_are_counted_facts.py` pins the closed set of writers, the
   agreement of the hero's figures with the page's counters and that wording.

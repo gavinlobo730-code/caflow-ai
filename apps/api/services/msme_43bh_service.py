@@ -117,7 +117,7 @@ def _payments(db, firm_id: str, bill_ids: list) -> dict:
     `.eq(..., False)` gets backwards.
 
     A legacy single-bill payment settles the WHOLE of itself against its bill —
-    that is what `_claim_bill_outstanding` reserved when it was recorded — so
+    that is what the payment settled of the bill when it was recorded — so
     `amount_paise` is its allocated figure.
     """
     if not bill_ids:

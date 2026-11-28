@@ -57,12 +57,12 @@ PORTAL = "core/portal_auth.py"
 EXPECTED_WRITERS = {
     # POST-A-095: the receipt service is not here. A foreign receipt's exchange difference is inserted by the database function
     # that records the receipt (migration 781), in the same transaction as the entry and the receipt.
-    "fx_adjustments": {REVAL: {"revalue"}, PAYMENT_ROUTER: {"_create_foreign_payment"},
-                       PAYMENT_SERVICE: {"create_foreign_payment_core"}},
+    # POST-A-575: nor is a supplier payment, in either of its foreign shapes: migration 784's function inserts it with the payment.
+    "fx_adjustments": {REVAL: {"revalue"}},
     "fx_revaluations": {REVAL: {"revalue"}},
     "client_portal_sessions": {PORTAL: {"_touch_portal_session"}},
 }
-FX_FILES = (REVAL, PAYMENT_ROUTER, PAYMENT_SERVICE)
+FX_FILES = (REVAL,)
 PRIVILEGED_NAMES = {"service_db", "service_db_or_none", "service_db_or_503", "get_service_supabase", "_service_client"}
 
 
@@ -188,7 +188,7 @@ def test_the_privileged_receiver_is_used_only_to_write_the_two_fx_tables():
                 verbs.append(parents[up].attr)
                 up = parents[parents[up]]
             assert set(verbs) & WRITE_VERBS, f"{rel}:{call.lineno} the privileged client READS {name} (chain: {verbs})"
-    assert seen == 4, seen            # three fx_adjustments writers and one fx_revaluations writer; a vacuous pass finds none
+    assert seen == 2, seen            # the revaluation's two writes (its run and its adjustment); a vacuous pass finds none
 
 
 def test_nothing_in_the_browser_reads_or_writes_the_tables_directly():
@@ -346,7 +346,17 @@ def test_a_foreign_receipt_records_its_exchange_difference_inside_the_function_t
     assert row["journal_entry_id"] == receipt["journal_entry_id"]
 
 
-def test_a_single_bill_foreign_payment_records_its_exchange_difference_on_the_privileged_client(monkeypatch):
+def test_the_payment_route_and_service_write_no_fx_table_themselves():
+    """POST-A-575. Both hand the exchange difference to the database function that records the payment and make no table write of
+    their own: a write that comes back here would be a second statement outside the payment's transaction."""
+    for rel in (PAYMENT_ROUTER, PAYMENT_SERVICE):
+        text = (API_ROOT / rel).read_text(encoding="utf-8")
+        for table in FX_TABLES:
+            assert [u for u in _uses(text, table) if u[0] != "read"] == [], (rel, table)
+        assert "fx_writer" not in text, rel
+
+
+def test_a_single_bill_foreign_payment_records_its_exchange_difference_inside_the_function_that_records_the_payment(monkeypatch):
     from models.invoices import PurchaseBillIn, PurchaseBillLineIn, PurchasePaymentIn
     from models.parties import VendorIn
     inner, request, privileged, (_cu, ve, _si, pb, _rc, pp, _pps) = _world(monkeypatch)
@@ -359,12 +369,16 @@ def test_a_single_bill_foreign_payment_records_its_exchange_difference_on_the_pr
     pp.create_purchase_payment(PurchasePaymentIn(
         client_id="CLI", vendor_id=vend["id"], payment_date="2026-06-10", amount_paise=100000,
         purchase_bill_id=bill["id"], currency="USD", exchange_rate="83.0"), CALLER)
-    assert request.refused == []
-    _every_fx_row_names_the_firm_and_client(privileged.log)
-    assert [r["document_type"] for r in inner.rows("fx_adjustments")] == ["purchase_payment"]
+    assert request.refused == []                                              # nothing was attempted on the request's client
+    assert privileged.log == []                                               # and no table statement wrote it either: the function did
+    (row,) = inner.rows("fx_adjustments")
+    assert (row["document_type"], row["firm_id"], row["client_id"]) == ("purchase_payment", FIRM, "CLI")
+    assert row["base_delta_paise"] == -300000                                 # 1,000.00 USD paid at 83 against a payable booked at 80: a loss
+    payment = next(r for r in inner.rows("purchase_payments") if r["id"] == row["document_id"])
+    assert row["journal_entry_id"] == payment["journal_entry_id"]
 
 
-def test_a_multi_bill_foreign_payment_records_its_exchange_difference_on_the_privileged_client(monkeypatch):
+def test_a_multi_bill_foreign_payment_records_its_exchange_difference_inside_the_function_that_records_the_payment(monkeypatch):
     from models.invoices import PurchaseBillIn, PurchaseBillLineIn
     from models.parties import VendorIn
     inner, request, privileged, (_cu, ve, _si, pb, _rc, _pp, pps) = _world(monkeypatch)
@@ -383,8 +397,9 @@ def test_a_multi_bill_foreign_payment_records_its_exchange_difference_on_the_pri
         "allocations": [{"purchase_bill_id": ids[0], "allocated_paise": 50000},
                         {"purchase_bill_id": ids[1], "allocated_paise": 50000}]}, CALLER, request)
     assert request.refused == []
-    _every_fx_row_names_the_firm_and_client(privileged.log)
-    assert [r["document_type"] for r in inner.rows("fx_adjustments")] == ["purchase_payment"]
+    assert privileged.log == []
+    (row,) = inner.rows("fx_adjustments")
+    assert (row["document_type"], row["firm_id"], row["client_id"], row["base_delta_paise"]) == ("purchase_payment", FIRM, "CLI", -300000)
 
 
 def test_a_revaluation_records_its_run_and_its_adjustment_on_the_privileged_client(monkeypatch):

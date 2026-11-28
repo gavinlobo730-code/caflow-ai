@@ -1,15 +1,21 @@
 """
-Vendor Payment concurrency — atomicity tests (H4).
+Vendor payment: what is left here of the H4 atomicity tests.
 
-create_purchase_payment() previously read a purchase bill's outstanding
-balance, checked the new payment against it, and only reconciled paid_paise
-from the ledger AFTER inserting the payment row. Two concurrent requests for
-the same bill could both read the same stale paid_paise, both pass the
-outstanding check, and both post — overpaying the vendor.
+create_purchase_payment() once read a purchase bill's outstanding balance, checked the new payment against it, and only reconciled
+paid_paise from the ledger AFTER inserting the payment row, so two concurrent requests could both pass the check and overpay the
+vendor. H4 answered that with a compare-and-set reservation on the bill BEFORE the journal and the payment, given back when either
+failed; six tests here drove it (with threads, on this file's own fake).
 
-The fix reserves the payment amount atomically (compare-and-swap on
-paid_paise) BEFORE any journal or payment row is created, and rolls the
-reservation back if the journal/payment insert subsequently fails.
+Since POST-A-575 (migration 784) the entry, the payment and the bill's paid amount are ONE database transaction that locks the bill
+row, so there is no reservation to make or give back. Those six tests went with the code they drove. What they guarded is held:
+  * against PostgreSQL, with two real sessions racing for one bill, in
+    tests/test_784_a_supplier_payment_is_recorded_in_one_transaction_pg.py;
+  * on the in-memory double of the function, in tests/test_a_supplier_payment_is_one_database_transaction.py (a part payment and the
+    rest, more than is left, a payment overtaken at its bill, a refusal that leaves nothing).
+
+What stays: the refusal of an overpayment from the route's own read. (`_update_bill_payment_status`, which recomputed a bill from
+its payments after the insert, had no caller left once the payment and the bill were written together, and went with its tests;
+the security-closure 5.1c test file held only two of them and went too.)
 """
 import sys
 import os
@@ -183,34 +189,6 @@ def _create(monkeypatch, db, data, journal_id="je-1"):
     return pp_router.create_purchase_payment(data, {"firm_id": FIRM, "id": "u1"})
 
 
-def test_single_payment_updates_bill_and_posts_journal(monkeypatch):
-    db = FakeDB()
-    _seed_bill(db)
-    result = _create(monkeypatch, db, _payment(amount_paise=30_000_00))
-    assert result["success"] is True
-    bill = db.store["purchase_bills"][0]
-    assert bill["paid_paise"] == 30_000_00
-    assert bill["status"] == "partially_paid"
-
-
-def test_partial_payment_leaves_bill_partially_paid(monkeypatch):
-    db = FakeDB()
-    _seed_bill(db)
-    _create(monkeypatch, db, _payment(amount_paise=40_000_00))
-    bill = db.store["purchase_bills"][0]
-    assert bill["paid_paise"] == 40_000_00
-    assert bill["status"] == "partially_paid"
-
-
-def test_exact_settlement_marks_bill_paid(monkeypatch):
-    db = FakeDB()
-    _seed_bill(db)
-    _create(monkeypatch, db, _payment(amount_paise=100_000_00))
-    bill = db.store["purchase_bills"][0]
-    assert bill["paid_paise"] == 100_000_00
-    assert bill["status"] == "paid"
-
-
 def test_overpayment_is_rejected(monkeypatch):
     db = FakeDB()
     _seed_bill(db)
@@ -219,151 +197,3 @@ def test_overpayment_is_rejected(monkeypatch):
     assert exc.value.status_code == 422
     bill = db.store["purchase_bills"][0]
     assert bill["paid_paise"] == 0  # rejected before any claim was made
-
-
-def test_second_payment_cannot_push_bill_past_outstanding(monkeypatch):
-    """The classic sequential-but-uncoordinated case: two payments, each
-    individually under the full net_payable, whose SUM exceeds it."""
-    db = FakeDB()
-    _seed_bill(db, net_payable_paise=100_000_00)
-    _create(monkeypatch, db, _payment(amount_paise=70_000_00))
-    with pytest.raises(HTTPException) as exc:
-        _create(monkeypatch, db, _payment(amount_paise=70_000_00))
-    assert exc.value.status_code == 422
-    bill = db.store["purchase_bills"][0]
-    assert bill["paid_paise"] == 70_000_00  # only the first payment claimed
-
-
-def test_concurrent_payments_race_the_same_bill_only_one_wins(monkeypatch):
-    """Simulates the exact H4 race with real threads: two requests both read
-    paid_paise=0 (via a barrier that holds both at that read) before either's
-    CAS-update commits. The CAS in _claim_bill_outstanding must serialize them
-    — the loser must lose its first CAS attempt, re-read the now-current
-    paid_paise, and be rejected — instead of both succeeding and overpaying."""
-    db = FakeDB()
-    _seed_bill(db, net_payable_paise=100_000_00)
-    monkeypatch.setattr(pp_router, "_get_db", lambda: db)
-    from services.phase2_journal_service import phase2_journal_service
-    monkeypatch.setattr(phase2_journal_service, "journal_for_purchase_payment", lambda *a, **k: "je-1")
-
-    barrier = threading.Barrier(2, timeout=5)
-    hit_count = {"n": 0}
-    lock = threading.Lock()
-    real_execute = _Q.execute
-
-    def racy_execute(self):
-        if self.t == "purchase_bills" and self.op == "select" and self.cols == "paid_paise":
-            with lock:
-                hit_count["n"] += 1
-                use_barrier = hit_count["n"] <= 2
-            if use_barrier:
-                try:
-                    barrier.wait()
-                except threading.BrokenBarrierError:
-                    pass
-        return real_execute(self)
-
-    monkeypatch.setattr(_Q, "execute", racy_execute)
-    results, errors = [], []
-    results_lock = threading.Lock()
-
-    def worker():
-        try:
-            r = pp_router.create_purchase_payment(_payment(amount_paise=70_000_00), {"firm_id": FIRM, "id": "u1"})
-            with results_lock:
-                results.append(r)
-        except HTTPException as e:
-            with results_lock:
-                errors.append(e)
-
-    threads = [threading.Thread(target=worker) for _ in range(2)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join(timeout=10)
-
-    assert len(results) == 1
-    assert len(errors) == 1
-    assert errors[0].status_code == 422
-    bill = db.store["purchase_bills"][0]
-    assert bill["paid_paise"] == 70_000_00  # exactly one payment's worth claimed
-
-
-def test_update_bill_payment_status_never_regresses_a_concurrent_claim(monkeypatch):
-    """task #102: _update_bill_payment_status used to blindly overwrite
-    paid_paise with sum(purchase_payments.amount_paise) — a DIFFERENT source
-    than the column it was overwriting. If a concurrent payment's
-    _claim_bill_outstanding CAS already bumped bill.paid_paise but that
-    payment's OWN purchase_payments row hasn't been inserted yet, the recompute
-    sees an incomplete sum and used to clobber the correct, already-claimed
-    total down to a stale, lower one — silently erasing the concurrent
-    payment's claim. It must never write a value lower than what's already
-    stored."""
-    db = FakeDB()
-    _seed_bill(db, paid_paise=100_000_00, net_payable_paise=200_000_00, status="partially_paid")
-    # Only ONE payment row is visible — simulating a second, concurrent
-    # payment whose CAS claim already landed on the bill but whose OWN
-    # purchase_payments row insert hasn't committed yet.
-    db.store.setdefault("purchase_payments", []).append(
-        {"id": "pp-1", "firm_id": FIRM, "purchase_bill_id": "bill-1", "amount_paise": 70_000_00})
-
-    pp_router._update_bill_payment_status(db, FIRM, CLIENT, "bill-1")
-
-    bill = db.store["purchase_bills"][0]
-    assert bill["paid_paise"] == 100_000_00     # untouched — never regressed
-    assert bill["status"] == "partially_paid"
-
-
-def test_update_bill_payment_status_reconciles_upward_when_stale(monkeypatch):
-    """The self-healing direction must still work: when the payments ledger
-    legitimately sums higher than the bill's stored paid_paise (drift), the
-    bill is brought up to match."""
-    db = FakeDB()
-    _seed_bill(db, paid_paise=30_000_00, net_payable_paise=200_000_00, status="partially_paid")
-    db.store.setdefault("purchase_payments", []).append(
-        {"id": "pp-1", "firm_id": FIRM, "purchase_bill_id": "bill-1", "amount_paise": 30_000_00})
-    db.store["purchase_payments"].append(
-        {"id": "pp-2", "firm_id": FIRM, "purchase_bill_id": "bill-1", "amount_paise": 70_000_00})
-
-    pp_router._update_bill_payment_status(db, FIRM, CLIENT, "bill-1")
-
-    bill = db.store["purchase_bills"][0]
-    assert bill["paid_paise"] == 100_000_00
-    assert bill["status"] == "partially_paid"
-
-
-def test_claim_rollback_on_downstream_failure_restores_outstanding(monkeypatch):
-    """If the journal/payment insert fails AFTER the bill claim succeeded, the
-    claim must be rolled back so the bill's outstanding is not wrongly reduced."""
-    db = FakeDB()
-    _seed_bill(db)
-    monkeypatch.setattr(pp_router, "_get_db", lambda: db)
-    from services.phase2_journal_service import phase2_journal_service
-    monkeypatch.setattr(phase2_journal_service, "journal_for_purchase_payment", lambda *a, **k: "je-1")
-
-    orig_insert = _Q.insert
-
-    def failing_insert(self, p):
-        if self.t == "purchase_payments":
-            raise RuntimeError("simulated insert failure")
-        return orig_insert(self, p)
-
-    monkeypatch.setattr(_Q, "insert", failing_insert)
-
-    # create_purchase_payment's own top-level try/except converts an unhandled
-    # failure into an error response rather than propagating — the claim's
-    # rollback must still have run before that happens.
-    result = pp_router.create_purchase_payment(_payment(amount_paise=30_000_00), {"firm_id": FIRM, "id": "u1"})
-    assert result["success"] is False
-
-    bill = db.store["purchase_bills"][0]
-    assert bill["paid_paise"] == 0
-    assert bill["status"] == "received"
-
-    monkeypatch.setattr(_Q, "insert", orig_insert)
-
-    # A full-amount payment should now succeed cleanly — proving the claim was
-    # actually released, not left stuck at a phantom partial reservation.
-    result = _create(monkeypatch, db, _payment(amount_paise=100_000_00))
-    assert result["success"] is True
-    assert db.store["purchase_bills"][0]["status"] == "paid"

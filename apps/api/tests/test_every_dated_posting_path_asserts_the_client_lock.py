@@ -127,12 +127,13 @@ NOT_YET: dict[str, str] = {
         "The payment side of the receipts argument, and it has NOT been taken: "
         "a payment moves Bank and Creditors, but it can also carry TDS, which "
         "does land in a return. Decide it deliberately rather than by default.",
-    "routers/purchase_payments.py:_create_foreign_payment":
-        "Same question as create_purchase_payment, plus §195 withholding.",
     "services/purchase_payment_service.py:create_payment_core":
         "The service behind create_purchase_payment; same undecided question.",
-    "services/purchase_payment_service.py:create_foreign_payment_core":
-        "The service behind _create_foreign_payment; same undecided question.",
+    "services/purchase_payment_service.py:_record_foreign_payment":
+        "Same question as create_purchase_payment, plus §195 withholding. The one function both foreign shapes (a payment that "
+        "names its bill, and one across several bills) are recorded by since POST-A-575; it took the place of two entries here "
+        "(routers/purchase_payments.py:_create_foreign_payment and create_foreign_payment_core), so the list is one shorter. "
+        "The closures (the firm's locked year, the client's finalised year-end) are asked by settle_payment_atomic's own door.",
     "routers/year_end_adjustments.py:post_adjustment":
         "DELIBERATE. A year-end adjustment is posted AFTER the period it adjusts, by nature: a March entry is made in "
         "April or May, when March's GSTR-3B is already filed. The lock would refuse the work the engagement exists to "

@@ -70,7 +70,7 @@ def _adjust_invoice_paid(db, firm_id: str, client_id: str, inv_id: str, delta_pa
     allocations entirely. F1: the lookup AND update are scoped to (firm_id,
     client_id) so a receipt can never read or mutate another firm's/client's invoice.
 
-    task #102: CAS-guarded (mirrors purchase_payments._rollback_bill_claim) — a
+    task #102: CAS-guarded (a compare-and-set on the invoice's paid amount, retried) — a
     plain read-then-write here raced with any CONCURRENT write to the same
     invoice's paid_paise (a payment/receipt CAS claim, or a second re-allocation
     request), silently losing whichever wrote second.

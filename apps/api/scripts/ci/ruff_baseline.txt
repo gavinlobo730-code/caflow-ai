@@ -67,10 +67,6 @@ routers/purchase_bills.py :: PLR0915 :: update_purchase_bill :: 85
 routers/purchase_credit_notes.py :: C901 :: issue_purchase_credit_note :: 25
 routers/purchase_credit_notes.py :: C901 :: update_purchase_credit_note :: 17
 routers/purchase_credit_notes.py :: PLR0915 :: issue_purchase_credit_note :: 90
-routers/purchase_payments.py :: C901 :: _create_foreign_payment :: 23
-routers/purchase_payments.py :: C901 :: create_purchase_payment :: 21
-routers/purchase_payments.py :: PLR0915 :: _create_foreign_payment :: 97
-routers/purchase_payments.py :: PLR0915 :: create_purchase_payment :: 78
 routers/receipts.py :: C901 :: update_allocations :: 18
 routers/relationships.py :: C901 :: detect_cross_client_matches :: 24
 routers/sales_debit_notes.py :: C901 :: issue_sales_debit_note :: 21
@@ -108,11 +104,6 @@ services/payslip_pdf_service.py :: C901 :: build_payslip_pdf :: 22
 services/payslip_pdf_service.py :: PLR0915 :: build_payslip_pdf :: 97
 services/phase2_journal_service.py :: C901 :: Phase2JournalService._create_journal :: 18
 services/phase2_journal_service.py :: C901 :: Phase2JournalService.journal_for_purchase_bill :: 23
-services/purchase_payment_service.py :: C901 :: create_foreign_payment_core :: 29
-services/purchase_payment_service.py :: C901 :: create_payment_core :: 31
-services/purchase_payment_service.py :: C901 :: update_allocations_core :: 16
-services/purchase_payment_service.py :: PLR0915 :: create_foreign_payment_core :: 126
-services/purchase_payment_service.py :: PLR0915 :: create_payment_core :: 107
 services/receipt_service.py :: C901 :: create_receipt_core :: 22
 services/receipt_service.py :: PLR0915 :: create_receipt_core :: 90
 services/recurring_invoice_service.py :: C901 :: update_template :: 16

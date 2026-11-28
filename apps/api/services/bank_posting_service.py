@@ -1108,9 +1108,10 @@ class BankPostingService:
         foreign currency (create_receipt_core/create_payment_core auto-dispatch
         to their FX path when `currency` isn't INR): a RECEIPT, rupee or
         foreign, is one database transaction (settle_receipt_atomic; the
-        foreign one since migration 781), and a vendor PAYMENT is still the
-        compare-and-set settlement with live-outstanding pre-validation and
-        compensation on failure (POST-A-575).
+        foreign one since migration 781), and so is a vendor PAYMENT
+        (settle_payment_atomic, migration 784, POST-A-575): the entry, the
+        payment, each bill it settles and the allocations, together or not
+        at all.
 
         Exactly ONE journal is posted — the receipt/payment's own — so the bank
         transaction is linked to IT (matched_entity_type='receipt' /

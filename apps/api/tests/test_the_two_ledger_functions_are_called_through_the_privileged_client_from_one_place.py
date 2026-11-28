@@ -42,7 +42,8 @@ FIRM = "11111111-1111-1111-1111-111111111111"
 CLIENT = "cccccccc-cccc-cccc-cccc-cccccccccccc"
 USER = "uuuuuuuu-uuuu-uuuu-uuuu-uuuuuuuuuuuu"
 AUTH = "aaaaaaaa-1111-2222-3333-444444444444"
-RPCS = ("post_journal_atomic", "settle_receipt_atomic", "issue_sales_invoice_atomic")   # the third is migration 577's (POST-A-092)
+# the third is migration 577's (POST-A-092); the fourth is migration 784's, a supplier payment (POST-A-575)
+RPCS = ("post_journal_atomic", "settle_receipt_atomic", "issue_sales_invoice_atomic", "settle_payment_atomic")
 
 
 class _Spy(FakeDB):
@@ -434,7 +435,7 @@ def test_no_rpc_call_names_a_ledger_function_by_literal_anywhere_but_the_door():
                     and isinstance(node.args[0], ast.Constant) and node.args[0].value in RPCS):
                 sites.append((rel, node.args[0].value))
     assert sorted(sites) == [("services/ledger_door.py", "issue_sales_invoice_atomic"), ("services/ledger_door.py", "post_journal_atomic"),
-                             ("services/ledger_door.py", "settle_receipt_atomic")], (
+                             ("services/ledger_door.py", "settle_payment_atomic"), ("services/ledger_door.py", "settle_receipt_atomic")], (
         f"a ledger function is called on a client directly, not through services/ledger_door.ledger_rpc: {sites}")
 
 
@@ -445,7 +446,8 @@ def test_a_string_equal_to_a_ledger_function_is_code_only_in_the_door_and_the_tw
         for node in ast.walk(tree):
             if isinstance(node, ast.Constant) and node.value in RPCS and id(node) not in docs:
                 where.setdefault(rel, []).append(node.lineno)
-    assert sorted(where) == ["services/ledger_door.py", "services/phase2_journal_service.py", "services/receipt_service.py"], where
+    assert sorted(where) == ["services/ledger_door.py", "services/phase2_journal_service.py", "services/purchase_payment_service.py",
+                             "services/receipt_service.py"], where
 
 
 def test_each_of_the_two_call_sites_is_a_ledger_rpc_call_naming_its_firm_and_its_client():
@@ -456,11 +458,15 @@ def test_each_of_the_two_call_sites_is_a_ledger_rpc_call_naming_its_firm_and_its
                 sites.append((rel, node))
     # POST-A-095: the receipt service calls the receipt function from two places, the rupee receipt and (since migration 781) the
     # foreign-currency one; both are the same function through the same door.
+    # POST-A-575: the payment service calls the payment function from ONE place (`_record_payment`), which all four shapes of a
+    # supplier payment go through (one bill or several, rupees or a foreign currency).
     assert sorted(r for r, _n in sites) == ["services/phase2_journal_service.py", "services/phase2_journal_service.py",
+                                            "services/purchase_payment_service.py",
                                             "services/receipt_service.py", "services/receipt_service.py"], [(r, n.lineno) for r, n in sites]
     names = sorted((r, n.args[1].value) for r, n in sites if len(n.args) > 1 and isinstance(n.args[1], ast.Constant))
     assert names == [("services/phase2_journal_service.py", "issue_sales_invoice_atomic"),
                      ("services/phase2_journal_service.py", "post_journal_atomic"),
+                     ("services/purchase_payment_service.py", "settle_payment_atomic"),
                      ("services/receipt_service.py", "settle_receipt_atomic"),
                      ("services/receipt_service.py", "settle_receipt_atomic")], names
     for rel, node in sites:

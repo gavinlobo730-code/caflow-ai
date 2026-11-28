@@ -4,7 +4,7 @@ cancel_invoice / cancel_purchase_bill refuse to cancel a document once a
 receipt/payment has been applied to it ("Reverse the receipt(s)/payment(s)
 first") — this module is that missing reversal path. Each function:
   1. undoes the sub-ledger effect on every invoice/bill the receipt/payment
-     touched (CAS-guarded, mirrors purchase_payments._claim_bill_outstanding),
+     touched (CAS-guarded: a compare-and-set on the bill's paid amount, retried),
   2. reverses the posted GL journal through the kernel (append-only —
      phase2_journal_service.reverse_entry), and
   3. marks the receipt/payment row is_reversed (append-only — the row itself
@@ -36,10 +36,9 @@ def _now() -> str:
 def _rollback_invoice_paid(db, firm_id: str, client_id: str, invoice_id: str, amount_paise: int,
                            txn_amount: int = 0, max_retries: int = 5, *, actor: dict | None = None) -> None:
     """CAS-decrement a sales invoice's paid_paise by exactly amount_paise (an
-    allocation being undone) and recompute status. Mirrors
-    purchase_payments._rollback_bill_claim, but raises on CAS exhaustion
-    (unlike that compensation-only helper) — a user-initiated reversal must
-    not silently no-op the sub-ledger side.
+    allocation being undone) and recompute status. Raises on CAS
+    exhaustion — a user-initiated reversal must not silently no-op the
+    sub-ledger side.
 
     task #227: also decrements paid_txn by txn_amount (default 0 — a no-op for
     a plain-INR invoice, which never has a nonzero paid_txn to begin with).
@@ -80,7 +79,7 @@ def _rollback_bill_paid(db, firm_id: str, client_id: str, bill_id: str, amount_p
                         txn_amount: int = 0, max_retries: int = 5, *, actor: dict | None = None) -> None:
     """CAS-decrement a purchase bill's paid_paise by exactly amount_paise (the
     payment's true AP relief being undone) and recompute status. Same shape as
-    _rollback_invoice_paid / purchase_payments._rollback_bill_claim.
+    _rollback_invoice_paid.
 
     task #227: also decrements paid_txn by txn_amount — see
     _rollback_invoice_paid's docstring for the full rationale (AP mirror of

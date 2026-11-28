@@ -117,16 +117,15 @@ def test_every_writer_of_allocation_rows_says_what_is_left_of_the_document_or_on
 
 
 def test_the_scan_sees_the_writers_it_was_written_for():
-    """Not vacuous: the five functions that create or rewrite allocation rows, and the two reversals, are all found.
+    """Not vacuous: the three functions that create or rewrite allocation rows, and the two reversals, are all found.
 
     A foreign-currency receipt was the sixth until POST-A-095: its allocation rows are written by the database function now (migration
     781), in the receipt's own transaction, so the scan no longer sees a writer there. The figure still travels with the rows: the
-    receipt the function is handed states `unallocated_paise`, which the last assertion holds."""
+    receipt the function is handed states `unallocated_paise`, which the last assertion holds. The two supplier-payment creators left
+    the same way with POST-A-575 (migration 784), and the same is held of the payment they hand the function, below."""
     found = census()
     expected = {
         ("routers/receipts.py", "update_allocations"), ("services/receipt_service.py", "create_receipt_core"),
-        ("services/purchase_payment_service.py", "create_payment_core"),
-        ("services/purchase_payment_service.py", "create_foreign_payment_core"),
         ("services/purchase_payment_service.py", "update_allocations_core"), *VOIDS_ONLY,
     }
     assert expected <= set(found), sorted(expected - set(found))
@@ -137,6 +136,15 @@ def test_the_scan_sees_the_writers_it_was_written_for():
     assert ("services/receipt_service.py", "create_foreign_receipt") not in found, "it writes allocation rows directly again: list it above"
     assert any(isinstance(n, ast.Dict) and any(isinstance(k, ast.Constant) and k.value == "unallocated_paise" for k in n.keys)
                for n in ast.walk(foreign)), "the foreign receipt no longer states what is left of it in the payload it hands the function"
+    payments = ast.parse((API / "services/purchase_payment_service.py").read_text(encoding="utf-8"))
+    for name in ("create_payment_core", "create_single_bill_payment", "_record_foreign_payment"):
+        assert ("services/purchase_payment_service.py", name) not in found, f"{name} writes allocation rows directly again: list it above"
+        fn = next(n for n in ast.walk(payments) if isinstance(n, ast.FunctionDef) and n.name == name)
+        states = (any(isinstance(n, ast.Dict) and any(isinstance(k, ast.Constant) and k.value == "unallocated_paise" for k in n.keys)
+                      for n in ast.walk(fn))
+                  or any(isinstance(n, ast.Subscript) and isinstance(n.slice, ast.Constant) and n.slice.value == "unallocated_paise"
+                         and isinstance(n.ctx, ast.Store) for n in ast.walk(fn)))
+        assert states, f"{name} no longer states what is left of the payment in the payload it hands the function"
 
 
 _STATES_IT = """
