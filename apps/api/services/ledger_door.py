@@ -20,6 +20,10 @@ writes no ledger row itself: it locks a draft invoice, calls `post_journal_atomi
 so a failure between the entry and the status can no longer strand an entry behind a draft. Its executable-by list is the server's alone,
 like the other two.
 
+A FOURTH NAME, `settle_payment_atomic` (migration 784, POST-A-575), is a supplier payment's: the entry, the payment row, each bill it
+settles, the allocation rows and a foreign payment's realised exchange difference in one transaction, on the receipt function's shape. It
+writes the ledger itself, is the server's alone, and carries the person the same way.
+
 WHAT THE PRIVILEGED CALL KEEPS. The two wrappers still ask the closure (`period_closure_reason`: the firm's locked year and the
 client's finalised year-end), the reversal's ownership and the receipt-and-journal agreement for every caller, the service role
 included. What they do not ask of the service role is the caller's firm, client reach and role pair, because there is no caller. From
@@ -51,7 +55,8 @@ import os
 from core import db_provider
 
 #: the payload each function reads the posting person from, and where the reserved key goes
-_ENTRY_KEY = {"post_journal_atomic": "p_entry", "settle_receipt_atomic": "p_journal_entry", "issue_sales_invoice_atomic": "p_entry"}
+_ENTRY_KEY = {"post_journal_atomic": "p_entry", "settle_receipt_atomic": "p_journal_entry", "issue_sales_invoice_atomic": "p_entry",
+              "settle_payment_atomic": "p_journal_entry"}
 AUDIT_ACTOR_KEY = "audit_actor"
 
 
@@ -95,4 +100,6 @@ def ledger_rpc(db, fn: str, params: dict, *, firm_id: str, client_id: str):
         return client.rpc("post_journal_atomic", params)
     if fn == "issue_sales_invoice_atomic":
         return client.rpc("issue_sales_invoice_atomic", params)
+    if fn == "settle_payment_atomic":
+        return client.rpc("settle_payment_atomic", params)
     return client.rpc("settle_receipt_atomic", params)

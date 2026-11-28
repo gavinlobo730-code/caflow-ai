@@ -277,7 +277,7 @@ class PartyCreditService:
 
         # 2) Verify the target document belongs to this firm+client+party and has
         #    room for this amount, then apply it — CAS-guarded, re-validated
-        #    against fresh state (mirrors purchase_payments._update_bill_payment_status).
+        #    against fresh state (the shape the bill's other settlement writers use).
         #    ANY failure past this point (validation OR CAS exhaustion) must
         #    restore the balance decremented in step 1 — a failed application
         #    must never silently burn the party's credit.

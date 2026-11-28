@@ -72,13 +72,16 @@ MOVED = {
     ("routers/sales_invoices.py", "repost_journal"),
     ("routers/purchase_bills.py", "receive_purchase_bill"),
     ("routers/purchase_bills.py", "cancel_purchase_bill"),
-    ("routers/purchase_payments.py", "_claim_bill_outstanding"),
-    ("routers/purchase_payments.py", "_rollback_bill_claim"),
-    ("routers/purchase_payments.py", "_update_bill_payment_status"),
+    # POST-A-575: a supplier payment, in each of its four shapes, is one database transaction (`settle_payment_atomic`, migration 784),
+    # so the functions that record one write no header at all. They stay on the list with a count of none so a header write that comes
+    # back is a red test. (`_claim_bill_outstanding` and `_rollback_bill_claim`, which reserved a bill and gave it back, are gone, and so is
+    # `_update_bill_payment_status`, which recomputed the bill from its payments after the insert and had no caller left.)
     ("routers/purchase_payments.py", "_create_foreign_payment"),
     ("routers/receipts.py", "_adjust_invoice_paid"),
     ("services/purchase_payment_service.py", "_adjust_bill_paid"),
     ("services/purchase_payment_service.py", "create_payment_core"),
+    ("services/purchase_payment_service.py", "create_single_bill_payment"),
+    ("services/purchase_payment_service.py", "_record_foreign_payment"),
     ("services/purchase_payment_service.py", "create_foreign_payment_core"),
     ("services/receipt_service.py", "create_receipt_core"),
     # POST-A-095: a foreign receipt is one database transaction (`settle_receipt_atomic`, migration 781), so `create_foreign_receipt`
@@ -102,7 +105,7 @@ TABLE_IN_A_VARIABLE = {
 #: Functions that take the signed-in person the way the door wants it and are called by others: every caller outside the tests passes
 #: it by name, so that the audit row of a settlement made by a reversal or a re-allocation is not written with no actor by omission.
 ACTOR_THREADED = {
-    "_claim_bill_outstanding", "_rollback_bill_claim", "_update_bill_payment_status", "_adjust_invoice_paid", "_adjust_bill_paid",
+    "_adjust_invoice_paid", "_adjust_bill_paid",
     "_rollback_invoice_paid", "_rollback_bill_paid", "reverse_receipt", "reverse_payment", "apply_credit",
 }
 
@@ -211,8 +214,9 @@ def test_a_moved_function_goes_through_the_door_and_calls_it_for_every_move_it_m
     expected_calls = {
         "issue_credit_note": 4, "issue_debit_note": 4, "issue_purchase_credit_note": 4, "issue_sales_debit_note": 4,
         "issue_invoice": 0, "_post_and_mark_issued": 1, "cancel_invoice": 1, "repost_journal": 1, "receive_purchase_bill": 3, "cancel_purchase_bill": 1,
-        "_claim_bill_outstanding": 1, "_rollback_bill_claim": 1, "_update_bill_payment_status": 1, "_create_foreign_payment": 1,
-        "_adjust_invoice_paid": 1, "_adjust_bill_paid": 1, "create_payment_core": 1, "create_foreign_payment_core": 1,
+        "_create_foreign_payment": 0,
+        "_adjust_invoice_paid": 1, "_adjust_bill_paid": 1, "create_payment_core": 0, "create_foreign_payment_core": 0,
+        "create_single_bill_payment": 0, "_record_foreign_payment": 0,
         "create_receipt_core": 1, "create_foreign_receipt": 0, "_rollback_invoice_paid": 1, "_rollback_bill_paid": 1,
         "_settle_doc": 1, "_unsettle": 1, "apply_credit": 1,
     }
@@ -255,7 +259,10 @@ def test_every_call_to_the_door_names_a_literal_header_table_the_firm_the_client
             assert {"firm_id", "client_id", "actor"} <= kws, f"{rel}:{node.lineno} names {sorted(kws)}"
             actor = next(k.value for k in node.keywords if k.arg == "actor")
             assert isinstance(actor, ast.Name), f"{rel}:{node.lineno} actor is not the person the caller was handed: {ast.unparse(actor)}"
-    assert seen >= 37, seen                                           # 16 in the four note routes, 7 in the invoice and bill lifecycle, 11 in the money paths (12 until the foreign receipt became one database transaction, POST-A-095) and 3 in the bank and credit paths: a vacuous pass would find none
+    # 16 in the four note routes, 7 in the invoice and bill lifecycle, 5 in the money paths (12 until the foreign receipt became one
+    # database transaction, POST-A-095; 11 until the four shapes of a supplier payment did, POST-A-575, and the bill's recomputing
+    # writer that nothing called went with them) and 3 in the bank and credit paths: a vacuous pass would find none
+    assert seen >= 31, seen
 
 
 def test_every_caller_of_an_actor_threaded_function_passes_the_actor_by_name():
@@ -271,7 +278,7 @@ def test_every_caller_of_an_actor_threaded_function_passes_the_actor_by_name():
             keyword = next((k for k in node.keywords if k.arg == "actor"), None)
             assert keyword is not None, f"{rel}:{node.lineno} {name}(...) passes no actor"
             assert isinstance(keyword.value, ast.Name), f"{rel}:{node.lineno} {name}(...) passes {ast.unparse(keyword.value)}, not the person it was handed"
-    assert seen >= 12, seen                                           # the twelve call sites at the time of the third slice
+    assert seen >= 10, seen                                           # twelve call sites at the time of the third slice; the two that reserved a bill and gave it back left with POST-A-575
 
 
 #: Columns only the six header tables carry in this form: a literal payload naming one of them, written through a chain whose table is
@@ -900,90 +907,145 @@ def test_a_foreign_receipt_settles_its_invoice_inside_the_database_function_and_
     assert int(fx["base_delta_paise"]) == 300_000 and fx["journal_entry_id"] == receipt["journal_entry_id"]
 
 
-def test_a_foreign_vendor_payment_on_one_bill_settles_it_as_the_api_and_audits_it(foreign, two_clients):
+def _payment_row(db, payment_id):
+    return next(r for r in db._tables["purchase_payments"] if r["id"] == payment_id)
+
+
+def test_a_foreign_vendor_payment_on_one_bill_settles_it_inside_the_database_function_and_not_through_the_header_door(foreign, two_clients):
+    """POST-A-575. A payment to a supplier is recorded by `settle_payment_atomic` (migration 784): the entry, the payment, the bill's two
+    paid amounts and the exchange-difference record are one transaction, so the API issues no header statement at all and the caller's
+    own sign-in is asked to write nothing. The row-level record of the bill's change is the database trigger's, which sees the person
+    the ledger door carried (proved against Postgres in test_784_..._pg.py); the route's own `create` audit of the payment stays."""
     import routers.purchase_payments as pp
     from models.invoices import PurchasePaymentIn
     db = foreign[0]
-    statements, attempts, audit_calls, install = two_clients
+    statements, attempts, _audit_calls, install = two_clients
     party, bill = _received_bill("USD", "80.0", 100_000, "USD-B-3")
-    pre = _row(db, "purchase_bills", bill["id"])
     install()
     made = pp.create_purchase_payment(PurchasePaymentIn(
         client_id="CLI", vendor_id=party["id"], payment_date="2026-06-10", amount_paise=100_000,
         purchase_bill_id=bill["id"], currency="USD", exchange_rate="83.0"), CALLER)
     assert made["success"] is True, made
     assert attempts == []
-    (write,) = _header_writes(statements, "purchase_bills")
-    _assert_settlement_write(write, bill["id"])
-    assert set(write["payload"]) == {"paid_paise", "paid_txn", "status"} and write["payload"]["status"] == "paid"
-    assert _row(db, "purchase_bills", bill["id"])["status"] == "paid"
-    _assert_audited_like(audit_calls, "purchase_bill", bill["id"], [write], pre)
+    assert _header_writes(statements, "purchase_bills") == [], "the payment wrote the bill's header in a second statement"
+    row = _row(db, "purchase_bills", bill["id"])
+    assert (row["status"], int(row["paid_txn"]), int(row["paid_paise"])) == ("paid", 100_000, 8_000_000)
+    payment = _payment_row(db, made["data"]["id"])
+    # the older shape: the bill on the payment's own row, and no allocation row
+    assert payment["purchase_bill_id"] == bill["id"] and payment["journal_entry_id"]
+    assert (payment["txn_currency"], int(payment["txn_amount"]), int(payment["amount_paise"])) == ("USD", 100_000, 8_300_000)
+    assert [a for a in db._tables.get("purchase_payment_allocations", []) if a["purchase_payment_id"] == payment["id"]] == []
+    (fx,) = [f for f in db._tables["fx_adjustments"] if f["document_id"] == payment["id"]]
+    # 80,000 rupees of payable relieved for 83,000 of cash: a loss of 3,000
+    assert int(fx["base_delta_paise"]) == -300_000 and fx["journal_entry_id"] == payment["journal_entry_id"]
+    assert made["data"]["realized_fx_paise"] == -300_000
 
 
-def test_a_foreign_vendor_payment_on_several_bills_settles_each_as_the_api_and_audits_each(foreign, two_clients):
+def test_a_foreign_vendor_payment_on_several_bills_settles_each_inside_the_database_function(foreign, two_clients):
     import services.purchase_payment_service as pps
-    statements, attempts, audit_calls, install = two_clients
+    db = foreign[0]
+    statements, attempts, _audit_calls, install = two_clients
     party, first = _received_bill("USD", "80.0", 50_000, "USD-B-4")
     _, second = _received_bill("USD", "80.0", 50_000, "USD-B-5", vendor=party)
-    pres = [_row(foreign[0], "purchase_bills", first["id"]), _row(foreign[0], "purchase_bills", second["id"])]
     install()
     made = pps.create_payment_core(FIRM, {
         "client_id": "CLI", "vendor_id": party["id"], "payment_date": "2026-06-10", "amount_paise": 100_000,
         "currency": "USD", "exchange_rate": "83.0",
         "allocations": [{"purchase_bill_id": first["id"], "allocated_paise": 50_000},
-                        {"purchase_bill_id": second["id"], "allocated_paise": 50_000}]}, CALLER, _Client(foreign[0], "request", attempts))
+                        {"purchase_bill_id": second["id"], "allocated_paise": 50_000}]}, CALLER, _Client(db, "request", attempts))
     assert made
     assert attempts == []
-    writes = _header_writes(statements, "purchase_bills")
-    assert [w["payload"]["status"] for w in writes] == ["paid", "paid"]
-    for write, bill, pre in zip(writes, (first, second), pres, strict=True):
-        _assert_settlement_write(write, bill["id"])
-        _assert_audited_like(audit_calls, "purchase_bill", bill["id"], [write], pre)
+    assert _header_writes(statements, "purchase_bills") == []
+    for bill in (first, second):
+        row = _row(db, "purchase_bills", bill["id"])
+        assert (row["status"], int(row["paid_txn"]), int(row["paid_paise"])) == ("paid", 50_000, 4_000_000)
+    rows = sorted((a["purchase_bill_id"], int(a["allocated_paise"]), int(a["allocated_txn"]))
+                  for a in db._tables["purchase_payment_allocations"] if a["purchase_payment_id"] == made["id"])
+    assert rows == sorted([(first["id"], 4_000_000, 50_000), (second["id"], 4_000_000, 50_000)])
+    assert sorted(a["purchase_bill_id"] for a in made["allocations"]) == sorted([first["id"], second["id"]])
+    assert _payment_row(db, made["id"])["purchase_bill_id"] is None
 
 
-def test_a_domestic_vendor_payment_claims_its_bill_as_the_api_and_audits_the_claim(world, two_clients):
+def test_a_domestic_vendor_payment_settles_its_bill_inside_the_database_function_and_keeps_the_account_it_left(world, two_clients):
     import routers.purchase_payments as pp
     from models.invoices import PurchasePaymentIn
     db = world[0]
-    statements, attempts, audit_calls, install = two_clients
+    statements, attempts, _audit_calls, install = two_clients
     party, bill = _received_bill(total=500_000, no="B-331-6")
     install()
     made = pp.create_purchase_payment(PurchasePaymentIn(
         client_id="CLI", vendor_id=party["id"], payment_date="2026-06-10", amount_paise=200_000, purchase_bill_id=bill["id"]), CALLER)
     assert made["success"] is True, made
     assert attempts == []
-    writes = _header_writes(statements, "purchase_bills")
-    assert writes and writes[0]["payload"] == {"paid_paise": 200_000, "status": "partially_paid"}, writes
-    for w in writes:
-        _assert_settlement_write(w, bill["id"])
-    assert _row(db, "purchase_bills", bill["id"])["paid_paise"] == 200_000
-    audits = _audited(audit_calls, "purchase_bill", bill["id"])
-    assert audits[0]["old_data"] == {"paid_paise": 0, "status": "received"}
-    assert audits[0]["new_data"] == {"paid_paise": 200_000, "status": "partially_paid"}
-    assert all(a["actor_id"] == "auth-u1" for a in audits)
+    assert _header_writes(statements, "purchase_bills") == [], "the payment wrote the bill's header in a second statement"
+    row = _row(db, "purchase_bills", bill["id"])
+    assert (row["paid_paise"], row["status"]) == (200_000, "partially_paid")
+    payment = _payment_row(db, made["data"]["id"])
+    assert payment["purchase_bill_id"] == bill["id"] and payment["unallocated_paise"] == 0 and payment["journal_entry_id"]
+    assert "bank_account_id" in payment, "the row no longer says which account the money left"
+    entry = next(e for e in db._tables["journal_entries"] if e["id"] == payment["journal_entry_id"])
+    assert (entry["source_type"], entry["source_id"], entry["reference_no"]) == ("purchase_payment", payment["id"], payment["payment_no"])
+    assert [a for a in db._tables.get("purchase_payment_allocations", []) if a["purchase_payment_id"] == payment["id"]] == []
 
 
-def test_a_payment_that_cannot_be_recorded_gives_the_claim_back_through_the_door_and_says_why(world, two_clients):
+class _OvertakenClient(_Client):
+    """The request's client, on which another payment reaches the bill between this payment's check and the function's lock."""
+
+    def __init__(self, inner, label, attempts, bill_id, amount):
+        super().__init__(inner, label, attempts)
+        self._bill_id, self._amount = bill_id, amount
+
+    def rpc(self, fn, params=None):
+        if fn == "settle_payment_atomic":
+            bill = next(b for b in self.inner._tables["purchase_bills"] if b["id"] == self._bill_id)
+            bill["paid_paise"] = int(bill.get("paid_paise") or 0) + self._amount
+            bill["status"] = "partially_paid"
+        return self.inner.rpc(fn, params)
+
+
+def test_a_payment_overtaken_at_its_bill_is_refused_whole_and_leaves_nothing_to_give_back(monkeypatch, world, two_clients):
+    """The bill had enough left when the route asked and not when the function locked it. Before POST-A-575 the route had already
+    reserved the bill and had to give the reservation back through the door; now nothing was written, so there is nothing to undo."""
     import routers.purchase_payments as pp
+    from fastapi import HTTPException
     from models.invoices import PurchasePaymentIn
+    from services.purchase_payment_service import PAYMENT_OVERTAKEN_SENTENCE
     db = world[0]
-    statements, attempts, audit_calls, install = two_clients
+    statements, attempts, _audit_calls, install = two_clients
     party, bill = _received_bill(total=500_000, no="B-331-7")
-    install(fail_tables=("purchase_payments",))
-    made = pp.create_purchase_payment(PurchasePaymentIn(
-        client_id="CLI", vendor_id=party["id"], payment_date="2026-06-10", amount_paise=200_000, purchase_bill_id=bill["id"]), CALLER)
-    assert not (isinstance(made, dict) and made.get("success") is True), made
+    install()
+    overtaken = _OvertakenClient(db, "privileged", attempts, bill["id"], 400_000)
+    monkeypatch.setattr(sc, "get_service_supabase", lambda: overtaken)
+    before = {t: len(db._tables.get(t, [])) for t in ("journal_entries", "journal_lines", "purchase_payments", "purchase_payment_allocations")}
+    with pytest.raises(HTTPException) as refused:
+        pp.create_purchase_payment(PurchasePaymentIn(
+            client_id="CLI", vendor_id=party["id"], payment_date="2026-06-10", amount_paise=200_000, purchase_bill_id=bill["id"]), CALLER)
+    assert refused.value.status_code == 409 and refused.value.detail == PAYMENT_OVERTAKEN_SENTENCE
     assert attempts == []
-    writes = _header_writes(statements, "purchase_bills")
-    assert [w["payload"]["paid_paise"] for w in writes][:2] == [200_000, 0], writes
-    assert writes[1]["payload"]["status"] == "received" and writes[1]["label"] == "privileged"
-    assert _row(db, "purchase_bills", bill["id"])["paid_paise"] == 0
-    audits = _audited(audit_calls, "purchase_bill", bill["id"])
-    assert "reason" not in audits[0]["metadata"] and "could not be recorded" in audits[1]["metadata"]["reason"]
-    assert audits[1]["old_data"] == {"paid_paise": 200_000, "status": "partially_paid"}
-    assert audits[1]["new_data"] == {"paid_paise": 0, "status": "received"}
-    assert audits[1]["metadata"]["reason"] == "the payment could not be recorded"
-    assert all(a["actor_id"] == "auth-u1" and a["actor_email"] == "ca@f.test" for a in audits), audits
+    assert _header_writes(statements, "purchase_bills") == []
+    assert {t: len(db._tables.get(t, [])) for t in before} == before, "a refused payment left an entry, a payment or an allocation behind"
+    assert _row(db, "purchase_bills", bill["id"])["paid_paise"] == 400_000, "the refused payment moved the bill"
+
+
+def test_a_domestic_vendor_payment_across_several_bills_settles_each_inside_the_database_function(world, two_clients):
+    import services.purchase_payment_service as pps
+    db = world[0]
+    statements, attempts, _audit_calls, install = two_clients
+    party, first = _received_bill(total=100_000, no="B-331-14")
+    _, second = _received_bill(total=100_000, no="B-331-15", vendor=party)
+    install()
+    made = pps.create_payment_core(FIRM, {
+        "client_id": "CLI", "vendor_id": party["id"], "payment_date": "2026-06-10", "amount_paise": 150_000,
+        "allocations": [{"purchase_bill_id": first["id"], "allocated_paise": 100_000},
+                        {"purchase_bill_id": second["id"], "allocated_paise": 50_000}]}, CALLER, _Client(db, "request", attempts))
+    assert made
+    assert attempts == []
+    assert _header_writes(statements, "purchase_bills") == []
+    assert (_row(db, "purchase_bills", first["id"])["status"], _row(db, "purchase_bills", second["id"])["status"]) == ("paid", "partially_paid")
+    rows = sorted((a["purchase_bill_id"], int(a["allocated_paise"])) for a in db._tables["purchase_payment_allocations"]
+                  if a["purchase_payment_id"] == made["id"])
+    assert rows == sorted([(first["id"], 100_000), (second["id"], 50_000)])
+    assert _payment_row(db, made["id"])["unallocated_paise"] == 0
 
 
 def test_re_allocating_a_receipt_adjusts_the_invoice_as_the_api_and_audits_both_moves(world, two_clients):
@@ -1117,47 +1179,6 @@ def test_the_receipt_fallback_settles_its_invoice_as_the_api_and_audits_it(world
     _assert_audited_like(audit_calls, "sales_invoice", inv["id"], [write], pre)
 
 
-def test_a_domestic_vendor_payment_across_several_bills_settles_each_as_the_api_and_audits_each(world, two_clients):
-    import services.purchase_payment_service as pps
-    db = world[0]
-    statements, attempts, audit_calls, install = two_clients
-    party, first = _received_bill(total=100_000, no="B-331-14")
-    _, second = _received_bill(total=100_000, no="B-331-15", vendor=party)
-    pres = [_row(db, "purchase_bills", first["id"]), _row(db, "purchase_bills", second["id"])]
-    install()
-    made = pps.create_payment_core(FIRM, {
-        "client_id": "CLI", "vendor_id": party["id"], "payment_date": "2026-06-10", "amount_paise": 150_000,
-        "allocations": [{"purchase_bill_id": first["id"], "allocated_paise": 100_000},
-                        {"purchase_bill_id": second["id"], "allocated_paise": 50_000}]}, CALLER, _Client(db, "request", attempts))
-    assert made
-    assert attempts == []
-    writes = _header_writes(statements, "purchase_bills")
-    assert [w["payload"]["status"] for w in writes] == ["paid", "partially_paid"]
-    for write, bill, pre in zip(writes, (first, second), pres, strict=True):
-        _assert_settlement_write(write, bill["id"])
-        _assert_audited_like(audit_calls, "purchase_bill", bill["id"], [write], pre)
-
-
-def test_the_payment_status_reconciliation_writes_the_bill_as_the_api_and_audits_it(world, two_clients):
-    import routers.purchase_payments as pp
-    db = world[0]
-    statements, attempts, audit_calls, install = two_clients
-    party, bill = _received_bill(total=500_000, no="B-331-13")
-    db.seed("purchase_payments", {"id": "PP-331-13", "firm_id": FIRM, "client_id": "CLI", "vendor_id": party["id"],
-                                  "purchase_bill_id": bill["id"], "amount_paise": 200_000})
-    install()
-    pp._update_bill_payment_status(_Client(db, "request", attempts), FIRM, "CLI", bill["id"], 200_000, actor=CALLER)
-    assert attempts == []
-    (write,) = _header_writes(statements, "purchase_bills")
-    _assert_settlement_write(write, bill["id"])
-    assert write["payload"]["paid_paise"] == 200_000 and write["payload"]["status"] == "partially_paid"
-    assert _row(db, "purchase_bills", bill["id"])["paid_paise"] == 200_000
-    (audit,) = _audited(audit_calls, "purchase_bill", bill["id"])
-    assert audit["old_data"] == {"paid_paise": 0, "status": "received"}
-    assert audit["new_data"]["paid_paise"] == 200_000 and audit["new_data"]["status"] == "partially_paid"
-    assert audit["actor_id"] == "auth-u1" and audit["actor_email"] == "ca@f.test"
-
-
 def test_reversing_a_payment_that_settled_several_bills_gives_each_bill_its_money_back_as_the_api_and_audits_each(world, two_clients):
     import routers.purchase_payments as pp
     import services.purchase_payment_service as pps
@@ -1176,7 +1197,11 @@ def test_reversing_a_payment_that_settled_several_bills_gives_each_bill_its_mone
     assert attempts == []
     writes = _header_writes(statements, "purchase_bills")
     assert [w["payload"] for w in writes] == [{"paid_paise": 0, "paid_txn": 0, "status": "received"}] * 2
-    for write, bill, was in zip(writes, (first, second), ((100_000, "paid"), (50_000, "partially_paid")), strict=True):
+    # the allocation rows are written in the order the function locks the bills (by id), which need not be the request's
+    by_bill = {next(v for kind, col, v in w["filters"] if kind == "eq" and col == "id"): w for w in writes}
+    assert set(by_bill) == {first["id"], second["id"]}
+    for bill, was in ((first, (100_000, "paid")), (second, (50_000, "partially_paid"))):
+        write = by_bill[bill["id"]]
         _assert_settlement_write(write, bill["id"])
         (audit,) = _audited(audit_calls, "purchase_bill", bill["id"])
         assert audit["old_data"] == {"paid_paise": was[0], "paid_txn": 0, "status": was[1]}

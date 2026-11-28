@@ -147,4 +147,4 @@ services/portal_access_service.py | _legacy_client | clients | read | 1 | helper
 services/portal_access_service.py | accept_portal_invite | call:_bind | update | 1 | bearer-token | token=invite_token
 services/portal_access_service.py | list_portal_memberships | call:_find_all_active_by_auth | read | 1 | principal-lookup
 services/portal_access_service.py | list_portal_memberships | call:_legacy_client | read | 1 | principal-lookup
-services/purchase_payment_service.py | create_payment_core | call:journal_for_purchase_payment | read | 2 | gated-by-route | route=routers/purchase_payments.py::create_purchase_payment via=create_payment_core
+services/purchase_payment_service.py | create_payment_core | call:journal_for_purchase_payment | read | 1 | gated-by-route | route=routers/purchase_payments.py::create_purchase_payment via=create_payment_core

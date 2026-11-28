@@ -76,7 +76,7 @@ EXPECTED_SQL_WRITERS = {
     "settle_receipt_atomic": {"journal_entries", "journal_lines"},
     # Migration 784 (POST-A-575): a supplier payment's entry, row and bill settlements in one transaction, on the receipt function's
     # shape. Re-read as the sentence below asks: the homepage says "one ledger" and names no single posting path, and this is a third
-    # function that posts an entry into the same two tables under the same balance check. Nothing calls it until the service change.
+    # function that posts an entry into the same two tables under the same balance check. The four shapes of a supplier payment call it.
     "settle_payment_atomic": {"journal_entries", "journal_lines"},
     "edit_posted_journal": {"journal_lines"},
 }
@@ -95,6 +95,8 @@ EXPECTED_PYTHON_RPC_CALLERS = {
     # client_from_one_place.py` holds that the kernel and the receipt service are its only two callers.
     ("services/ledger_door.py", "post_journal_atomic"),
     ("services/ledger_door.py", "settle_receipt_atomic"),
+    # POST-A-575: a supplier payment, in any of its four shapes, through the same door (services/purchase_payment_service._record_payment)
+    ("services/ledger_door.py", "settle_payment_atomic"),
     ("services/manual_journal_service.py", "edit_posted_journal"),
 }
 

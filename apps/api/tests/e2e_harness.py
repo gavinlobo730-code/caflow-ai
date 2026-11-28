@@ -1111,6 +1111,179 @@ class _Rpc:
             "realized_fx_paise": fx_delta,
         }
 
+    def _fn_settle_payment_atomic(self):
+        """Mirror migration 784 settle_payment_atomic: the entry and its lines, the payment row, each bill's settlement, the allocation
+        rows of a payment across several bills and a foreign payment's realised exchange difference, together or not at all. The real
+        function is one transaction, so a refusal part-way leaves nothing: this double takes back what it appended before it raises
+        (`refuse`). The real thing is proven against Postgres in test_784_a_supplier_payment_is_recorded_in_one_transaction_pg.py.
+        Like the receipt function it does not return an existing entry for a number already taken: a duplicate is an error."""
+        from tests import _payment_function_source as src
+        payload = self.params["p_payment"]
+        unknown = set(payload) - src.PURCHASE_PAYMENT_COLUMNS - src.NOT_THE_ROWS
+        if unknown:
+            # the real INSERT is built from the payload's keys: a key that is no column fails the whole call (42703)
+            err = Exception(f'column "{sorted(unknown)[0]}" of relation "purchase_payments" does not exist')
+            err.code = "42703"
+            raise err
+        payment = {**src.COLUMN_DEFAULTS, **{k: v for k, v in payload.items() if k not in src.NOT_THE_ROWS}}
+        entry = {k: v for k, v in self.params["p_journal_entry"].items() if k != "audit_actor"}     # migration 545 removes it first
+        lines = self.params["p_journal_lines"]
+        allocations = self.params.get("p_allocations") or []
+
+        if not payment.get("id"):
+            raise Exception("settle_payment_atomic: the payment carries no id")
+        if str(entry.get("source_id") or "") != str(payment["id"]):
+            raise Exception("settle_payment_atomic: the entry does not name this payment as its source")
+        if payload.get("is_reversed"):
+            raise Exception("settle_payment_atomic: a payment is not recorded as already reversed")
+        total_debit = sum(int(l.get("debit_paise") or 0) for l in lines)
+        total_credit = sum(int(l.get("credit_paise") or 0) for l in lines)
+        if total_debit != total_credit:
+            raise Exception(f"settle_payment_atomic: journal imbalance debit={total_debit} credit={total_credit}")
+        if total_debit == 0:
+            raise Exception("settle_payment_atomic: refusing to post a zero-value journal entry")
+
+        payments = self.db._tables.setdefault("purchase_payments", [])
+        # the real tables' unique keys: a number already taken fails the whole call
+        _enforce_unique("purchase_payments", payments, payment)
+
+        entry.setdefault("id", str(uuid.uuid4()))
+        self.db._tables.setdefault("journal_entries", []).append(entry)
+        line_store = self.db._tables.setdefault("journal_lines", [])
+        for position, l in enumerate(lines):
+            lr = dict(l)
+            lr["journal_entry_id"] = entry["id"]
+            lr.setdefault("id", str(uuid.uuid4()))
+            lr["line_order"] = position
+            line_store.append(lr)
+        payment["journal_entry_id"] = entry["id"]
+        payments.append(payment)
+
+        bills = self.db._tables.setdefault("purchase_bills", [])
+        alloc_store = self.db._tables.setdefault("purchase_payment_allocations", [])
+        alloc_results = []
+        ccy = (str(payload.get("txn_currency") or "").strip() or "INR").upper()
+        foreign = ccy != "INR"
+        single = payment.get("purchase_bill_id")
+        by_bill: dict = {}
+        txn_by_bill: dict = {}
+        readings: dict = {}
+        for a in allocations:
+            allocated_paise = int(a.get("allocated_paise") or 0)
+            allocated_txn = int(a.get("allocated_txn") or 0)
+            if allocated_paise <= 0 and not (foreign and allocated_txn > 0):
+                continue
+            bill_id = a.get("purchase_bill_id")
+            by_bill[bill_id] = by_bill.get(bill_id, 0) + allocated_paise
+            txn_by_bill[bill_id] = txn_by_bill.get(bill_id, 0) + allocated_txn
+            readings.setdefault(bill_id, []).append((a.get("expect_paid_paise"), a.get("expect_paid_txn"), a.get("expect_debited_paise")))
+
+        undo: list = []
+        fx = payload.get("fx_adjustment")
+        fx_delta = int(fx.get("base_delta_paise") or 0) if foreign and isinstance(fx, dict) else 0
+
+        def refuse(message: str, code: str | None = None):
+            self.db._tables["journal_entries"].remove(entry)
+            self.db._tables["journal_lines"][:] = [l for l in self.db._tables["journal_lines"] if l.get("journal_entry_id") != entry["id"]]
+            payments.remove(payment)
+            alloc_store[:] = [r for r in alloc_store if r.get("purchase_payment_id") != payment["id"]]
+            for bill, before in undo:
+                bill.clear()
+                bill.update(before)
+            err = Exception(message)
+            if code:
+                err.code = code
+            raise err
+
+        for bill_id in sorted(by_bill, key=str):          # the real function locks the bills in one order
+            allocated_paise = by_bill[bill_id]
+            allocated_txn = txn_by_bill[bill_id]
+            bill = next((r for r in bills if r.get("id") == bill_id and r.get("firm_id") == payment.get("firm_id")
+                         and r.get("client_id") == payment.get("client_id")), None)
+            if bill is None:
+                refuse(f"settle_payment_atomic: bill {bill_id} is not part of this client's books")
+            if single and bill_id != single:
+                refuse(f"settle_payment_atomic: the payment names bill {single} and its settlement names bill {bill_id}")
+            if bill.get("vendor_id") != payment.get("vendor_id"):
+                refuse(f"settle_payment_atomic: bill {bill_id} was raised by another supplier")
+            if bill.get("status") in ("draft", "cancelled"):
+                refuse(f"settle_payment_atomic: bill {bill_id} is {bill.get('status')} and cannot be paid")
+            if allocated_paise < 0:
+                refuse(f"settle_payment_atomic: the allocation to bill {bill_id} relieves a negative amount")
+            paid = int(bill.get("paid_paise") or 0)
+            debited = int(bill.get("debited_paise") or 0)
+            payable = int(bill.get("net_payable_paise") or 0) + int(bill.get("credit_note_paise") or 0)
+            bill_ccy = (str(bill.get("txn_currency") or "").strip() or "INR").upper()
+            txn_net = int(bill.get("txn_net_payable") or 0)
+            paid_txn = int(bill.get("paid_txn") or 0)
+            new_paid = paid + allocated_paise
+            if foreign:
+                expect_paid, expect_paid_txn, expect_debited = readings[bill_id][0]
+                if bill_ccy != ccy:
+                    refuse(f"settle_payment_atomic: the payment is in {ccy} and bill {bill_id} is billed in {bill_ccy}")
+                if allocated_txn <= 0:
+                    refuse(f"settle_payment_atomic: the allocation to bill {bill_id} names no foreign amount")
+                if len(set(readings[bill_id])) > 1:
+                    refuse(f"settle_payment_atomic: the allocations to bill {bill_id} do not agree about what was read of the bill")
+                if expect_paid is None or expect_paid_txn is None:
+                    refuse(f"settle_payment_atomic: the allocation to bill {bill_id} does not say what was read of the bill (expect_paid_paise, expect_paid_txn)")
+                if (paid != int(expect_paid) or paid_txn != int(expect_paid_txn)
+                        or (expect_debited is not None and debited != int(expect_debited))):
+                    refuse(f"settle_payment_atomic: bill {bill_id} changed while this payment was being prepared", code="VP001")
+            elif bill_ccy != "INR":
+                refuse(f"settle_payment_atomic: the payment is in rupees and bill {bill_id} is billed in {bill_ccy}")
+            if new_paid + debited > payable:
+                refuse(f"settle_payment_atomic: allocation to bill {bill_id} ({allocated_paise} paise) exceeds its outstanding")
+            undo.append((bill, dict(bill)))
+            if foreign:
+                if allocated_txn > txn_net - paid_txn:
+                    refuse(f"settle_payment_atomic: allocation to bill {bill_id} ({allocated_txn} in {ccy}) exceeds its outstanding")
+                if single and allocated_txn != int(payload.get("txn_amount") or 0):
+                    refuse("settle_payment_atomic: a payment that names its bill settles it for the payment's whole foreign amount")
+                if single and allocated_paise != int(payload.get("amount_paise") or 0) + fx_delta:
+                    refuse("settle_payment_atomic: a payment that names its bill relieves it of the cash paid plus the exchange difference")
+                new_paid_txn = paid_txn + allocated_txn
+                new_status = "paid" if new_paid_txn >= txn_net else "partially_paid"
+                bill["paid_paise"], bill["paid_txn"], bill["status"] = new_paid, new_paid_txn, new_status
+                if not single:
+                    alloc_store.append({"id": str(uuid.uuid4()), "purchase_payment_id": payment["id"], "purchase_bill_id": bill_id,
+                                        "allocated_paise": allocated_paise, "allocated_txn": allocated_txn, "is_voided": False})
+                alloc_results.append({"purchase_bill_id": bill_id, "allocated_paise": allocated_paise, "allocated_txn": allocated_txn,
+                                      "new_paid_paise": new_paid, "new_paid_txn": new_paid_txn, "new_status": new_status})
+                continue
+            if single and allocated_paise != int(payload.get("amount_paise") or 0):
+                refuse("settle_payment_atomic: a payment that names its bill settles it for the payment's whole amount")
+            new_status = "paid" if new_paid + debited >= payable else "partially_paid"
+            bill["paid_paise"], bill["status"] = new_paid, new_status
+            if not single:
+                alloc_store.append({"id": str(uuid.uuid4()), "purchase_payment_id": payment["id"], "purchase_bill_id": bill_id,
+                                    "allocated_paise": allocated_paise, "is_voided": False})
+            alloc_results.append({"purchase_bill_id": bill_id, "allocated_paise": allocated_paise, "new_paid_paise": new_paid,
+                                  "new_status": new_status})
+
+        if single and len(by_bill) != 1:
+            refuse(f"settle_payment_atomic: the payment names bill {single} and settles nothing against it")
+        if not foreign and int(payment.get("unallocated_paise") or 0) != int(payment.get("amount_paise") or 0) - sum(by_bill.values()):
+            refuse("settle_payment_atomic: the payment says a figure is left of it that its amount less its allocations is not "
+                   f"({payment.get('unallocated_paise')} paise are left of it and {int(payment.get('amount_paise') or 0) - sum(by_bill.values())} are)")
+
+        if foreign and isinstance(fx, dict):
+            if fx_delta != 0:
+                self.db._tables.setdefault("fx_adjustments", []).append({
+                    "id": str(uuid.uuid4()), "firm_id": payment.get("firm_id"), "client_id": payment.get("client_id"),
+                    "kind": "realized", "document_type": "purchase_payment", "document_id": payment["id"], "currency": ccy,
+                    "settlement_rate": fx.get("settlement_rate"), "base_delta_paise": fx_delta,
+                    "journal_entry_id": entry["id"], "rate_source": fx.get("rate_source"), "created_by": fx.get("created_by"),
+                })
+
+        return {
+            "payment_id": payment["id"],
+            "journal_entry_id": entry["id"],
+            "payment": dict(payment),
+            "allocations": alloc_results,
+            "realized_fx_paise": fx_delta,
+        }
+
     def _fn_file_it_declaration(self):
         """Mirror migration 548 `file_it_declaration`: ONE filing of an employee's Form 12BB, returning the declaration's id.
 

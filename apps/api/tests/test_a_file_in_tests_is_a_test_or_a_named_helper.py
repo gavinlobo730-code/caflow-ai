@@ -85,6 +85,9 @@ HELPERS = {
     # What the receipt-recording database function stores, read from the migrations (the last definer of its body, found by number): the rule
     # test compares it with what the service sends and `e2e_harness` stores no more than it (migration 574, POST-A-369's review).
     "_receipt_function_source.py",
+    # The columns of `purchase_payments`, which the payment-recording database function builds its INSERT from (migration 784, POST-A-575):
+    # `e2e_harness` refuses a payload key that is not one of them, as the function does, and a real-Postgres test holds the list to the table.
+    "_payment_function_source.py",
     # A stand-in for the health engine's stored scores (`repositories/health_scores_repository`) for the tests whose fixture clients carry a
     # `health_score`; five test files use it, so none of them grows its own copy.
     "health_double.py",

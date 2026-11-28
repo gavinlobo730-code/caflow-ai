@@ -751,3 +751,27 @@ def test_the_rollback_drops_both_functions_and_both_files_run_twice(db):
         assert _scalar(db, "SELECT count(*) FROM pg_proc WHERE proname LIKE 'settle_payment_atomic%';") == "0"
     assert _file(db, F784).returncode == 0 and md5() == before
     assert _settle(db, _rupee("VPMT-784-40", 40000, [_alloc(B_INR, 40000)])).returncode == 0
+
+
+# ── the in-memory double's list of the payment table's columns (POST-A-575, the service half) ──
+
+def test_the_doubles_list_of_payment_columns_is_the_tables(db):
+    """The function builds its INSERT from the payload's keys and the catalogue; the double (tests/e2e_harness.py) has no catalogue and
+    asks tests/_payment_function_source.py. A migration that adds a column to purchase_payments fails here until the list has it, and
+    the defaults the double gives a column the payload leaves out are the table's own."""
+    from tests._payment_function_source import COLUMN_DEFAULTS, PURCHASE_PAYMENT_COLUMNS
+    real = set(_json(db, "SELECT json_agg(column_name)::text FROM information_schema.columns "
+                         "WHERE table_schema = 'public' AND table_name = 'purchase_payments';"))
+    assert real == set(PURCHASE_PAYMENT_COLUMNS), {"only in the table": sorted(real - PURCHASE_PAYMENT_COLUMNS),
+                                                   "only in the list": sorted(PURCHASE_PAYMENT_COLUMNS - real)}
+    # a payment that names only what it must: every other column is the table's default
+    p = _rupee("VPMT-784-50", 40000, [])
+    for key in ("payment_mode", "reference_no", "notes", "created_at", "updated_at", "purchase_bill_id"):
+        p["payment"].pop(key, None)        # (unallocated_paise stays: the function holds a rupee payment to its own arithmetic)
+    assert _settle(db, p).returncode == 0
+    row = _payment(db, "VPMT-784-50")
+    for column, value in COLUMN_DEFAULTS.items():
+        if column in p["payment"]:
+            continue                      # the payload named it: it is the caller's value and not the table's default
+        stored = row[column].strip() if isinstance(row[column], str) else row[column]
+        assert (float(stored) if column == "exchange_rate" else stored) == value, (column, stored, value)
