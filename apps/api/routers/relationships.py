@@ -21,6 +21,7 @@ from core.authz import (
     firmwide_roles_label,
 )
 from core.permissions import rbac
+from services.audit_service import audited
 from services.timeline_service import timeline_service
 from domain.money_sentence import rupee_whole_text
 from core import db_provider
@@ -906,6 +907,7 @@ def detect_cross_client_matches(
 
 
 @router.patch("/cross-client-matches/{match_id}/review")
+@audited("cross_client_match", "review")
 def review_cross_client_match(
     match_id: str,
     data: CrossMatchReviewIn,
@@ -946,6 +948,7 @@ def review_cross_client_match(
 # CGST Act Sec 2(76): related party
 
 @router.post("/entity-to-entity")
+@audited("entity_relationship", "create")
 def create_entity_to_entity_relationship(
     data: EntityToEntityRelIn,
     current_user: dict = Depends(rbac("client", "write")),
@@ -1018,6 +1021,7 @@ def list_entity_to_entity_relationships(
 # Section 186 Companies Act: loans to other companies — requires CA review
 
 @router.post("/loans")
+@audited("related_party_loan", "create")
 def create_loan(
     data: LoanIn,
     current_user: dict = Depends(rbac("client", "write")),
@@ -1176,6 +1180,7 @@ def section_185_report(
 # IT Act Sec 48: cost of acquisition for capital gains
 
 @router.post("/properties")
+@audited("property", "create")
 def create_property(
     data: PropertyIn,
     current_user: dict = Depends(rbac("client", "write")),

@@ -39,6 +39,7 @@ from models.service_catalogue import ServiceCatalogueIn, ServiceCatalogueUpdateI
 from models.clearable import patch_dict
 from core import db_provider
 from core.permissions import rbac
+from services.audit_service import audited
 from core.authz import assert_client_access, can_access_client
 from core.ist_clock import ist_today
 from services.period_validation_service import period_validation_service
@@ -400,6 +401,7 @@ def _matches(term: str, row: dict) -> bool:
 
 
 @router.post("/")
+@audited("service_catalogue_item", "create")
 def create_service(
     data: ServiceCatalogueIn,
     current_user: dict = Depends(rbac("accounting", "write")),
@@ -515,6 +517,7 @@ class ServiceBulkIn(BaseModel):
 
 
 @router.post("/bulk")
+@audited("service_catalogue_item", "bulk_create")
 def bulk_create_services(
     data: ServiceBulkIn,
     current_user: dict = Depends(rbac("accounting", "write")),
@@ -783,6 +786,7 @@ def _alternate_unit_problem(data, existing: dict) -> "tuple[dict, str | None]":
 
 
 @router.patch("/{service_id}")
+@audited("service_catalogue_item", "update")
 def update_service(
     service_id: str,
     data: ServiceCatalogueUpdateIn,
@@ -1094,6 +1098,7 @@ def _service_blocked_message(used_in: list[str]) -> str:
 
 
 @router.delete("/{service_id}")
+@audited("service_catalogue_item", "delete")
 def delete_service(
     service_id: str,
     current_user: dict = Depends(rbac("accounting", "write")),

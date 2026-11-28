@@ -21,7 +21,7 @@ from typing import Annotated, Optional
 from models.clearable import patch_dict
 from models.common import api_response
 from services import bank_erasure
-from services.audit_service import log_event
+from services.audit_service import audited, log_event
 from services.named_row_ownership import bank_account_is_the_clients, customer_is_the_clients, vendor_is_the_clients
 from core.authz import assert_client_access, effective_client_ids, filter_by_client
 from core.observability import capture_soft_failure, capture_posting_failure
@@ -1510,6 +1510,7 @@ def list_column_mappings(
 
 
 @router.delete("/statements/column-mappings/{mapping_id}")
+@audited("bank_statement_column_mapping", "delete")
 def delete_column_mapping(
     mapping_id: str = Path(...),
     current_user: dict = Depends(rbac("banking", "write")),

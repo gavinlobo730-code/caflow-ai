@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel, Field
 from typing import Optional
 from core.permissions import rbac
+from services.audit_service import audited
 from core.authz import assert_client_access
 from domain.tds import TDSComputer
 from domain.tds import deductor as tds_deductor
@@ -584,6 +585,7 @@ def list_treaty_rates(user: dict = Depends(rbac("tds", "read"))):
 
 
 @router.put("/treaty-rates")
+@audited("dtaa_treaty_rate", "update")
 def upsert_treaty_rate(body: TreatyRateIn,
                        user: dict = Depends(rbac("tds", "write"))):
     """Record or replace this firm's reading for one (country, nature).
@@ -645,6 +647,7 @@ def upsert_treaty_rate(body: TreatyRateIn,
 
 
 @router.delete("/treaty-rates/{rate_id}")
+@audited("dtaa_treaty_rate", "delete")
 def delete_treaty_rate(rate_id: str, user: dict = Depends(rbac("tds", "write"))):
     """Remove one reading. Bills already booked keep what they withheld — the
     deduction row records what was true at the time, not what the table says

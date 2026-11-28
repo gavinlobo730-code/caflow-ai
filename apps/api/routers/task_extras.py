@@ -6,6 +6,7 @@ from core.permissions import rbac
 from repositories.task_extras_repository import task_extras_repo
 from repositories.task_repository import task_repo
 from core.observability import capture_soft_failure
+from services.audit_service import audited
 
 router = APIRouter(prefix="/api/tasks", tags=["task-extras"])
 
@@ -132,6 +133,7 @@ def add_dependency(task_id: str, body: AddDependencyBody, current_user: dict = D
 
 
 @router.delete("/{task_id}/dependencies/{dependency_id}")
+@audited("task", "remove_dependency")
 def remove_dependency(task_id: str, dependency_id: str, current_user: dict = Depends(rbac("task", "write"))):
     task = task_repo.find_by_id(task_id, firm_id=current_user.get("firm_id"))
     if not task:

@@ -8,6 +8,7 @@ from models.common import api_response
 from core.permissions import rbac
 from core.authz import can_access_client, filter_by_client
 from repositories.ai_insights_repository import ai_insights_repo
+from services.audit_service import audited
 
 router = APIRouter(prefix="/api/insights", tags=["insights"])
 
@@ -38,6 +39,7 @@ def list_insights(
 
 
 @router.patch("/{insight_id}/status")
+@audited("ai_insight", "status_change")
 def update_insight_status(
     insight_id: str,
     new_status: str,

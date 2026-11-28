@@ -8,6 +8,7 @@ from core.authz import assert_client_access, effective_client_ids, filter_by_cli
 from repositories.notifications_repository import notifications_repo
 from core import db_provider
 from services import named_row_ownership
+from services.audit_service import audited
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
@@ -157,6 +158,7 @@ def archive_one(notification_id: str, current_user: dict = Depends(rbac("notific
 
 
 @router.post("")
+@audited("notification", "create", id_in=("notification.id",))
 def create_notification(body: NotificationCreate, current_user: dict = Depends(rbac("notification", "write"))):
     firm_id = current_user.get("firm_id")
     # M2: body.client_id was written straight into the row with no check —

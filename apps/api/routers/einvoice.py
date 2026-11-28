@@ -27,6 +27,7 @@ from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client, effective_client_ids
 from models.common import api_response
 from services.timeline_service import timeline_service
+from services.audit_service import audited
 
 router = APIRouter(prefix="/api/einvoice", tags=["einvoice"])
 _logger = logging.getLogger("caflow.einvoice.router")
@@ -172,6 +173,7 @@ def _invoice_treatment(firm_id: str, client_id: str, sales_invoice_id: Optional[
 
 
 @router.post("/records")
+@audited("einvoice_record", "create")
 def create_record(
     req: CreateEInvoiceRequest,
     current_user: dict = Depends(rbac("gst", "compute")),
@@ -316,6 +318,7 @@ def list_records(
 
 
 @router.post("/records/{record_id}/irn-generated")
+@audited("einvoice_record", "irn_recorded", id_in=("id",))
 def record_irn_generated(
     record_id: str,
     req: RecordIRNRequest,
@@ -357,6 +360,7 @@ def record_irn_generated(
 
 
 @router.post("/records/{record_id}/cancel")
+@audited("einvoice_record", "cancel")
 def cancel_irn(
     record_id: str,
     req: CancelIRNRequest,

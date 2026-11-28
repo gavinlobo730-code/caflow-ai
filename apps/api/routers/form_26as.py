@@ -13,6 +13,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from core.permissions import rbac
+from services.audit_service import audited
 from core.authz import assert_client_access, can_access_client
 from core import db_provider
 from models.common import api_response
@@ -84,6 +85,7 @@ def create_upload(
 
 
 @router.post("/uploads/{upload_id}/parse")
+@audited("form_26as_upload", "parse")
 def parse_upload(
     upload_id: str,
     req: ParseRequest,
@@ -259,6 +261,7 @@ def get_claimable_credit(
 
 
 @router.post("/uploads/{upload_id}/uploaded")
+@audited("form_26as_upload", "mark_uploaded")
 def mark_26as_uploaded(
     upload_id: str,
     current_user: dict = Depends(rbac("income_tax", "compute")),

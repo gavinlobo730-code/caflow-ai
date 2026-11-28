@@ -29,6 +29,7 @@ from core.authz import assert_client_access, filter_by_client
 from core.db_paging import fetch_all
 from core.ist_clock import ist_today, month_end_date, ist_fy_label
 from core.permissions import rbac
+from services.audit_service import audited
 from services import payroll_report_service
 from services.timeline_service import timeline_service
 from services import employee_portal_service
@@ -2606,6 +2607,7 @@ def create_salary_structure(
 
 
 @router.post("/salary-structures/{structure_id}/apply")
+@audited("salary_structure", "apply", id_in=("structure_id",), wrote=lambda d: isinstance(d, dict) and (d.get("applied") or 0) > 0)
 def apply_salary_structure(
     structure_id: str,
     data: ApplyStructureIn,
@@ -3933,6 +3935,7 @@ def update_run_status(
 
 
 @router.post("/runs/{run_id}/finalize", dependencies=_NEEDS_PAYROLL_READ)
+@audited("payroll_run", "finalize")
 def finalize_run(
     run_id: str,
     current_user: dict = Depends(rbac("payroll", "finalize")),
@@ -4101,6 +4104,7 @@ def finalize_run(
 
 
 @router.post("/runs/{run_id}/loan-writedown", dependencies=_NEEDS_PAYROLL_READ)
+@audited("payroll_run", "write_down_loans", wrote=lambda d: isinstance(d, dict) and bool(d.get("written_down")))
 def write_down_owed_loans(
     run_id: str,
     current_user: dict = Depends(rbac("payroll", "finalize")),
@@ -4824,6 +4828,7 @@ def get_statutory_values(
 
 
 @router.put("/statutory-values/pt")
+@audited("pt_slabs", "update")
 def put_pt_slabs(
     body: PTSlabSetIn,
     current_user: dict = Depends(rbac("payroll", "write"))
@@ -4893,6 +4898,7 @@ def put_pt_slabs(
 
 
 @router.delete("/statutory-values/pt")
+@audited("pt_slabs", "delete")
 def delete_pt_slabs(
     state: str = Query(..., description='Two-letter state code, e.g. "GJ"'),
     effective_from: str = Query(..., description="The version to remove, YYYY-MM-DD"),
@@ -5718,6 +5724,7 @@ def get_one_time_earnings(
 
 
 @router.put("/one-time-earnings")
+@audited("payroll_one_time_earnings", "update")
 def put_one_time_earnings(
     body: OneTimeEarningsIn,
     current_user: dict = Depends(rbac("payroll", "write"))
@@ -5862,6 +5869,7 @@ def one_time_earning_defaults(
 
 
 @router.put("/attendance/settings")
+@audited("payroll_settings", "update")
 def put_payroll_settings(
     body: PayrollSettingsIn,
     current_user: dict = Depends(rbac("payroll", "write"))
@@ -6098,6 +6106,7 @@ def payroll_employee_exceptions(
 
 
 @router.put("/enablement")
+@audited("payroll_settings", "update")
 def put_payroll_enablement(
     body: PayrollEnablementIn,
     current_user: dict = Depends(rbac("payroll", "enable"))
@@ -6250,6 +6259,7 @@ _NOT_PAYROLL_REGISTRATIONS = frozenset({"tan", "note"})
 
 
 @router.put("/statutory-identity")
+@audited("statutory_identity", "update")
 def put_statutory_identity(
     body: StatutoryIdentityIn,
     current_user: dict = Depends(rbac("payroll", "write"))
@@ -6323,6 +6333,7 @@ def put_statutory_identity(
 
 
 @router.put("/statutory-identity/pt")
+@audited("pt_registration", "update")
 def put_pt_registration(
     body: PTRegistrationIn,
     current_user: dict = Depends(rbac("payroll", "write"))
@@ -6365,6 +6376,7 @@ def put_pt_registration(
 
 
 @router.delete("/statutory-identity/pt")
+@audited("pt_registration", "delete")
 def delete_pt_registration(
     client_id: str = Query(...),
     state: str = Query(..., description='Two-letter state code, e.g. "MH"'),
@@ -6602,6 +6614,7 @@ class ECRFiledIn(BaseModel):
 
 
 @router.post("/runs/{run_id}/ecr/filed")
+@audited("epfo_ecr_filing", "create", id_in=("filing.id",), wrote=lambda d: isinstance(d, dict) and bool(d.get("filing")))
 def record_ecr_filed(
     run_id: str,
     body: ECRFiledIn,
@@ -6753,6 +6766,7 @@ def _calendar_note_after_retraction(db, firm_id: str, client_id: str, row: Optio
 
 
 @router.post("/clients/{client_id}/remittances")
+@audited("statutory_remittance", "create", id_in=("remittance.id",), wrote=lambda d: isinstance(d, dict) and bool(d.get("remittance")))
 def record_remittance(
     client_id: str,
     body: RemittanceIn,
@@ -6851,6 +6865,7 @@ def unlink_remittance_payment(
 
 
 @router.delete("/clients/{client_id}/remittances/{remittance_id}")
+@audited("statutory_remittance", "retract")
 def retract_remittance(
     client_id: str,
     remittance_id: str,
@@ -6971,6 +6986,7 @@ def client_ecr_sequence(
 
 
 @router.post("/ecr-filings/{filing_id}/retract")
+@audited("epfo_ecr_filing", "retract")
 def retract_ecr_filing(
     filing_id: str,
     current_user: dict = Depends(rbac("payroll", "write")),
@@ -7989,6 +8005,7 @@ def list_declarations(
 
 
 @router.post("/declarations/{declaration_id}/verify")
+@audited("payroll_it_declaration", "verify")
 def verify_declaration(
     declaration_id: str,
     body: DeclarationVerifyIn,
@@ -8814,6 +8831,7 @@ class SettlementRecordIn(SettlementIn):
 
 
 @router.post("/employees/{employee_id}/settlement/record", dependencies=_NEEDS_PAYROLL_READ)
+@audited("employee", "record_settlement", wrote=lambda d: not (isinstance(d, dict) and d.get("recorded") is False))
 def record_settlement(
     employee_id: str,
     body: SettlementRecordIn,
@@ -9289,6 +9307,7 @@ class PerquisiteRecordIn(BaseModel):
 
 
 @router.put("/employees/{employee_id}/perquisites")
+@audited("employee", "record_perquisites", wrote=lambda d: isinstance(d, dict) and bool(d.get("recorded")))
 def record_perquisites(
     employee_id: str,
     body: PerquisiteRecordIn,
@@ -9393,6 +9412,7 @@ class SalaryRevisionIn(BaseModel):
 
 
 @router.post("/employees/{employee_id}/salary-revisions")
+@audited("payroll_salary_revision", "create", id_in=("revision_id",), wrote=lambda d: isinstance(d, dict) and bool(d.get("revision_id")))
 def add_salary_revision(
     employee_id: str,
     body: SalaryRevisionIn,
@@ -9489,6 +9509,7 @@ class EmployeeLoanIn(BaseModel):
 
 
 @router.post("/employees/{employee_id}/loans")
+@audited("payroll_loan", "create", id_in=("loan_id",), wrote=lambda d: isinstance(d, dict) and bool(d.get("loan_id")))
 def add_employee_loan(
     employee_id: str,
     body: EmployeeLoanIn,

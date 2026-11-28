@@ -44,6 +44,7 @@ from time import monotonic as _monotonic
 
 from models.common import api_response
 from core.permissions import rbac
+from services.audit_service import audited
 from core.observability import capture_soft_failure as _report_soft_failure
 from core.authz import filter_by_client, assert_client_access, can_access_client, effective_client_ids
 from services.timeline_service import timeline_service
@@ -1502,6 +1503,7 @@ def recalculate_all(
 
 
 @router.post("/scores/{client_id}/override")
+@audited("health_override", "create")
 def create_override(
     client_id: str,
     data: OverrideIn,
@@ -1537,6 +1539,7 @@ def create_override(
 
 
 @router.delete("/overrides/{override_id}")
+@audited("health_override", "delete")
 def deactivate_override(
     override_id: str,
     current_user: dict = Depends(rbac("client", "write")),

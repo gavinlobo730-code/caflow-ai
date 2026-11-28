@@ -18,6 +18,7 @@ from pydantic import BaseModel, field_validator
 from models.common import api_response
 from core.authz import assert_client_access, can_access_client, filter_by_client
 from core.permissions import rbac
+from services.audit_service import audited
 from core.query_day import query_day
 from services import billing_service
 from services import time_billing_service
@@ -341,6 +342,7 @@ def get_reminder_settings(current_user: dict = Depends(rbac("billing", "read")))
 
 
 @router.put("/collections/reminder-settings")
+@audited("reminder_settings", "update")
 def put_reminder_settings(body: ReminderSettingsIn,
                           current_user: dict = Depends(rbac("billing", "write"))):
     """Update the per-firm reminder policy."""

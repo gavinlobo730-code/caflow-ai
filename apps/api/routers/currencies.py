@@ -13,6 +13,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
 from models.common import api_response
 from core.permissions import rbac
+from services.audit_service import audited
 from core.authz import assert_client_access
 from core.feature_flags import multi_currency_platform_enabled
 from domain.currency import resolve_currency_policy
@@ -349,6 +350,7 @@ def list_fx_rates(
 
 
 @router.put("/rates")
+@audited("fx_rate", "update")
 def record_fx_rate(
     base: str = Body(..., embed=True),
     quote: str = Body(..., embed=True),

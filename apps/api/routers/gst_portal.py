@@ -11,6 +11,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from core.permissions import rbac
+from services.audit_service import audited
 from core.authz import assert_client_access
 from models.common import api_response
 from services.timeline_service import timeline_service
@@ -56,6 +57,7 @@ class ManualSnapshotRequest(BaseModel):
 
 
 @router.post("/sync-jobs")
+@audited("gst_sync_job", "create")
 def create_sync_job(
     req: CreateSyncJobRequest,
     # was rbac("gst", "read") — this MUTATES (creates / runs a sync job), and
@@ -132,6 +134,7 @@ def list_sync_jobs(
 
 
 @router.post("/snapshots")
+@audited("gst_portal_snapshot", "create")
 def save_manual_snapshot(
     req: ManualSnapshotRequest,
     current_user: dict = Depends(rbac("gst", "compute")),

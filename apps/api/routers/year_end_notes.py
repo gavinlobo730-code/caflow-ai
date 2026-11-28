@@ -21,6 +21,7 @@ from pydantic import BaseModel
 
 from models.common import api_response
 from core.permissions import rbac
+from services.audit_service import audited
 from services.audit_service import log_event
 # M2 audit finding: every endpoint below resolved its engagement by firm_id
 # alone (_get_engagement_db, live mode) or not checked its client at all
@@ -1021,6 +1022,7 @@ def get_note(
 
 
 @router.patch("/{engagement_id}/notes/{note_id}")
+@audited("year_end_note", "update")
 def update_note(
     engagement_id: str,
     note_id: str,
