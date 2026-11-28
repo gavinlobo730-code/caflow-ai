@@ -82,6 +82,16 @@ those (Postgres's own warnings are not), and shows them as `messages` in `--json
 `NOTE` line in the text report, and as a notice annotation on the run's summary page under
 Actions.
 
+**An applied migration is never edited, not even a comment, and a test holds it.** The runner compares each file's checksum
+with the one the database recorded and runs a file again when they differ. For a file that failed, that is the retry. For a file
+that applied, it is a second run of old SQL over a database every later migration has changed: it puts back what the file defined
+and undoes each later change to the same object. On 27 November 2026 a rename sweep rewrote test names in the comments of eight
+applied migrations, six ran again in production, and the ledger posting function went back to its September body until migration
+786 restored it (the record is in `docs/design-record/engineering-and-ci.md`). `tests/test_an_applied_migration_is_never_edited.py`
+now holds every migration to the checksum listed in `tests/fixtures/migration_checksums.txt`. **A new migration adds its line with
+`python3 scripts/db/freeze_migration_checksums.py`** (from `apps/api`); the script never rewrites an existing line by itself. If
+the test names a file you did not mean to change, put the file back.
+
 **A failure is remembered, and a remembered failure keeps the run red.** A file that fails
 is recorded in `schema_migration_failures` at its checksum and is not attempted again. The
 next run skips it, still applies what else is pending, and **exits non-zero** with an error

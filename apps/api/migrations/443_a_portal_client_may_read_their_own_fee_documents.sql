@@ -302,7 +302,7 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- VERIFIED END TO END ON A REAL DATABASE BUILT FROM THE FULL MIGRATION SET
 -- ═══════════════════════════════════════════════════════════════════════════
--- See tests/test_443_a_portal_client_reads_their_own_fee_documents_pg.py: raw-SQL
+-- See tests/test_r443_portal_client_reads_own_fee_documents_pg.py: raw-SQL
 -- proofs for all eight tables (own row visible, sibling portal client's row
 -- invisible, unassigned staff sees nothing, an assigned/Partner staff member
 -- unaffected, no write widened) PLUS the real, unmodified

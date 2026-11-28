@@ -205,7 +205,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A DEMO COMPANY IS SIZED BY ITS TURNOVER AND ITS COST SHARE, ITS OWNERS PAY FOR WHAT IT BOUGHT BEFORE THE BOOKS, AND A TEST WORKS ITS YEAR OUT
 - A CREDIT OR DEBIT NOTE IS RAISED AGAINST A DOCUMENT OF ITS OWN CUSTOMER OR SUPPLIER, AND A DRAFT WHOSE PARTY CHANGES DROPS THE OLD PARTY'S
 
-### `docs/design-record/engineering-and-ci.md` (16 entries): Tests, lint and coverage ratchets, CI, dependency lock, migrations and the schema-drift check
+### `docs/design-record/engineering-and-ci.md` (17 entries): Tests, lint and coverage ratchets, CI, dependency lock, migrations and the schema-drift check
 
 - THE BACKEND HAS A LINT RATCHET, A PROPERTY SUITE, ONE PAGER, ONE DOOR TO THE DATABASE CLIENT AND A COVERAGE FLOOR, AND EACH IS A R
 - THE SMOKE WALK RUNS BY ITSELF, NIGHTLY AND ON DEMAND, AND IS NOT A CHECK ANYTHING WAITS ON
@@ -223,6 +223,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE BACKEND INSTALLS FROM A HASH-PINNED LOCK AND THE IMAGE HOLDS NO TEST SUITE
 - THE SHARED PAGER RETRIES A READ, BUILDS A QUERY AFRESH FOR EVERY PAGE, AND READS IN A STATED ORDER THAT ENDS IN `id`
 - A DOCS-ONLY CHANGE RUNS ONLY THE TESTS THAT READ THE DOCUMENTS, DERIVED AND NEVER LISTED, AND A PUSH TO `main` RUNS EVERYTHING
+- AN APPLIED MIGRATION IS NEVER EDITED, NOT EVEN A COMMENT
 ### `docs/design-record/filing-and-compliance.md` (11 entries): Filing to government portals, trackers and the period lock
 - A TIED CHALLAN IS CHECKED AGAINST THE ACCOUNT IT CLEARS, AND THE CHALLANS NOBODY HAS TIED ARE A WORKLIST THAT FLAGS A MONTH'S WAIT
 
@@ -1846,20 +1847,14 @@ _Longer design records for this area were moved to `docs/design-record/engineeri
   body from the migration that LAST defined that function — found by NUMBER, not
   from memory and not from the one you happen to be reading.** A replacement either
   carries every earlier change forward or silently reverts it, and the revert
-  compiles, deploys and passes a mock suite. Migration 384 got this wrong twice
-  before the real-Postgres suite caught it: the first attempt was hand-written and
-  lost the balance guard, the `jsonb_populate_record` column list and the
-  `deleted_at` filter; the second was derived faithfully from migration 243 — and
-  243 was the WRONG ANCESTOR, because 271 had made `post_journal_atomic` SECURITY
-  DEFINER and 274 had folded in the reversal stamp. Merging it would have
-  reproduced exactly the production incident 274's own header records:
-  `permission denied for table journal_entries`, 42501, the reversal committed and
-  its original left unflagged. `grep -ln "FUNCTION.*<name>" migrations/*.sql | sort
+  compiles, deploys and passes a mock suite (migration 384 got it wrong twice; the record has the story).
+  `grep -ln "FUNCTION.*<name>" migrations/*.sql | sort
   | tail -1` is the answer. The guard shape that survives is in
   `tests/test_a_voucher_shows_its_lines_in_order.py`: it reconstructs the ancestor
   by scanning the migration directory, so it cannot be pointed at a stale one, and
   a parametrised clause test names the privilege model and every invariant a
   careless rewrite drops.
+- **AN APPLIED MIGRATION IS NEVER EDITED, NOT EVEN A COMMENT** (POST-A-583): the runner re-runs a file whose checksum changed, and a re-run reverts every later change to what the file defines (27-11-2026: production's `post_journal_atomic` went back to migration 274's; 786 is the repair). `tests/test_an_applied_migration_is_never_edited.py` holds each file to its recorded checksum; a NEW migration adds its line with `python3 scripts/db/freeze_migration_checksums.py`.
 - `core/schema_guard.py` is the boot-time backstop: it surfaces code/schema drift loudly
   instead of letting writes fail silently behind broad `try/except`.
 - **A `SECURITY DEFINER` function that takes arguments and that a signed-in user can execute MUST ASK WHO IS CALLING**, because row security does not run inside it: call `public.assert_caller_acts_for(function, firm, client, pairs)` first (migration 486 is the pattern, and it wraps by RENAME so no body is restated), or revoke EXECUTE from `authenticated`. `tests/test_a_function_that_runs_as_its_owner_and_a_signed_in_user_can_call_asks_who_is_calling_pg.py` fails a new one.
