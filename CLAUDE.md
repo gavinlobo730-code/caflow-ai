@@ -719,7 +719,7 @@ _Longer design records for this area were moved to `docs/design-record/ai.md`; s
   not for the database**: a customer receipt (rupee, and foreign since migration 781) posts its journal inside the receipt's own
   transaction through the `settle_receipt_atomic` database function (migrations 160 and 235, its body renamed `settle_receipt_atomic__unguarded` by 486 and restated by 574 and 781)
   and not through `post_journal_atomic`, and a manual journal's lines are rewritten by
-  `edit_posted_journal`, so three database functions write the ledger. The public site
+  `edit_posted_journal`, so three database functions write the ledger (a fourth, `settle_payment_atomic`, migration 784, is called by nothing yet: POST-A-575). The public site
   therefore says "one ledger" and never "one posting path";
   `tests/test_the_hero_figures_are_counted_facts.py` pins the closed set of writers, the
   agreement of the hero's figures with the page's counters and that wording.

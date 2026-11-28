@@ -21,9 +21,10 @@ file asserts, from the code:
 
   1. each module the label names posts through the posting kernel
      (`journal_for_*` calls `_create_journal`);
-  2. the set of things that WRITE the ledger is closed and named: three database
-     functions (two that post an entry, one that rewrites a manual journal's lines)
-     and three Python services; a fourth writer fails here with the sentence that
+  2. the set of things that WRITE the ledger is closed and named: four database
+     functions (three that post an entry: the kernel's, a receipt's and, since
+     migration 784, a supplier payment's; one that rewrites a manual journal's lines)
+     and three Python services; a fifth writer fails here with the sentence that
      says the figure has to be re-read before it is allowed to stay;
   3. while more than one database function inserts a journal header, the site does
      not say there is one posting path, however it is spelled.
@@ -73,6 +74,10 @@ MODULE_POSTERS = {
 EXPECTED_SQL_WRITERS = {
     "post_journal_atomic": {"journal_entries", "journal_lines"},
     "settle_receipt_atomic": {"journal_entries", "journal_lines"},
+    # Migration 784 (POST-A-575): a supplier payment's entry, row and bill settlements in one transaction, on the receipt function's
+    # shape. Re-read as the sentence below asks: the homepage says "one ledger" and names no single posting path, and this is a third
+    # function that posts an entry into the same two tables under the same balance check. Nothing calls it until the service change.
+    "settle_payment_atomic": {"journal_entries", "journal_lines"},
     "edit_posted_journal": {"journal_lines"},
 }
 
