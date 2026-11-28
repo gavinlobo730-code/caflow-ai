@@ -22,7 +22,12 @@ WHAT THE WALK SEES, AND WHAT IT DOES NOT
     act with no record of who (acknowledging or dismissing an insight, changing its status, removing a task's dependency, writing a
     notification to a member, marking a Form 26AS as uploaded) and carry the marker now; 42 write only a log the product keeps and are on
     the list with their reason; and one route that was on the list turned out to record its write after all, and came off.
-    It still does NOT see: a table named in a variable of a function, a chain split over statements (`t = db.table("x"); t.update(...)`), an
+    A chain split over statements is read too since 28-11-2026 (`t = db.table("x")` and then `t.update(...)`, or `q = q.eq(...)` on the way): a
+    name bound to a table is that table where it is written. Only one function in the tree had that shape (`relationships.create_loan`, whose
+    table carries the trigger), so nothing new was flagged; it is held so the next one is. A write whose table name is a variable of the
+    function cannot be followed by name, and the two the tree has are on `WRITES_THROUGH_A_VARIABLE` below with what bounds each, so a third
+    fails the test that counts them.
+    It still does NOT see: a table named in a variable of a function (the two on that list aside), an
     object handed in as an argument or returned by a function (`db_provider.service_db_or_none()` kept in a module variable and called), a
     function passed as a callback, a relative import (63, all in `domain/`), or a write made by the database itself (a trigger or
     `.rpc(...)`). The mail provider's webhook (`email_webhooks.resend_webhook`) is one such: it writes delivery and suppression rows through a
@@ -86,6 +91,30 @@ def _chains(fn: ast.AST, constants: dict[str, str] | None = None):
             return constants.get(arg.id)
         return None
 
+    def reaches_a_table(value: ast.AST, bound: dict[str, set[str]]) -> set[str]:
+        """The tables a chain starts from: `db.table("x")...` names one, and `q.eq(...)...` names what `q` was bound to (POST-A-167, a chain split over statements)."""
+        cur = value
+        while True:
+            if isinstance(cur, ast.Call) and isinstance(cur.func, ast.Attribute):
+                if cur.func.attr in ("table", "from_") and table_of(cur):
+                    return {table_of(cur)}
+                cur = cur.func.value
+            elif isinstance(cur, ast.Attribute):
+                cur = cur.value
+            elif isinstance(cur, ast.Name):
+                return set(bound.get(cur.id, ()))
+            else:
+                return set()
+
+    # `q = db.table("x")` and then `q.update(...)`, or `q = q.eq(...)` on the way: the name is bound to the table. A name may be bound to
+    # more than one table in a function, and then every one of them is read as the table it can write.
+    bound: dict[str, set[str]] = collections.defaultdict(set)
+    assigns = [(tg.id, st.value) for st in ast.walk(fn) if isinstance(st, ast.Assign) and isinstance(st.value, (ast.Call, ast.Attribute))
+               for tg in st.targets if isinstance(tg, ast.Name)]
+    for _ in range(3):
+        for name, value in assigns:
+            bound[name] |= reaches_a_table(value, bound)
+
     for c in ast.walk(fn):
         if not (isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)):
             continue
@@ -100,6 +129,10 @@ def _chains(fn: ast.AST, constants: dict[str, str] | None = None):
                 cur = cur.func.value
             elif isinstance(cur, ast.Attribute):
                 cur = cur.value
+            elif isinstance(cur, ast.Name) and cur.id in bound:
+                for table in sorted(bound[cur.id]):
+                    yield table, set(ops)
+                break
             else:
                 break
 
@@ -347,6 +380,45 @@ EXEMPT: dict[tuple[str, str], tuple[str, str]] = {
 }
 
 
+#: A write whose TABLE is a variable of the function, which the walk cannot read: {(module, function): what bounds the table}. The tree has two; a
+#: third (or one that stops being one) fails `test_a_write_through_a_variable_table_is_on_the_list`, so the blind spot is counted and not silent.
+WRITES_THROUGH_A_VARIABLE: dict[tuple[str, str], str] = {
+    ("domain.tally.migration_service", "rollback_migration"): "deletes only from `_ROLLBACK_TABLES`, customers and vendors, which carry the audit trigger.",
+    ("services.numbering", "insert_with_number"): "inserts into the table its caller names; no product code calls it today (only tests do), so nothing reaches it from a route.",
+}
+
+
+def _variable_table_writers(sources: dict[str, str]) -> set[tuple[str, str]]:
+    found: set[tuple[str, str]] = set()
+    for module, text in sources.items():
+        tree = ast.parse(text)
+        constants = {tg.id for st in tree.body if isinstance(st, ast.Assign) and isinstance(st.value, ast.Constant) and isinstance(st.value.value, str)
+                     for tg in st.targets if isinstance(tg, ast.Name)}
+        for fn in ast.walk(tree):
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            for c in ast.walk(fn):
+                if not (isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)):
+                    continue
+                ops: list[str] = []
+                cur: ast.AST = c
+                while True:
+                    if isinstance(cur, ast.Call) and isinstance(cur.func, ast.Attribute):
+                        ops.append(cur.func.attr)
+                        if cur.func.attr in ("table", "from_") and cur.args:
+                            arg = cur.args[0]
+                            named_by_a_variable = (isinstance(arg, ast.Name) and arg.id not in constants) or not isinstance(arg, (ast.Name, ast.Constant))
+                            if named_by_a_variable and set(ops) & WRITE_OPS:
+                                found.add((module, fn.name))
+                            break
+                        cur = cur.func.value
+                    elif isinstance(cur, ast.Attribute):
+                        cur = cur.value
+                    else:
+                        break
+    return found
+
+
 @pytest.fixture(scope="module")
 def walk() -> Walk:
     return Walk(_sources())
@@ -480,4 +552,41 @@ def test_a_log_event_of_another_module_is_not_the_audit_log():
 def test_the_marker_counts_as_recording():
     w = _case("from services.audit_service import audited\n@router.post('/x')\n@audited('widget', 'create')\ndef f(db, current_user):\n    db.table('some_table').insert({}).execute()\n")
     assert w.unaudited(T) == {}
+
+
+def test_a_chain_split_over_two_statements_is_followed():
+    w = _case("@router.post('/x')\ndef f(db):\n    t = db.table('some_table')\n    t.insert({}).execute()\n")
+    assert w.unaudited(T) == {("r", "f"): ("some_table",)}
+
+
+def test_a_name_rebound_on_the_way_is_still_that_table():
+    w = _case("@router.post('/x')\ndef f(db):\n    q = db.table('some_table').select('*')\n    q = q.eq('id', 1)\n    q.update({}).execute()\n")
+    assert w.unaudited(T) == {("r", "f"): ("some_table",)}
+
+
+def test_a_name_bound_to_something_that_is_not_a_table_writes_nothing():
+    w = _case("@router.post('/x')\ndef f(db, rows):\n    t = rows.copy()\n    t.update({})\n    db.table('other_table').select('*').execute()\n")
+    assert w.unaudited(T) == {}
+
+
+def test_a_chain_split_over_statements_that_audits_is_not_flagged():
+    w = _case("from services.audit_service import log_event\n@router.post('/x')\ndef f(db, u):\n    t = db.table('some_table')\n    t.update({}).execute()\n    log_event('f', 'x', '1', 'update', actor_id=u['auth_user_id'])\n")
+    assert w.unaudited(T) == {}
+
+
+def test_a_write_through_a_variable_table_is_on_the_list(walk):
+    found = _variable_table_writers(_sources())
+    assert found == set(WRITES_THROUGH_A_VARIABLE), (
+        "A write whose table is a variable of the function is invisible to the walk by name. The tree has the two on WRITES_THROUGH_A_VARIABLE; "
+        f"new: {sorted(found - set(WRITES_THROUGH_A_VARIABLE))}, no longer such a write: {sorted(set(WRITES_THROUGH_A_VARIABLE) - found)}. "
+        "Either write the table as a literal or a module constant, or add the function with what bounds the table.")
+
+
+def test_the_variable_table_finder_is_not_blind():
+    one = {"services.x": "def f(db, table):\n    db.table(table).insert({}).execute()\n"}
+    assert _variable_table_writers(one) == {("services.x", "f")}
+    literal = {"services.x": "T = 'a'\ndef f(db):\n    db.table(T).insert({}).execute()\n    db.table('b').delete().execute()\n"}
+    assert _variable_table_writers(literal) == set()
+    read = {"services.x": "def f(db, table):\n    db.table(table).select('*').execute()\n"}
+    assert _variable_table_writers(read) == set()
 
