@@ -27,6 +27,7 @@ from domain.gst import compensation_cess
 from domain.inventory import note_goods
 from domain.inventory import stock_effect as stock_effects
 from domain.accounting import opening_documents as _opening
+from services.note_target_guard import assert_a_note_can_reach
 from core.authz import assert_client_access, can_access_client
 from core.db_provider import privileged_for
 from services import named_row_ownership
@@ -560,13 +561,13 @@ def issue_debit_note(dn_id: str, current_user: dict = Depends(rbac("accounting",
             # losing whichever wrote second.
             for _attempt in range(6):
                 b = (db.table("purchase_bills")
-                     .select("net_payable_paise,paid_paise,debited_paise,credit_note_paise,status,is_opening")
+                     .select("net_payable_paise,paid_paise,debited_paise,credit_note_paise,status,is_opening,bill_no,txn_currency")
                      .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute())
                 if not b.data:
                     raise HTTPException(status_code=422, detail="Linked bill is not part of this client's books.")
                 bill = b.data[0]
-                if (bill.get("status") or "") in ("draft", "cancelled"):
-                    raise HTTPException(status_code=422, detail=f"Cannot debit-note a {bill.get('status')} bill.")
+                # POST-A-579: see credit_notes.py. A debit note moves the rupee amount only.
+                assert_a_note_can_reach(bill, is_bill=True, note="debit note", number=bill.get("bill_no") or bill_id, cannot="debit-note")
                 if _opening.carried_over(bill):
                     raise HTTPException(status_code=422,
                                         detail=_opening.note_refusal(_opening.PAYABLE))

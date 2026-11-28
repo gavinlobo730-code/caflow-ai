@@ -22,6 +22,7 @@ from services import period_lock_service
 from services.timeline_service import timeline_service
 from domain.banking import parse_narration
 from domain.banking import posting_map as pmap
+from domain.accounting import foreign_documents as _foreign
 from domain.banking.charge_gst import split_inclusive_charge, build_inclusive_lines
 from domain.banking.splits import build_split_lines, SplitError
 from services.bank_split_service import bank_split_service
@@ -94,6 +95,32 @@ class BankPostingService:
                 .limit(1).execute().data or [None])[0] or {}
         assert_bank_account_is_inr(db, firm_id, stmt.get("bank_account_id"),
                                    client_id=txn["client_id"])
+
+    def _assert_matched_document_is_in_rupees(self, db, firm_id: str, txn: dict) -> None:
+        """Refuse to post a line that settles a document billed in a foreign currency (POST-A-579).
+
+        A bank line is in rupees. Settled one-to-one against an invoice or a bill billed in a foreign currency it moves the rupees paid
+        and never the foreign amount, so the document reads settled in rupees with its foreign amount outstanding and no exchange
+        difference recorded. The queue's multi-document settlement (`match_and_settle_multi`) carries the currency and the rate and is
+        the way that works; this is the one-to-one door. Asked before the line is claimed and before anything is posted, so the refusal
+        leaves nothing, and in the same place as the currency check of the bank account, for the same reason: nothing catches it here."""
+        category, kind, doc_id = txn.get("category"), txn.get("matched_entity_type"), txn.get("matched_entity_id")
+        if not doc_id:
+            return
+        # The tables are spelt out in each branch, not passed as a name, so the firm-scope scan can read that each query names its firm.
+        if category in pmap.SETTLES_SALES_INVOICE and kind == "sales_invoice":
+            label, is_bill = "invoice_no", False
+            rows = (privileged_for(db).table("client_sales_invoices").select("id, invoice_no, txn_currency")
+                    .eq("id", doc_id).eq("firm_id", firm_id).eq("client_id", txn["client_id"]).limit(1).execute().data) or []
+        elif category in pmap.SETTLES_PURCHASE_BILL and kind == "purchase_bill":
+            label, is_bill = "bill_no", True
+            rows = (privileged_for(db).table("purchase_bills").select("id, bill_no, txn_currency")
+                    .eq("id", doc_id).eq("firm_id", firm_id).eq("client_id", txn["client_id"]).limit(1).execute().data) or []
+        else:
+            return
+        if rows and _foreign.is_foreign(rows[0]):
+            raise HTTPException(status_code=422, detail=_foreign.refusal_for_a_bank_line(
+                rows[0].get(label) or doc_id, _foreign.billed_in(rows[0]), is_bill=is_bill))
 
     # ── account resolution ───────────────────────────────────────────────────
     #: Why a bank line can refuse to post (BANK-22). This used to fall through
@@ -504,6 +531,8 @@ class BankPostingService:
         txn = self._get_txn(db, firm_id, txn_id)
         if txn.get("posted_journal_id"):
             raise HTTPException(status_code=409, detail="Transaction already posted.")
+        # POST-A-579: the person is told before they press Post, in the sentence the post would refuse with.
+        self._assert_matched_document_is_in_rupees(db, firm_id, txn)
         entry_type, lines, _ = self._plan(db, firm_id, txn, bank_account_id, account_id,
                                           to_bank_account_id, gst_rate_bps, is_interstate)
         amount, _ = _amount(txn)
@@ -657,6 +686,7 @@ class BankPostingService:
         # NOT guarded — it carries currency and exchange_rate through to
         # receipt/payment creation and is the path that already works.
         self._assert_postable_currency(db, firm_id, txn)
+        self._assert_matched_document_is_in_rupees(db, firm_id, txn)
 
         entry_type, lines, _bank_id = self._plan(
             db, firm_id, txn, bank_account_id, account_id, to_bank_account_id,

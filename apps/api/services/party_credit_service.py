@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import HTTPException
+from domain.accounting import foreign_documents as _foreign
 from domain.money_sentence import rupee_text
 from services.document_header_writer import update_header
 
@@ -53,6 +54,19 @@ def _outstanding(doc: dict, applied_to_type: str) -> int:
     if applied_to_type == "sales_invoice":
         return bps._invoice_outstanding(doc)
     return bps._bill_outstanding(doc)
+
+
+def _assert_the_document_can_take_the_credit(doc, party_col, party_id, party_type, label_col, applied_to_type, applied_to_id) -> None:
+    """The three things asked of the document a party's credit is applied to, in the order they were asked: it is in this client's
+    books, it is this party's, and it is billed in rupees."""
+    if not doc:
+        raise HTTPException(status_code=422, detail=f"{applied_to_type} {applied_to_id} is not part of this client's books.")
+    if doc.get(party_col) != party_id:
+        raise HTTPException(status_code=422,
+                            detail=f"This credit belongs to a different {party_type} than the one on {applied_to_type} {applied_to_id}.")
+    if _foreign.is_foreign(doc):
+        raise HTTPException(status_code=422, detail=_foreign.refusal_for_a_party_credit(
+            doc.get(label_col) or applied_to_id, _foreign.billed_in(doc), is_bill=applied_to_type != "sales_invoice"))
 
 
 class PartyCreditService:
@@ -286,15 +300,14 @@ class PartyCreditService:
             for _attempt in range(max_retries):
                 extra_cols = ("total_paise, debit_note_paise, credited_paise" if applied_to_type == "sales_invoice"
                               else "total_paise, net_payable_paise, credit_note_paise, debited_paise")
-                rows = (db.table(table).select(f"id, {label_col}, {party_col}, paid_paise, status, {extra_cols}")
+                rows = (db.table(table).select(f"id, {label_col}, {party_col}, paid_paise, status, txn_currency, {extra_cols}")
                         .eq("id", applied_to_id).eq("firm_id", firm_id).eq("client_id", client_id)
                         .limit(1).execute().data or [])
                 doc = rows[0] if rows else None
-                if not doc:
-                    raise HTTPException(status_code=422, detail=f"{applied_to_type} {applied_to_id} is not part of this client's books.")
-                if doc.get(party_col) != party_id:
-                    raise HTTPException(status_code=422,
-                                        detail=f"This credit belongs to a different {party_type} than the one on {applied_to_type} {applied_to_id}.")
+                # The document is this client's, is the party's own and (POST-A-579) is billed in rupees: a party's credit is held in
+                # rupees, so applied to a foreign document it would move the rupees paid and leave the foreign amount outstanding.
+                # The balance taken in step 1 is put back by the handler below.
+                _assert_the_document_can_take_the_credit(doc, party_col, party_id, party_type, label_col, applied_to_type, applied_to_id)
                 outstanding = _outstanding(doc, applied_to_type)
                 if amount_paise > outstanding:
                     raise HTTPException(status_code=422,

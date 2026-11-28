@@ -738,6 +738,15 @@ Each row: the exact question, the document or section needed, who can supply it,
 - **Stays unbuilt meanwhile:** any change to the cap, the number of days or the base, and a fixed-term employee's eligibility on one year when the employment ends before the term does. **Built on 19-11-2026, night, and in review in the gratuity pull request (POST-A-526):** the Code's section 53 named instead of the repealed Act on the screens and the settlement line, the settlement saying in words that the cap and the base are carried over, and the fixed-term setting (migration 770) with one year of service where the term expires.
 - **Ledger:** POST-C-132 (the open remainder; POST-A-526 is closed)
 
+### S51. A credit note or a debit note against an invoice or a bill in a foreign currency: at which rate, and what becomes of the exchange difference?
+
+- **What the product does today (28-11-2026):** it refuses, in words and before anything is written, a credit note, a debit note, a party's credit applied and a one-to-one bank match against an invoice or a bill billed in a foreign currency, because each of those moves the rupee amount alone and would leave the foreign amount outstanding (POST-A-579). A CA who needs a credit note against a USD invoice cannot issue it here yet.
+- **Question:** (1) When a credit note is issued against an invoice billed in a foreign currency, is the note's rupee value taken at the rate the INVOICE was booked at, or at the rate on the NOTE's own date? (2) If the two differ, is the difference an exchange difference under AS 11 recognised when the note is issued, and is it realised or does it stay with the invoice until the invoice is settled? (3) Is a debit note read the same way, on both the sales and the purchase side? (4) Is a customer's or a supplier's unapplied credit held in the foreign currency or in rupees, and at which rate is it applied to a later foreign document?
+- **Needed:** a practising CA's reading of AS 11 for a note against a foreign-currency document (and, for an export, whether the GST value of the note follows the same rate under Rule 34 of the CGST Rules).
+- **Who can supply it:** you, or a practising CA.
+- **Stays unbuilt meanwhile:** the foreign amount on a note and on a party's credit, and the exchange difference a note produces (POST-A-585). The refusal stays, and receipts and payments in the document's own currency work as they do.
+- **Ledger:** POST-A-585
+
 ## 5. Wait-until-asked items the goal probably needs
 
 Because the goal is to replace every platform, some items I decided to leave until a client asks will probably be needed. They stay parked, and you do not have to answer; this is the list to pull from. Say the word and I move any of them to the front. My default: build them in the order a pilot firm or the demo audience asks, after the base is solid.
