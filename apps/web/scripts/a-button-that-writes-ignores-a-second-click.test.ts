@@ -205,11 +205,11 @@ test("the analysis exposes the node a fix has to rewrite", () => {
 test("a client method that sends a POST is a write whatever it is called, at any depth, on any client", () => {
   // The frozen table below was a number the analysis could not make true: the first version asked
   // whether a method's NAME began with a verb from a list, on a chain of exactly `api.<ns>.<verb>`.
-  // `invoices.fromEngagement` (Raise Invoice), `yearEndApi.notes.generateAll` (Generate All Notes)
+  // `billing.run`, `yearEndApi.notes.generateAll` (Generate All Notes)
   // and `api.banking.entries.pass` (Pass, which books a bank line) matched neither limb, so the
   // screens that held them read as having no write and a money screen carried raw buttons while
   // its own guard said it carried none.
-  assert.equal(raw(`function F(){ async function s(){ await api.invoices.fromEngagement(1); }
+  assert.equal(raw(`function F(){ async function s(){ await api.billing.run(1); }
     return <button onClick={s}>x</button>; }`).length, 1, "a verb nobody listed");
   assert.equal(raw(`function F(){ async function s(){ await yearEndApi.notes.generateAll(1); }
     return <button onClick={s}>x</button>; }`).length, 1, "a second client");
@@ -236,8 +236,8 @@ test("the writing methods are read from the client files, and each client is reg
   const writers = writingClientMethods();
   assert.ok(writers.size >= 330, `only ${writers.size} writing client methods found — the derivation has probably gone blind`);
   for (const must of [
-    "api.invoices.fromEngagement", "api.banking.entries.pass", "api.accounting.fxRevaluation.run",
-    "api.clients.permanentDelete", "api.billing.run", "yearEndApi.notes.generateAll", "partyCreditsApi.apply",
+    "api.billing.run", "api.banking.entries.pass", "api.accounting.fxRevaluation.run",
+    "api.clients.permanentDelete", "yearEndApi.notes.generateAll", "partyCreditsApi.apply",
   ]) assert.ok(writers.has(must), `${must} sends a mutating HTTP method and is not in the derived set`);
   for (const mustNot of ["api.invoices.downloadPdf", "api.accounting.fxRevaluation.preview"]) {
     assert.equal(writers.has(mustNot) && !(mustNot in READS_BY_POST), false, `${mustNot} reads`);
@@ -385,7 +385,6 @@ const MONEY_SCREENS = [
   "app/accounting/retainer/page.tsx",
   "app/accounting/loans/page.tsx",
   "app/approvals/page.tsx",
-  "app/billing/page.tsx",
   "app/gst/page.tsx",
   "app/income-tax/page.tsx",
   "app/payroll/people/page.tsx",

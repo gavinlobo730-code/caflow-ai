@@ -291,33 +291,3 @@ def test_deleting_your_own_non_draft_invoice_hits_the_business_rule_not_the_guar
     assert e.value.status_code == 400
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# run_overdue_check_endpoint — confine-the-run, not a list to narrow
-# ══════════════════════════════════════════════════════════════════════════════
-
-def test_overdue_check_runs_once_firm_wide_for_a_firmwide_caller(monkeypatch):
-    calls = []
-    monkeypatch.setattr(iv, "effective_client_ids", lambda user: None)
-    monkeypatch.setattr("services.invoice_lifecycle_service.run_overdue_check",
-                        lambda **k: calls.append(k) or {"transitioned": 3, "invoice_ids": ["A", "B", "C"]})
-    partner = {**USER, "role": "Partner"}
-    out = iv.run_overdue_check_endpoint(current_user=partner)
-    assert calls == [{"firm_id": FIRM, "client_id": None}]
-    assert out["data"]["transitioned"] == 3
-
-
-def test_overdue_check_runs_once_per_assigned_client_for_a_scoped_caller(monkeypatch):
-    """The write itself must be confined — the caller is assigned to exactly
-    two clients, and the batch must not touch a third, unassigned one."""
-    calls = []
-    monkeypatch.setattr(iv, "effective_client_ids", lambda user: {"c-a", "c-b"})
-
-    def _fake_run(firm_id, client_id):
-        calls.append(client_id)
-        return {"transitioned": 1, "invoice_ids": [f"INV-{client_id}"]}
-
-    monkeypatch.setattr("services.invoice_lifecycle_service.run_overdue_check", _fake_run)
-    out = iv.run_overdue_check_endpoint(current_user=USER)
-    assert sorted(calls) == ["c-a", "c-b"]
-    assert out["data"]["transitioned"] == 2
-    assert sorted(out["data"]["invoice_ids"]) == ["INV-c-a", "INV-c-b"]

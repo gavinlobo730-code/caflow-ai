@@ -129,7 +129,7 @@ BUDGET: dict[str, int] = {
     # (`staff-cost-rates`, GET and PUT) had a `lib/api` method and no screen for
     # as long as they existed; the Profitability screen's cost-rate panel is their
     # first caller, because profitability now prices an hour at that rate.
-    "/api/billing": 4, "/api/engagements": 4, "/api/income-tax": 5,
+    "/api/billing": 5, "/api/engagements": 4, "/api/income-tax": 5,
     # /api/ai-insights 6 -> 4 on 25-09-2026 (Phase 3a-6): the client AI
     # Insights screen read `ai_insights` over PostgREST and nothing could
     # write it — `generate_insights_for_client` is written and tested and
@@ -199,7 +199,7 @@ BUDGET: dict[str, int] = {
     # once-per-billing-period refusal a hand-built invoice never did.
     # /api/invoices 4 -> 3 on 21-11-2026 (POST-B-194): `POST /from-time/{engagement_id}` DELETED. It billed time on the earlier fee tables, no
     # screen called it, and time is billed through the sales engine now (`POST /api/billing/time-invoices`, which has its screen).
-    "/api/ai-copilot": 3, "/api/invoices": 3, "/api/purchase-cycle": 4,
+    "/api/ai-copilot": 3, "/api/invoices": 4, "/api/purchase-cycle": 4,
     # /api/accounting 2 -> 1 on 25-09-2026 (Phase 3a-3): the client
     # Reports tab renders `GET /statement-analysis`, whose method
     # `lib/api.accounting.statementAnalysis` had carried with no caller
@@ -345,7 +345,11 @@ NOT_REACHED_BY_A_SCREEN: dict[tuple[str, str], str] = {
 # 194 -> 193 on 21-11-2026 (POST-B-194): `POST /api/invoices/from-time/{engagement_id}` deleted, and `/api/invoices` fell 4 -> 3.
 # 193 -> 188 on 21-11-2026 (POST-A-547 closed): one route wired and four deleted, as the note in BUDGET says.
 # 188 -> 184 on 22-11-2026 (POST-A-548): the document-risk routes retired, and `/api/risks` fell 4 -> 0 (its line is gone).
-TOTAL_BUDGET = 184
+# 184 -> 186 on 28-11-2026 (POST-A-572): a raise with a reason. The old Billing screen has been a record since 21-11-2026 and its dead buttons are now deleted, so two
+# routes they called reach no screen: the fee receipt (`/api/billing` 4 -> 5) and Raise Invoice from an engagement (`/api/invoices` 3 -> 4). The debt was already there (a button
+# nobody could see is not a way in); the number could not see it. Both stay because the demo seeder files fee invoices and receipts through them. The other two routes the buttons
+# called, the engagement transition and the overdue check, had no other caller and are DELETED with their tests, so `/api/engagements` does not rise at all.
+TOTAL_BUDGET = 186
 
 
 # ---------------------------------------------------------------------------

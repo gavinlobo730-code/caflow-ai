@@ -10,7 +10,7 @@ WHAT WAS WRONG
         an API route no screen calls yet: the API client has the wrapper `setCostRate`);
       * `repositories/invoice_repository.update`, `delete`, `soft_delete` and `change_status` update `fee_invoices`; migrations
         172 and 245 took UPDATE from the signed-in role because the browser used to force-set `status = 'Paid'` whatever the
-        receipt (`POST /api/invoices/run-overdue-check`, which the billing screen calls; `DELETE /api/invoices/{id}`;
+        receipt (the overdue sweep, which the daily scheduler runs (its route was deleted with the billing screen's buttons, POST-A-572); `DELETE /api/invoices/{id}`;
         `PATCH /api/invoices/{id}/status`, which no screen calls).
 
     The grants were read in production on 22-10-2026 and match: the signed-in role holds no UPDATE on `fee_invoices` (any

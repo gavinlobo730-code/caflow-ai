@@ -4,7 +4,7 @@ WHAT WAS WRONG
     `fee_invoices` is the practice's own economics and core/permissions reserves it to `billing` (a Partner's, or a grant
     on the Team screen). Three doors answered the same table to people the permission table keeps from it:
 
-      * `/api/invoices` (list, one, PDF, from-engagement, from-time, run-overdue-check, status, delete) asked
+      * `/api/invoices` (list, one, PDF, from-engagement, from-time, status, delete) asked
         `invoice:read` / `invoice:write`, which an Executive holds, while `/api/engagements` and `/api/billing` asked
         `billing` and refused an Executive. The same rows were refused at one door and served at the other;
       * the analytics profitability, concentration and revenue-vs-effort endpoints (`analytics:read`, a Manager's) turn
@@ -78,7 +78,6 @@ def test_a_partner_holds_both_permissions_the_revenue_endpoints_ask():
 @pytest.mark.usefixtures("dev_header_auth")
 def test_an_executive_is_refused_the_practices_fee_invoices():
     assert client.get("/api/invoices", headers=_h("executive")).status_code == 403
-    assert client.post("/api/invoices/run-overdue-check", headers=_h("executive")).status_code == 403
 
 
 def test_no_route_in_the_invoices_router_asks_the_invoice_resource():

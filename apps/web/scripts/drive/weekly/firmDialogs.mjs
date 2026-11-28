@@ -13,8 +13,8 @@
  *
  * The six this file did not drive at first (the two fee dialogs, the two TDS dialogs and the MCA filing, and the template's task dialog) were
  * opened only by the nightly date checks, which type into them and save. Three of them are driven here as well since POST-A-555: named, Tab
- * kept inside, Escape closes, focus returns. The two fee dialogs are NOT: Billing's Add Engagement and Record Receipt are not offered at all
- * (the page is a record, `FEE_BILLING_IS_A_RECORD`), so there is nothing to open. The template's Create Task from Template needs a template
+ * kept inside, Escape closes, focus returns. The two fee dialogs were never driven: Billing's Add Engagement and Record Receipt were not offered
+ * at all (the page is a record), and they are deleted (POST-A-572). The template's Create Task from Template needs a template
  * row and is still on the ledger.
  *
  * No scenario has a date of its own, so none has a zone.

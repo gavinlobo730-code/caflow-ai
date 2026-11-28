@@ -204,12 +204,8 @@ AUDITED: dict[str, tuple[str, ...]] = {
     # Executive both reach every endpoint here directly. fee_invoices.
     # client_id and fee_engagements.client_id are both NOT NULL (migration
     # 014) — nothing on this router is a firm-level resource in disguise.
-    # run_overdue_check_endpoint is a firm-wide WRITE, confined per-caller
-    # via effective_client_ids (the recurring_invoices.py /run pattern)
-    # rather than narrowed as a list, since narrowing a write's OUTPUT after
-    # the fact would be the wrong shape.
     "/api/invoices": (
-        "assert_client_access", "filter_by_client", "effective_client_ids",
+        "assert_client_access", "filter_by_client",
         "_assert_invoice_scope", "_assert_engagement_scope",
     ),
     # The last of the original twelve "guards the body, not the record"
@@ -1813,7 +1809,7 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/reconciliation": 4,
               "/api/reminders": 3, "/api/engagements": 7,
               "/api/compliance-records": 5, "/api/task-templates": 6, "/api/customers": 10,
-              "/api/vendors": 10, "/api/billing": 18, "/api/invoices": 7,
+              "/api/vendors": 10, "/api/billing": 18, "/api/invoices": 6,
               "/api/copilot": 13, "/api/health": 13,
               "/api/year-end/{engagement_id}/adjustments": 7,
               "/api/itr": 17, "/api/platform": 9,

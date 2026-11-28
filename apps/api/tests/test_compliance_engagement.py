@@ -18,7 +18,6 @@ from domain.compliance_record_service import VALID_TRANSITIONS, compliance_recor
 from repositories.compliance_records_repository import compliance_records_repo
 from repositories.engagement_repository import engagement_repo
 from repositories.client_repository import client_repo
-from routers.engagements import ENGAGEMENT_TRANSITIONS
 from mock_data import MOCK_COMPLIANCE_RECORDS, MOCK_ENGAGEMENTS, ENGAGEMENT_INDEX, MOCK_CLIENTS, CLIENT_INDEX
 from routers.sales_invoices import MOCK_SALES_INVOICES
 
@@ -221,12 +220,6 @@ def test_compliance_lifecycle_adds_completed():
     assert VALID_TRANSITIONS["Ready To File"] == ["Filed"]
     assert VALID_TRANSITIONS["Filed"] == ["Completed"]
     assert VALID_TRANSITIONS["Completed"] == []
-
-
-def test_engagement_lifecycle_map():
-    assert ENGAGEMENT_TRANSITIONS["Draft"] == ["Active", "Closed"]
-    assert "Completed" in ENGAGEMENT_TRANSITIONS["Review"]
-    assert ENGAGEMENT_TRANSITIONS["Closed"] == []
 
 
 # ── Generation (idempotent) + traceability ───────────────────────────────────

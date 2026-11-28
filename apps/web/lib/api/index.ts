@@ -4644,22 +4644,6 @@ export interface StaffBillableRate {
   default_billable_rate_paise: number | null;
 }
 
-/** What `POST /{id}/transition` will accept from each status, mirroring
- *  `routers/engagements.ENGAGEMENT_TRANSITIONS`. The server is the authority
- *  and answers 422 with the permitted set; this exists so the screen offers
- *  the buttons that will work rather than a dropdown of seven, six of which
- *  are refused. Pinned to the Python map by
- *  `apps/api/tests/test_the_engagement_state_machine_has_one_map.py`. */
-export const ENGAGEMENT_TRANSITIONS: Record<FeeEngagementStatus, FeeEngagementStatus[]> = {
-  "Draft": ["Active", "Closed"],
-  "Active": ["In Progress", "Closed", "Inactive"],
-  "In Progress": ["Review", "Active", "Closed"],
-  "Review": ["Completed", "In Progress"],
-  "Completed": ["Closed"],
-  "Closed": [],
-  "Inactive": ["Active"],
-};
-
 /** gst-06 — the electronic credit ledger's opening balance for one GSTR-3B window.
  *  Every figure and every sentence is the server's (`domain/gst/credit_ledger.py`):
  *  which source won, whether the balance was KNOWN, and what it says when it was not.
@@ -4855,7 +4839,7 @@ export const api = {
   // were unreachable from the product. The billing screen INSERTed and
   // SELECTed `fee_engagements` straight over PostgREST instead, which means
   // `rbac()` never ran and — this is the half that mattered — `POST
-  // /{id}/transition`, which validates against ENGAGEMENT_TRANSITIONS and
+  // /{id}/transition`, which validates against the server's own state machine and
   // writes both `audit_log` and the client timeline, had never been called.
   // An engagement was created `Active` and could never change.
   //
@@ -4892,15 +4876,6 @@ export const api = {
       request<ApiResp<{ engagement_id: string; billable_rate_paise: number | null }>>(
         `/api/engagements/${id}/billable-rate`, {
           method: "PUT", body: JSON.stringify({ billable_rate_paise: billableRatePaise }),
-        }),
-    // The state machine's own door. `status` must be one the server allows
-    // FROM the current one — it answers 422 naming the permitted set rather
-    // than writing whatever it is sent, which is why the screen offers the
-    // allowed set rather than a free dropdown.
-    transition: (id: string, body: { status: string; notes?: string | null }) =>
-      request<ApiResp<{ engagement: FeeEngagement }>>(
-        `/api/engagements/${id}/transition`, {
-          method: "POST", body: JSON.stringify(body),
         }),
   },
   compliance: {
@@ -6900,15 +6875,6 @@ export const api = {
   },
   invoices: {
     downloadPdf: (id: string) => downloadFile(`/api/invoices/${id}/pdf`, `invoice-${id}.pdf`),
-    runOverdueCheck: () => request("/api/invoices/run-overdue-check", { method: "POST" }),
-    /** A DRAFT fee invoice from one fixed-fee engagement. The server takes the
-     *  fee, the GST, the date (IST today) and the number off the firm's atomic
-     *  sequence (migration 124), and stamps `engagement_id` — the /billing
-     *  screen used to do all four in the browser over PostgREST. A refusal
-     *  arrives as a thrown Error carrying the server's sentence. */
-    fromEngagement: (engagementId: string) =>
-      request<ApiResp<{ invoice: Record<string, unknown> | null }>>(
-        `/api/invoices/from-engagement/${encodeURIComponent(engagementId)}`, { method: "POST" }),
   },
   timeEntries: {
     exportEntries: (params: { fmt: "csv" | "xlsx"; user_id?: string; client_id?: string; date_from?: string; date_to?: string }) => {
@@ -7494,12 +7460,6 @@ export const api = {
         `/api/billing/staff-cost-rates/${userId}`, {
           method: "PUT", body: JSON.stringify({ cost_rate_paise: costRatePaise }),
         }),
-    // Fee Billing (apps/web/app/billing/page.tsx) receipts — only marks the
-    // invoice Paid once cumulative receipts cover its total.
-    recordFeeReceipt: (invoiceId: string, data: unknown) =>
-      request(`/api/billing/fee-invoices/${invoiceId}/receipts`, {
-        method: "POST", body: JSON.stringify(data),
-      }),
   },
   salesInvoices: {
     list: (clientId: string, params?: Record<string, string>) =>

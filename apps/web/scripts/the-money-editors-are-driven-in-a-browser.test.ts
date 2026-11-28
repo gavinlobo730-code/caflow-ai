@@ -294,8 +294,6 @@ const DRIVEN: Record<string, string[]> = {
   "app/income-tax/advance-tax/page.tsx": ["[Instalment ${n} paid on]", "#sa-deposit-date", "#at-furnished-on"],
   // The second slice (4-11-2026).
   "components/compliance/MarkFiledModal.tsx": ["#mark-filed-date"],
-  // Both of this file's date boxes are in NOT_YET_DRIVEN since 21-11-2026: the forms that hold them cannot be opened by anybody.
-  "app/billing/page.tsx": [],
   "app/clients/[id]/fixed-assets/page.tsx": ["[Purchase date]", "[Disposal date]"],
   "app/accounting/retainer/page.tsx": ["#retainer-next"],
   "components/payroll/DisburseModal.tsx": ["#disburse-date"],
@@ -404,19 +402,11 @@ const DRIVEN_ELSEWHERE: Record<string, { scenario: string; names: string }> = {
   "components/fixed-assets/VerificationTab.tsx": { scenario: "assetVerification.mjs", names: "#count-verified-on" },
 };
 
-/** Why the two date boxes of the earlier Fee Billing screen are not driven. They are driven again, or leave this table, when the
- *  two forms are removed with the earlier fee routes (POST-B-193). */
-const WITHHELD_FEE_FORM = "the form that holds it cannot be opened: the earlier Fee Billing screen is a record since 21-11-2026 " +
-  "(POST-B-193) and every control that writes is withheld from everybody, so a scenario has no button to press";
-
 /** Date fields in those same editors that the drive does NOT yet drive, each with why. A table that can only
  *  shrink: a field added to a driven editor must get a scenario row or be named here. */
 const NOT_YET_DRIVEN: Record<string, Record<string, string>> = {
-  // Empty from the eighteenth slice (6-11-2026) until 21-11-2026. The table stays, because a box added to a driven file must be named here with why or get a row.
-  "app/billing/page.tsx": {
-    "#engagement-start": WITHHELD_FEE_FORM,
-    "#fee-receipt-date": WITHHELD_FEE_FORM,
-  },
+  // Empty, as it was from the eighteenth slice (6-11-2026) until 21-11-2026, and again since the earlier Fee Billing screen's two forms were
+  // deleted (POST-A-572). The table stays, because a box added to a driven file must be named here with why or get a row.
 };
 
 test("every date field the drive types into is a real DateInput in the editor it names", () => {
@@ -452,16 +442,13 @@ test("a driven editor cannot gain a date field the drive does not know about", (
   }
 });
 
-test("the fee forms are named as not driven only while nobody can open them", () => {
-  // The reason in NOT_YET_DRIVEN is a claim about the screen. If the earlier Fee Billing screen takes a write again, the two forms can be
-  // opened and their date boxes need their rows back.
+test("the earlier Fee Billing screen holds no form and no date box, so there is nothing for the drive to name (POST-A-572)", () => {
+  // The screen is a record since 21-11-2026 (POST-B-193). Its two forms, Add Fee Engagement and Record Receipt, were unreachable and
+  // are deleted. If a form comes back it holds date boxes, and each needs a scenario row in the drive or a named reason here.
   const page = read(join(WEB, "app/billing/page.tsx"));
-  assert.match(page, /const FEE_BILLING_IS_A_RECORD = true;/, "the earlier Fee Billing screen is no longer a record: drive its two date boxes again");
-  assert.match(page, /const canWrite = !FEE_BILLING_IS_A_RECORD && can\("billing", "write"\);/, "the screen's writing controls are no longer withheld from everybody");
-  const dates = read(join(SCENARIO_DIR, "dates.mjs"));
-  for (const box of Object.keys(NOT_YET_DRIVEN["app/billing/page.tsx"] ?? {})) {
-    assert.ok(!dates.includes(`"${box}"`), `${box} is named as not driven and a scenario types into it`);
-  }
+  assert.ok(!/<DateInput\b/.test(page), "the earlier Fee Billing screen holds a date box again: add it to DRIVEN with a scenario row");
+  assert.ok(!/Add Fee Engagement|<Modal\b/.test(page), "the earlier Fee Billing screen holds a dialog again");
+  assert.ok(!/showEngModal|showReceiptModal/.test(page), "the earlier Fee Billing screen has state for a dialog again");
 });
 
 test("every file that holds a date box is driven: a new DateInput anywhere needs a row (POST-A-386)", () => {

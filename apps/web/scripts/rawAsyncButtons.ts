@@ -38,7 +38,7 @@
  *     (`WRITE_VERB`) and only on a chain of exactly `api.<ns>.<verb>`. Both were
  *     blind in ways that mattered: 71 of the 338 methods in lib/api/index.ts that
  *     send a POST, PUT, PATCH or DELETE begin with no listed verb —
- *     `invoices.fromEngagement` (the Raise Invoice button), `clients.permanentDelete`,
+ *     `clients.permanentDelete`,
  *     `banking.categorize`, `reconciliations.complete`, `billing.run`,
  *     `identity.forceLogout` — a chain one level deeper (`api.accounting.fxRevaluation
  *     .run`) was never looked at, and `yearEndApi.notes.generateAll` is rooted at a
