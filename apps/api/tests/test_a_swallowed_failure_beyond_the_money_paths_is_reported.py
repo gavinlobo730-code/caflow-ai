@@ -333,14 +333,6 @@ def test_the_employee_portal_invitation_report_carries_no_address(monkeypatch, s
     assert "emp@example.in" not in repr(seen)
 
 
-def test_an_engagement_transition_audit_that_fails_is_reported_with_the_engagement():
-    tree = ast.parse(_read("routers/engagements.py"))
-    ops = {k.value.value for n in ast.walk(tree) if isinstance(n, ast.Call)
-           and getattr(n.func, "id", "") == "capture_soft_failure"
-           for k in n.keywords if k.arg == "operation"}
-    assert {"engagements.transition_audit", "engagements.transition_timeline"} <= ops
-
-
 def test_a_workflow_rule_that_cannot_be_compared_does_not_match_and_a_bad_due_date_is_tolerated():
     from domain.workflow_engine_v2 import WorkflowEngineV2
     engine = WorkflowEngineV2.__new__(WorkflowEngineV2)

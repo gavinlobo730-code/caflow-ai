@@ -26,9 +26,9 @@ def run_overdue_check(firm_id: Optional[str] = None, client_id: Optional[str] = 
     Invoices without a due_date fall back to invoice_date + 30 days,
     the standard credit period applied at generation time.
 
-    client_id confines the check to one client — routers/invoices.py's
-    run_overdue_check_endpoint uses this to run the check once per client an
-    assignment-scoped caller may access, rather than firm-wide.
+    client_id confines the check to one client. The daily scheduler runs it firm-wide; the endpoint that ran
+    it once per client an assignment-scoped caller may access was deleted with the old Billing screen
+    (POST-A-572), because nothing called it.
 
     Returns:
         dict with 'transitioned' count and list of affected invoice ids.
