@@ -318,8 +318,8 @@ def _audit_transition(record: dict, old_status: str, new_status: str,
                   old_data={"status": old_status}, new_data={"status": new_status},
                   metadata={"compliance_type": record.get("compliance_type"),
                             "obligation_type": record.get("obligation_type")})
-    except Exception:  # pragma: no cover - audit is non-fatal
-        pass
+    except Exception as exc:  # pragma: no cover - audit is non-fatal
+        capture_soft_failure(exc, operation="compliance.status_change.audit", record_id=record["id"])
     try:
         from services.timeline_service import timeline_service
         timeline_service.log(record.get("client_id", ""), "compliance",
@@ -329,8 +329,8 @@ def _audit_transition(record: dict, old_status: str, new_status: str,
                              "success" if is_filed(new_status) else "info",
                              firm_id=firm_id or record.get("firm_id", ""),
                              entity_type="compliance_record", entity_id=record["id"])
-    except Exception:  # pragma: no cover
-        pass
+    except Exception as exc:  # pragma: no cover
+        capture_soft_failure(exc, operation="compliance.status_change.timeline", record_id=record["id"])
 
 
 class ComplianceRecordService:
